@@ -4254,10 +4254,20 @@ export function ThreadPane({
    *
    * Only when there is nothing here to lose. A reply half-written in this
    * window is not something to overwrite with one written somewhere else.
+   *
+   * And never while the floating card holds the reply. The hand-over saves
+   * the draft and empties this box, so the next time the window came to
+   * the front this took the draft up again: the same reply open twice, in
+   * the card and in the thread. The window regains focus whenever the
+   * reader comes back from another app, so it happened only sometimes.
    */
+  const replyFloatingRef = React.useRef(replyFloating);
+  replyFloatingRef.current = replyFloating;
   const adoptStoredDraft = React.useCallback(() => {
-    if (replyText.trim()) return;
+    if (replyText.trim() || replyFloatingRef.current) return;
     void getDraft(threadDraftKey(account, threadId)).then((raw) => {
+      // Asked again: the reply can go to the card while the store answers.
+      if (replyFloatingRef.current) return;
       if (raw?.kind !== "thread" || !raw.body.trim()) return;
       draftDiscardedRef.current = false;
       setMode(raw.mode);

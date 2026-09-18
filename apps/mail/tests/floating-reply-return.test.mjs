@@ -53,6 +53,18 @@ suite(async () => {
     back.trim()
   );
 
+  // Coming back to the window must not open the floating reply a second
+  // time, in the thread, from the draft the hand-over saved.
+  const adopt = pane.slice(
+    pane.indexOf("const adoptStoredDraft"),
+    pane.indexOf('window.addEventListener("focus", adoptStoredDraft)')
+  );
+  check(
+    "the thread leaves the draft alone while the card holds it",
+    adopt.includes("replyFloatingRef.current) return"),
+    adopt.trim().split("\n").slice(0, 4).join("\n")
+  );
+
   /**
    * The other end: coming home is opening the thread, not closing the card.
    * The card is mounted from MailPage, which is the only place that knows
