@@ -6,9 +6,17 @@
 
 /* Mail composers type at ~17px for comfortable reading; mail still sends at
    12pt via the server wrapper. */
-.rich-text-editor.mail-compose-editor .ql-editor {
+.rich-text-editor.mail-message-editor .ql-editor {
   font-size: 17px;
   line-height: 1.55;
+}
+
+/* A picture written into the message shows no wider than the box. What is
+   sent is already capped the same way — see client-email-html — so the box
+   it was dropped into was the one place still showing it full size. */
+.rich-text-editor.mail-message-editor .ql-editor img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Signature editor: signatures send at 13px with tight lines, so edit them
@@ -58,20 +66,50 @@
 }
 
 /*
- * A narrow thread pane keeps the gutter beside a bubble, but only just.
+ * How much of the pane one side of the conversation may take.
  *
- * 40px says "this is one side of a conversation" on a pane with room to
- * say it. Under about 480px it says it with a sixth of the width, and a
- * message that arrived reads as a column pinned to the left of a stripe of
- * nothing. 14px still lands the eye on which side a message is on, because
- * the shape does most of that work: the corner, the fill, and the other
- * side of the pane being where your own messages go.
+ * Three quarters, which leaves a quarter as the gutter on the side the
+ * message is not on. A chat app reads this way — the eye gets who said
+ * what from the shape of the column before it reads a word — and the
+ * gutter was a fixed 40px, which is that shape on a narrow pane and a
+ * hairline on a wide one. A third of the pane was tried first and read as
+ * more empty than a message.
  *
- * A class rather than a media query: the pane is one of three resizable
- * things in the window, so its width is nothing the viewport knows.
+ * But a share of the pane is the wrong question once the pane is large.
+ * Three quarters of a wide reader is a line nobody wants to read: the eye
+ * loses its place coming back for the next one. So the share is held under
+ * 640px, which is about eighty characters at this size, and which is also
+ * about the width mail is designed to — so a newsletter that can reflow
+ * sits at its own width rather than being stretched past it.
+ *
+ * Four limits hold it either side of that.
+ *
+ * The floor is 340px, so a narrow pane keeps a bubble wide enough to read
+ * a sentence in. Two thirds of 400px is 270px, which wraps an address and
+ * a date into three lines each.
+ *
+ * `--mail-bubble-fixed` is the third floor, and it is only ever set on a
+ * mail that cannot reflow: the frame measures its `min-content` and puts
+ * the answer here (see EmailHtmlView). A mail of paragraphs asks for
+ * nothing — its `min-content` is about one word — so the share above
+ * stands, and the measure stays readable. A newsletter built on a fixed
+ * 600px table asks for 600px, because the alternative is not a narrower
+ * newsletter but a clipped one. Nothing guesses from the markup; the
+ * document is asked.
+ *
+ * The ceiling is the pane less 14px, and it is above every floor on
+ * purpose: a mail wider than the pane is held to the pane and scaled to
+ * fit inside its own frame rather than allowed to push past it.
+ *
+ * All of it in one declaration, so the pane's own width answers for it.
+ * A pane is one of three resizable things in the window, so its width is
+ * nothing a media query knows.
  */
-.mail-thread-narrow .mail-bubble-column {
-  max-width: calc(100% - 14px);
+.mail-bubble-column {
+  max-width: min(
+    calc(100% - 14px),
+    max(340px, min(75%, 640px), var(--mail-bubble-fixed, 0px))
+  );
 }
 
 /*
@@ -108,6 +146,35 @@
   font-style: normal;
 }
 
+/* A list sits nearer its own margin than Quill puts it.
+ *
+ * The shared editor indents the list by 18px and Quill indents each line
+ * another 1.5em inside that, so a bullet in a reply started about forty
+ * pixels in — a paragraph's worth of white before the first word, in a box
+ * that is already narrow. Both halved: the bullet keeps a step of its own
+ * and the words start where the eye is already looking.
+ *
+ * Only the mail boxes. The same editor writes notes and task descriptions
+ * elsewhere, and those have the room. */
+.rich-text-editor.mail-message-editor .ql-editor ul,
+.rich-text-editor.mail-message-editor .ql-editor ol {
+  margin-left: 6px;
+}
+.rich-text-editor.mail-message-editor .ql-editor li {
+  padding-left: 1em;
+  /*
+   * A bullet is a line, the same as a paragraph is.
+   *
+   * The editor puts eight pixels under every list item, which is right for
+   * a note or a task description and wrong for mail: two bullets read as
+   * two bullets with a blank line between them, and the mail that goes out
+   * has no such gap — `<li>` is written bare, and the client reading it
+   * puts its items on consecutive lines. So the box was showing a letter
+   * nobody would receive. See client-email-html, which builds the lists.
+   */
+  margin: 0;
+}
+
 /* Reply composer card: the editor and its footer controls share the card's
    single border, and Quill's toolbar lives inline in the footer row. */
 .mail-composer-card .ql-container.ql-snow {
@@ -118,40 +185,156 @@
    Without a ceiling a long draft — an imported one especially — pushed the
    thread off the top and took the send buttons with it. `.ql-editor` already
    scrolls itself, so a max-height is the whole fix. Focus mode is exempt:
-   filling the pane is the point of it. */
+   filling the pane is the point of it.
+
+   The ceiling comes in as a variable because the card is zoomed. A `vh` is
+   measured before the zoom and drawn after it, so a flat 45vh was 45% of the
+   pane at 100% and 63% at 140% — which is how the send buttons went missing
+   again for anybody reading at a comfortable size. ThreadPane divides the
+   share it wants by the zoom; this is only the fallback. */
 .mail-composer-card:not(.mail-composer-card-focus)
-  .mail-compose-editor
+  .mail-message-editor
   .ql-editor {
-  max-height: 45vh;
+  max-height: var(--mail-compose-cap, 45vh);
 }
 
-/* Reply focus mode: grow the Quill surface to fill the reading pane. The
-   .quill div is react-quill's own wrapper — without flex styles of its own it
-   breaks the chain, leaving .ql-editor pinned to the 240px min-height. */
-.mail-composer-card-focus .mail-compose-editor,
-.mail-composer-card-focus .mail-compose-editor > .quill {
+/*
+ * Where a composer keeps the message, the signature and the files in one
+ * box, that box is what stops and scrolls — not the editor inside it.
+ *
+ * The signature is the end of the letter. Under an editor that scrolled by
+ * itself it was a lid: the words stopped mid-sentence at the ceiling and
+ * the signature began underneath, and no amount of scrolling moved it, so
+ * the reply looked cut in half. Scrolling the whole box reads the way the
+ * letter does — body, then name.
+ *
+ * The ceiling has no fallback here on purpose: unset, the declaration is
+ * dropped and the box has no ceiling at all, which is what a composer with
+ * a height of its own already wants.
+ */
+.mail-composer-card:not(.mail-composer-card-focus) .mail-composer-scroll {
+  /* The band above holds the ceiling now — see ThreadPane, where it is set.
+     This takes whatever the rows that cannot shrink have left. */
+  overflow-y: auto;
+}
+
+/*
+ * The link editor is let out of the box while it is open.
+ *
+ * Quill's link box is about 130px tall and the reply composer is often
+ * eighty, so `overflow-y: auto` cut the whole thing off: selecting words
+ * and pressing the link button drew an editor nobody could see, and the
+ * button read as broken. It is a popover over a scrolling box, and a
+ * popover taller than its box cannot be kept inside one.
+ *
+ * Only while it is up, so the composer scrolls the rest of the time.
+ *
+ * "Up" is the editing class without the hidden one. Quill closes the box
+ * by adding ql-hidden and leaves ql-editing standing, so matching the
+ * editing class alone kept both containers un-clipped forever after the
+ * first link was saved — and a long reply then wrote itself over the
+ * Send row and out of the card.
+ */
+.mail-composer-scroll:has(.ql-tooltip.ql-editing:not(.ql-hidden)) {
+  overflow: visible;
+}
+
+/*
+ * And out of the band around it, which clips as well.
+ *
+ * Letting the box out of the scrolling area alone was not enough: the
+ * band that holds the composer keeps its own `overflow: hidden`, so the
+ * link editor was cut off against the top of it instead — visible as a
+ * sliver over the conversation. Both have to stand aside, and only for
+ * as long as the editor is up.
+ */
+.mail-composer-region:has(.ql-tooltip.ql-editing:not(.ql-hidden)),
+.mail-composer-column:has(.ql-tooltip.ql-editing:not(.ql-hidden)) {
+  /* The column inside the band scrolls too, when a forward's banner and
+     rows do not leave the box its floor. It stands aside the same way. */
+  overflow: visible;
+}
+
+/*
+ * The same for the menu of people a recipient field offers.
+ *
+ * Near the foot of the window it opens upwards, out of the top of the band
+ * — and the band cut it off there, so the names nearest the field were
+ * the only ones left, under a sliver of the rest. The list editor that
+ * opens in its place hangs the same way. Both bands stand aside while
+ * either is open.
+ */
+.mail-composer-region:has([data-recipient-menu]),
+.mail-composer-column:has([data-recipient-menu]) {
+  overflow: visible;
+}
+
+/* And then the editor grows to its words, because the box above holds the
+   ceiling for both of them. Same weight as the rule above it, and after it,
+   which is what decides this. */
+.mail-composer-card .mail-composer-scroll .mail-message-editor .ql-editor {
+  max-height: none;
+}
+
+/*
+ * Reply focus mode: the box is the pane, and the letter scrolls in it.
+ *
+ * The chain below is react-quill's wrapper included — the `.quill` div has
+ * no flex of its own, and without it the editor stays at its minimum height
+ * however tall the pane is.
+ *
+ * `1 0 auto`, not `1 1 0`: grow into whatever room is spare, and never
+ * shrink below the words. So a short reply fills the pane — press anywhere
+ * and the caret lands in it — and a long one keeps its full height and the
+ * box above scrolls, carrying the signature at the end of it where it
+ * belongs. Scrolling the editor instead is what left the signature parked
+ * over the last line of a letter that was still going.
+ */
+.mail-composer-card-focus .mail-composer-scroll {
   display: flex;
   min-height: 0;
   flex: 1 1 0;
   flex-direction: column;
+  overflow-y: auto;
 }
-.mail-composer-card-focus .mail-compose-editor .ql-container {
+.mail-composer-card-focus .mail-message-editor,
+.mail-composer-card-focus .mail-message-editor > .quill {
   display: flex;
   min-height: 0;
-  flex: 1 1 0;
+  flex: 1 0 auto;
   flex-direction: column;
 }
-.mail-composer-card-focus .mail-compose-editor .ql-editor {
-  flex: 1 1 0;
+.mail-composer-card-focus .mail-message-editor .ql-container {
+  display: flex;
+  min-height: 0;
+  flex: 1 0 auto;
+  flex-direction: column;
 }
-.mail-composer-card .ql-toolbar.ql-snow {
+.mail-composer-card-focus .mail-message-editor .ql-editor {
+  flex: 1 0 auto;
+  /* The box above does the scrolling now, so this must not clip. */
+  max-height: none;
+  overflow: visible;
+}
+/*
+ * The formatting row, wherever a message is written.
+ *
+ * Keyed off the row itself rather than off the composer card it used to sit
+ * in, because it sits in three places now — the composer, the reply, and the
+ * out-of-office card — and a bold button that is one size in one of them and
+ * another size in the next is the sort of difference nobody chose.
+ *
+ * Quill puts `ql-toolbar ql-snow` on whatever element it is given, so these
+ * undo the bar the snow theme would otherwise draw.
+ */
+.mail-composer-toolbar.ql-snow {
   border: none;
   background: transparent;
   padding: 0;
   display: inline-flex;
   align-items: center;
 }
-.mail-composer-card .ql-toolbar.ql-snow .ql-formats {
+.mail-composer-toolbar.ql-snow .ql-formats {
   margin-right: 0;
   display: inline-flex;
   align-items: center;
@@ -160,7 +343,7 @@
      rather than one row of them. */
   gap: 0;
 }
-.mail-composer-card .ql-toolbar.ql-snow button {
+.mail-composer-toolbar.ql-snow button {
   width: 24px;
   height: 26px;
   padding: 3px 3px;
@@ -168,7 +351,7 @@
   align-items: center;
   justify-content: center;
 }
-.mail-composer-card .ql-toolbar.ql-snow button svg {
+.mail-composer-toolbar.ql-snow button svg {
   width: 18px;
   height: 18px;
 }
@@ -317,6 +500,19 @@
   --mail-segment-track: var(--cream-section);
   --mail-segment-track-strong: var(--cream-section);
   --mail-segment-active: #ffffff;
+  /*
+   * The mark a mailbox wears while it answers on its own.
+   *
+   * A slate blue out of the chrome's own navy family, not the rust it wore
+   * first: an auto-reply is a thing the reader switched on and means to
+   * have running, so the mark reports it. Red asked to be dealt with, three
+   * times over in a row of four mailboxes.
+   */
+  --mail-autoreply: #5c7186;
+  /* What the arrow inside the badge is drawn in — dark panel and light want
+     opposite ends of it, and the badge is small enough that a weak pair is
+     no arrow at all. */
+  --mail-autoreply-fg: #ffffff;
   --mail-segment-active-fg: #1c1917;
   --mail-segment-fg: rgb(87 83 78);
 
@@ -331,7 +527,9 @@
   --mail-accent: #2a9d8f;
   --mail-link: #2a9d8f;
   --mail-row-selected: #ffffff;
-  --mail-row-hover: #f4f1ec;
+  /* The chrome's hover, so a row in the list and a row in the folders can
+     never drift apart. They are the same colour on this theme already. */
+  --mail-row-hover: var(--mail-chrome-hover);
 
   /* A person or a list, as a chip in an address field. */
   --mail-chip: var(--cream-section);
@@ -347,7 +545,16 @@
   --mail-chrome-fg: #f5f0e8;
   --mail-chrome-muted: #c9c5bc;
   --mail-chrome-faint: #9aa3b0;
-  --mail-chrome-hover: rgba(255, 255, 255, 0.06);
+  /*
+   * One hover, everywhere a row is hovered: the folders, the thread list
+   * and every menu row all come up in this. It used to be a six per cent
+   * white wash, which landed a shade under the list's own hover and made
+   * the rail and the list look like two different surfaces.
+   *
+   * Opaque rather than a wash, because the wash was mixing with whatever
+   * was under it — and on this theme that is three or four different navies.
+   */
+  --mail-chrome-hover: #2b3c53;
   --mail-chrome-selected: rgba(255, 255, 255, 0.1);
   --mail-chrome-chip-border: rgba(255, 255, 255, 0.16);
   --mail-chrome-chip-active-bg: rgba(255, 255, 255, 0.12);
@@ -417,6 +624,8 @@
 
   --mail-segment-track: #18222e;
   --mail-segment-track-strong: #0f1822;
+  --mail-autoreply: #8199ad;
+  --mail-autoreply-fg: #16202b;
   --mail-segment-active: #33465c;
   --mail-segment-active-fg: #f3f6fa;
   --mail-segment-fg: #9fb2c4;
@@ -431,7 +640,7 @@
   /* Colour marks the open thread, grey marks the one under the pointer, so
      the two are never mistaken for each other. */
   --mail-row-selected: rgba(42, 157, 143, 0.1);
-  --mail-row-hover: #243347;
+  --mail-row-hover: var(--mail-chrome-hover);
 
   /*
    * A chip in an address field.
@@ -824,16 +1033,12 @@
  * see against navy. Both composers are here: the new message and the reply
  * under a thread.
  */
-.mail-shell[data-theme="dark"] #mail-compose-toolbar .ql-stroke,
-.mail-shell[data-theme="dark"] #mail-compose-toolbar .ql-stroke-miter,
-.mail-shell[data-theme="dark"] #mail-reply-toolbar .ql-stroke,
-.mail-shell[data-theme="dark"] #mail-reply-toolbar .ql-stroke-miter {
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke,
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke-miter {
   stroke: var(--mail-u-fg-muted);
 }
-.mail-shell[data-theme="dark"] #mail-compose-toolbar .ql-fill,
-.mail-shell[data-theme="dark"] #mail-compose-toolbar .ql-stroke.ql-fill,
-.mail-shell[data-theme="dark"] #mail-reply-toolbar .ql-fill,
-.mail-shell[data-theme="dark"] #mail-reply-toolbar .ql-stroke.ql-fill {
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-fill,
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke.ql-fill {
   fill: var(--mail-u-fg-muted);
 }
 /*
@@ -843,24 +1048,16 @@
  * other control in this app. Not scoped to a theme: the blue was as
  * foreign on white as it was on navy, and the accent is defined for both.
  */
-.mail-shell #mail-compose-toolbar button:hover,
-.mail-shell #mail-compose-toolbar button:focus,
-.mail-shell #mail-compose-toolbar button.ql-active,
-.mail-shell #mail-reply-toolbar button:hover,
-.mail-shell #mail-reply-toolbar button:focus,
-.mail-shell #mail-reply-toolbar button.ql-active {
+.mail-shell .mail-composer-toolbar button:hover,
+.mail-shell .mail-composer-toolbar button:focus,
+.mail-shell .mail-composer-toolbar button.ql-active {
   color: var(--mail-u-accent, #0d9488);
 }
-.mail-shell #mail-compose-toolbar button:hover .ql-stroke,
-.mail-shell #mail-compose-toolbar button:focus .ql-stroke,
-.mail-shell #mail-compose-toolbar button.ql-active .ql-stroke,
-.mail-shell #mail-compose-toolbar button:hover .ql-stroke-miter,
-.mail-shell #mail-compose-toolbar button.ql-active .ql-stroke-miter,
-.mail-shell #mail-reply-toolbar button:hover .ql-stroke,
-.mail-shell #mail-reply-toolbar button:focus .ql-stroke,
-.mail-shell #mail-reply-toolbar button.ql-active .ql-stroke,
-.mail-shell #mail-reply-toolbar button:hover .ql-stroke-miter,
-.mail-shell #mail-reply-toolbar button.ql-active .ql-stroke-miter {
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke,
+.mail-shell .mail-composer-toolbar button:focus .ql-stroke,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke,
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke-miter,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke-miter {
   stroke: var(--mail-u-accent, #0d9488);
 }
 /*
@@ -876,32 +1073,12 @@
   color: var(--mail-u-danger, #dc2626);
 }
 
-.mail-shell #mail-compose-toolbar button:hover .ql-fill,
-.mail-shell #mail-compose-toolbar button:focus .ql-fill,
-.mail-shell #mail-compose-toolbar button.ql-active .ql-fill,
-.mail-shell #mail-compose-toolbar button:hover .ql-stroke.ql-fill,
-.mail-shell #mail-compose-toolbar button.ql-active .ql-stroke.ql-fill,
-.mail-shell #mail-reply-toolbar button:hover .ql-fill,
-.mail-shell #mail-reply-toolbar button:focus .ql-fill,
-.mail-shell #mail-reply-toolbar button.ql-active .ql-fill,
-.mail-shell #mail-reply-toolbar button:hover .ql-stroke.ql-fill,
-.mail-shell #mail-reply-toolbar button.ql-active .ql-stroke.ql-fill {
+.mail-shell .mail-composer-toolbar button:hover .ql-fill,
+.mail-shell .mail-composer-toolbar button:focus .ql-fill,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-fill,
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke.ql-fill,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke.ql-fill {
   fill: var(--mail-u-accent, #0d9488);
-}
-
-/*
- * Find in thread (Cmd+F). The email frames carry their own copy of these —
- * a highlight is registered per document, so the page cannot style theirs.
- * See `use-thread-find.ts`.
- */
-::highlight(mail-find) {
-  background-color: #fde68a;
-  color: #1c1917;
-}
-
-::highlight(mail-find-active) {
-  background-color: #f59e0b;
-  color: #1c1917;
 }
 
 /*
@@ -935,32 +1112,246 @@
 }
 
 /*
+ * A row in the list is a thing to open, not text to copy.
+ *
+ * A double click opens a conversation, and WebKit selected the word under the
+ * pointer as well. That stray selection is what macOS Services act on: with
+ * text selected, ⇧⌘A is "Search man Page Index in Terminal", so the next
+ * Archive opened Terminal instead of archiving. A row holds no selection now,
+ * so the key reaches the list. (Text selected in a message still takes it.)
+ */
+[data-thread-key],
+[data-person-key] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-thread-key] input,
+[data-person-key] input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
  * The row a menu is about to act on.
  *
- * The same navy the rail marks an open folder with — and cream on navy in
- * the dark theme, which is the same idea the other way up. The snooze menu
- * used a faint grey and the folder menu a pale teal wash, and neither said
- * "this one" clearly enough to be read at a glance with the pointer
- * moving. A menu is a list of things you are choosing between; the one
- * under the pointer, or under the arrow keys, should be unmistakable.
+ * Under the pointer it is the wash a thread comes up with in the list. The
+ * gesture is the same one — running down a column of things and stopping on
+ * one — and a menu that answered it with a different colour than the list
+ * two inches away read as a different kind of surface.
+ *
+ * Under the keyboard it is the strong fill, the navy the rail marks an open
+ * folder with, and cream on navy in the dark theme. Nothing is following
+ * the arrow keys but this, so it has to be unmistakable; the pointer has
+ * itself to say where it is.
  *
  * The children are told to inherit, because each carries its own colour —
  * a label in near-black, a time in grey, an icon in teal — and all three
  * have to give way to the fill. Plain descendant selectors, not `:where`,
  * which would drop the weight below the class it has to beat.
+ *
+ * The class is named twice on purpose, here and on the children. What it
+ * has to beat in the dark theme is the blanket rewrite of the stone
+ * utilities above — `.mail-shell[data-theme="dark"] .text-stone-800` is a
+ * class heavier than this rule was, and the row carries `text-stone-800`
+ * itself. So the fill arrived and the writing on it did not: a cream row
+ * with its label in the same cream, and nothing on it but the time. Telling
+ * the children to inherit only spread it, because what they inherited was
+ * the rewritten colour of the row.
+ *
+ * These rules must stay after that rewrite: they are level with it on
+ * weight, and order is what settles a tie.
  */
-.mail-menu-pick:hover,
-.mail-menu-pick:focus-visible,
-.mail-menu-pick[data-picked="true"] {
+.mail-menu-pick.mail-menu-pick:hover {
+  background-color: var(--mail-row-hover);
+}
+
+.mail-menu-pick.mail-menu-pick:focus-visible,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] {
   background-color: var(--mail-chrome-pinned);
   color: var(--mail-chrome-pinned-fg);
 }
 
-.mail-menu-pick:hover span,
-.mail-menu-pick:hover svg,
-.mail-menu-pick:focus-visible span,
-.mail-menu-pick:focus-visible svg,
-.mail-menu-pick[data-picked="true"] span,
-.mail-menu-pick[data-picked="true"] svg {
+.mail-menu-pick.mail-menu-pick:focus-visible span,
+.mail-menu-pick.mail-menu-pick:focus-visible svg,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] span,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] svg {
   color: inherit;
+}
+
+/*
+ * The shape that stands in for the mail while it loads.
+ *
+ * `globals.css` draws a skeleton as two stone greys with a shimmer between
+ * them, which is a shade of the surface on a cream page and a bar of white
+ * on a dark one. On the dark theme it is the mail's own greys instead — the
+ * hover wash and the line above it, which are what a row is made of here.
+ *
+ * Keyed on the shell rather than on the planner's theme: the mailbox is
+ * dark or light by its own setting, whatever the app around it is doing.
+ */
+.mail-shell[data-theme="dark"] .animate-skeleton-shimmer {
+  background-color: var(--mail-chrome-hover);
+  background-image: linear-gradient(
+    90deg,
+    var(--mail-chrome-hover) 0%,
+    #35485f 42%,
+    var(--mail-chrome-hover) 84%
+  );
+  border-color: var(--mail-chrome-border);
+}
+
+/*
+ * "Download all" under a message's files.
+ *
+ * The button is tile-sized so it rides in the gap the last row of tiles
+ * leaves. In a box too narrow for two tiles — the pop-out chat — the
+ * files stack in one column, there is no gap to ride, and a tile of
+ * empty air stood where a line would do. The grid is a size container,
+ * and under one-column width the button folds to a compact row.
+ */
+/*
+ * The column of bubbles is the size container, not the grid. A grid that
+ * was one told the bubble nothing about how wide it would like to be — a
+ * size container has no intrinsic width — so a short note with five files
+ * had a bubble the width of the note and the files in one long column.
+ * The column is always the pane's width, so it can be measured, and it is
+ * the width the bubble may grow to, which is what the fold below asks.
+ */
+.mail-bubble-column {
+  container-type: inline-size;
+}
+
+/*
+ * Two abreast in a narrow column too. A bubble may take three quarters
+ * of the pane, and in a small window that is under the 376px two fixed
+ * tiles need — so there the tiles give up their fixed width for half the
+ * row each, and five files are still three rows, not five.
+ */
+@container (max-width: 400px) {
+  .mail-attachment-grid > .mail-light-surface {
+    width: calc(50% - 4px);
+    min-width: 140px;
+  }
+}
+
+/* Two 184px tiles and the 8px gap between them need 376px. */
+@container (max-width: 380px) {
+  .mail-download-all-tile {
+    height: auto;
+    width: auto;
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 12px;
+  }
+
+  .mail-download-all-tile svg {
+    height: 16px;
+    width: 16px;
+  }
+}
+
+/*
+ * The out-of-office writes into a bordered card, so its formatting row is
+ * the top of that card: a rule under it, and air around it. The composers
+ * need none of this — theirs sits in a footer that already has both.
+ */
+.mail-autoreply-card .mail-composer-toolbar.ql-snow {
+  display: flex;
+  border-bottom: 1px solid var(--mail-border, #e7e5e4);
+  padding: 6px 10px;
+}
+
+/*
+ * ---------------------------------------------------------------- the phone
+ *
+ * One list, the reader over it, the folders in a drawer from the left. The
+ * frame is MailPhoneShell; what follows is what only a stylesheet can say —
+ * the safe areas under the notch and the home bar, the slide of a page
+ * coming in, and the way a finger differs from a pointer on a row.
+ */
+.mail-phone .mail-phone-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.mail-phone .mail-phone-footer {
+  height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* New email at the thumb: a circle on iOS, and the rounder square Material
+   draws on Android. */
+.mail-phone .mail-phone-fab {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 9999px;
+}
+html[data-dh-os="android"] .mail-phone .mail-phone-fab {
+  border-radius: 1rem;
+}
+.mail-phone .mail-phone-back {
+  height: calc(2.75rem + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.mail-phone .mail-phone-drawer {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* A thread slides in from the right, the way a page does; the composer
+   rises from the foot, the way a sheet does. */
+.mail-phone .mail-phone-detail {
+  animation: mail-phone-page-in 200ms ease-out;
+}
+.mail-phone[data-phone-detail="compose"] .mail-phone-detail {
+  animation: mail-phone-sheet-up 220ms ease-out;
+}
+@keyframes mail-phone-page-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes mail-phone-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-phone .mail-phone-detail,
+  .mail-phone[data-phone-detail="compose"] .mail-phone-detail {
+    animation: none;
+  }
+}
+/* A row under a finger. No callout and no selection on a long press — the
+   press opens the row's menu, see MailPhoneShell — and a pan across the
+   row is the row's swipe, while a pan down it is still the list's scroll. */
+.mail-phone [data-thread-key],
+.mail-phone [data-person-key] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+  cursor: default;
+}
+/* The reader's header keeps a gutter for the desktop's list divider. There
+   is no divider here. */
+.mail-phone .mail-thread-header {
+  padding-left: 1rem;
+}
+/* Scrollers that show no bar: the chips and the scope pills. */
+.mail-phone .mail-phone-chips [scrollbar-width\:thin],
+.mail-phone .mail-phone-tabs [scrollbar-width\:thin] {
+  scrollbar-width: none;
+}
+.mail-phone .mail-phone-scopes::-webkit-scrollbar,
+.mail-phone .mail-phone-chips ::-webkit-scrollbar,
+.mail-phone .mail-phone-tabs ::-webkit-scrollbar {
+  display: none;
+}
+/* Fields on iOS: 16px, or the page zooms in when one is focused. */
+.mail-phone input,
+.mail-phone textarea {
+  font-size: max(16px, 1em);
 }

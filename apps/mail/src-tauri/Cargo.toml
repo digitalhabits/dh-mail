@@ -2,7 +2,7 @@
 name = "digital-habits-mail"
 # Not the version the app shows: Tauri takes that from tauri.conf.json, which
 # reads ../package.json. Kept in step by scripts/check-version.sh.
-version = "0.7.13"
+version = "0.9.10"
 description = "Digital Habits: Mail — Mac desktop app"
 authors = ["Digital Habits"]
 license = ""
@@ -32,3 +32,7 @@ mail-native = { path = "../../../products/mail/crates/mail-native" }
 [dev-dependencies]
 url = "2.5"
 
+# The chat popout is reclassed into a non-activating panel by mail-native;
+# the plugin that does it has to be registered by the app that hosts it.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

@@ -26,6 +26,10 @@ export type GraphMessage = {
   parentFolderId?: string;
   isDraft?: boolean;
   lastModifiedDateTime?: string;
+  /** Flagged for follow-up — Outlook's star. */
+  flag?: { flagStatus?: string };
+  /** Where this message opens on the web. Graph answers it on a create. */
+  webLink?: string;
   /** Only present when asked for by `$expand` — see `deferredSendTimeOf`. */
   singleValueExtendedProperties?: { id: string; value?: string }[];
   /**
@@ -867,22 +871,44 @@ export async function moveOutlookConversation(
   destinationId: string
 ): Promise<void> {
   let beforeReceivedAt: string | undefined;
+  /*
+    A move that failed must be said to have failed.
+
+    Every per-message error was swallowed here, so a conversation whose
+    messages all refused to move still resolved — the app said "moved to
+    Trash", forgot the thread, and the mailbox had not changed. The reader
+    found the mail back on the next open and rightly stopped trusting the
+    button. A message already gone (404) is not a failure: a retried or
+    half-done move finds some messages moved by the earlier attempt.
+  */
+  let failed = 0;
+  let total = 0;
   for (;;) {
     const page = await listConversationMessages(accessToken, conversationId, {
       top: 50,
       beforeReceivedAt,
     });
-    await Promise.all(
+    total += page.messages.length;
+    const results = await Promise.allSettled(
       page.messages.map((m) =>
-        moveOutlookMessage(accessToken, m.id, destinationId).catch(
-          () => undefined
-        )
+        moveOutlookMessage(accessToken, m.id, destinationId)
       )
     );
+    for (const r of results) {
+      if (r.status === "rejected") {
+        const status = (r.reason as { status?: number } | null)?.status;
+        if (status !== 404) failed += 1;
+      }
+    }
     if (!page.hasOlder || page.messages.length === 0) break;
     beforeReceivedAt =
       page.messages[0].receivedDateTime || page.messages[0].sentDateTime;
     if (!beforeReceivedAt) break;
+  }
+  if (failed) {
+    throw new Error(
+      `Could not move ${failed} of ${total} messages in the conversation`
+    );
   }
 }
 
@@ -901,6 +927,56 @@ export async function moveOutlookConversation(
  * one request that has to fetch the bytes anyway.
  */
 const ATTACHMENT_META_SELECT = "id,name,contentType,size,isInline";
+
+/** A message in a folder's delta reply, or the id of one that left it. */
+export type GraphDeltaEntry =
+  | { kind: "message"; message: GraphMessage }
+  | { kind: "removed"; id: string };
+
+/**
+ * One page of a folder's changes since the last delta link, or its whole
+ * contents the first time. Bodies come as HTML. The reply ends with either
+ * a next link (more pages) or a delta link (done; keep it for next time).
+ */
+export async function listOutlookFolderDelta(
+  accessToken: string,
+  folderId: string,
+  link?: string | null
+): Promise<{ entries: GraphDeltaEntry[]; nextLink?: string; deltaLink?: string }> {
+  const select = [
+    "id",
+    "conversationId",
+    "subject",
+    "bodyPreview",
+    "body",
+    "from",
+    "toRecipients",
+    "ccRecipients",
+    "bccRecipients",
+    "receivedDateTime",
+    "sentDateTime",
+    "isRead",
+    "hasAttachments",
+    "internetMessageId",
+    "parentFolderId",
+    "isDraft",
+    "lastModifiedDateTime",
+    "flag",
+  ].join(",");
+  const path =
+    link && link.startsWith("http")
+      ? link
+      : `/me/mailFolders/${encodeURIComponent(folderId)}/messages/delta?$select=${select}&$top=100`;
+  const data = await graphFetch<{
+    value?: (GraphMessage & { "@removed"?: { reason?: string }; flag?: { flagStatus?: string } })[];
+    "@odata.nextLink"?: string;
+    "@odata.deltaLink"?: string;
+  }>(accessToken, path, { headers: { Prefer: 'outlook.body-content-type="html"' } });
+  const entries: GraphDeltaEntry[] = (data.value ?? []).map((m) =>
+    m["@removed"] ? { kind: "removed", id: m.id } : { kind: "message", message: m }
+  );
+  return { entries, nextLink: data["@odata.nextLink"], deltaLink: data["@odata.deltaLink"] };
+}
 
 export async function listOutlookAttachmentMeta(
   accessToken: string,
@@ -1076,6 +1152,24 @@ export async function getOutlookAttachmentBytes(
   return base64ToBytes(data.contentBytes);
 }
 
+/**
+ * The message as MIME text: Graph's `$value`. It is not JSON, so graphFetch
+ * hands it over under `raw`.
+ */
+export async function getOutlookMessageSource(
+  accessToken: string,
+  messageId: string
+): Promise<string> {
+  const data = await graphFetch<{ raw?: string } | string | undefined>(
+    accessToken,
+    `/me/messages/${messageId}/$value`,
+    { headers: { Accept: "text/plain, */*" } }
+  );
+  const text = typeof data === "string" ? data : data?.raw;
+  if (!text) throw new Error("Outlook sent the message without its source");
+  return text;
+}
+
 type GraphSendRecipient = { emailAddress: { address: string } };
 
 function toRecipients(emails: string[]): GraphSendRecipient[] {
@@ -1096,6 +1190,75 @@ function toRecipients(emails: string[]): GraphSendRecipient[] {
  */
 const DEFERRED_SEND_TIME = "SystemTime 0x3FEF";
 
+/**
+ * Write the message into the mailbox as a draft, and leave it there.
+ *
+ * The same shape a send takes, stopping one step earlier: Graph makes the
+ * message, we fill it in, and nothing is sent. It lands in Drafts, where
+ * every client signed in to this mailbox will find it — which is the point,
+ * because the client the reader wants is not this one.
+ *
+ * A reply goes through `createReply` so it keeps its conversation, exactly
+ * as a sent reply does. The body Graph pre-fills is overwritten by ours,
+ * appendix and all — see the note in `sendMailMessage`.
+ */
+export async function createOutlookDraft(
+  accessToken: string,
+  input: {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    html: string;
+    /** Reply to this Graph message id (keeps the conversation). */
+    replyToMessageId?: string;
+    attachments?: {
+      filename: string;
+      mimeType: string;
+      contentBase64: string;
+      contentId?: string;
+    }[];
+  }
+): Promise<{ id: string; webLink?: string }> {
+  const attachments = (input.attachments ?? []).map((a) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: a.filename,
+    contentType: a.mimeType || "application/octet-stream",
+    contentBytes: a.contentBase64.replace(/\s+/g, ""),
+    ...(a.contentId ? { isInline: true, contentId: a.contentId } : null),
+  }));
+  const fields = {
+    subject: input.subject,
+    body: { contentType: "HTML", content: input.html },
+    toRecipients: toRecipients(input.to),
+    ccRecipients: toRecipients(input.cc ?? []),
+    bccRecipients: toRecipients(input.bcc ?? []),
+    ...(attachments.length ? { attachments } : {}),
+  };
+
+  if (input.replyToMessageId) {
+    const draft = await graphFetch<GraphMessage>(
+      accessToken,
+      `/me/messages/${input.replyToMessageId}/createReply`,
+      { method: "POST", body: "{}" }
+    );
+    if (!draft.id) throw new Error("Graph createReply returned no draft id");
+    const filled = await graphFetch<GraphMessage>(
+      accessToken,
+      `/me/messages/${draft.id}`,
+      { method: "PATCH", body: JSON.stringify(fields) }
+    );
+    return { id: draft.id, webLink: filled.webLink ?? draft.webLink };
+  }
+
+  const made = await graphFetch<GraphMessage>(accessToken, "/me/messages", {
+    method: "POST",
+    body: JSON.stringify(fields),
+  });
+  if (!made.id) throw new Error("Graph returned no draft id");
+  return { id: made.id, webLink: made.webLink };
+}
+
 export async function sendOutlookMail(
   accessToken: string,
   input: {
@@ -1112,6 +1275,8 @@ export async function sendOutlookMail(
       filename: string;
       mimeType: string;
       contentBase64: string;
+      /** Set on a picture written into the body — see the mapping below. */
+      contentId?: string;
     }[];
   }
 ): Promise<void> {
@@ -1127,6 +1292,18 @@ export async function sendOutlookMail(
     name: a.filename,
     contentType: a.mimeType || "application/octet-stream",
     contentBytes: a.contentBase64.replace(/\s+/g, ""),
+    /*
+      A picture written into the body, rather than hung off the end of it.
+      Graph wants both: `isInline` keeps it out of the paperclip list, and
+      `contentId` is what the body's `cid:` resolves against. Without the
+      id the picture arrives as an attachment and the body draws a hole.
+
+      Set only on a picture that has one, so an ordinary file is the plain
+      object it always was.
+    */
+    ...(a.contentId
+      ? { isInline: true, contentId: a.contentId }
+      : null),
   }));
 
   if (input.replyToMessageId) {
@@ -1270,6 +1447,8 @@ export function graphAddresses(list?: GraphRecipient[]): {
 // ---------------------------------------------------------------------------
 
 export type GraphContact = {
+  /** Graph's id for the contact: the card two addresses may share. */
+  id?: string;
   displayName?: string;
   emailAddresses?: { address?: string; name?: string }[];
 };
@@ -1282,7 +1461,7 @@ export async function listOutlookContacts(
   const path =
     pageToken ??
     `/me/contacts?${new URLSearchParams({
-      $select: "displayName,emailAddresses",
+      $select: "id,displayName,emailAddresses",
       $top: "100",
     }).toString()}`;
   const data = await graphFetch<{

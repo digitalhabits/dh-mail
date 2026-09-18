@@ -119,3 +119,33 @@ export function messageStamp(iso: string | null): string {
  * Client-side mirror of the server's Gmail-style quote appendix, so the
  * optimistic local bubble can collapse it behind "…" just like a fetched one.
  */
+
+/**
+ * A meeting's when, said in full: the day of the week, the date as digits,
+ * and the hours it runs.
+ *
+ * "03/09/2026, 14:00" is what a native picker shows, in whichever order the
+ * machine's locale puts the numbers — and it is the same nine digits either
+ * way round, so a reader checking a date against a thread has to know which
+ * convention they are looking at. The weekday settles it on its own, and
+ * the date is written the one way that cannot be read backwards.
+ *
+ * The end time is here because it is what a duration means. "30" beside a
+ * start time is a number; "14:00–14:30" is the meeting.
+ */
+export function meetingWhenLabel(
+  start: string,
+  durationMinutes: number
+): string {
+  const at = new Date(start);
+  if (Number.isNaN(at.getTime())) return "";
+  const locale = currentMailLocale();
+  const weekday = at.toLocaleDateString(locale, { weekday: "long" });
+  const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(
+    at.getDate()
+  ).padStart(2, "0")}`;
+  const clock = (d: Date) =>
+    d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
+  const ends = new Date(at.getTime() + Math.max(0, durationMinutes) * 60_000);
+  return `${weekday} ${date} · ${clock(at)}–${clock(ends)}`;
+}

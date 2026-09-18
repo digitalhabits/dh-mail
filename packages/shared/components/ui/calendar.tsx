@@ -25,6 +25,7 @@ import {
 import {
   MONTHS,
   WEEKDAYS,
+  daysInMonth,
   formatDateKey,
   monthCells,
   parseDateKey,
@@ -56,12 +57,18 @@ export function Calendar({
     year: anchor.year,
     month: anchor.month,
   });
+  /**
+   * The months of a year, instead of its days. Stepping a month at a time is
+   * fine for next week and hopeless for two years ago.
+   */
+  const [pickingMonth, setPickingMonth] = React.useState(false);
 
   // Follow the value when it changes from outside (a Today button, or the
   // other end of a range pushing this one along).
   React.useEffect(() => {
     const next = parseDateKey(value);
     if (next) setView({ year: next.year, month: next.month });
+    setPickingMonth(false);
   }, [value]);
 
   const step = (by: number) => {
@@ -70,30 +77,79 @@ export function Calendar({
 
   const cells = monthCells(view.year, view.month);
 
+  // A month is out of reach when every day in it is.
+  const monthOutOfRange = (year: number, month: number) => {
+    const last = toDateKey(year, month, daysInMonth(year, month));
+    const first = toDateKey(year, month, 1);
+    return Boolean((min && last < min) || (max && first > max));
+  };
+
   return (
     <div className={cn("w-[15rem] select-none", className)}>
       <div className="flex items-center justify-between px-1 pb-2">
         <button
           type="button"
-          aria-label="Previous month"
-          onClick={() => step(-1)}
+          aria-label={pickingMonth ? "Previous year" : "Previous month"}
+          onClick={() =>
+            pickingMonth
+              ? setView((prev) => ({ ...prev, year: prev.year - 1 }))
+              : step(-1)
+          }
           className="rounded p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-900"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="text-sm font-semibold text-stone-900">
-          {MONTHS[view.month]} {view.year}
-        </span>
         <button
           type="button"
-          aria-label="Next month"
-          onClick={() => step(1)}
+          onClick={() => setPickingMonth((open) => !open)}
+          aria-expanded={pickingMonth}
+          aria-label={pickingMonth ? "Back to the days" : "Choose a month and year"}
+          className="rounded px-2 py-0.5 text-sm font-semibold text-stone-900 hover:bg-stone-100"
+        >
+          {pickingMonth ? view.year : `${MONTHS[view.month]} ${view.year}`}
+        </button>
+        <button
+          type="button"
+          aria-label={pickingMonth ? "Next year" : "Next month"}
+          onClick={() =>
+            pickingMonth
+              ? setView((prev) => ({ ...prev, year: prev.year + 1 }))
+              : step(1)
+          }
           className="rounded p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-900"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
+      {pickingMonth ? (
+        <div className="grid grid-cols-3 gap-1 pb-1">
+          {MONTHS.map((label, month) => {
+            const disabled = monthOutOfRange(view.year, month);
+            const isCurrent = month === view.month;
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setView((prev) => ({ ...prev, month }));
+                  setPickingMonth(false);
+                }}
+                className={cn(
+                  "h-8 rounded text-center text-[13px]",
+                  disabled
+                    ? "cursor-not-allowed text-stone-300"
+                    : "text-stone-700 hover:bg-stone-100",
+                  isCurrent && !disabled && "bg-stone-900 font-semibold text-white hover:bg-stone-900"
+                )}
+              >
+                {label.slice(0, 3)}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
       <div className="grid grid-cols-7 gap-0.5">
         {WEEKDAYS.map((label) => (
           <span
@@ -133,6 +189,7 @@ export function Calendar({
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -147,6 +204,8 @@ export function DateField({
   /** Offers a Clear action — for a date that is allowed to be unset. */
   clearable = false,
   className,
+  /** For a field inside something that already stacks high, e.g. a portal. */
+  contentClassName,
   align = "start",
 }: {
   value: string;
@@ -157,6 +216,7 @@ export function DateField({
   ariaLabel?: string;
   clearable?: boolean;
   className?: string;
+  contentClassName?: string;
   align?: "start" | "center" | "end";
 }) {
   const [open, setOpen] = React.useState(false);
@@ -177,7 +237,7 @@ export function DateField({
           {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent align={align} className="w-auto p-2">
+      <PopoverContent align={align} className={cn("w-auto p-2", contentClassName)}>
         <Calendar
           value={value}
           min={min}

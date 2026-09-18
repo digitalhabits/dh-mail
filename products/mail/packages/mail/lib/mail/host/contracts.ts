@@ -10,6 +10,8 @@
  * surface, not the planner's whole module.
  */
 
+import type { MailProvider } from "@/lib/mail/types";
+
 /**
  * Desktop shell bridge (`@/lib/native-shell`).
  *
@@ -45,8 +47,8 @@ export type MailRouter = {
   useMailRouter: () => { refresh: () => void };
 };
 
-/** The two providers a mailbox can come from. */
-export type MailConnectProvider = "gmail" | "outlook";
+/** The providers a mailbox can come from. */
+export type MailConnectProvider = MailProvider;
 
 /** A URL an element can load for an attachment, and how to let it go. */
 export type AttachmentSource = {

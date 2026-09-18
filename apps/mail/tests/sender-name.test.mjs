@@ -24,7 +24,7 @@ suite(async () => {
 
   check(
     "a name is quoted beside the address",
-    formatFromHeader(me, "Ulrik Lyngs") === `"Ulrik Lyngs" <${me}>`
+    formatFromHeader(me, "Vera Holm") === `"Vera Holm" <${me}>`
   );
   check(
     "no name leaves the bare address, the way it sent before",
@@ -46,12 +46,12 @@ suite(async () => {
   // start a second recipient.
   check(
     "a comma in a name is safely inside the quotes",
-    formatFromHeader(me, "Lyngs, Ulrik") === `"Lyngs, Ulrik" <${me}>`
+    formatFromHeader(me, "Holm, Vera") === `"Holm, Vera" <${me}>`
   );
   check(
     "a quotation mark in a name is escaped",
-    formatFromHeader(me, 'Ulrik "Uli" Lyngs') ===
-      `"Ulrik \\"Uli\\" Lyngs" <${me}>`
+    formatFromHeader(me, 'Vera "Vee" Holm') ===
+      `"Vera \\"Vee\\" Holm" <${me}>`
   );
 
   // --- Names that are not ASCII --------------------------------------------
@@ -59,7 +59,7 @@ suite(async () => {
   // An encoded word may not be quoted: a client reading `"=?UTF-8?B?...?="`
   // shows the raw letters instead of the name.
 
-  const danish = formatFromHeader(me, "Ulrik Lyngsø");
+  const danish = formatFromHeader(me, "Vera Holmø");
   check(
     "a non-ASCII name travels as an encoded word",
     danish.startsWith("=?UTF-8?B?") && danish.endsWith(`?= <${me}>`)
@@ -71,39 +71,39 @@ suite(async () => {
   // A newline ends the header and starts whatever comes next — the oldest way
   // there is of adding a Bcc to somebody else's mail.
 
-  const injected = formatFromHeader(me, "Ulrik\r\nBcc: thief@example.com");
+  const injected = formatFromHeader(me, "Vera\r\nBcc: thief@example.com");
   check("a newline in a name cannot end the header", !/[\r\n]/.test(injected));
   check(
     "and what followed it stays inside the name",
-    injected === `"Ulrik Bcc: thief@example.com" <${me}>`
+    injected === `"Vera Bcc: thief@example.com" <${me}>`
   );
   check(
     "a tab is folded away too",
-    cleanDisplayName("Ulrik\tLyngs") === "Ulrik Lyngs"
+    cleanDisplayName("Vera\tHolm") === "Vera Holm"
   );
   check(
     "runs of space become one",
-    cleanDisplayName("  Ulrik   Lyngs  ") === "Ulrik Lyngs"
+    cleanDisplayName("  Vera   Holm  ") === "Vera Holm"
   );
 
   // --- Which of their addresses ---------------------------------------------
 
   const sendAs = [
-    { sendAsEmail: "work@example.com", displayName: "U. Lyngs", isDefault: true },
-    { sendAsEmail: me, displayName: "Ulrik Lyngs" },
+    { sendAsEmail: "work@example.com", displayName: "V. Holm", isDefault: true },
+    { sendAsEmail: me, displayName: "Vera Holm" },
   ];
   check(
     "the name for the address we send from",
-    pickSendAsName(sendAs, me) === "Ulrik Lyngs"
+    pickSendAsName(sendAs, me) === "Vera Holm"
   );
   check(
     "matched whatever its capitals",
-    pickSendAsName(sendAs, me.toUpperCase()) === "Ulrik Lyngs"
+    pickSendAsName(sendAs, me.toUpperCase()) === "Vera Holm"
   );
   // Gmail itself falls back to the default, so we do too.
   check(
     "an address that is not listed falls back to the default",
-    pickSendAsName(sendAs, "other@example.com") === "U. Lyngs"
+    pickSendAsName(sendAs, "other@example.com") === "V. Holm"
   );
   check("nothing listed is no name", pickSendAsName([], me) === "");
   check("and neither is no answer at all", pickSendAsName(undefined, me) === "");

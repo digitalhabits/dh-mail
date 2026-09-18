@@ -143,7 +143,10 @@ export function buildPrintDocument(
     "<style>",
     "@page{margin:16mm}",
     "html,body{margin:0;background:#fff}",
-    "body{font:11pt/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#000;word-break:break-word}",
+    // `overflow-wrap`, not `word-break:break-word` — the same reason the
+    // reader gives: the deprecated spelling lets a table column be squeezed
+    // to one letter, and a printed table is a table too.
+    "body{font:11pt/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#000;overflow-wrap:break-word}",
     "h1{margin:0 0 14pt;font-size:15pt;line-height:1.3}",
     // A header must not be the last thing on a page, with its body overleaf.
     ".msg{margin-top:14pt;padding-top:12pt;border-top:0.5pt solid #999}",

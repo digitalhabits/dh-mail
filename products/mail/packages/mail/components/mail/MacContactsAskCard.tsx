@@ -13,7 +13,7 @@
 
 import * as React from "react";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { Button } from "@/components/ui/button";
 import { mailApiJson as apiJson } from "@/lib/mail/api";

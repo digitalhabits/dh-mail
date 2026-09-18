@@ -38,8 +38,8 @@ const SIGNATURE_META_BUTTON =
 /**
  * Which signature is on this message, and what can be done about it.
  *
- * Under the box, beside Preview and Quote history, because it is the same
- * kind of thing: a fact about the message that is not part of writing it.
+ * Under the box, beside Quote history, because it is the same kind of
+ * thing: a fact about the message that is not part of writing it.
  * With no signature on the message it is the one button that puts one
  * there — the same place, saying what is missing rather than what is on.
  */

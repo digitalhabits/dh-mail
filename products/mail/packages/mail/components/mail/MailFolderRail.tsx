@@ -34,9 +34,10 @@ import {
   Loader2,
   Pencil,
   Send,
+  ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import {
   buildFolderTree,
@@ -140,8 +141,16 @@ function setFolderDragImage(dt: DataTransfer, label: string): void {
 /** Long enough to find the folder after the rail has scrolled to it. */
 const REVEAL_MS = 2400;
 
-/** Two views side by side: 6.5rem each, and the half-rem gap between them. */
-const SYSTEM_TWO_UP_WIDTH = 216;
+/**
+ * Where the views go two abreast.
+ *
+ * Two 6.5rem columns and the half-rem gap between them come to 216, which
+ * is what this was. It waited too long: the rail has room for two columns
+ * before it has room for two comfortable ones, and a rail dragged narrow is
+ * one asking for the list to get shorter. Thirty less, so the second column
+ * arrives while the rail is still wide enough to read.
+ */
+const SYSTEM_TWO_UP_WIDTH = 186;
 
 /** The box a row scrolls inside, or null when nothing around it scrolls. */
 function scrollingAncestor(row: HTMLElement): HTMLElement | null {
@@ -172,6 +181,7 @@ const ROLE_ICON = {
   archive: Archive,
   drafts: FilePen,
   sent: Send,
+  junk: ShieldAlert,
   trash: Trash2,
 } as const;
 
@@ -221,13 +231,14 @@ function HeartIcon({
   );
 }
 
-/** Which of the four unified views is showing, if any. */
+/** Which of the unified views is showing, if any. */
 export type MailSystemView =
   | "inbox"
   | "sent"
   | "drafts"
   | "trash"
   | "junk"
+  | "archived"
   | null;
 
 /**
@@ -286,6 +297,8 @@ export type FolderRailProps = {
   onOpenDrafts: () => void;
   onOpenTrash: () => void;
   onOpenInbox: () => void;
+  onOpenJunk: () => void;
+  onOpenArchived: () => void;
   onCreateFolder: (account: string, name: string) => Promise<void>;
   /** `name` and `newName` are whole paths, so a nested folder stays nested. */
   onRenameFolder: (
@@ -313,6 +326,10 @@ export type FolderRailProps = {
   onDropThread: (account: string, folderName: string) => void | Promise<void>;
   /** Dragging onto Trash deletes; onto Junk marks as junk. Both are moves. */
   onDropTrash: () => void | Promise<void>;
+  /** Filing a conversation as junk from the rail. */
+  onDropJunk?: () => void | Promise<void>;
+  /** Putting one back in its own mailbox's inbox. */
+  onDropInbox?: () => void | Promise<void>;
   /**
    * Which side of the window the rail is against.
    *
@@ -985,8 +1002,9 @@ function FolderRow({
 }
 
 /** One row of a rail menu, and the icon in front of it. */
+/* No blue ring on the item the menu opens onto — see ROW_MENU_ITEM. */
 const menuItemClass =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100";
+  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-stone-800 outline-none hover:bg-stone-100 focus-visible:bg-stone-100";
 const menuIconClass = "h-3.5 w-3.5 shrink-0 text-stone-400";
 
 /**
@@ -1491,6 +1509,8 @@ export function MailFolderRail({
   onOpenDrafts,
   onOpenTrash,
   onOpenInbox,
+  onOpenJunk,
+  onOpenArchived,
   onCreateFolder,
   onReorderAccount,
   onRenameFolder,
@@ -1498,6 +1518,8 @@ export function MailFolderRail({
   draggingAccount,
   onDropThread,
   onDropTrash,
+  onDropJunk,
+  onDropInbox,
   side = "left",
 }: FolderRailProps) {
   const t = useMailT();
@@ -1549,6 +1571,15 @@ export function MailFolderRail({
     node: FolderTreeNode;
     x: number;
     y: number;
+    /**
+     * The provider owns this row — Inbox, Sent, Trash and the rest.
+     *
+     * It answers a right-click all the same, with the one thing that is
+     * true of it: something can be filed under it. The rest of the menu
+     * would be a lie, since none of these can be renamed, moved or thrown
+     * away from here.
+     */
+    fixed?: boolean;
   } | null>(null);
   /** The mailbox heading that was right-clicked, and where. */
   const [accountMenu, setAccountMenu] = React.useState<{
@@ -2140,13 +2171,21 @@ export function MailFolderRail({
             revealed={revealed === folderFavouriteKey(account, node.name)}
             busy={busyFolder === folderFavouriteKey(account, node.name)}
             onContextMenu={(event) => {
-              // Nothing at the provider to rename: a parent standing in for
-              // one nobody made, or a row standing for a search.
-              if (node.implied || node.virtual) return;
+              // A parent standing in for one nobody made: there is nothing
+              // at the provider to rename, and nothing to file into it.
+              if (node.implied) return;
               event.preventDefault();
               setAccountMenu(null);
               setFixedMenu(null);
-              setMenu({ node, x: event.clientX, y: event.clientY });
+              // Inbox is the row a reader reaches for when they want a
+              // folder to put mail in, and it was the one row that handed
+              // them the browser's menu instead of ours.
+              setMenu({
+                node,
+                x: event.clientX,
+                y: event.clientY,
+                fixed: Boolean(node.virtual || node.role),
+              });
             }}
             onRenameSubmit={(next) => void submitRename(node, next)}
             onRenameCancel={() => setRenamingKey(null)}
@@ -2235,13 +2274,49 @@ export function MailFolderRail({
       icon={Inbox}
       label={t("viewInbox")}
       active={systemView === "inbox"}
-      /* Not a drop target. Everything else here is somewhere to put a
-         conversation; the inbox is where it already was, and taking one
-         back out of a folder is what the folder's own row is for. */
-      drop={dragging ? "dim" : "rest"}
+      /* A drop target like the rest.
+         It was dimmed on the argument that the inbox is where a conversation
+         already was — true of one dragged out of the inbox, and not of one
+         dragged out of the archive, the bin or a folder, which is the case a
+         reader actually has in hand when they drag onto Inbox. It goes back
+         to the mailbox it belongs to; nothing here can move mail between
+         accounts. */
+      drop={dragging && onDropInbox ? "live" : dragging ? "dim" : "rest"}
       dragOver={dragOver}
       setDragOver={setDragOver}
       onClick={onOpenInbox}
+      onContextMenu={openFixedMenu}
+      onDropThread={onDropInbox ? () => void onDropInbox() : undefined}
+    />
+  );
+
+  const junkRow = (
+    <SystemRow
+      icon={ShieldAlert}
+      label={t("viewJunk")}
+      active={systemView === "junk"}
+      // Filing something as junk is a real thing to want, and the move
+      // menu is not the only place to want it.
+      drop={dragging ? "live" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenJunk}
+      onContextMenu={openFixedMenu}
+      onDropThread={() => void onDropJunk?.()}
+    />
+  );
+  const archivedRow = (
+    <SystemRow
+      icon={Archive}
+      label={t("viewArchived")}
+      active={systemView === "archived"}
+      /* Nothing is filed into Archived. On Gmail it is not a folder at all
+         — it is everything the inbox label has been taken off — and the
+         archive action is what puts mail there. */
+      drop={dragging ? "dim" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenArchived}
       onContextMenu={openFixedMenu}
     />
   );
@@ -2287,10 +2362,21 @@ export function MailFolderRail({
         the right — so the grid is dealt Inbox, Sent, Trash, Drafts, and
         reads down as Inbox/Trash and Sent/Drafts.
 
-        Junk is not among them. It is a folder the reader visits rarely and
-        the providers hide from the tree, so it lives in the folders menu
-        beside the list, and in the move menu, where filing something as
-        junk is what it usually means.
+        Six, in two columns of three that read down: Drafts, Junk, Trash,
+        and beside them Inbox, Sent, Archived — the mail you are writing or
+        have thrown out on one side, the mail that arrived and where it goes
+        on the other. The grid fills across, so the order below is those two
+        columns interleaved.
+
+        In one column they read in the order a reader wants them: Inbox,
+        Sent, Archived first, then Drafts, Junk, Trash.
+
+        Junk and Archived were listed under each account only, on the
+        argument that across every mailbox at once they are places nobody
+        reads. Asked for here, and the argument was thin: a reader who wants
+        to know what was filed as junk does not want to ask it once per
+        mailbox. Both are still under each account, where the question is
+        what *this* account holds.
       */}
       <div
         className={cn(
@@ -2300,16 +2386,20 @@ export function MailFolderRail({
       >
         {systemTwoUp ? (
           <>
+            {draftsRow}
             {inboxRow}
+            {junkRow}
             {sentRow}
             {trashRow}
-            {draftsRow}
+            {archivedRow}
           </>
         ) : (
           <>
             {inboxRow}
             {sentRow}
+            {archivedRow}
             {draftsRow}
+            {junkRow}
             {trashRow}
           </>
         )}
@@ -2732,12 +2822,17 @@ export function MailFolderRail({
           x={menu.x}
           y={menu.y}
           onDismiss={() => setMenu(null)}
-          onRename={() => {
-            setRenamingKey(
-              folderFavouriteKey(menu.node.account, menu.node.name)
-            );
-            setMenu(null);
-          }}
+          note={menu.fixed ? t("systemFolderFixed") : undefined}
+          onRename={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setRenamingKey(
+                    folderFavouriteKey(menu.node.account, menu.node.name)
+                  );
+                  setMenu(null);
+                }
+          }
           onNewSubfolder={() => {
             // Open the parent, or the box would be typed into behind a
             // triangle and the folder would appear somewhere unseen.
@@ -2750,14 +2845,22 @@ export function MailFolderRail({
             setNewName("");
             setMenu(null);
           }}
-          onMove={() => {
-            setMovingFolder({ node: menu.node, x: menu.x, y: menu.y });
-            setMenu(null);
-          }}
-          onDelete={() => {
-            setConfirmDelete({ node: menu.node, x: menu.x, y: menu.y });
-            setMenu(null);
-          }}
+          onMove={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setMovingFolder({ node: menu.node, x: menu.x, y: menu.y });
+                  setMenu(null);
+                }
+          }
+          onDelete={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setConfirmDelete({ node: menu.node, x: menu.x, y: menu.y });
+                  setMenu(null);
+                }
+          }
         />
       ) : null}
       {fixedMenu ? (

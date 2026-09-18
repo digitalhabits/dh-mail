@@ -19,24 +19,40 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  FolderInput,
-  MoreHorizontal,
+  MessagesSquare,
   PictureInPicture2,
   Pin,
   Printer,
   Reply,
   ReplyAll,
-  RotateCwFadingClock,
   SendHorizontal,
+  ExternalLink,
   ShieldCheck,
-  Sparkles,
   Trash2,
   X,
-  type LucideIcon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
+import { promisesAnAttachment } from "@/lib/mail/attachment-hint";
+import { tauriInvoke } from "@/lib/mail/store/tauri";
+import { isPublicMailProduct } from "@/lib/mail/product-flavor";
+import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
+import {
+  bodyTravels,
+  ccBackToSelf,
+  copyMessageToClipboard,
+  saveAttachmentsForHandover,
+  withoutTrailingSignature,
+  openOutlookCompose,
+  outlookComposeUrl,
+} from "@/lib/mail/outlook-compose";
 
-import { AddToCrmMenu } from "@/components/mail/AddToCrmMenu";
+import { CrmProposeMenu } from "@/components/mail/CrmProposeMenu";
+import {
+  DiaryEntriesDialog,
+  type DiaryProposal,
+} from "@/components/mail/DiaryEntriesDialog";
+import { AiReplyMenu } from "@/components/mail/AiReplyMenu";
+import { AiReplyNotes, type AiReplyDraftResult } from "@/components/mail/AiReplyNotes";
 import { FromAccountMenu } from "@/components/mail/FromAccountMenu";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
@@ -57,11 +73,11 @@ import { ThreadFindBar } from "@/components/mail/ThreadFindBar";
 import { useThreadFind } from "@/components/mail/use-thread-find";
 import {
   AttachmentPreviewDialog,
-  AttachmentSizeSummary,
   AttachToolbarButton,
   attachmentUrl,
   ComposerDropOverlay,
   DraftAttachmentChips,
+  DraftAttachmentPreviewDialog,
   ThreadAttachmentsRollup,
   useComposerFileDrop,
   useComposerPaste,
@@ -73,9 +89,13 @@ import {
   messageSnippet,
   readImageChoices,
   useLoadImagesByDefault,
-  type OutboxStatus,
 } from "@/components/mail/MailBubble";
 import { printMailMessages } from "@/components/mail/print-mail";
+import {
+  THREAD_TOOLBAR_SLOTS,
+  useThreadToolbarFold,
+  type ThreadToolbarSlot,
+} from "@/components/mail/use-thread-toolbar-fold";
 import {
   quotedReplyMessage,
   reactionMessage,
@@ -88,14 +108,16 @@ import {
 import {
   actionForEvent,
   formatShortcut,
+  sendsFromHere,
   shortcutMatchesEvent,
 } from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
-import { MoveToFolderMenu } from "@/components/mail/MailFolders";
+import {
+  type MoveMenuHere, MoveToFolderMenu } from "@/components/mail/MailFolders";
 import { oneInvitePerMessage } from "@/lib/mail/ics";
 import {
+  RecipientCarryProvider,
   RecipientField,
-  SaveAsListControl,
 } from "@/components/mail/RecipientField";
 import {
   fetchSignatureSettings,
@@ -103,28 +125,29 @@ import {
   type SignatureSettings,
 } from "@/components/mail/SignatureDialog";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
-import {
-  COMPOSER_TOOLBAR_BUTTON,
-  TextStyleMenu,
-} from "@/components/mail/TextStyleMenu";
+import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
 import { sendWithUndo } from "@/components/mail/undo-send";
 import {
   formatSnoozeWakeLabel,
   SnoozeMenu,
 } from "@/components/mail/SnoozeMenu";
 import { notifyScheduledChanged } from "@/lib/mail/scheduled-events";
-import { useCanSendLater } from "@/lib/mail/use-outlook-accounts";
+import {
+  useCanSendLater,
+  useOutlookAccounts,
+} from "@/lib/mail/use-outlook-accounts";
 import {
   THREAD_ACTION_ACTIVE_CLASS,
-  THREAD_ACTION_CLASS,
 } from "@/components/mail/thread-actions";
 import {
+  DEFAULT_COMPOSER_HEIGHT,
   isInteractiveDoubleClickTarget,
+  useComposerHeightPx,
   useComposerWidthPct,
   usePinchZoom,
 } from "@/components/mail/use-mail-layout";
 import { ZoomControls } from "@/components/mail/ZoomControls";
-import { EmojiPickerButton, EmojiReactionButton } from "@/components/ui/EmojiPicker";
+import { EmojiReactionButton } from "@/components/ui/EmojiPicker";
 import {
   RichTextEditor,
   type RichTextEditorHandle,
@@ -132,13 +155,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
-import { bodyToEmailHtml, htmlToPlainText } from "@/lib/client-email-html";
-import { formatEmailBody, stripQuotedReplies } from "@/lib/email-mime";
+import { bodyToEmailHtml, htmlToPlainText, plainTextToEditorHtml } from "@/lib/client-email-html";
+import { formatEmailBody } from "@/lib/email-mime";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import {
   buildQuoteHistory,
   REPLY_HISTORY_CAP,
 } from "@/lib/mail/quote-history";
+import { replyHistoryEntry } from "@/lib/mail/reply-history";
+import {
+  afterMailPaneSlide,
+  PANE_SLIDE_MS,
+  PANE_SLIDE_EASE,
+} from "@/lib/mail/pane-slide";
+import { usePaneSweep } from "@/lib/mail/use-pane-sweep";
+import { signsThisReply } from "@/lib/mail/signature-rules";
+import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
 import { mailApiFetch, mailApiJson as apiJson } from "@/lib/mail/api";
 import {
   chatTitleFromCounterpart,
@@ -154,8 +186,12 @@ import {
   type MailRecipient,
 } from "@/lib/mail/contact-list-types";
 import {
-  chatDayLabel,
-  messageStamp,
+  replyPlaceholder,
+  replyPlaceholderNames,
+} from "@/lib/mail/reply-placeholder";
+import { RecipientSummary, useAddressMenu } from "@/components/mail/AddressMenu";
+import { OriginalMessageSheet } from "@/components/mail/OriginalMessageSheet";
+import { messageStamp,
   sameDay,
   shortDate,
   timeOfDay,
@@ -168,6 +204,7 @@ import {
 import type { MailFolder } from "@/lib/mail/folder-types";
 import {
   deleteDraft,
+  markDraftHandedOver,
   getDraft,
   readyAttachmentsForDraft,
   saveThreadDraft,
@@ -180,20 +217,22 @@ import {
   schedulePendingDiscard,
 } from "@/lib/mail/pending-discard";
 import { openMailChatPopout } from "@/lib/mail/popout";
+import { type CrmProposeResult } from "@/components/mail/CrmProposalDialog";
 import {
-  CrmProposalDialog,
-  type CrmProposeResult,
-} from "@/components/mail/CrmProposalDialog";
+  proposeCrmFromThread,
+  showCrmProposal,
+  useCrmProposing,
+} from "@/components/mail/CrmProposalHost";
 import {
   canReadAttachmentText,
   isReadableAttachment,
-  readAttachmentText,
 } from "@/lib/mail/attachment-text";
 import { mailUsesCrmPeople } from "@/lib/mail/product-flavor";
 import {
   focusChatPopout,
   handBackChatPopout,
   isChatPopoutOpen,
+  notifyPlannerCrmChanged,
 } from "@/lib/native-shell";
 import {
   getCachedMailThread,
@@ -210,15 +249,15 @@ import type {
 } from "@/lib/mail/types";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
+import { useCardDrag } from "@/components/mail/use-card-drag";
+import { ThreadParticipants, participantsWithAddresses, threadPeople } from "@/components/mail/ThreadParticipants";
+import { OutboxEntry, mergeNewestThreadPage, messageKey, messageKeys, scheduleThreadRefetchAfterSend, loadWholeThread, type ComposerMode } from "@/components/mail/thread-messages";
+import { toastCrmNotesResult } from "@/components/mail/thread-crm-notes";
+import { PopoutStrip } from "@/components/mail/PopoutStrip";
+import { ThreadToolbarOverflow } from "@/components/mail/ThreadToolbarOverflow";
+import { ThreadAction } from "@/components/mail/ThreadAction";
+import { DayHeading, PartSeam } from "@/components/mail/ThreadStreamMarks";
 
-/**
- * How long to watch for the pop-out to go after asking it to hand back.
- *
- * The ask returns as soon as it has been made — the saving and the closing
- * happen in the other window a moment later. Three seconds is far longer
- * than that takes and short enough that a window which never goes (it was
- * closed by hand in the meantime) stops being waited for.
- */
 /**
  * Where the reply actions stop having room for their words.
  *
@@ -227,40 +266,6 @@ import { cn } from "@/lib/utils";
  */
 const THREAD_ACTIONS_MIN_WIDTH = 480;
 
-/**
- * What makes a message the same message across two pages.
- *
- * The provider's item id is not it. Cc'd to yourself, Exchange holds two
- * items with one Message-ID, and the server folds them — but the two are
- * seconds apart, so a page boundary can fall between them and hand the
- * second one back on the next page as something new. The id it shares with
- * its twin is the one to compare.
- */
-function messageKey(m: { id: string; rfcMessageId?: string }): string {
-  return m.rfcMessageId?.trim().toLowerCase() || m.id;
-}
-
-function messageKeys(
-  messages: { id: string; rfcMessageId?: string }[]
-): Set<string> {
-  return new Set(messages.map(messageKey));
-}
-
-/** The always-there controls, once the row has folded: Aa, clip, emoji. */
-const COMPOSER_CIRCLE_CLASS =
-  "mail-light-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 hover:bg-stone-50";
-
-/**
- * Where the gutter beside a bubble stops being room and starts being waste.
- *
- * A bubble leaves 40px on the side it is not on, so the column reads as one
- * side of a conversation rather than as the whole pane. On a pane this
- * narrow that 40px, and the pane's own padding with it, is a sixth of the
- * width — a stripe of nothing down the right of every message that arrived.
- */
-const BUBBLE_GUTTER_MIN_WIDTH = 480;
-
-/** Where the composer stops being a card and becomes the whole pane. */
 const COMPOSER_MIN_WIDTH = 700;
 
 /**
@@ -278,25 +283,13 @@ const COMPOSER_FULL_WIDTH = 900;
 const NEAR_LATEST_PX = 120;
 
 /**
- * Where the action strip runs out of room for everything on it.
+ * The action strip folds from a measurement of the row itself.
  *
- * Below this, the four that are about looking at the thread rather than
- * doing anything to it — print, pop out, text size, focus mode — go
- * behind an ellipsis, and so do pin and move to folder, which are done
- * once to a conversation and then not again. The rest stay out.
+ * A pane-width guess misses the attachments chip, Reply all, and the zoom
+ * pill. `useThreadToolbarFold` closes the gaps first, then hides one
+ * control at a time, the one the pane can spare first, and puts it behind
+ * the ellipsis.
  */
-const TOOLBAR_MIN_WIDTH = 640;
-
-/**
- * Where even the quick actions have to give way.
- *
- * A pane this narrow is a column beside something else, and what is left
- * out on it has to earn the room: answering the mail, and getting it off
- * the screen. Read and snooze follow the others behind the ellipsis, which
- * leaves reply, forward, archive and delete — and the invitations chip,
- * which was being pushed off the end.
- */
-const TOOLBAR_TIGHT_WIDTH = 520;
 
 /** The secondary reply actions: a labelled button, or a circle with a name
  *  on hover once there is no room for the label. */
@@ -325,198 +318,35 @@ const threadActionSecondaryClass = cn(
 );
 const circleActionClass = "h-11 w-11 justify-center rounded-full px-0";
 
+/**
+ * How long to watch for the pop-out to go after asking it to hand back.
+ *
+ * The ask returns as soon as it has been made — the saving and the closing
+ * happen in the other window a moment later. Three seconds is far longer
+ * than that takes and short enough that a window which never goes (it was
+ * closed by hand in the meantime) stops being waited for.
+ */
 const POPOUT_HAND_BACK_POLL_MS = 120;
 const POPOUT_HAND_BACK_TRIES = 25;
 
-/** Named in full up to this many; beyond it, the rest are counted. */
-const THREAD_PARTICIPANTS_SHOWN = 4;
 
 /**
- * The people on the thread, cut down to a line.
+ * How large a pasted picture may be, written into the message.
  *
- * A club circular goes to thirty addresses, and naming all of them buried
- * the message count, the dates and the mailbox under eight lines of
- * strangers. Four are named and the rest are counted, with the count as the
- * way to see them: "and 25 others" opens, "show fewer" closes.
+ * A screenshot from a modern display is several megabytes, and base64 adds a
+ * third on top. Written into the body, that is what the recipient downloads
+ * before they can read the first line — and nobody wants an email that
+ * arrives at eight megabytes because a window was photographed.
  *
- * Not a hover or a tooltip. Who a mail went to is worth reading at leisure,
- * and often worth copying, neither of which a thing that vanishes allows.
+ * Above this it goes as a file instead, which is what an attachment is for.
  */
-function ThreadParticipants({
-  people,
-  others,
-  meta,
-}: {
-  people: string[];
-  /** The same people, addressable — what a saved list would hold. */
-  others: { email: string; name?: string }[];
-  /** The rest of the header line: count, dates, which mailbox. */
-  meta: React.ReactNode;
-}) {
-  const t = useMailT();
-  const [expanded, setExpanded] = React.useState(false);
-  const hidden = people.length - THREAD_PARTICIPANTS_SHOWN;
-  /*
-    "Save as list…" waits for the names to be out.
+const MAX_INLINE_PASTE_BYTES = 2 * 1024 * 1024;
 
-    Fifty-two people are counted, not named, and the offer to keep them
-    made no sense beside a line that had four addresses and a number on
-    it: keep whom? Once the reader opens the names they can see what they
-    would be keeping, and that is when it is worth asking. A short thread
-    hides nobody, so there is nothing to wait for.
-  */
-  const showSave = others.length > 1 && (hidden <= 0 || expanded);
-  /*
-    Beside the names, not at the end of the line.
-
-    It belongs to the people — it is what to do with the ones just opened —
-    and the rest of the line is a message count and two dates it has
-    nothing to do with. Small letter for the same reason: after "show
-    fewer" it is one more thing this sentence offers, not a control of its
-    own the way it is in the composer.
-  */
-  const saveList = showSave ? (
-    <>
-      {" · "}
-      <SaveAsListControl
-        people={others}
-        align="start"
-        noteKey="saveListNoteThread"
-        labelKey="saveAsListInline"
-      />
-    </>
-  ) : null;
-  if (hidden <= 0) {
-    return (
-      <span>
-        {people.join(", ")}
-        {saveList} {meta}
-      </span>
-    );
-  }
-  const shown = expanded ? people : people.slice(0, THREAD_PARTICIPANTS_SHOWN);
-  return (
-    <span>
-      {shown.join(", ")}{" "}
-      <button
-        type="button"
-        className="font-medium text-teal-700 hover:underline"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded
-          ? t("threadShowFewer")
-          : hidden === 1
-            ? t("threadOtherOne")
-            : t("threadOtherMany", { count: hidden })}
-      </button>
-      {saveList} {meta}
-    </span>
-  );
-}
-
-/**
- * Who is on the thread, with their addresses: "Roe, Jane
- * (jane.roe@example.org)". A name alone is what the list rows show, and
- * enough there; the header is where the reader checks who a person actually
- * is, and that is the address.
- *
- * Senders and recipients both. Senders alone left a thread of sent mail
- * saying nobody but "You", with no sign of who it went to. A recipient is
- * known by address only unless they wrote in the thread as well, in which
- * case their name comes from that.
- *
- * "You" stands in for every own address — the mailboxes connected here, and
- * whoever sent the messages marked as ours — and says which they were:
- * "You (you@work.example, you@home.example)". Own is not one address, and
- * is the one place to see which of yours a thread ran through.
- */
-function threadPeople(
-  messages: MailMessage[],
-  ownAddresses: string[]
-): { others: { email: string; name?: string }[]; yours: string[] } {
-  const own = new Set(ownAddresses.map((a) => a.trim().toLowerCase()));
-  for (const m of messages) {
-    if (m.own && m.fromEmail) own.add(m.fromEmail.trim().toLowerCase());
-  }
-  const nameByAddress = new Map<string, string>();
-  for (const m of messages) {
-    const key = m.fromEmail.trim().toLowerCase();
-    const name = m.fromName.split("<")[0].trim();
-    if (key && name && name.toLowerCase() !== key && !nameByAddress.has(key)) {
-      nameByAddress.set(key, name);
-    }
-  }
-  const others: { email: string; name?: string }[] = [];
-  const yours: string[] = [];
-  const seen = new Set<string>();
-  const add = (raw: string) => {
-    const email = raw.trim();
-    const key = email.toLowerCase();
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    if (own.has(key)) {
-      yours.push(email);
-      return;
-    }
-    others.push({ email, name: nameByAddress.get(key) });
-  };
-  for (const m of messages) {
-    add(m.fromEmail);
-    for (const to of m.toEmails) add(to);
-    for (const cc of m.ccEmails) add(cc);
-  }
-  return { others, yours };
-}
-
-function participantsWithAddresses(
-  messages: MailMessage[],
-  ownAddresses: string[]
-): string[] {
-  const { others, yours } = threadPeople(messages, ownAddresses);
-  return [
-    ...others.map((p) => (p.name ? `${p.name} (${p.email})` : p.email)),
-    ...(yours.length ? [`You (${yours.join(", ")})`] : []),
-  ];
-}
-
-/**
- * Every message of a provider thread, oldest first.
- *
- * The thread API answers a window — up to a hundred messages — so this asks
- * for the oldest window and then each one after it until the provider says
- * there is nothing newer. Local pending sends are left out: they are not in
- * the thread yet, and a forward should carry what was sent.
- */
-async function loadWholeThread(
-  account: string,
-  threadId: string
-): Promise<MailMessage[]> {
-  const out: MailMessage[] = [];
-  let after: string | null = null;
-  // Twenty pages is two thousand messages. A thread past that is not one
-  // anybody forwards whole; the cap is there so a provider that always says
-  // "newer" cannot keep this going for ever.
-  for (let page = 0; page < 20; page += 1) {
-    const params = new URLSearchParams({
-      account,
-      id: threadId,
-      markRead: "0",
-      limit: "100",
-    });
-    if (after) params.set("after", after);
-    else params.set("oldest", "1");
-    const json = await apiJson<{ thread: MailThreadDetail }>(
-      `/api/mail/thread?${params.toString()}`
-    );
-    const got = json.thread.messages.filter(
-      (m) => !isPendingLocalMessage(m.id)
-    );
-    out.push(...got);
-    const last = json.thread.messages[json.thread.messages.length - 1];
-    if (!json.thread.hasNewer || !last) break;
-    after = last.id;
-  }
-  return out;
+/** The same, measured on a data: URI — base64 is four bytes for every three. */
+function dataUrlTooBig(dataUrl: string): boolean {
+  const comma = dataUrl.indexOf(",");
+  const base64 = comma < 0 ? dataUrl : dataUrl.slice(comma + 1);
+  return Math.floor((base64.length * 3) / 4) > MAX_INLINE_PASTE_BYTES;
 }
 
 export function ThreadPane({
@@ -532,9 +362,12 @@ export function ThreadPane({
   onTrash,
   onRestore,
   inTrash = false,
+  fromDrafts = false,
   onJunk,
   onNotJunk,
   inJunk = false,
+  onMoveToInbox,
+  here,
   forwardMessageId,
   onForwardStarted,
   pendingAction,
@@ -551,13 +384,18 @@ export function ThreadPane({
   refreshToken,
   messageCount,
   inCrm,
-  showAddToCrm,
   counterpartName,
   counterpartEmail,
   onChatPromoted,
   onChatThreadChanged,
   onCrmChanged,
+  onFloatReply,
+  replyFloating,
+  onUnfloatReply,
+  onEditAsNew,
+  floating,
   onSent,
+  onDraftDiscarded,
 }: {
   account: string;
   accounts: string[];
@@ -568,7 +406,11 @@ export function ThreadPane({
   onZoomAdjust: (delta: number) => void;
   /** Hide the mail list so the thread fills the pane. */
   focusMode: boolean;
-  onToggleFocus: () => void;
+  /**
+   * Put the list away, or bring it back. Absent in the reader window, where
+   * there is no list to put away — the control and its shortcut go with it.
+   */
+  onToggleFocus?: () => void;
   onArchive: () => void;
   /**
    * Handed the thread this pane is showing, by account and id.
@@ -584,12 +426,21 @@ export function ThreadPane({
   onRestore?: () => void;
   /** True when this thread was opened from Trash — it is already deleted. */
   inTrash?: boolean;
+  /**
+   * The reader stands in the Drafts view. The conversation on screen is
+   * only the draft's home, and Delete has to mean the draft.
+   */
+  fromDrafts?: boolean;
   /** File it as junk. Filing, not reporting — see markMailThreadJunk. */
   onJunk?: () => void;
   /** Take it back out of Junk. The reason a Junk view is worth having. */
   onNotJunk?: () => void;
   /** True when this thread was opened from Junk. */
   inJunk?: boolean;
+  /** Back to the inbox — the fourth of the rail's places in the move menu. */
+  onMoveToInbox?: () => void;
+  /** Which of them this conversation is in, so the menu can say so. */
+  here?: MoveMenuHere;
   /** A forward asked for from a chat popout — see MailPage. */
   forwardMessageId?: string;
   onForwardStarted?: () => void;
@@ -619,7 +470,13 @@ export function ThreadPane({
   messageCount?: number;
   /** Thread involves CRM contacts — remote images load by default. */
   inCrm: boolean;
-  showAddToCrm: boolean;
+  /**
+   * Ignored. There was a second CRM button that only showed for a thread no
+   * record matched yet; the one button that replaced it is offered whenever
+   * there is a CRM to read. The prop stays until its pass-site in MailPage
+   * can be removed — that file is mid-change elsewhere.
+   */
+  showAddToCrm?: boolean;
   counterpartName: string;
   counterpartEmail: string;
   onChatPromoted: (chat: MailChatRef) => void;
@@ -637,11 +494,57 @@ export function ThreadPane({
     focusMessageId?: string
   ) => void;
   onCrmChanged: () => void;
+  /**
+   * Send the reply being written into a floating card, so the reader can
+   * browse other threads while they write. The draft is persisted first;
+   * the card reads the same draft, so nothing is handed over but the key.
+   */
+  onFloatReply?: () => void;
+  /**
+   * This thread's reply is in the floating card right now. The pane keeps
+   * its hands off the draft — no composer from it, no saves onto it — and
+   * anything that would open the reply box asks the card home instead.
+   */
+  replyFloating?: boolean;
+  /** Bring the floating reply back into this pane. */
+  onUnfloatReply?: () => void;
+  /**
+   * Copy this message into a new compose, out of the thread.
+   *
+   * The list row does the same for the first own mail. This is how a
+   * later one is picked.
+   */
+  onEditAsNew?: (message: MailMessage, subject: string) => void;
+  /**
+   * This pane IS the floating card: the composer alone, in a corner, while
+   * another thread is read behind it.
+   *
+   * The same component, so the box that floats is the box that docks —
+   * every control, every width rule, every handler. What it leaves out is
+   * everything around the composer: the toolbar, the header, the stream.
+   * It also keeps its hands off the window: a second pane answering the
+   * same keys as the one on screen would send from whichever heard first.
+   */
+  floating?: boolean;
   /** Refresh Sent for the mailbox that just sent. */
   onSent?: (accountEmail: string) => void;
+  /**
+   * The draft this pane was holding has been thrown away.
+   *
+   * The Drafts view opens a draft by opening the conversation behind it,
+   * so once the draft is gone there is nothing here the reader asked to
+   * see — and a provider draft leaves a thread with no messages in it.
+   */
+  onDraftDiscarded?: () => void;
 }) {
   const t = useMailT();
   const [thread, setThread] = React.useState<MailThreadDetail | null>(null);
+  // Update CRM applied: the list moves the thread into In CRM, and the
+  // planner window (when there is one) fetches fresh rows for an open tab.
+  const crmChanged = React.useCallback(() => {
+    onCrmChanged();
+    void notifyPlannerCrmChanged();
+  }, [onCrmChanged]);
   const [loadingOlder, setLoadingOlder] = React.useState(false);
   const [loadingNewer, setLoadingNewer] = React.useState(false);
   const [highlightMessageId, setHighlightMessageId] = React.useState<
@@ -652,17 +555,14 @@ export function ThreadPane({
   /** Per-send: ask Grok to update CRM Notes after this reply goes out. */
   const [updateCrmNotes, setUpdateCrmNotes] = React.useState(false);
   /**
-   * The AI's proposals for this thread, in a dialog: null when closed. The
-   * ✨ button opens it loading; a send with the switch on opens it with what
-   * the planner proposed from the thread and the message just sent.
+   * Whether the AI is still reading this thread for the CRM.
+   *
+   * The proposals are not held here. The ✨ button and a send with the
+   * switch on hand them to CrmProposalHost, above the pane: this pane is
+   * made again for every thread, and the dialog has to stay open while the
+   * reader opens other mail to check it against.
    */
-  const [crmProposal, setCrmProposal] = React.useState<
-    { loading: boolean; result: CrmProposeResult | null; stage?: string } | null
-  >(null);
-  /** The last propose asked, so the dialog can run it again with attachments. */
-  const lastProposeRef = React.useRef<{ hint?: string; includeAttachments: boolean }>({
-    includeAttachments: false,
-  });
+  const updatingCrm = useCrmProposing(account, threadId);
 
   /** The thread's PDFs, which the reader may choose to give the AI as context. */
   const readableAttachments = React.useMemo(() => {
@@ -677,7 +577,25 @@ export function ThreadPane({
     }
     return out;
   }, [thread]);
-  const [updatingCrm, setUpdatingCrm] = React.useState(false);
+  /*
+    Up here with the rest, and not beside the function that uses them.
+
+    A thread that has not arrived yet returns early — `if (!thread)` — so a
+    hook declared below that line is called on the render after the thread
+    lands and not on the one before it. React counts hooks, so the second
+    render found more than the first and took the pane down with it. Every
+    hook belongs above the first return; the handler can live where it reads
+    best, because it is not one.
+  */
+  const [diaryBusy, setDiaryBusy] = React.useState(false);
+  const [diaryProposal, setDiaryProposal] = React.useState<DiaryProposal | null>(
+    null
+  );
+  /** An AI reply draft in flight, and the notes on the last one until dismissed. */
+  const [draftingReply, setDraftingReply] = React.useState(false);
+  const [aiReplyNotes, setAiReplyNotes] = React.useState<AiReplyDraftResult | null>(null);
+  /** Which part of the draft is running, for the strip above the composer. */
+  const [aiReplyWorking, setAiReplyWorking] = React.useState<"reading" | "writing" | null>(null);
   /** Print carries the reader's image choice, so a print matches the screen. */
   const [loadImagesByDefault] = useLoadImagesByDefault();
   const shortcuts = useMailShortcuts();
@@ -729,6 +647,34 @@ export function ThreadPane({
   const [fromAccount, setFromAccount] = React.useState(account);
   /** Send later is Outlook's to promise — see `use-outlook-accounts`. */
   const canSendLater = useCanSendLater(fromAccount);
+  /*
+    Which mailbox a hand-over to Outlook would land in.
+
+    A draft made over Graph has to be made in a mailbox Graph holds — but
+    that need not be the one the reply is written from. The reason to
+    finish a mail in Outlook is usually that Outlook is the only place an
+    address can be sent from at all, and that address is rarely the one
+    whose mailbox the thread arrived in.
+
+    So: this mailbox when it is an Outlook one, which keeps the draft in
+    the conversation it answers; otherwise the first Outlook mailbox there
+    is, which starts a new message from a different address — see the
+    hand-over for what it does and does not carry across.
+  */
+  const outlookAccounts = useOutlookAccounts();
+  const outlookTarget = React.useMemo(
+    () => outlookDraftAccount(outlookAccounts, fromAccount),
+    [outlookAccounts, fromAccount]
+  );
+  /*
+    The button no longer waits for a mailbox. The route that needs one is
+    the better of the two — a real draft, in the conversation — but the one
+    that needs nothing is the one that reaches the mailbox this app cannot
+    sign in to, which is usually the mailbox the reader is reaching for.
+  */
+  const canOpenInOutlook = !isPublicMailProduct();
+  /** True when the draft would leave from an address the composer does not name. */
+  const outlookElsewhere = Boolean(outlookTarget) && outlookTarget !== fromAccount;
 
   /**
    * Messages the provider is holding for this thread.
@@ -817,6 +763,8 @@ export function ThreadPane({
   const [popoutOpen, setPopoutOpen] = React.useState(false);
   const [toList, setToList] = React.useState<MailRecipient[]>([]);
   const [ccList, setCcList] = React.useState<MailRecipient[]>([]);
+  /** A right-click on a name in the "Replying to" line. */
+  const { openAddressMenu, addressMenu } = useAddressMenu();
   const [showCc, setShowCc] = React.useState(false);
   // Recipients show as a compact "Replying to …" line; clicking it expands
   // the full chip editors.
@@ -847,6 +795,122 @@ export function ThreadPane({
   const pinchRef = React.useRef<HTMLDivElement | null>(null);
   /** Hide the thread and grow the reply/forward composer to fill the pane. */
   const [replyFocus, setReplyFocus] = React.useState(false);
+  /*
+    The growth moves at the pane slide's tempo — the same gesture as the
+    list leaving the reader, so the same speed and the same mechanics.
+    For the length of the change the composer band stands absolute over
+    the pane below the toolbar, laid out once where it is going, and a
+    clip-path edge sweeps between the band's resting strip and the whole
+    of the pane. The thread stays mounted beneath until it is covered, so
+    the edge covers and uncovers something real, and nothing is laid out
+    while it moves.
+
+    `replyGrown` is where the edge stands. `replyFocusSliding` is whether
+    the sweep's frame exists at all — false at rest, where the band is an
+    ordinary flex child and nothing about it changes. The movement itself
+    is usePaneSweep's, the same machine every pane sweep runs on.
+  */
+  const { at: replyGrown, sliding: replyFocusSliding } =
+    usePaneSweep(replyFocus);
+  /** The band's height at rest — where the sweep starts and ends. */
+  const replyBandRestRef = React.useRef(0);
+  const replyBandRef = React.useRef<HTMLDivElement | null>(null);
+  /** The part of the reply band that scrolls: the box, not the band. */
+  const composerColumnRef = React.useRef<HTMLDivElement | null>(null);
+  /*
+    A scroll over the band beside the box scrolls the box.
+
+    The box is right-aligned and as narrow as its dragged width, and only
+    the box scrolls. A reply taller than the band showed its top, and a
+    scroll over the empty band to its left did nothing at all, so the rest
+    was reachable only with the pointer over the box.
+
+    Two things scroll in there: the column, which holds the recipients and
+    the box, and inside the box the letter itself. A scroll over the letter
+    moves the letter first and the column after it. From beside the box the
+    two are read as one page, top to bottom: down takes the column to its
+    end and then the letter; up takes the letter back to its top and then
+    the column. Moving the column alone left the end of a long letter out
+    of reach, and its top too once the letter had been scrolled.
+  */
+  const scrollComposerFromBand = React.useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      const column = composerColumnRef.current;
+      if (!column || !(event.target instanceof Node)) return;
+      if (column.contains(event.target)) return;
+      const letter = column.querySelector<HTMLElement>(".mail-composer-scroll");
+      const unit =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? column.clientHeight : 1;
+      let delta = event.deltaY * unit;
+      const room = (el: HTMLElement) =>
+        delta > 0 ? el.scrollHeight - el.clientHeight - el.scrollTop : el.scrollTop;
+      const order = delta > 0 ? [column, letter] : [letter, column];
+      for (const el of order) {
+        if (!el || !delta) continue;
+        const step = Math.sign(delta) * Math.min(Math.abs(delta), Math.max(0, room(el)));
+        if (!step) continue;
+        el.scrollTop += step;
+        delta -= step;
+      }
+    },
+    []
+  );
+  const replyBandAtRestRef = React.useRef(true);
+  replyBandAtRestRef.current = !replyFocus && !replyFocusSliding;
+  /*
+    The resting height, kept while the band is at rest. Read in the
+    observer, where layout is already settled, so keeping it forces no
+    layout of its own.
+  */
+  React.useEffect(() => {
+    const el = replyBandRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (replyBandAtRestRef.current) {
+        replyBandRestRef.current = el.offsetHeight;
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mode]);
+  /**
+   * The files on the message being forwarded, and whether they go with it.
+   *
+   * A forward that leaves the attachments behind is not a forward — the
+   * point of most of them is the file. They are fetched into the ordinary
+   * attachment strip when the composer opens, so they show as chips with a
+   * total and a remove each, like anything else attached. The box below
+   * takes them all off again, and puts them back.
+   */
+  const [forwardFiles, setForwardFiles] = React.useState(true);
+  const [forwardFilesBusy, setForwardFilesBusy] = React.useState(false);
+  /**
+   * What was in the strip before the forwarded message's files went in.
+   *
+   * The ids cannot be had from `addFiles` — it makes them inside a state
+   * update and returns nothing — and the ref of items has not caught up by
+   * the time the call returns. So the pair is remembered the way the
+   * whole-conversation box remembers it: what was already there, and the
+   * names of what this added. Anything matching both is ours to take out.
+   */
+  const preForwardAttachIdsRef = React.useRef<Set<string>>(new Set());
+  /**
+   * The subject of a forward, which the writer may change.
+   *
+   * A reply's subject is the thread's and is not a question. A forward is
+   * often the start of something else — "the programme you asked for" —
+   * and the subject was fixed at `Fwd:` with no way to touch it.
+   */
+  /**
+   * The subject this composer will send, when it is not the thread's own.
+   *
+   * A forward always shows the row — it is usually the start of something
+   * else. A reply shows it only when asked, because a reply's subject is
+   * the thread's and changing it is the rare case; the row would otherwise
+   * stand over every reply saying what the reader already knows.
+   */
+  const [subjectDraft, setSubjectDraft] = React.useState("");
+  const [subjectOpen, setSubjectOpen] = React.useState(false);
   /** Forward the whole conversation, not only one message. */
   const [forwardWhole, setForwardWhole] = React.useState(false);
   const [forwardWholeBusy, setForwardWholeBusy] = React.useState(false);
@@ -871,23 +935,118 @@ export function ThreadPane({
     payload: attachmentPayload,
   } = useDraftAttachments();
   attachItemsRef.current = attachItems;
+  /**
+   * A picture into the reply itself, at the caret.
+   *
+   * The same for a paste and for a drop on the words, so both land the
+   * same way. Too big to write in, or no editor to write into: it is a
+   * file, and the caller attaches it instead.
+   */
+  const insertInlineImage = React.useCallback((dataUrl: string) => {
+    if (dataUrlTooBig(dataUrl) || !replyEditorHandle.current) return false;
+    replyEditorHandle.current.insertImage(dataUrl);
+  }, []);
   const { dragging: attachDragging, dropHandlers: attachDropHandlers } =
-    useComposerFileDrop(addAttachFiles);
-  const { pasteHandlers: attachPasteHandlers } =
-    useComposerPaste(addAttachFiles);
+    useComposerFileDrop(addAttachFiles, {
+      caretToPoint: (x, y) =>
+        replyEditorHandle.current?.caretToPoint(x, y) ?? false,
+      insert: insertInlineImage,
+    });
+  /*
+    In a chat-shaped thread a pasted picture attaches, as the pop-out
+    already does: written inline it rides invisibly in the bubble's HTML —
+    a chat bubble is its words — and the reader watched their screenshot
+    vanish. In a mail-shaped reply it still lands in the words, where a
+    picture in a letter belongs.
+  */
+  const { pasteHandlers: attachPasteHandlers } = useComposerPaste(
+    addAttachFiles,
+    thread?.chat ? undefined : insertInlineImage
+  );
   const [attachmentPreview, setAttachmentPreview] = React.useState<{
     messageId: string;
     attachment: MailAttachment;
   } | null>(null);
+  /** The message whose source is open over the thread, by id. */
+  const [originalOf, setOriginalOf] = React.useState<string | null>(null);
+  // Another thread, another set of messages: the sheet does not follow.
+  React.useEffect(() => {
+    setOriginalOf(null);
+  }, [thread?.threadId]);
+  /** The draft attachment open in the preview, by strip id. */
+  const [draftPreviewId, setDraftPreviewId] = React.useState<string | null>(
+    null
+  );
   const { pct: composerWidthPct, startResize: startComposerResize } =
     useComposerWidthPct();
+  const {
+    height: composerHeight,
+    set: composerHeightSet,
+    startResize: startComposerHeightResize,
+  } = useComposerHeightPx();
   const forwarding = mode === "forward";
-  usePinchZoom(pinchRef, onZoomAdjust, thread !== null && !replyFocus);
+  /**
+   * The reading that zoom puts back, taken at the moment the gesture
+   * arrives.
+   *
+   * It used to be taken when the reader last scrolled, and a reader who
+   * opens a thread and zooms without scrolling first has not scrolled:
+   * the only reading was the one from before the thread was pinned to its
+   * newest message, so zooming threw them to the top of it. Reading it
+   * here means there is always one, and always from where they are now.
+   *
+   * A ref because the reading is defined further down, with the rest of
+   * the zoom anchoring, and the gesture is attached up here.
+   */
+  const takeZoomAnchorRef = React.useRef<
+    ((atY: number | null) => void) | null
+  >(null);
+  /** The size the reader is at now, for effects that closed over an old one. */
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
+  usePinchZoom(
+    pinchRef,
+    onZoomAdjust,
+    thread !== null && !replyFocus,
+    (atY) => takeZoomAnchorRef.current?.(atY)
+  );
+  /** The buttons and the keys say nothing about where the pointer is. */
+  const adjustZoomFromControls = React.useCallback(
+    (delta: number) => {
+      takeZoomAnchorRef.current?.(null);
+      onZoomAdjust(delta);
+    },
+    [onZoomAdjust]
+  );
 
   // Local draft: skip saves until hydrate finishes; discard suppresses flush.
   const draftReadyRef = React.useRef(false);
   const draftDiscardedRef = React.useRef(false);
+  /** The draft key already thrown away, so it is not thrown away twice. */
+  const discardedKeyRef = React.useRef<string | null>(null);
+  /*
+    A new reply is a new draft to discard.
+
+    The guard stops one discard from running twice, when the bin and a key
+    answer the same question. It was cleared only by Undo, so a reply written
+    after a discard on the same thread could not be discarded: Discard closed
+    the question and left the draft where it was. Opening the composer again
+    clears the guard.
+  */
+  React.useEffect(() => {
+    if (mode) discardedKeyRef.current = null;
+  }, [mode]);
   const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  /**
+   * The message a reply or a forward quotes.
+   *
+   * The newest one, unless the reader picked one from its hover actions. A
+   * reply to something said three messages back should quote that, not
+   * whatever happens to be last.
+   */
+  const [quoteMessageId, setQuoteMessageId] = React.useState<string | null>(
     null
   );
   const composerSnapshotRef = React.useRef({
@@ -901,6 +1060,7 @@ export function ThreadPane({
     fromAccount,
     replyFocus,
     attachItems,
+    quoteMessageId,
   });
   composerSnapshotRef.current = {
     mode,
@@ -913,6 +1073,7 @@ export function ThreadPane({
     fromAccount,
     replyFocus,
     attachItems,
+    quoteMessageId,
   };
   const threadDefaultsRef = React.useRef<{
     to: MailRecipient[];
@@ -930,7 +1091,7 @@ export function ThreadPane({
   }
 
   const persistThreadDraft = React.useCallback(
-    (snapshot = composerSnapshotRef.current) => {
+    (snapshot = composerSnapshotRef.current, keepEmpty = false) => {
       if (!snapshot.mode || draftDiscardedRef.current) return;
       const defaults = threadDefaultsRef.current;
       const defaultTo =
@@ -960,9 +1121,10 @@ export function ThreadPane({
         fromAccount: snapshot.fromAccount,
         replyFocus: snapshot.replyFocus,
         attachments: readyAttachmentsForDraft(snapshot.attachItems),
+        quoteMessageId: snapshot.quoteMessageId,
         updatedAt: Date.now(),
       };
-      void saveThreadDraft(draft, defaultTo, defaultCc);
+      void saveThreadDraft(draft, defaultTo, defaultCc, keepEmpty);
     },
     [account, threadId]
   );
@@ -1058,6 +1220,14 @@ export function ThreadPane({
     setLocalDraftAt(null);
     importedDraftRef.current = null;
     importedForThreadRef.current = null;
+    // The floating card holds this thread's draft. Reading it here would
+    // put a second composer on the same words; saving would write over
+    // the card's edits. The pane waits — and when the reply comes home,
+    // this effect runs again and picks the draft up.
+    if (replyFloating) {
+      draftDiscardedRef.current = true;
+      return;
+    }
     void getDraft(threadDraftKey(account, threadId)).then((raw) => {
       if (cancelled) return;
       if (raw?.kind === "thread") {
@@ -1070,6 +1240,7 @@ export function ThreadPane({
         setIncludeSignature(raw.includeSignature);
         setFromAccount(raw.fromAccount);
         setReplyFocus(raw.replyFocus);
+        setQuoteMessageId(raw.quoteMessageId ?? null);
         replaceAttachments(raw.attachments);
         setEditorKey((k) => k + 1);
         setShowPreview(false);
@@ -1090,7 +1261,7 @@ export function ThreadPane({
         persistThreadDraft();
       }
     };
-  }, [account, threadId, replaceAttachments, persistThreadDraft]);
+  }, [account, threadId, replaceAttachments, persistThreadDraft, replyFloating]);
 
   /**
    * A reply the reader started in Gmail or Outlook, opened in the composer.
@@ -1526,10 +1697,13 @@ export function ThreadPane({
    * by measurement rather than by belief. See `rectsMoveWithScroll`.
    */
   type ZoomAnchor =
-    /** A message, and how far down it the top of the pane cuts. */
-    | { kind: "message"; id: string; into: number }
-    /** How far down the content the top edge sits, and how tall it was. */
-    | { kind: "fraction"; top: number; content: number };
+    /** A message, how far down it the held line cuts, and where that line is. */
+    | { kind: "message"; id: string; into: number; line: number }
+    /**
+     * How far down the content the held line sits, how tall the content was,
+     * and how far the line is below the top of the pane.
+     */
+    | { kind: "fraction"; top: number; content: number; hold: number };
   const zoomAnchorRef = React.useRef<ZoomAnchor | null>(null);
 
   /** The scroller's own padding, which does not scale with the stream. */
@@ -1585,20 +1759,34 @@ export function ThreadPane({
     rectProbeRef.current = { id, top, scrollTop: el.scrollTop };
   };
 
-  const captureZoomAnchor = React.useCallback(() => {
+  /**
+   * Take a reading, for zoom to put back.
+   *
+   * `atY` is a line across the window — the pointer, when a pinch says
+   * where it is. Zooming then holds whatever sits on that line, so the
+   * words under the fingers stay under the fingers. Without one the line
+   * is the top edge of the pane, which is where the eye is when the
+   * reader uses the buttons or the keys instead.
+   */
+  const captureZoomAnchor = React.useCallback((atY?: number | null) => {
     const el = scrollRef.current;
     if (!el) return;
+    const paneTop = el.getBoundingClientRect().top;
+    // A pinch that starts outside the pane still zooms it, and a line
+    // above or below the pane has nothing on it to hold.
+    const line =
+      typeof atY === "number" && Number.isFinite(atY)
+        ? Math.min(Math.max(atY, paneTop), paneTop + el.clientHeight)
+        : paneTop;
     if (rectsMoveWithScroll.current) {
-      // The message at the top of the pane, and where its own top sits
-      // against that edge. The top is what the eye is on and what the
-      // reader named, and it is the least forgiving place to be wrong,
-      // which makes it the right one to be exact about.
-      const line = el.getBoundingClientRect().top;
+      // The message the line cuts, and how far down it the line falls.
+      // This is the least forgiving place to be wrong, which makes it
+      // the right one to be exact about.
       const nodes = el.querySelectorAll<HTMLElement>("[data-message-id]");
       for (const node of Array.from(nodes)) {
         const box = node.getBoundingClientRect();
-        // The first message still on screen: the one the edge cuts, or
-        // the next one down when the edge falls in the gap above it.
+        // The first message still on screen: the one the line cuts, or
+        // the next one down when the line falls in the gap above it.
         if (box.bottom < line) continue;
         const id = node.dataset.messageId;
         if (!id) break;
@@ -1606,6 +1794,7 @@ export function ThreadPane({
           kind: "message",
           id,
           into: box.height ? (line - box.top) / box.height : 0,
+          line,
         };
         return;
       }
@@ -1617,12 +1806,15 @@ export function ThreadPane({
     const pad = scrollerPadding(el);
     const content = el.scrollHeight - pad.top - pad.bottom;
     if (content <= 0) return;
+    const hold = line - paneTop;
     zoomAnchorRef.current = {
       kind: "fraction",
-      top: el.scrollTop - pad.top,
+      top: el.scrollTop - pad.top + hold,
       content,
+      hold,
     };
   }, []);
+  takeZoomAnchorRef.current = captureZoomAnchor;
 
   /**
    * Put that place back under the middle at the new size.
@@ -1651,9 +1843,10 @@ export function ThreadPane({
       const node = el.querySelector<HTMLElement>(selector);
       if (node) {
         const box = node.getBoundingClientRect();
-        const line = el.getBoundingClientRect().top;
-        el.scrollTop += box.top + box.height * anchor.into - line;
-        captureZoomAnchor();
+        el.scrollTop += box.top + box.height * anchor.into - anchor.line;
+        // The same line, for the next step of a pinch: a gesture holds
+        // one place from beginning to end, not a place per step.
+        captureZoomAnchor(anchor.line);
         return;
       }
       // The message went while the size changed. Nothing to hold on to.
@@ -1667,9 +1860,9 @@ export function ThreadPane({
     // The scale is measured rather than worked out from the zoom values:
     // text rewraps, so the stream does not grow by exactly the ratio
     // between them, and what it actually grew by is there to be read.
-    el.scrollTop = (anchor.top * content) / anchor.content + pad.top;
-    // Where it is now, for the next step of a pinch to hold on to.
-    captureZoomAnchor();
+    el.scrollTop =
+      (anchor.top * content) / anchor.content + pad.top - anchor.hold;
+    captureZoomAnchor(el.getBoundingClientRect().top + anchor.hold);
   }, [zoom, captureZoomAnchor]);
 
   const [awayFromLatest, setAwayFromLatest] = React.useState(false);
@@ -1691,18 +1884,71 @@ export function ThreadPane({
       captureZoomAnchor();
     };
     check();
-    el.addEventListener("scroll", check, { passive: true });
+    /*
+      Not while a pane is sliding, from either direction.
+
+      The stream re-wraps on every frame of a slide, which both resizes it
+      and moves the scroll under it — so this ran twice a frame, each time
+      changing state and rendering this pane, over a movement whose whole
+      job is to move one edge. One reading at the end says the same thing,
+      and the reader is not scrolling during it anyway.
+    */
+    const guarded = () => {
+      if (afterMailPaneSlide(check)) return;
+      check();
+    };
+    el.addEventListener("scroll", guarded, { passive: true });
     // Messages arriving make the stream taller under a reader who has not
     // moved, which is the other way this becomes true.
-    const observer = new ResizeObserver(check);
+    const observer = new ResizeObserver(guarded);
     for (const child of Array.from(el.children)) observer.observe(child);
     return () => {
-      el.removeEventListener("scroll", check);
+      el.removeEventListener("scroll", guarded);
       observer.disconnect();
     };
     // streamNode: the element itself, so this runs the moment there is
     // one to listen to rather than once before there is.
   }, [streamNode, captureZoomAnchor]);
+
+  /*
+    The reply box pushes the thread up rather than covering its tail.
+
+    The composer stands in the flow below the stream, so opening it makes
+    the stream shorter — but the scroll held its number, and what the
+    number now showed ended higher, so the end of the last message went
+    under the box just as the reader turned to answer it. When the
+    stream's own height changes, the scroll moves by the same amount: the
+    bottom edge of what was being read stays put above whatever took the
+    room, and gets the room back when it goes. Clamped at both ends by
+    the scroller itself.
+  */
+  const streamHeightRef = React.useRef(-1);
+  const keepStreamBottom = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const previous = streamHeightRef.current;
+    const now = el.clientHeight;
+    if (now === previous) return;
+    streamHeightRef.current = now;
+    if (previous < 0) return;
+    el.scrollTop = Math.max(0, el.scrollTop + (previous - now));
+  }, []);
+  /*
+    Two listeners, one ledger. The layout effect answers the app's own
+    changes — the composer mounting, leaving, being dragged taller — in
+    the same commit, before anything paints. The observer answers what
+    commits never see, a window edge being dragged. Both settle against
+    the same remembered height, so whichever heard first, the other
+    finds nothing left to move.
+  */
+  React.useLayoutEffect(keepStreamBottom);
+  React.useEffect(() => {
+    const el = streamNode;
+    if (!el) return;
+    const observer = new ResizeObserver(keepStreamBottom);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [streamNode, keepStreamBottom]);
 
   /**
    * The newest window as it was, so coming back to it costs nothing.
@@ -1924,37 +2170,97 @@ export function ThreadPane({
     if (!thread || !el || !newestMessageId || deepLinkTarget) return;
     if (skipOpenPinRef.current) return;
 
+    /*
+      The pin follows the stream while it settles: pictures and email
+      frames arrive over the first second or two and make it taller under
+      a reader who has not moved yet, and the newest message has to stay
+      where it was put.
+
+      Two things end it, and both used to be missed.
+
+      A resize the reader asked for is not the thread settling. Changing
+      the text size resizes the whole stream, and this read that as more
+      mail arriving and put them back at the newest message — which on a
+      one-message thread is `scrollTop = 0`, the very top. Zoom holds its
+      own place; this must not take it back.
+
+      And the reader moving ends it however they move. `wheel` alone
+      missed the keyboard, the scrollbar, and a trackpad that reports
+      scrolling any other way.
+    */
+    const zoomAtOpen = zoomRef.current;
+    let placed = -1;
+
     const pin = () => {
+      if (zoomRef.current !== zoomAtOpen) {
+        stop();
+        return;
+      }
       const bubbles = el.querySelectorAll<HTMLElement>(
         '[data-mail-bubble="1"]'
       );
       const newest = bubbles[bubbles.length - 1];
       if (!newest) {
-        el.scrollTop = el.scrollHeight;
+        /*
+          No bubbles yet — the stream is still putting them up. Guessing
+          meant jumping to the bottom of everything: the guess was made
+          against a stream tens of thousands of pixels tall that had not
+          measured itself, the clamp as it shrank read as the reader
+          moving, and the follower stopped before it ever saw a bubble —
+          which is how a long thread opened at the very end of its last
+          message. The observer calls again when there is something to
+          stand on.
+        */
         return;
       }
       if (bubbles.length === 1) {
         el.scrollTop = 0;
+      } else {
+        const paneTop = el.getBoundingClientRect().top;
+        const bubbleTop = newest.getBoundingClientRect().top;
+        const air = 20;
+        el.scrollTop = Math.max(0, el.scrollTop + (bubbleTop - paneTop) - air);
+      }
+      placed = Math.round(el.scrollTop);
+    };
+
+    const onScroll = () => {
+      // Before anything was placed, any movement is the reader's.
+      if (placed < 0) {
+        stop();
         return;
       }
-      const paneTop = el.getBoundingClientRect().top;
-      const bubbleTop = newest.getBoundingClientRect().top;
-      const air = 20;
-      el.scrollTop = Math.max(0, el.scrollTop + (bubbleTop - paneTop) - air);
+      // Where the pin last put them is not the reader moving — and nor is
+      // the browser clamping that place down because the settling stream
+      // got shorter under it.
+      const clampedPlace = Math.min(
+        placed,
+        Math.max(0, el.scrollHeight - el.clientHeight)
+      );
+      if (Math.round(el.scrollTop) !== clampedPlace) stop();
     };
-    pin();
+    const stop = () => {
+      window.clearInterval(interval);
+      el.removeEventListener("scroll", onScroll);
+    };
+    /*
+      A short heartbeat, not a ResizeObserver. The observer watched the
+      stream's first child, and React replaces that element while the
+      messages measure themselves in — a detached node reports nothing,
+      so the pin ran once against the unmeasured stream and never again.
+      The heartbeat asks the live document each time, and two seconds of
+      it at this pace costs a handful of rect reads.
+    */
+    const interval = window.setInterval(pin, 150);
 
-    const observer = new ResizeObserver(pin);
-    observer.observe(el.firstElementChild ?? el);
-    const stop = () => observer.disconnect();
-    el.addEventListener("wheel", stop, { passive: true, once: true });
+    pin();
+    el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("touchstart", stop, { passive: true, once: true });
     const timer = setTimeout(stop, 2000);
 
     return () => {
       clearTimeout(timer);
       stop();
-      el.removeEventListener("wheel", stop);
       el.removeEventListener("touchstart", stop);
     };
   }, [threadId, newestMessageId, deepLinkTarget]);
@@ -1979,14 +2285,42 @@ export function ThreadPane({
    * A callback ref is told each time the node arrives or goes, which is
    * exactly when there is something to measure or stop measuring.
    */
+  /*
+    The floating card is carried by its heading, the same way the CRM
+    proposals are: both are read against what they cover, and both are
+    in the way of it until they are moved.
+  */
+  const {
+    cardRef,
+    startDrag,
+    cardStyle,
+    size: cardSize,
+    startResize: startCardResize,
+  } = useCardDrag(Boolean(floating), "dh-mail-floating-reply-size");
+  /**
+   * The card has a height the reader gave it, so the reply fills the card:
+   * the same layout as focus mode, where the reply fills the pane. Without
+   * this the band keeps its own ceiling and the card grows empty.
+   */
+  const bandFills = replyFocus || (Boolean(floating) && Boolean(cardSize.height));
+
   const paneObserverRef = React.useRef<ResizeObserver | null>(null);
   const setPaneNode = React.useCallback((node: HTMLDivElement | null) => {
     pinchRef.current = node;
+    // What the carry moves, when this pane is the floating card. Harmless
+    // when it is not: the carry is switched off, and nothing reads this.
+    cardRef.current = node;
     paneObserverRef.current?.disconnect();
     paneObserverRef.current = null;
     if (!node) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setPaneWidth(entry.contentRect.width);
+    const measurePane = () => {
+      const box = cardRef.current?.getBoundingClientRect();
+      if (box) setPaneWidth(box.width);
+    };
+    // A width on its way somewhere is not worth a render — see pane-slide.
+    const observer = new ResizeObserver(() => {
+      if (afterMailPaneSlide(measurePane)) return;
+      measurePane();
     });
     observer.observe(node);
     paneObserverRef.current = observer;
@@ -1995,10 +2329,43 @@ export function ThreadPane({
   }, []);
   const compactThreadActions =
     paneWidth > 0 && paneWidth < THREAD_ACTIONS_MIN_WIDTH;
-  const compactToolbar = paneWidth > 0 && paneWidth < TOOLBAR_MIN_WIDTH;
-  const tightToolbar = paneWidth > 0 && paneWidth < TOOLBAR_TIGHT_WIDTH;
-  const narrowBubbles =
-    paneWidth > 0 && paneWidth < BUBBLE_GUTTER_MIN_WIDTH;
+  const toolbarAttachmentCount = thread
+    ? [
+        ...olderParts.flatMap((p) => p.messages),
+        ...thread.messages,
+      ].reduce(
+        (n, m) => n + oneInvitePerMessage(m.attachments).length,
+        0
+      )
+    : 0;
+  const toolbarReplyAll =
+    thread != null &&
+    new Set(
+      [...thread.reply.allTo, ...thread.reply.allCc]
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+    ).size > 1;
+  const toolbarSlots = React.useMemo(() => {
+    const skip = new Set<ThreadToolbarSlot>();
+    if (!onTogglePin) skip.add("pin");
+    if (!mailUsesCrmPeople()) skip.add("crm");
+    return THREAD_TOOLBAR_SLOTS.filter((slot) => !skip.has(slot));
+  }, [onTogglePin]);
+  const {
+    tight: tightToolbar,
+    hidden,
+    showOverflowMenu,
+    setRowNode: setToolbarRowNode,
+  } = useThreadToolbarFold(
+      [
+        toolbarReplyAll || mode === "replyAll" ? "all" : "",
+        onTogglePin ? "pin" : "",
+        inJunk ? "junk" : inTrash ? "trash" : "",
+        mailUsesCrmPeople() ? "crm" : "",
+        String(toolbarAttachmentCount),
+      ].join("|"),
+      toolbarSlots
+    );
   /**
    * The reply box takes the whole pane, edge to edge.
    *
@@ -2012,17 +2379,44 @@ export function ThreadPane({
   /** Narrow enough that the composer should take the pane, gutter and all. */
   const fullWidthComposer =
     paneWidth > 0 && paneWidth < COMPOSER_FULL_WIDTH;
-  /*
-   * B, I, U, the lists and the link have no bar of their own at this width.
-   * The editor is built in Quill's bubble theme instead: select some words
-   * and the controls appear over them, which is the moment you want them.
-   *
-   * Send, a file and an emoji are wanted constantly and keep their places.
-   * All of them together wrapped the row into four lines here, and the
-   * formatting is what nobody was reaching for.
-   */
 
-  const replyText = htmlToPlainText(reply);
+  // Parsed once per change of the reply, not once per render: the pane
+  // renders on every keystroke, and this parses HTML.
+  const replyText = React.useMemo(() => htmlToPlainText(reply), [reply]);
+
+  /**
+   * Hand the reply to the floating card.
+   *
+   * The draft is written now — through the per-key queue, so the card's
+   * first read lands after it — and the composer closes without deleting
+   * it, which is the whole difference from closing: the words survive the
+   * handover, and opening this thread again picks the same draft up.
+   */
+  const floatReply = React.useCallback(() => {
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    // Kept even when it says nothing yet: the card opens from this draft,
+    // and an empty composer must arrive there as a composer.
+    persistThreadDraft(undefined, true);
+    // No saves after the handover: the card owns the draft now, and a
+    // stale timer here must not write yesterday's words over its edits.
+    draftDiscardedRef.current = true;
+    setMode(null);
+    setReplyFocus(false);
+    setReply("");
+    setEditorKey((k) => k + 1);
+    setShowPreview(false);
+    setEditRecipients(false);
+    setShowCc(false);
+    setConfirmDiscard(false);
+    clearAttachments();
+    onFloatReply?.();
+  }, [persistThreadDraft, clearAttachments, onFloatReply]);
+
+  /** Held in a ref: `closeComposer` is defined just below this. */
+  const closeComposerRef = React.useRef<(() => void) | null>(null);
 
   const closeComposer = React.useCallback(() => {
     draftDiscardedRef.current = true;
@@ -2045,11 +2439,17 @@ export function ThreadPane({
     // question about a reply that has gone would otherwise be waiting,
     // still true, over the next reply written here.
     setConfirmDiscard(false);
+    // A subject belongs to the message it was typed over. Left standing, it
+    // would sit on the next reply written in this pane — under the name of
+    // a conversation that has gone.
+    setSubjectDraft("");
+    setSubjectOpen(false);
     setForwardWhole(false);
     setForwardConversation(null);
     preWholeAttachIdsRef.current = new Set();
     clearAttachments();
   }, [thread, clearAttachments, account, threadId]);
+  closeComposerRef.current = closeComposer;
 
   /**
    * Throw the reply away, here and at the provider.
@@ -2064,6 +2464,17 @@ export function ThreadPane({
    * sends it.
    */
   const discardComposer = React.useCallback(() => {
+    /*
+      Once for one draft.
+
+      Two controls reach this — the bin in the composer and the bin in the
+      toolbar above it — and the question the second one asks can be
+      answered by a key as well as by its button. Whichever gets here
+      first, the draft is gone; a second run would delete nothing and say
+      "Draft discarded" over again.
+    */
+    if (discardedKeyRef.current === threadDraftKey(account, threadId)) return;
+    discardedKeyRef.current = threadDraftKey(account, threadId);
     const snapshot = composerSnapshotRef.current;
     /**
      * The draft at the provider, if this thread has one.
@@ -2106,6 +2517,11 @@ export function ThreadPane({
       });
     }
 
+    // Whoever opened this pane to look at the draft has nothing to look
+    // at now. Said before the early return below: a draft with nothing in
+    // it is still a draft that has gone from the list.
+    onDraftDiscarded?.();
+
     // An empty composer being closed is not a discard worth offering back.
     if (!hadSomething && !providerRef) return;
 
@@ -2115,6 +2531,7 @@ export function ThreadPane({
         label: "Undo",
         onClick: () => {
           cancelPendingDiscard(key);
+          discardedKeyRef.current = null;
           draftDiscardedRef.current = false;
           importedDraftRef.current = providerRef;
           setMode(snapshot.mode);
@@ -2138,6 +2555,7 @@ export function ThreadPane({
     closeComposer,
     replaceAttachments,
     thread?.providerDraft?.ref,
+    onDraftDiscarded,
   ]);
 
   /**
@@ -2153,6 +2571,11 @@ export function ThreadPane({
    * instead. That one is worth asking about.
    */
   const [confirmDiscard, setConfirmDiscard] = React.useState(false);
+  /** A send held back because the words promise a file and none is on it. */
+  const [forgottenAttachment, setForgottenAttachment] = React.useState<{
+    sendAt?: string;
+    extras?: { proposeCrm?: boolean };
+  } | null>(null);
   const composerHasWords =
     Boolean(replyText.trim()) || attachItems.length > 0;
 
@@ -2196,9 +2619,10 @@ export function ThreadPane({
       event.preventDefault();
       requestDiscard();
     };
+    if (floating) return;
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mode, confirmDiscard, requestDiscard, discardComposer]);
+  }, [mode, confirmDiscard, requestDiscard, discardComposer, floating]);
 
   /**
    * Is there a pop-out for this thread? Ask the shell, every time.
@@ -2250,9 +2674,37 @@ export function ThreadPane({
     return true;
   }, [popoutOpen, account, threadId]);
 
+  /**
+   * Have I already written in this conversation?
+   *
+   * Which is the whole of the question the signature setting asks: it goes on
+   * the message that introduces you, and not on the ones after it. A part of
+   * a chat carried under an older subject is the same conversation, so it
+   * counts too.
+   */
+  const alreadyWroteHere = React.useMemo(
+    () =>
+      [
+        ...olderParts.flatMap((p) => p.messages),
+        ...(thread?.messages ?? []),
+      ].some((m) => m.own),
+    [olderParts, thread]
+  );
+
+  /** Whether the reply about to be opened carries the signature. */
+  const signsReply = React.useCallback(
+    () => signsThisReply(sigSettings?.onReplies ?? "first", alreadyWroteHere),
+    [sigSettings, alreadyWroteHere]
+  );
+
   // Clicking the already-active toolbar icon closes the composer again.
   const startReply = (all: boolean) => {
     if (answerInPopout()) return;
+    // The floating card is where this thread is answered — bring it home.
+    if (replyFloating) {
+      onUnfloatReply?.();
+      return;
+    }
     const next = all ? "replyAll" : "reply";
     if (mode === next) {
       closeComposer();
@@ -2271,7 +2723,7 @@ export function ThreadPane({
       )
     );
     setEditRecipients(false);
-    setIncludeSignature(sigSettings?.includeOnReplies ?? false);
+    setIncludeSignature(signsReply());
     setUpdateCrmNotes(false);
     focusReply();
   };
@@ -2289,8 +2741,26 @@ export function ThreadPane({
    * Shared by the toolbar button and the shortcut, so the two cannot come to
    * mean different things.
    */
+  /**
+   * Held in a ref: bringing the window back is defined further down, and
+   * the key that opens the window is bound up here.
+   */
+  const bringBackRef = React.useRef<(() => void) | null>(null);
+
   const popOutThread = React.useCallback(() => {
     if (!thread) return;
+    /*
+      The same key both ways.
+
+      A key that shows a window should put it away again — otherwise it is
+      one key to remember and another to guess at. Closing goes through the
+      hand-back, so whatever was written over there comes home rather than
+      being shut in a window that has gone.
+    */
+    if (popoutOpen) {
+      bringBackRef.current?.();
+      return;
+    }
     const counterpart = thread.messages.find((m) => !m.own && m.fromEmail);
     const email = counterpart?.fromEmail ?? thread.reply.to[0] ?? "";
     // What is being written travels with the conversation, formatting and
@@ -2303,8 +2773,7 @@ export function ThreadPane({
     const answering = mode === "reply" || mode === "replyAll";
     // Whether anything has been written is still a question about words:
     // an empty editor is not an empty string, it is an empty paragraph.
-    const carried =
-      answering && htmlToPlainText(reply).trim() ? reply : "";
+    const carried = answering && replyText.trim() ? reply : "";
     // Where in it the writing had got to. Read before the composer closes,
     // because a box that has gone has no caret to ask about.
     const carriedCaret = carried ? replyEditorHandle.current?.getCaret() : null;
@@ -2342,6 +2811,8 @@ export function ThreadPane({
     composerHasWords,
     closeComposer,
     refreshPopoutOpen,
+    // Which way the key goes this time.
+    popoutOpen,
   ]);
 
   const printThread = React.useCallback(() => {
@@ -2377,6 +2848,10 @@ export function ThreadPane({
       // The pop-out answers this thread while it is open, and it has its own
       // reply-to-one-message on every bubble.
       if (answerInPopout()) return;
+      if (replyFloating) {
+        onUnfloatReply?.();
+        return;
+      }
       setQuoteMessageId(messageId);
       draftDiscardedRef.current = false;
       if (!mode) {
@@ -2393,13 +2868,13 @@ export function ThreadPane({
         setToList(recipientsFromEmails(to));
         setCcList(recipientsFromEmails(thread?.reply.cc ?? []));
         setEditRecipients(false);
-        setIncludeSignature(sigSettings?.includeOnReplies ?? false);
+        setIncludeSignature(signsReply());
         setUpdateCrmNotes(false);
         setMode("reply");
       }
       focusReply();
     },
-    [mode, olderParts, thread, sigSettings, answerInPopout]
+    [mode, olderParts, thread, sigSettings, signsReply, answerInPopout]
   );
 
   const forwardMessage = React.useCallback((messageId: string) => {
@@ -2428,8 +2903,17 @@ export function ThreadPane({
     setShowPreview(false);
     setReply("");
     setEditorKey((k) => k + 1);
-    setIncludeSignature(sigSettings?.includeOnReplies ?? false);
+    setIncludeSignature(signsReply());
     setUpdateCrmNotes(false);
+    setSubjectDraft(forwardSubject);
+    setSubjectOpen(false);
+    // The files on the message go with it, which is what a forward is
+    // usually for. The box under the composer takes them off again.
+    preForwardAttachIdsRef.current = new Set(
+      attachItemsRef.current.map((i) => i.id)
+    );
+    setForwardFiles(true);
+    void setForwardIncludeFiles(true);
     // Forwards start without recipients, so open the chip editor right away.
     setEditRecipients(true);
     requestAnimationFrame(() => recipientInputRef.current?.focus());
@@ -2441,6 +2925,9 @@ export function ThreadPane({
    * They live here rather than in MailPage because this is where the actions
    * are. A key press is ignored while the focus is in a field, so Cmd+R still
    * reloads the page everywhere else, and typing a reply is never intercepted.
+   *
+   * Expand-list lives on MailPage. Send, focus-message, and float-message
+   * live on the composer.
    */
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2458,6 +2945,14 @@ export function ThreadPane({
        * of its own, which is a thing to want most while answering it — and
        * the composer here keeps what was written, so nothing is left behind.
        */
+      if (
+        action === "expandList" ||
+        action === "focusMessage" ||
+        action === "send" ||
+        action === "floatMessage"
+      ) {
+        return;
+      }
       if (typing && action !== "popOut") return;
       event.preventDefault();
       /**
@@ -2494,7 +2989,19 @@ export function ThreadPane({
         case "delete":
           // Nothing to delete when it is already deleted, and the key must
           // not quietly mean something else in this one view.
-          if (!inTrash) onTrash({ account, threadId });
+          if (inTrash) break;
+          /*
+            In the Drafts view the key means the draft. It meant the
+            conversation: deleting a draft sent its whole thread to the
+            provider's Trash, and the toast named the thread's own
+            subject — which, over a draft that had been given a new one,
+            read as somebody else's mail going.
+          */
+          if (fromDrafts) {
+            if (mode) requestDiscard();
+            break;
+          }
+          onTrash({ account, threadId });
           break;
         case "toggleUnread":
           onToggleUnread();
@@ -2508,8 +3015,12 @@ export function ThreadPane({
         case "togglePin":
           onTogglePin?.();
           break;
+        case "focusThread":
+          onToggleFocus?.();
+          break;
       }
     };
+    if (floating) return;
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // No dependency list on purpose: the handler closes over composer state
@@ -2518,16 +3029,6 @@ export function ThreadPane({
   });
 
   /** The message being forwarded or quoted: the newest one in the thread. */
-  /**
-   * The message a reply or a forward quotes.
-   *
-   * The newest one, unless the reader picked one from its hover actions. A
-   * reply to something said three messages back should quote that, not
-   * whatever happens to be last.
-   */
-  const [quoteMessageId, setQuoteMessageId] = React.useState<string | null>(
-    null
-  );
   const forwardSource =
     (quoteMessageId
       ? [...olderParts.flatMap((p) => p.messages), ...(thread?.messages ?? [])]
@@ -2571,11 +3072,33 @@ export function ThreadPane({
     });
     return { metaById, newDayIds };
   }, [olderParts, thread?.messages, account]);
+  /**
+   * What a reply is called when nobody has said otherwise.
+   *
+   * The thread's subject, with the Re: a reply carries — the same string
+   * the send used to build inline in three places.
+   */
+  const replySubject = thread
+    ? thread.subject.startsWith("Re:")
+      ? thread.subject
+      : `Re: ${thread.subject}`
+    : "";
   const forwardSubject = thread
     ? /^fwd?:/i.test(thread.subject)
       ? thread.subject
       : `Fwd: ${thread.subject}`
     : "";
+
+  /**
+   * The subject this composer sends.
+   *
+   * The writer's, when they set one; otherwise what the thread implies.
+   * The send, the Outlook hand-over and the preview all read this, so a
+   * changed subject cannot reach one of them and not the others — which is
+   * how the hand-over used to go out saying "Re:" over a forward.
+   */
+  const outgoingSubject =
+    subjectDraft.trim() || (forwarding ? forwardSubject : replySubject);
 
   // Replies quote the newest message Gmail-style; built once so the preview
   // shows exactly what goes out.
@@ -2641,25 +3164,18 @@ export function ThreadPane({
    * back to its full text rather than vanishing.
    */
   const historyEntryOf = React.useCallback((m: MailMessage) => {
-    const full = decodeHtmlEntities(formatEmailBody(m.bodyText)).trim();
-    const ownWords = stripQuotedReplies(full).trim();
     let html: string | undefined;
     if (m.bodyHtml) {
       const safe = sanitizeEmailHtml(m.bodyHtml);
       const split = stripQuotedHtml(safe);
-      html = split.hadQuote && split.html.trim() ? split.html : safe;
+      // The same put-back as a copied message needs. This tail is quoted
+      // into a mail that goes out, where a span carrying an address is a
+      // dead link at the other end — nobody there has our click bridge.
+      html = restoreAnchorsForEditing(
+        split.hadQuote && split.html.trim() ? split.html : safe
+      );
     }
-    return {
-      fromName:
-        m.fromName === "You" ||
-        m.fromName.toLowerCase() === m.fromEmail.toLowerCase()
-          ? ""
-          : m.fromName,
-      fromEmail: m.fromEmail,
-      date: messageStamp(m.sentAt),
-      text: ownWords || full,
-      html,
-    };
+    return replyHistoryEntry(m, html);
   }, []);
 
   /**
@@ -2696,6 +3212,91 @@ export function ThreadPane({
    * what the writer added themselves; matching name as well as newness so
    * a file of their own added since ticking is not swept up with ours.
    */
+  /**
+   * The files on some messages, as real files in the attachment strip.
+   *
+   * Through the mail transport, not the window's fetch: in the desktop app
+   * nothing answers /api/mail/attachment over HTTP. Returns the ids added,
+   * so taking them off again is exact rather than by filename.
+   */
+  const attachFilesFromMessages = React.useCallback(
+    async (messages: MailMessage[]): Promise<{ failed: number }> => {
+      const refs = messages.flatMap((m) =>
+        (m.attachments ?? []).map((attachment) => ({
+          messageId: m.id,
+          attachment,
+        }))
+      );
+      const files: File[] = [];
+      let failed = 0;
+      for (const ref of refs) {
+        try {
+          const res = await mailApiFetch(
+            attachmentUrl({
+              account,
+              messageId: ref.messageId,
+              attachment: ref.attachment,
+            })
+          );
+          if (!res.ok) throw new Error(String(res.status));
+          const blob = await res.blob();
+          files.push(
+            new File([blob], ref.attachment.filename, {
+              type: ref.attachment.mimeType || blob.type,
+            })
+          );
+        } catch {
+          failed += 1;
+        }
+      }
+      if (files.length) addAttachFiles(files);
+      return { failed };
+    },
+    [account, addAttachFiles]
+  );
+
+  /**
+   * Put the forwarded message's files in the strip, or take them out.
+   *
+   * The ids are remembered on the way in, so taking them out removes what
+   * this added and never a file the writer attached themselves.
+   */
+  const setForwardIncludeFiles = React.useCallback(
+    async (on: boolean) => {
+      const names = new Set(
+        (forwardSource?.attachments ?? []).map((a) => a.filename)
+      );
+      /** The chips this put in: not there before, and named by the source. */
+      const ours = () =>
+        attachItemsRef.current.filter(
+          (item) =>
+            !preForwardAttachIdsRef.current.has(item.id) &&
+            names.has(item.filename)
+        );
+      if (!on) {
+        for (const item of ours()) removeAttach(item.id);
+        setForwardFiles(false);
+        return;
+      }
+      setForwardFiles(true);
+      if (!forwardSource?.attachments?.length) return;
+      // Already in. Ticking a box that is on must not fetch them twice.
+      if (ours().length) return;
+      setForwardFilesBusy(true);
+      try {
+        const { failed } = await attachFilesFromMessages([forwardSource]);
+        if (failed) {
+          toast.warning(
+            `${failed} file${failed === 1 ? "" : "s"} could not be fetched`
+          );
+        }
+      } finally {
+        setForwardFilesBusy(false);
+      }
+    },
+    [forwardSource, attachFilesFromMessages, removeAttach]
+  );
+
   const setForwardWholeConversation = React.useCallback(
     async (on: boolean) => {
       if (!on) {
@@ -2815,6 +3416,24 @@ export function ThreadPane({
     });
   }, [forwardWhole, forwardConversation, thread, historyEntryOf]);
 
+  /**
+   * Who the empty box says the reply goes to: everyone in To and Cc, named
+   * from the thread where a name is known. A reply-all names them all; a
+   * reply names one. With nobody in the fields yet, the first person on the
+   * thread who is not you, as before.
+   */
+  const replyBoxPlaceholder = React.useMemo(() => {
+    const names = replyPlaceholderNames({
+      toList,
+      ccList,
+      messages: thread?.messages ?? [],
+      account,
+    });
+    const fallback =
+      thread?.participants.filter((p) => p !== "You")[0] ?? "the thread";
+    return replyPlaceholder(names, fallback);
+  }, [thread, toList, ccList, account]);
+
   /** First name of the first recipient, for the preview header. */
   const recipientName = React.useMemo(() => {
     const first = toList[0];
@@ -2862,7 +3481,7 @@ export function ThreadPane({
           to: flatTo.emails,
           cc: flatCc.emails.length ? flatCc.emails : undefined,
           bcc: bcc.length ? bcc : undefined,
-          subject: forwardSubject,
+          subject: outgoingSubject,
           body: replyText,
           html: replyText.trim() ? bodyToEmailHtml(reply) : undefined,
           includeSignature,
@@ -2970,10 +3589,10 @@ export function ThreadPane({
           body: JSON.stringify(entry.request),
         });
         if (entry.request.updateCrmNotes && json.crmNotes) {
-          toastCrmNotesResult(json.crmNotes, { onApplied: onCrmChanged });
+          toastCrmNotesResult(json.crmNotes, { onApplied: crmChanged });
         }
         if (entry.request.updateCrmNotes && json.crmProposal) {
-          setCrmProposal({ loading: false, result: json.crmProposal });
+          showCrmProposal({ account, threadId }, json.crmProposal, readableAttachments);
         }
         if (
           json.rotated &&
@@ -3043,7 +3662,8 @@ export function ThreadPane({
       threadId,
       onChatPromoted,
       onChatThreadChanged,
-      onCrmChanged,
+      crmChanged,
+      readableAttachments,
       markOutboxConfirmed,
       onSent,
     ]
@@ -3052,7 +3672,281 @@ export function ThreadPane({
      of the dispatch rather than the one closed over when it was shown. */
   dispatchOutboxSendRef.current = dispatchOutboxSend;
 
-  const send = React.useCallback(async (sendAt?: string) => {
+  /**
+   * Finish this one in Outlook.
+   *
+   * Not a file handed to Outlook: it previews such a file read-only, which
+   * is a message to look at rather than one to write. The draft is made in
+   * the mailbox instead, where Outlook is already looking — it appears in
+   * Drafts, formatted, editable, in the conversation it answers.
+   *
+   * Nothing here is sent and nothing is thrown away: the reply stays in this
+   * composer, so the reader who changes their mind has lost nothing.
+   */
+  const [handingOver, setHandingOver] = React.useState(false);
+  /**
+   * The copy this app is keeping, once the message has gone to Outlook.
+   *
+   * A handover is not a send: the message is in Outlook, or on the
+   * pasteboard, and whether it ever leaves is decided over there. So the
+   * draft stays here — and then stays, and stays, because nothing in this
+   * app will ever see it sent. That is how a Drafts list fills with mail
+   * that went out weeks ago.
+   *
+   * The reader is the only one who knows, and they know it now, with the
+   * message in front of them in Outlook. So the toast asks. One press, and
+   * the composer closes the way discarding closes it.
+   */
+  const handoverDiscard = React.useCallback(
+    () => ({
+      action: {
+        label: mailSay("discardTheCopyHere"),
+        onClick: () => closeComposerRef.current?.(),
+      },
+      duration: 12_000,
+    }),
+    []
+  );
+
+  const openInOutlook = React.useCallback(async () => {
+    const attachments = attachmentPayload();
+    const flatTo = flattenRecipientsForSend(toList);
+    const flatCc = flattenRecipientsForSend(ccList);
+    if (!thread || !flatTo.emails.length || handingOver) return;
+    if (!attachmentsReady) {
+      toast.error(mailSay("stillPreparingAttachments"));
+      return;
+    }
+    const chatNoQuote = Boolean(thread.chat && thread.chat.noQuote !== false);
+/**
+     * A forward hands over as a forward.
+     *
+     * This built a reply whatever the composer was doing: the subject went
+     * over as "Re:" and the message being forwarded was left behind
+     * entirely, so what opened in Outlook was an empty reply to the wrong
+     * subject. The forward carries its own subject — the writer's, if they
+     * changed it — and the message underneath.
+     */
+    const forwardHandover = forwarding && forwardSource
+      ? {
+          fromName: forwardSource.fromName,
+          fromEmail: forwardSource.fromEmail,
+          date: messageStamp(forwardSource.sentAt),
+          subject: thread.subject,
+          to: forwardSource.toEmails,
+          text: decodeHtmlEntities(
+            formatEmailBody(forwardSource.bodyText)
+          ).trim(),
+          html: forwardSource.bodyHtml
+            ? sanitizeEmailHtml(forwardSource.bodyHtml)
+            : undefined,
+        }
+      : undefined;
+    const handoverSubject = outgoingSubject;
+        const pickedQuote = quoteMessageId ? quotePayload : undefined;
+    const noQuote = chatNoQuote || Boolean(pickedQuote);
+    const composed = quotedReplyMessage(
+      replyText,
+      pickedQuote,
+      replyText.trim() ? bodyToEmailHtml(reply) : undefined
+    );
+    setHandingOver(true);
+    try {
+      /*
+        No mailbox of ours: a new Outlook message, and the body pasted in.
+
+        The mailbox the reader wants is often one this app can never hold a
+        token for — a university that will not approve a third-party client
+        cannot be handed a draft over Graph either. Outlook opens on the
+        recipients and the subject, and the message waits on the pasteboard
+        with its formatting intact.
+      */
+      if (!outlookTarget) {
+        const html = replyText.trim() || pickedQuote ? composed.html : "";
+        // Outlook adds its own signature to what it opens; ours stays here.
+        const carrying = withoutTrailingSignature(
+          { html: html || composed.text, text: composed.text },
+          htmlToPlainText(sigSettings?.signature ?? "")
+        );
+        // Plain and short: the message rides in the URL and the reader has
+        // nothing left to do. Otherwise the pasteboard, which keeps the
+        // formatting a mailto: cannot.
+        const carried = bodyTravels(carrying.html, carrying.text);
+        if (!carried) {
+          await copyMessageToClipboard(carrying);
+        }
+        await openOutlookCompose(
+          outlookComposeUrl({
+            to: flatTo.emails,
+            // A copy back to the mailbox it was written from, so what goes
+            // out from Outlook lands in this app's mail too.
+            cc: ccBackToSelf({
+              from: fromAccount,
+              to: flatTo.emails,
+              cc: flatCc.emails,
+            }),
+            subject: handoverSubject,
+            body: carried ? carrying.text : undefined,
+          })
+        );
+        /*
+          The files, which a mailto: cannot carry.
+
+          They were dropped without a word before this: the message opened
+          in Outlook and the attachments simply were not on it. Now they go
+          to the downloads folder with the file manager pointed at them, and
+          the toast says where they are — or says they did not travel, when
+          there is nowhere to put them.
+        */
+        // What did happen here, recorded: the words went to Outlook. See
+        // markDraftHandedOver, and the list, which says so rather than
+        // showing the copy as an unfinished letter.
+        void markDraftHandedOver(threadDraftKey(account, threadId), fromAccount);
+        const savedFiles = await saveAttachmentsForHandover(attachments);
+        toast.success(
+          carried ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
+          {
+            ...(attachments.length
+              ? {
+                  description: savedFiles
+                    ? mailSay("outlookFilesInDownloads", {
+                        count: `${savedFiles} file${savedFiles === 1 ? "" : "s"}`,
+                      })
+                    : mailSay("outlookFilesLeftBehind", {
+                        count: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
+                      }),
+                  duration: 12_000,
+                }
+              : null),
+            ...handoverDiscard(),
+          }
+        );
+        return;
+      }
+      await apiJson("/api/mail/outlook-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account: outlookTarget,
+          to: flatTo.emails,
+          cc: flatCc.emails.length ? flatCc.emails : undefined,
+          bcc: [...flatTo.bccEmails, ...flatCc.bccEmails].length
+            ? [...flatTo.bccEmails, ...flatCc.bccEmails]
+            : undefined,
+          subject: handoverSubject,
+          body: composed.text,
+          html:
+            replyText.trim() || pickedQuote ? composed.html : undefined,
+          // The signature belongs to the mailbox the draft is made in, and
+          // the reader picks it up there — asking for this one's would put
+          // a Digital Habits sign-off on a university address.
+          includeSignature: outlookElsewhere ? false : includeSignature,
+          /*
+            Threaded only where the conversation exists.
+
+            Graph finds the message to reply to by this id, in this mailbox.
+            A thread that arrived somewhere else — forwarded in from the
+            university, most of the time — has no such id here, so the draft
+            is a new message: right recipients, right subject, no place in
+            the conversation on this side. Nothing is lost that this end
+            ever had.
+          */
+          threadId:
+            !outlookElsewhere && fromAccount === account && !forwarding
+              ? threadId
+              : undefined,
+          // The message being forwarded, under whatever was typed above it.
+          forward: forwardHandover,
+          appendix:
+            noQuote || !historyAppendix
+              ? undefined
+              : { text: historyAppendix.text, html: historyAppendix.html },
+          attachments: attachments.length ? attachments : undefined,
+        }),
+      });
+      // The draft is in the mailbox whether or not Outlook can be raised, so
+      // a Mac without it still gets the good news and where to look.
+      /*
+        The draft is made either way, so a window that will not come
+        forward is worth saying out loud rather than logging: the reader is
+        looking at this toast, not at a console, and "it did nothing" is
+        what a silent failure looks like from there.
+      */
+      const invoke = tauriInvoke();
+      const refused = invoke
+        ? await invoke("activate_outlook").then(
+            () => "",
+            (err: unknown) => {
+              console.warn("[mail] couldn't bring Outlook forward:", err);
+              // What Rust said, which is what `open` said. A reason on the
+              // screen is the difference between a bug report and a shrug.
+              return err instanceof Error
+                ? err.message
+                : String(err) || mailSay("outlookDidNotOpen");
+            }
+          )
+        : mailSay("outlookDidNotOpen");
+      const landed = outlookElsewhere
+        ? mailSay("draftIsInOutlookFrom", { account: outlookTarget })
+        : mailSay("draftIsInOutlook");
+      void markDraftHandedOver(threadDraftKey(account, threadId), fromAccount);
+      toast.success(landed, {
+        ...(refused ? { description: refused } : null),
+        ...handoverDiscard(),
+      });
+    } catch (err) {
+      const fallback = outlookTarget
+        ? mailSay("couldNotDraftInOutlook")
+        : mailSay("couldNotOpenOutlook");
+      /*
+        Tauri refuses with a string, not an Error.
+
+        Reading `.message` off it and falling back to a sentence of our own
+        threw away the only line that said what was wrong — "command not
+        found", when the window is older than the command it is calling.
+      */
+      const said =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "";
+      toast.error(said.trim() || fallback);
+    } finally {
+      setHandingOver(false);
+    }
+  }, [
+    account,
+    attachmentPayload,
+    attachmentsReady,
+    ccList,
+    fromAccount,
+    outlookTarget,
+    outlookElsewhere,
+    handingOver,
+    historyAppendix,
+    includeSignature,
+    quoteMessageId,
+    quotePayload,
+    reply,
+    replyText,
+    thread,
+    threadId,
+    toList,
+    // A forward hands over as a forward — without these the callback keeps
+    // the first render's answer and sends a reply's subject either way.
+    forwarding,
+    forwardSource,
+    forwardSubject,
+    outgoingSubject,
+  ]);
+
+  const send = React.useCallback(async (
+    sendAt?: string,
+    extras?: { proposeCrm?: boolean },
+    /* Set by the reminder's own Send, so the question is asked once. */
+    pastAttachmentCheck?: boolean
+  ) => {
     const attachments = attachmentPayload();
     const flatTo = flattenRecipientsForSend(toList);
     const flatCc = flattenRecipientsForSend(ccList);
@@ -3068,6 +3962,25 @@ export function ThreadPane({
     }
     if (!attachmentsReady) {
       toast.error(mailSay("stillPreparingAttachments"));
+      return;
+    }
+    /*
+      Somebody who wrote "attached" and attached nothing.
+
+      Asked before the message goes, because afterwards the only remedy is
+      a second message saying sorry. Only when the words promise a file and
+      there is none: a prompt that cries wolf is one people learn to click
+      through, and then it is worth nothing on the day it is right.
+    */
+    if (
+      !pastAttachmentCheck &&
+      !attachments.length &&
+      promisesAnAttachment({
+        subject: subjectDraft.trim() || thread.subject,
+        bodyText: replyText,
+      })
+    ) {
+      setForgottenAttachment({ sendAt, extras });
       return;
     }
     // Sending from another account: its Gmail doesn't know this threadId, so
@@ -3121,9 +4034,7 @@ export function ThreadPane({
         to: flatTo.emails,
         cc: flatCc.emails.length ? flatCc.emails : undefined,
         bcc: bcc.length ? bcc : undefined,
-        subject: thread.subject.startsWith("Re:")
-          ? thread.subject
-          : `Re: ${thread.subject}`,
+        subject: outgoingSubject,
         body: composed.text,
         html: replyHtml,
         // Whatever was asked for. Not quoting the history used to turn the
@@ -3148,7 +4059,8 @@ export function ThreadPane({
           olderParts.reduce((n, p) => n + p.messages.length, 0) +
           thread.messages.length,
         updateCrmNotes:
-          updateCrmNotes && (mode === "reply" || mode === "replyAll")
+          (extras?.proposeCrm || updateCrmNotes) &&
+          (mode === "reply" || mode === "replyAll")
             ? true
             : undefined,
         attachments: attachments.length ? attachments : undefined,
@@ -3272,6 +4184,9 @@ export function ThreadPane({
     updateCrmNotes,
     dispatchOutboxSend,
     loadScheduled,
+    // The subject the writer set. Without it the callback keeps the first
+    // render's answer and sends the thread's own name over a changed one.
+    outgoingSubject,
   ]);
 
   const retryOutboxSend = React.useCallback(
@@ -3353,6 +4268,7 @@ export function ThreadPane({
       setEditRecipients(raw.editRecipients);
       setIncludeSignature(raw.includeSignature);
       setFromAccount(raw.fromAccount);
+      setQuoteMessageId(raw.quoteMessageId ?? null);
       setEditorKey((k) => k + 1);
       focusReply(raw.caret ?? null);
     });
@@ -3398,6 +4314,7 @@ export function ThreadPane({
       handingBackRef.current = false;
     }
   }, [account, threadId, refreshPopoutOpen, adoptStoredDraft]);
+  bringBackRef.current = () => void bringBackPopout();
 
   /** Take it back into the composer: it stops being held, and it is a draft. */
   const editScheduled = React.useCallback(
@@ -3446,9 +4363,7 @@ export function ThreadPane({
         request: {
           account,
           to: thread.reply.to,
-          subject: thread.subject.startsWith("Re:")
-            ? thread.subject
-            : `Re: ${thread.subject}`,
+          subject: replySubject,
           body: reaction.text,
           html: emojiHtml,
           includeSignature: false,
@@ -3504,8 +4419,19 @@ export function ThreadPane({
         void sendQuickReply(emoji, quoteFromMessage(m)),
       onReplyTo: () => replyQuoting(m.id),
       onForward: () => forwardMessage(m.id),
+      onEditAsNew: onEditAsNew
+        ? () => onEditAsNew(m, thread?.subject ?? "")
+        : undefined,
+      onShowOriginal: () => setOriginalOf(m.id),
     }),
-    [sendQuickReply, quoteFromMessage, replyQuoting, forwardMessage]
+    [
+      sendQuickReply,
+      quoteFromMessage,
+      replyQuoting,
+      forwardMessage,
+      onEditAsNew,
+      thread?.subject,
+    ]
   );
 
   /**
@@ -3606,7 +4532,10 @@ export function ThreadPane({
     const measure = () =>
       setThreadOverflows(el.scrollHeight > el.clientHeight + 24);
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => {
+      if (afterMailPaneSlide(measure)) return;
+      measure();
+    });
     observer.observe(el);
     const content = el.firstElementChild;
     if (content) observer.observe(content);
@@ -3805,7 +4734,6 @@ export function ThreadPane({
   ]);
 
 
-
   // Above the early returns below: hooks must run in the same order every
   // render. The key re-runs the search when messages arrive or expand, since
   // each one brings its own frame of text with it.
@@ -3820,26 +4748,98 @@ export function ThreadPane({
   });
 
   /**
-   * Send from inside the reply being written.
+   * Send, focus-message, and float-message from inside the reply being written.
    *
    * The thread handler above stands down whenever the focus is in a field, so
-   * a reply can contain the letter R. This one has to work from exactly
-   * there, so it listens separately. Both send paths guard their own
-   * preconditions, so a press with nothing to send does nothing.
+   * a reply can contain the letter R. These have to work from exactly there,
+   * so they listen separately. Send guards its own preconditions, so a press
+   * with nothing to send does nothing.
    */
   const sendShortcutRef = React.useRef<() => void>(() => {});
   sendShortcutRef.current = () => {
     void (forwarding ? sendForward() : send());
   };
+  const focusMessageShortcutRef = React.useRef<() => void>(() => {});
+  focusMessageShortcutRef.current = () => {
+    if (!mode) return;
+    setReplyFocus((v) => !v);
+  };
+  const floatMessageShortcutRef = React.useRef<() => void>(() => {});
+  floatMessageShortcutRef.current = () => {
+    if (floating) {
+      onUnfloatReply?.();
+      return;
+    }
+    if (!mode) return;
+    floatReply();
+  };
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!shortcutMatchesEvent(event, shortcuts.send)) return;
+      const send = shortcutMatchesEvent(event, shortcuts.send);
+      const focusMessage = shortcutMatchesEvent(event, shortcuts.focusMessage);
+      const floatMessage = shortcutMatchesEvent(event, shortcuts.floatMessage);
+      if (!send && !focusMessage && !floatMessage) return;
+      /*
+        The send key belongs to the box the caret is in — see sendsFromHere,
+        which is the whole rule.
+
+        This asked for the opposite of it. `Boolean(floating) !== inThisPane`
+        let the thread's own composer send only while the caret was somewhere
+        else, and the caret is in the reply box every time somebody writes a
+        reply and presses the key. So Cmd+Enter did nothing, in the one place
+        it is for.
+      */
+      const active = document.activeElement;
+      if (
+        !sendsFromHere({
+          caretHere: Boolean(pinchRef.current?.contains(active)),
+          caretNowhere: !active || active === document.body,
+          floating: Boolean(floating),
+        })
+      ) {
+        return;
+      }
       event.preventDefault();
+      if (focusMessage) {
+        if (event.repeat) return;
+        focusMessageShortcutRef.current();
+        return;
+      }
+      if (floatMessage) {
+        if (event.repeat) return;
+        floatMessageShortcutRef.current();
+        return;
+      }
       sendShortcutRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shortcuts]);
+  }, [shortcuts, floating]);
+
+  /**
+   * The draft in flight, and the way to call it off.
+   *
+   * A model writing a reply takes tens of seconds, and a reader who pressed
+   * the button by mistake — or read the thread again and changed their mind
+   * — had nothing to press: the button that started it went grey and the
+   * strip only spun. So the run is held, and stopping it puts the composer
+   * back the way it was.
+   *
+   * Stopping is not failing. The reader asked for this one, so no error is
+   * raised for it and nothing is said in red.
+   */
+  const aiReplyRun = React.useRef<AbortController | null>(null);
+
+  const stopAiReply = React.useCallback(() => {
+    aiReplyRun.current?.abort();
+    aiReplyRun.current = null;
+    // Said here rather than waited for: a transport that does not carry the
+    // signal answers in its own time, and the reader who pressed Stop is
+    // owed the box back now.
+    setDraftingReply(false);
+    setAiReplyWorking(null);
+    setAiReplyNotes(null);
+  }, []);
 
   if (error) {
     return <p className="px-8 py-8 text-sm text-red-600">{error}</p>;
@@ -3939,71 +4939,151 @@ export function ThreadPane({
    * the addresses in its text and, failing those, the AI's guess decide
    * which records it is about — so a forward from yourself works too.
    */
-  const updateCrmFromThread = async (
-    hint?: string,
-    options: { includeAttachments?: boolean } = {}
-  ) => {
-    if (updatingCrm) return;
-    const includeAttachments = Boolean(options.includeAttachments) && readableAttachments.length > 0;
-    lastProposeRef.current = { hint, includeAttachments };
-    setUpdatingCrm(true);
-    setCrmProposal({ loading: true, result: null });
+  /*
+    The thread, read for the reader's own diary.
+
+    Nothing to do with the CRM: no record is touched and no invitation is
+    sent. The entries come back and the dialog is where they are approved,
+    which is the same bargain the CRM proposal makes — the AI says what it
+    found, the reader says which of it is true.
+  */
+  const proposeDiaryFromThread = async (hint?: string) => {
+    if (diaryBusy) return;
+    setDiaryBusy(true);
+    const reading = toast.loading(t("diaryReading"));
     try {
-      // Opt-in: the reader chose to give the AI the thread's PDFs. The text
-      // comes out in this webview; only the text goes to the planner.
-      let attachments: { filename: string; text: string }[] | undefined;
-      if (includeAttachments) {
-        attachments = [];
-        const picked = readableAttachments.slice(0, 3);
-        for (const [i, a] of picked.entries()) {
-          setCrmProposal({
-            loading: true,
-            result: null,
-            stage: `Reading ${a.filename} (${i + 1} of ${picked.length})…`,
-          });
-          try {
-            const text = await readAttachmentText(
-              attachmentUrl({
-                account,
-                messageId: a.messageId,
-                attachment: { attachmentId: a.attachmentId, filename: a.filename, mimeType: a.mimeType, size: 0 },
-              }),
-              a.mimeType
-            );
-            if (text?.trim()) attachments.push({ filename: a.filename, text });
-          } catch (err) {
-            toast.error(`Couldn't read ${a.filename}: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-        setCrmProposal({ loading: true, result: null });
-      }
-      // Two calls: the match is a second, the model is longer. The dialog
-      // says what the thread is about as soon as the first answers.
-      const matched = await apiJson<CrmProposeResult>("/api/mail/crm-propose", {
+      const res = await mailApiFetch("/api/mail/diary-propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account, threadId, phase: "match" }),
+        body: JSON.stringify({ account, threadId: thread.threadId, hint }),
       });
-      setCrmProposal({ loading: true, result: matched });
-      const result = await apiJson<CrmProposeResult>("/api/mail/crm-propose", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account, threadId, hint, attachments }),
-      });
-      setCrmProposal({ loading: false, result });
+      const json = (await res.json()) as DiaryProposal & { error?: string };
+      if (!res.ok) throw new Error(json.error || t("couldNotReadDiary"));
+      toast.dismiss(reading);
+      setDiaryProposal({ entries: json.entries ?? [], target: json.target ?? null });
     } catch (err) {
-      setCrmProposal({
-        loading: false,
-        result: {
-          candidates: [],
-          proposals: [],
-          statusOptions: {},
-          dropped: [],
-          error: err instanceof Error ? err.message : "Couldn't ask the AI",
-        },
+      toast.error(err instanceof Error ? err.message : t("couldNotReadDiary"), {
+        id: reading,
       });
     } finally {
-      setUpdatingCrm(false);
+      setDiaryBusy(false);
+    }
+  };
+
+  const updateCrmFromThread = (hint?: string) => {
+    if (updatingCrm) return;
+    proposeCrmFromThread({
+      account,
+      threadId,
+      hint,
+      attachments: readableAttachments,
+    });
+  };
+
+  /**
+   * Draft this reply with the AI: the planner reads the thread, the CRM
+   * records it matches and past mail with them, and answers a draft. The
+   * draft replaces the box — after asking, if the reader had written
+   * something — and the notes on it (what it drew on, what it did not know)
+   * sit above the composer until dismissed. Nothing is stored or sent.
+   */
+  const draftReplyWithAi = async (hint: string) => {
+    if (draftingReply || !threadId) return;
+    /*
+      What is already in the box is the brief.
+
+      A reader who puts three bullets in and presses the button is saying
+      what the reply has to say — so the notes go with the request and the
+      draft writes them out. They used to be an obstacle: the button asked
+      whether to throw them away, and then threw them away.
+
+      Nothing is lost either way. The notes come back from the strip above
+      the composer, which now holds them.
+    */
+    const notes = replyText.trim();
+    const run = new AbortController();
+    aiReplyRun.current?.abort();
+    aiReplyRun.current = run;
+    setDraftingReply(true);
+    setAiReplyNotes(null);
+    setAiReplyWorking("reading");
+    try {
+      // Two calls, as the CRM proposal does: the match is a second, the
+      // model is the wait. The strip names the records it is drafting from
+      // as soon as the first answers, so the spinner has something to say.
+      // A match that fails costs only the label — the draft still runs.
+      try {
+        const matched = await apiJson<Partial<AiReplyDraftResult>>("/api/mail/reply-draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account, threadId, phase: "match" }),
+          signal: run.signal,
+        });
+        if (run.signal.aborted) return;
+        if (matched.scenario) {
+          setAiReplyNotes({
+            body: "",
+            scenario: matched.scenario,
+            usedRecords: matched.usedRecords ?? [],
+            gaps: [],
+          });
+        }
+      } catch {
+        // Keep the plain "reading" line and go on to the draft.
+      }
+      if (run.signal.aborted) return;
+      setAiReplyWorking("writing");
+      const result = await apiJson<Partial<AiReplyDraftResult>>("/api/mail/reply-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account,
+          threadId,
+          hint: hint || undefined,
+          notes: notes || undefined,
+        }),
+        signal: run.signal,
+      });
+      // Called off while the model was writing: the draft that arrives now
+      // belongs to nobody, and must not land in the box.
+      if (run.signal.aborted) return;
+      // A transport that does not know the path answers something empty
+      // rather than failing; say so instead of crashing on the shape.
+      if (typeof result.body !== "string" || !result.body.trim()) {
+        throw new Error(t("aiReplyEmpty"));
+      }
+      setReply(plainTextToEditorHtml(result.body));
+      // The editor takes its words from defaultValue when it mounts, so a
+      // new draft means a new editor — the same way an imported provider
+      // draft arrives.
+      setEditorKey((k) => k + 1);
+      setAiReplyNotes({
+        body: result.body,
+        ...(result.subject ? { subject: result.subject } : {}),
+        scenario: result.scenario ?? "ongoing",
+        usedRecords: result.usedRecords ?? [],
+        gaps: result.gaps ?? [],
+        // What the reader had written, so the strip can hand it back. A
+        // draft written from notes is still a draft somebody may not want.
+        ...(notes ? { brief: notes } : {}),
+      });
+    } catch (err) {
+      // Stopped, not failed: the reader called it off, and has nothing to
+      // read about a thing they asked to end.
+      if (run.signal.aborted) return;
+      // No half-written strip left over a composer that never got a draft.
+      setAiReplyNotes(null);
+      toast.error(
+        `${t("aiReplyFailed")}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      // Only the run that is still the current one clears the spinner. A
+      // stopped run's own ending must not take down the one after it.
+      if (aiReplyRun.current === run) {
+        aiReplyRun.current = null;
+        setDraftingReply(false);
+        setAiReplyWorking(null);
+      }
     }
   };
 
@@ -4020,19 +5100,110 @@ export function ThreadPane({
   return (
     <div
       ref={setPaneNode}
-      className="mail-thread-surface relative flex min-h-0 flex-1 flex-col bg-[var(--mail-thread)]"
+      style={floating ? cardStyle : undefined}
+      className={cn(
+        "mail-thread-surface relative flex flex-col bg-[var(--mail-thread)]",
+        floating
+          ? // The card. It has a width of its own, so the composer inside
+            // measures a pane that width and lays itself out to it — the
+            // same rules it follows when a pane is this narrow.
+            "mail-floating-reply fixed bottom-4 right-6 z-40 max-h-[calc(100vh-2rem)] w-[34rem] max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
+          : "min-h-0 flex-1"
+      )}
     >
+      {floating ? (
+        /*
+          The card is made larger from the edges that can move. It stands in
+          the bottom right corner, so those are the left edge, the top edge
+          and the corner between them. Thin strips over the border, above
+          the heading: the heading carries the card, and a press on its top
+          few pixels must size it, not move it.
+        */
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("dragToResize")}
+            title={t("dragToResize")}
+            onPointerDown={startCardResize("left")}
+            className="absolute inset-y-0 left-0 z-20 w-1.5 cursor-ew-resize touch-none"
+          />
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t("dragToResize")}
+            title={t("dragToResize")}
+            onPointerDown={startCardResize("top")}
+            className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-ns-resize touch-none"
+          />
+          {/* Large enough to reach past the rounded corner, which cuts the
+              first few pixels of it away. */}
+          <div
+            aria-hidden
+            onPointerDown={startCardResize("top-left")}
+            className="absolute left-0 top-0 z-30 h-5 w-5 cursor-nwse-resize touch-none"
+          />
+        </>
+      ) : null}
+      {floating ? (
+        <div
+          className="flex shrink-0 cursor-grab touch-none select-none items-center gap-2 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-3 py-2 active:cursor-grabbing"
+          onPointerDown={startDrag}
+        >
+          {/*
+            The subject is a name, not a button. It was one, and a press took
+            the reply back to the thread — so a click on the heading, which is
+            also what carries the card, put the card away. The button beside it
+            is the way back.
+          */}
+          <span
+            className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-800"
+            title={thread?.subject || undefined}
+          >
+            {thread?.subject || "…"}
+          </span>
+          <button
+            type="button"
+            title={`${t("backToThread")} (${formatShortcut(shortcuts.floatMessage)})`}
+            aria-label={`${t("backToThread")} (${formatShortcut(shortcuts.floatMessage)})`}
+            className="shrink-0 rounded-md p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+            onClick={onUnfloatReply}
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title={t("close")}
+            aria-label={t("close")}
+            className="shrink-0 rounded-md p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+            onClick={onFloatReply}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
+      {!floating ? (
       <div
         onDoubleClick={(e) => {
           if (isInteractiveDoubleClickTarget(e.target)) return;
-          onToggleFocus();
+          onToggleFocus?.();
         }}
       >
         {/* Cream action strip. Slightly tighter than the New email row.
             Pull left over the w-2 resize gutter so cream meets the list
             border — only this band, not the full-height sidebar chrome. */}
         <div className="mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-1.5">
-          <div className="flex h-10 w-full items-center gap-1 pl-7 pr-5">
+          <div
+            ref={setToolbarRowNode}
+            data-tight={tightToolbar ? "" : undefined}
+            className={cn(
+              "group/toolbar flex h-10 w-full min-w-0 items-center overflow-hidden pl-7 pr-5",
+              tightToolbar ? "gap-0" : "gap-1"
+            )}
+          >
+          {/* min-w-0 and overflow-hidden keep the row as wide as the pane,
+              so a shrink-0 button that would leave it can be measured and
+              moved behind the ellipsis. */}
           <ThreadAction
             label={`${t("actionReply")} (${formatShortcut(
               shortcuts.reply
@@ -4070,32 +5241,35 @@ export function ThreadPane({
             }
             onClick={startForward}
           />
-          <span
-            aria-hidden
-            className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)]"
-          />
-          {/* Read and snooze go behind the ellipsis too once the pane is
-              really narrow — see `tightToolbar`. What is left out here is
-              answering the mail and getting it off the screen. */}
-          {tightToolbar ? null : (
-            <>
-              <ThreadAction
-                label={`${t(
-                  unread ? "markAsRead" : "markAsUnread"
-                )} (${formatShortcut(shortcuts.toggleUnread)})`}
-                icon={MailDotIcon}
-                onClick={onToggleUnread}
-              />
-              <SnoozeMenu
-                onSnooze={onSnooze}
-                onCancelSnooze={onCancelSnooze}
-                currentUntil={snoozedUntil}
-                openSignal={snoozeMenuSignal}
-                title={`${t("actionSnooze")} (${formatShortcut(
-                  shortcuts.snooze
-                )})`}
-              />
-            </>
+          {hidden.has("read") &&
+          hidden.has("snooze") &&
+          (!onTogglePin || hidden.has("pin")) ? null : (
+            <span
+              aria-hidden
+              className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)] group-data-[tight]/toolbar:mx-1"
+            />
+          )}
+          {/* Each of these leaves on its own, when the row runs out of
+              room — not as a group. See `hidden`. */}
+          {hidden.has("read") ? null : (
+            <ThreadAction
+              label={`${t(
+                unread ? "markAsRead" : "markAsUnread"
+              )} (${formatShortcut(shortcuts.toggleUnread)})`}
+              icon={MailDotIcon}
+              onClick={onToggleUnread}
+            />
+          )}
+          {hidden.has("snooze") ? null : (
+            <SnoozeMenu
+              onSnooze={onSnooze}
+              onCancelSnooze={onCancelSnooze}
+              currentUntil={snoozedUntil}
+              openSignal={snoozeMenuSignal}
+              title={`${t("actionSnooze")} (${formatShortcut(
+                shortcuts.snooze
+              )})`}
+            />
           )}
           {/* Beside snooze, because the two are the same question asked
               the other way round: one puts a conversation out of the way
@@ -4103,12 +5277,7 @@ export function ThreadPane({
               A filled teal pin is the only thing here that says it is
               already on — the rest of the strip does something each time
               it is pressed, and this one is a state. */}
-          {/* Pin and Move to folder go under the ellipsis as soon as the
-              pane is tight, along with print and the rest. Both are things
-              done once to a conversation and then not again — unlike read,
-              snooze, archive and delete, which are what a narrow pane is
-              usually being used to do quickly. See `compactToolbar`. */}
-          {onTogglePin && !compactToolbar ? (
+          {onTogglePin && !hidden.has("pin") ? (
             <ThreadAction
               label={`${t(pinned ? "unpin" : "pinToTop")} (${formatShortcut(
                 shortcuts.togglePin
@@ -4126,13 +5295,21 @@ export function ThreadPane({
           ) : null}
           <span
             aria-hidden
-            className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)]"
+            className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)] group-data-[tight]/toolbar:mx-1"
           />
-          {compactToolbar ? null : (
+          {hidden.has("move") ? null : (
             <MoveToFolderMenu
               folders={folders}
               onMoved={onMoveToFolder}
-              onMoveToJunk={onJunk}
+              destinations={{
+                inbox: onMoveToInbox,
+                archived: onArchive,
+                junk: onJunk,
+                trash: inTrash
+                  ? undefined
+                  : () => onTrash({ account, threadId }),
+              }}
+              here={here}
               openSignal={moveMenuSignal}
               title={`${t("moveToFolder")} (${formatShortcut(
                 shortcuts.moveToFolder
@@ -4170,49 +5347,116 @@ export function ThreadPane({
                 shortcuts.delete
               )})`}
               icon={Trash2}
-              onClick={() => onTrash({ account, threadId })}
-            />
-          )}
-          <span
-            aria-hidden
-            className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)]"
-          />
-          {compactToolbar ? null : (
-            <>
-              <ThreadAction
-                label={`${t("actionPrint")} (${formatShortcut(
-                  shortcuts.print
-                )})`}
-                icon={Printer}
-                onClick={printThread}
-              />
-              <ThreadAction
-                label={`${t("popOutChat")} (${formatShortcut(
-                  shortcuts.popOut
-                )})`}
-                icon={PictureInPicture2}
-                onClick={popOutThread}
-              />
-            </>
-          )}
-          {mailUsesCrmPeople() ? (
-            <ThreadAction
-              label={t(updatingCrm ? "askingAi" : "updateCrm")}
-              icon={updatingCrm ? Loader2 : Sparkles}
-              disabled={updatingCrm}
-              className={updatingCrm ? "[&_svg]:animate-spin" : undefined}
-              onClick={() => void updateCrmFromThread()}
-            />
-          ) : null}
-          {showAddToCrm ? (
-            <AddToCrmMenu
-              attachmentCount={readableAttachments.length}
-              onPropose={(hint, includeAttachments) =>
-                void updateCrmFromThread(hint, { includeAttachments })
+              // The same rule as the key: in the Drafts view, the draft.
+              onClick={() =>
+                fromDrafts && mode
+                  ? requestDiscard()
+                  : onTrash({ account, threadId })
               }
             />
+          )}
+          {hidden.has("print") &&
+          hidden.has("popOut") &&
+          (!mailUsesCrmPeople() || hidden.has("crm")) ? null : (
+            <span
+              aria-hidden
+              className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)] group-data-[tight]/toolbar:mx-1"
+            />
+          )}
+          {hidden.has("print") ? null : (
+            <ThreadAction
+              label={`${t("actionPrint")} (${formatShortcut(
+                shortcuts.print
+              )})`}
+              icon={Printer}
+              onClick={printThread}
+            />
+          )}
+          {hidden.has("popOut") ? null : (
+            <ThreadAction
+              label={`${t("popOutChat")} (${formatShortcut(
+                shortcuts.popOut
+              )})`}
+              icon={MessagesSquare}
+              onClick={popOutThread}
+            />
+          )}
+          {mailUsesCrmPeople() && !hidden.has("crm") ? (
+            <CrmProposeMenu
+              busy={updatingCrm || diaryBusy}
+              onPropose={(hint) => void updateCrmFromThread(hint)}
+              onProposeDiary={(hint) => void proposeDiaryFromThread(hint)}
+            />
           ) : null}
-          <div className="ml-auto flex items-center gap-3">
+          {/*
+            Room for the thread, at the end of the actions.
+
+            Not out at the far right where it began, at the end of a row it
+            has nothing to do with: Reply, Forward, Archive and the rest act
+            on the mail, and this one only decides how much of the window
+            the mail gets. Last of the left-hand row instead, so it is the
+            step after everything that acts, and the eye finds it without
+            crossing the pane.
+          */}
+          {onToggleFocus ? (
+          <ThreadAction
+            label={`${t(focusMode ? "showMailList" : "focusMode")} (${formatShortcut(
+              shortcuts.focusThread
+            )})`}
+            icon={focusMode ? Minimize2 : Maximize2}
+            className={cn(
+              /*
+                The size the list's own expand button is.
+
+                It is the same control in two places — one puts the list
+                away, the other brings it back — and the pair read as two
+                different things while one was a step bigger than the other.
+                Held at that size in the tight row too, where the rest step
+                down: matching the other button matters more than matching
+                its neighbours, which is the whole point of it.
+              */
+              "h-8 w-8 [&_svg]:size-4",
+              "group-data-[tight]/toolbar:h-8 group-data-[tight]/toolbar:w-8 group-data-[tight]/toolbar:[&_svg]:size-4"
+            )}
+            onClick={onToggleFocus}
+          />
+          ) : null}
+          <div className="ml-auto flex items-center gap-1.5">
+            {showOverflowMenu ? (
+              <ThreadToolbarOverflow
+                hidden={hidden}
+                zoom={zoom}
+                onZoomAdjust={adjustZoomFromControls}
+                onPrint={hidden.has("print") ? printThread : undefined}
+                onPopOut={hidden.has("popOut") ? popOutThread : undefined}
+                pinned={pinned}
+                onTogglePin={hidden.has("pin") ? onTogglePin : undefined}
+                unread={unread}
+                onToggleUnread={hidden.has("read") ? onToggleUnread : undefined}
+                onSnooze={hidden.has("snooze") ? onSnooze : undefined}
+                onCancelSnooze={onCancelSnooze}
+                snoozedUntil={snoozedUntil}
+                folders={folders}
+                onMoveToFolder={hidden.has("move") ? onMoveToFolder : undefined}
+                onMoveToJunk={onJunk}
+                onMoveToInbox={onMoveToInbox}
+                onArchive={onArchive}
+                onTrash={inTrash ? undefined : () => onTrash({ account, threadId })}
+                here={here}
+                onProposeCrm={
+                  hidden.has("crm")
+                    ? (hint) => void updateCrmFromThread(hint)
+                    : undefined
+                }
+                crmBusy={updatingCrm}
+                printLabel={`${t("actionPrint")} (${formatShortcut(
+                  shortcuts.print
+                )})`}
+                popOutLabel={`${t("popOutChat")} (${formatShortcut(
+                  shortcuts.popOut
+                )})`}
+              />
+            ) : null}
             <ThreadAttachmentsRollup
               account={account}
               items={[
@@ -4240,40 +5484,8 @@ export function ThreadPane({
                 setAttachmentPreview({ messageId, attachment });
               }}
             />
-            {compactToolbar ? (
-              <ThreadToolbarOverflow
-                focusMode={focusMode}
-                zoom={zoom}
-                onZoomAdjust={onZoomAdjust}
-                onPrint={printThread}
-                onPopOut={popOutThread}
-                onToggleFocus={onToggleFocus}
-                pinned={pinned}
-                onTogglePin={onTogglePin}
-                unread={unread}
-                onToggleUnread={tightToolbar ? onToggleUnread : undefined}
-                onSnooze={onSnooze}
-                onCancelSnooze={onCancelSnooze}
-                snoozedUntil={snoozedUntil}
-                folders={folders}
-                onMoveToFolder={onMoveToFolder}
-                onMoveToJunk={onJunk}
-                printLabel={`${t("actionPrint")} (${formatShortcut(
-                  shortcuts.print
-                )})`}
-                popOutLabel={`${t("popOutChat")} (${formatShortcut(
-                  shortcuts.popOut
-                )})`}
-              />
-            ) : (
-              <>
-                <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
-                <ThreadAction
-                  label={t(focusMode ? "showMailList" : "focusMode")}
-                  icon={focusMode ? Minimize2 : Maximize2}
-                  onClick={onToggleFocus}
-                />
-              </>
+            {hidden.has("zoom") ? null : (
+              <ZoomControls zoom={zoom} onAdjust={adjustZoomFromControls} />
             )}
           </div>
           </div>
@@ -4479,8 +5691,9 @@ export function ThreadPane({
           </p>
         </div>
       </div>
+      ) : null}
 
-      {!replyFocus && find.open ? (
+      {!floating && !replyFocus && find.open ? (
         <ThreadFindBar
           query={find.query}
           onQueryChange={find.setQuery}
@@ -4492,19 +5705,46 @@ export function ThreadPane({
         />
       ) : null}
 
-      {!replyFocus ? (
+      {/* The ground the reply sweep plays on: the thread and the composer
+          band together, below the toolbar — a band standing absolute
+          during the sweep covers the thread, never the controls. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      {originalOf ? (
+        <OriginalMessageSheet
+          account={account}
+          messageId={originalOf}
+          subject={thread?.subject ?? ""}
+          onClose={() => setOriginalOf(null)}
+        />
+      ) : null}
+      {!floating ? (
         /* The stream, and the way back down to the end of it laid over the
            bottom of the stream rather than under it — a row of its own
-           would push the composer down every time somebody scrolled. */
-        <div className="relative flex min-h-0 flex-1 flex-col">
+           would push the composer down every time somebody scrolled.
+
+           Mounted through reply focus, not re-created after it. It used to
+           unmount while the composer had the pane, and the remade stream
+           came back scrolled to wherever a fresh one lands — the reader
+           left writing at the end of the thread and came back to the top
+           of it. While the composer has the pane the stream stands out of
+           the flow instead, absolute at the same rect, covered and
+           untouched — so the scroll is not restored, because it was never
+           lost. */
+        <div
+          className="relative flex min-h-0 flex-1 flex-col"
+          style={
+            replyFocus && !replyFocusSliding
+              ? { position: "absolute", inset: 0 }
+              : undefined
+          }
+        >
         <div
           ref={setScrollNode}
           /* Less above than below: the first thing in the stream is nearly
              always a day heading, which brings its own space, and the two
              together left a hole under the subject. */
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-none bg-[var(--mail-thread)] px-4 pb-5 pt-2",
-            narrowBubbles && "mail-thread-narrow"
+            "min-h-0 flex-1 overflow-y-auto overscroll-none bg-[var(--mail-thread)] px-4 pb-5 pt-2"
           )}
         >
           <div className="flex flex-col gap-4" style={{ zoom }}>
@@ -4724,7 +5964,24 @@ export function ThreadPane({
         account={account}
         messageId={attachmentPreview?.messageId ?? ""}
         attachment={attachmentPreview?.attachment ?? null}
+        siblings={
+          attachmentPreview
+            ? (thread?.messages.find((m) => m.id === attachmentPreview.messageId)
+                ?.attachments ?? [])
+            : []
+        }
+        onSelect={(next) =>
+          setAttachmentPreview((current) =>
+            current ? { ...current, attachment: next } : current
+          )
+        }
         onClose={() => setAttachmentPreview(null)}
+      />
+      <DraftAttachmentPreviewDialog
+        items={attachItems}
+        previewId={draftPreviewId}
+        onSelect={setDraftPreviewId}
+        onClose={() => setDraftPreviewId(null)}
       />
 
       {!mode && popoutOpen ? (
@@ -4809,31 +6066,132 @@ export function ThreadPane({
       ) : null}
 
       {mode ? (
+        /*
+          The sweep's frame. Neutral at rest — display: contents, so the
+          band beneath is an ordinary child of the column — and, while the
+          focus is changing, absolute over the pane with the clip edge
+          travelling across it. The band inside already stands where it is
+          going: filling the frame on the way up, back on its resting
+          strip at the bottom on the way down, so the edge only ever
+          reveals what will be there when it stops.
+        */
         <div
+          className={
+            replyFocusSliding
+              ? "absolute inset-0 z-10 transition-[clip-path] motion-reduce:transition-none"
+              : "contents"
+          }
+          style={
+            replyFocusSliding
+              ? {
+                  clipPath: replyGrown
+                    ? "inset(0px)"
+                    : `inset(calc(100% - ${Math.max(
+                        replyBandRestRef.current,
+                        160
+                      )}px) 0px 0px 0px)`,
+                  willChange: "clip-path",
+                  transitionDuration: `${PANE_SLIDE_MS}ms`,
+                  transitionTimingFunction: PANE_SLIDE_EASE,
+                }
+              : undefined
+          }
+        >
+        <div
+          ref={replyBandRef}
+          onWheel={bandFills ? undefined : scrollComposerFromBand}
           className={cn(
-            "border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] py-4",
+            "mail-composer-region relative flex min-h-0 flex-col border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] py-4",
             /* Edge to edge at this width, all but the right: the box was
                ending exactly where the window does, and the words in it
                ran up to the glass. The left has the list beside it to
                stand off, and the right had nothing. Eight pixels, which
                is what the box needed and all the room there is to give. */
             compactComposer ? "pl-0 pr-2" : fullWidthComposer ? "px-3" : "px-8",
-            replyFocus && "flex min-h-0 flex-1 flex-col"
+            bandFills && "flex-1",
+            !bandFills && "overflow-hidden"
           )}
+          /*
+            How much of the pane the reply may take, on the band rather than
+            on the box inside it.
+
+            The ceiling used to sit on the words alone, so everything around
+            them — the recipients, a forward's own banner and subject, the
+            row with Send on it — was added to it. On a short window that
+            put Send below the sill, with nothing to scroll to reach it: the
+            thread scrolls, and the band it sits above does not.
+
+            The card used to hold the zoom, so a 45vh cap was then drawn at
+            118% and the foot sat off the window. Zoom is on this band, and
+            the cap is divided by it, so the band that is seen is still 45vh
+            (or the dragged height) and the words scroll inside it.
+
+            Bounded here, the parts that cannot shrink take what they need
+            and the words take the rest. Not in focus mode, where the band
+            is the pane.
+          */
+          style={
+            replyFocusSliding
+              ? replyFocus
+                ? // Sweeping open: the band already fills the frame.
+                  ({
+                    zoom,
+                    position: "absolute",
+                    inset: 0,
+                  } as React.CSSProperties)
+                : // Sweeping shut: the band already stands on its resting
+                  // strip at the bottom, at its resting bounds, and the
+                  // closing edge comes down to meet it.
+                  ({
+                    zoom,
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    maxHeight: composerHeightSet
+                      ? `${composerHeight / (zoom || 1)}px`
+                      : `${COMPOSER_MAX_SHARE / (zoom || 1)}vh`,
+                  } as React.CSSProperties)
+              : bandFills
+                ? ({ zoom } as React.CSSProperties)
+                : ({
+                    zoom,
+                    maxHeight: composerHeightSet
+                      ? `${composerHeight / (zoom || 1)}px`
+                      : `${COMPOSER_MAX_SHARE / (zoom || 1)}vh`,
+                  } as React.CSSProperties)
+          }
         >
+          {/*
+            The line where the thread stops and the reply starts is the
+            handle, all the way across.
+
+            It used to be the top edge of the box itself, which is a
+            different line: the box is right-aligned and as narrow as its
+            dragged width, so the handle began somewhere in the middle of
+            the pane and sat on the recipients — a few pixels over the To
+            field, found by hunting for the cursor to change. This is the
+            seam the reader can already see, it runs the width of the pane,
+            and dragging a seam is what a seam is for.
+
+            Not in focus mode, where the box is already the whole pane and
+            there is nothing to give it.
+          */}
+          {bandFills ? null : (
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label={t("resizeReplyHeight")}
+              title={t("dragToResize")}
+              onPointerDown={startComposerHeightResize}
+              className="absolute inset-x-0 top-0 z-10 h-3 -translate-y-1/2 cursor-ns-resize touch-none"
+            />
+          )}
           {/* Full-width measure root so % width is of the content box, not padding. */}
-          <div
-            className={cn(
-              "flex w-full justify-end",
-              replyFocus && "min-h-0 flex-1 flex-col items-end"
-            )}
-          >
+          <div className="flex min-h-0 w-full flex-1 flex-col items-end">
           {/* Width matches own bubbles; right-aligned; drag either edge to resize. */}
           <div
-            className={cn(
-              "relative",
-              replyFocus && "flex min-h-0 flex-1 flex-col"
-            )}
+            className="relative flex min-h-0 flex-1 flex-col"
             // Its dragged width, until there is not enough pane for a
             // width to be worth choosing.
             style={{
@@ -4867,11 +6225,20 @@ export function ThreadPane({
               />
             </>
           )}
-          {/* Hidden (not unmounted) during preview so the draft is kept. */}
+          {/* Hidden (not unmounted) during preview so the draft is kept.
+
+              Scrolls when what it holds is taller than the band. A forward
+              on a short window used to fill the band with its banner,
+              subject and recipients, and the box you type in was squeezed
+              to nothing — there was a toolbar and no place to write. The box
+              keeps a floor now, and this column scrolls rather than let the
+              band cut Send off below it. */}
           <div
+            ref={composerColumnRef}
             className={cn(
               showPreview ? "hidden" : undefined,
-              replyFocus && "flex min-h-0 flex-1 flex-col"
+              "mail-composer-column flex min-h-0 flex-1 flex-col",
+              !bandFills && "overflow-y-auto"
             )}
           >
           {/* What is going with it.
@@ -4935,6 +6302,28 @@ export function ThreadPane({
               </button>
             </div>
           ) : null}
+          {forwarding || subjectOpen ? (
+            /* A forward often starts something of its own, so its subject
+               is the writer's to set, and the row is always there.
+
+               A reply's subject is the thread's, so the row would say
+               nothing on most replies — but sometimes the conversation has
+               moved on and the old subject is now wrong. Asked for, the
+               same row appears, and the reply keeps its place in the
+               thread and its quoted history under a name that fits. */
+            <label className="mb-1.5 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-2.5 py-[7px]">
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t("fieldSubject")}
+              </span>
+              <input
+                value={subjectDraft}
+                onChange={(e) => setSubjectDraft(e.target.value)}
+                placeholder={forwarding ? forwardSubject : replySubject}
+                autoFocus={subjectOpen && !forwarding}
+                className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 outline-none placeholder:text-stone-400"
+              />
+            </label>
+          ) : null}
           <div
             className={cn(
               "mb-1 flex gap-2",
@@ -4947,7 +6336,13 @@ export function ThreadPane({
                  Opened out into the recipient fields, the block is taller
                  than the button and centring would strand it halfway down
                  the side, so there it still sits at the top. */
-              editRecipients ? "items-start" : "items-center"
+              editRecipients ? "items-start" : "items-center",
+              /* Stays at the top while the reply scrolls under it, so the
+                 pop-out and expand buttons are always in reach. Not when
+                 the recipient fields are open: that block is tall, and
+                 held in place it would cover the box you type in. */
+              !editRecipients &&
+                "sticky top-0 z-20 bg-[var(--mail-thread-chrome)] py-1"
             )}
             onDoubleClick={(e) => {
               if (isInteractiveDoubleClickTarget(e.target)) return;
@@ -4956,9 +6351,23 @@ export function ThreadPane({
           >
             <div className="min-w-0 flex-1">
               {editRecipients ? (
+                /* The provider is what lets a chip be dragged from To to
+                   Cc. The compose window has one; the reply had none, so
+                   its chips would not lift. */
+                <RecipientCarryProvider>
                 <div className="flex flex-col gap-1.5">
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
+                  {/*
+                    To beside From while there is room, From above To when
+                    there is not. The From box is as wide as an address and
+                    does not give, so on a narrow pane it squeezed the To
+                    field into a column of one chip per line. Wrapped in
+                    reverse, the line that no longer fits — From — goes
+                    above rather than below, which is where the compose
+                    window keeps it; and with the cross axis turned around,
+                    items-end is the top.
+                  */}
+                  <div className="flex flex-wrap-reverse items-end gap-2">
+                    <div className="min-w-[min(16rem,100%)] flex-1">
                       <RecipientField
                         label={t("fieldTo")}
                         values={toList}
@@ -4977,7 +6386,7 @@ export function ThreadPane({
                         inputRef={recipientInputRef}
                       />
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 py-[7px]">
+                    <div className="flex max-w-full shrink-0 items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 py-[7px]">
                       <span className="text-xs text-muted-foreground">
                         {t("fieldFrom")}
                       </span>
@@ -5024,18 +6433,25 @@ export function ThreadPane({
                     </p>
                   )}
                 </div>
+                </RecipientCarryProvider>
               ) : (
                 <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-xs text-muted-foreground">
                   <span>{t(forwarding ? "forwardingTo" : "replyingTo")}</span>
+                  {addressMenu}
                   <button
                     type="button"
                     title={t("editRecipients")}
                     className="min-w-0 truncate font-semibold text-stone-800 underline-offset-2 hover:underline"
                     onClick={() => setEditRecipients(true)}
                   >
-                    {toList.length
-                      ? formatRecipientSummary(toList)
-                      : t("addRecipients")}
+                    {toList.length ? (
+                      <RecipientSummary
+                        recipients={toList}
+                        onAddressMenu={openAddressMenu}
+                      />
+                    ) : (
+                      t("addRecipients")
+                    )}
                   </button>
                   <span aria-hidden>·</span>
                   <button
@@ -5050,7 +6466,10 @@ export function ThreadPane({
                     Cc
                     {ccList.length ? (
                       <span className="ml-1 font-semibold text-stone-800">
-                        {formatRecipientSummary(ccList)}
+                        <RecipientSummary
+                          recipients={ccList}
+                          onAddressMenu={openAddressMenu}
+                        />
                       </span>
                     ) : null}
                   </button>
@@ -5074,10 +6493,35 @@ export function ThreadPane({
                 </p>
               )}
             </div>
+            {onFloatReply && !floating ? (
+              /*
+               * Sends the reply to the floating card. The card does not
+               * draw it: a button to pop out what is already out says
+               * nothing, and the card's heading has the way back to the
+               * thread. The shortcut still works both ways.
+               */
+              <button
+                type="button"
+                title={`${t("writeWhileYouBrowse")} (${formatShortcut(
+                  shortcuts.floatMessage
+                )})`}
+                aria-label={`${t("writeWhileYouBrowse")} (${formatShortcut(
+                  shortcuts.floatMessage
+                )})`}
+                className="shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800"
+                onClick={floatReply}
+              >
+                <PictureInPicture2 className="h-4 w-4" />
+              </button>
+            ) : null}
             <button
               type="button"
-              title={t(replyFocus ? "showThread" : "focusMode")}
-              aria-label={t(replyFocus ? "showThread" : "focusMode")}
+              title={`${t(replyFocus ? "showThread" : "focusMode")} (${formatShortcut(
+                shortcuts.focusMessage
+              )})`}
+              aria-label={`${t(replyFocus ? "showThread" : "focusMode")} (${formatShortcut(
+                shortcuts.focusMessage
+              )})`}
               aria-pressed={replyFocus}
               className="shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800"
               onClick={() => setReplyFocus((v) => !v)}
@@ -5089,6 +6533,19 @@ export function ThreadPane({
               )}
             </button>
           </div>
+            {aiReplyNotes || aiReplyWorking ? (
+              <AiReplyNotes
+                result={aiReplyNotes}
+                working={aiReplyWorking}
+                onStop={stopAiReply}
+                onRestoreBrief={(brief) => {
+                  setReply(plainTextToEditorHtml(brief));
+                  setEditorKey((k) => k + 1);
+                  setAiReplyNotes(null);
+                }}
+                onDismiss={() => setAiReplyNotes(null)}
+              />
+            ) : null}
             <div
             key={editorKey}
             ref={replyRef}
@@ -5096,10 +6553,11 @@ export function ThreadPane({
               // The card is chrome and takes the theme; only the box you
               // type in is a light island — see below, and the compose
               // window, which is split the same way.
-              "mail-composer-card relative rounded-xl border border-teal-700/50 bg-white focus-within:border-teal-700",
-              replyFocus && "mail-composer-card-focus flex min-h-0 flex-1 flex-col"
+              "mail-composer-card relative flex flex-1 flex-col rounded-xl border border-teal-700/50 bg-white focus-within:border-teal-700",
+              // Never shorter than its own floor and the row with Send on
+              // it. In focus mode the card is the pane and may shrink.
+              bandFills ? "mail-composer-card-focus min-h-0" : "min-h-min"
             )}
-            style={{ zoom }}
             {...attachDropHandlers}
             {...attachPasteHandlers}
           >
@@ -5109,41 +6567,54 @@ export function ThreadPane({
                   a white one would be the odd half of the pair. In focus
                   mode this is the child that grows, so it carries the flex
                   chain the editor needs. */}
+              {/* The message, the signature and the files scroll as one:
+                  the signature is the end of the letter, not a lid on it.
+                  It used to sit under a box that scrolled by itself, so a
+                  long reply stopped mid-sentence and the signature began. */}
               <div
                 className={cn(
-                  "rounded-t-xl",
-                  replyFocus && "flex min-h-0 flex-1 flex-col"
+                  "mail-composer-scroll flex-1 rounded-t-xl",
+                  // A floor of about three lines, so there is always a place
+                  // to click and type, however much sits above the box.
+                  bandFills ? "flex min-h-0 flex-col" : "min-h-[4.5rem]"
                 )}
               >
               <RichTextEditor
-                /* A theme is chosen when Quill is built, so crossing the
-                   width builds a new one. The key says so outright rather
-                   than leaving it to react-quill to notice; `defaultValue`
-                   is the live draft, so the words come back with it. */
-                key={compactComposer ? "bubble" : "snow"}
-                className="mail-compose-editor"
-                {...(compactComposer
-                  ? ({ variant: "bubble" } as const)
-                  : ({ toolbarId: "mail-reply-toolbar" } as const))}
+                className="mail-message-editor"
+                toolbarId="mail-reply-toolbar"
                 handleRef={replyEditorHandle}
                 defaultValue={reply}
                 onChange={setReply}
                 placeholder={
-                  forwarding
-                    ? t("forwardNotePlaceholder")
-                    : `Reply to ${thread.participants.filter((p) => p !== "You")[0] ?? "the thread"}…`
+                  forwarding ? t("forwardNotePlaceholder") : replyBoxPlaceholder
                 }
-                minHeight={replyFocus ? 240 : 80}
+                /*
+                  The floor never moves.
+
+                  What the reader drags is the ceiling — how much room the
+                  box may take — and an empty reply starts small whatever
+                  they have set, the way it always did. Making the drag set
+                  both was worse than the thing it fixed: every new reply
+                  opened at the full height somebody had once dragged to,
+                  with nothing in it.
+                */
+                minHeight={replyFocus ? 240 : bandFills ? 120 : DEFAULT_COMPOSER_HEIGHT}
               />
               {includeSignature && sigSettings?.signature ? (
                 <ComposerSignature signature={sigSettings.signature} />
               ) : null}
-              <DraftAttachmentChips
-                items={attachItems}
-                onRemove={removeAttach}
-              />
               </div>
             <div className="flex shrink-0 flex-col gap-1.5 px-3 pb-2.5 pt-1">
+              {/* The files, docked here above Send rather than at the end
+                  of the body: a long reply scrolled them out of view, and a
+                  file was attached twice for want of seeing it once. */}
+              <DraftAttachmentChips
+                docked
+                className="pb-1"
+                items={attachItems}
+                onRemove={removeAttach}
+                onPreview={setDraftPreviewId}
+              />
               <div className="flex flex-wrap items-center gap-3">
                 {/* One control: Send, and a section that says when. Not on a
                     forward — that leaves through its own path, which has
@@ -5151,12 +6622,7 @@ export function ThreadPane({
                 <div className="inline-flex items-stretch overflow-hidden rounded-lg">
                   <Button
                     type="button"
-                    className={cn(
-                      "h-8 rounded-none bg-teal-600 text-sm font-semibold text-white hover:bg-teal-700",
-                      // Tighter on the left than the right: the arrow ends
-                      // nearer its own edge than a letter would.
-                      canSendLater && !forwarding ? "pl-4 pr-3.5" : "pl-4 pr-5"
-                    )}
+                    className="h-8 rounded-none bg-teal-600 pl-3 pr-2 text-sm font-semibold text-white hover:bg-teal-700"
                     /* Named with its key, the way the actions above the
                        thread are. The same key sends a forward, so the
                        tooltip follows the word on the button. */
@@ -5185,131 +6651,89 @@ export function ThreadPane({
                       ? t("sending")
                       : t(forwarding ? "actionForward" : "send")}
                   </Button>
-                  {canSendLater && !forwarding ? (
-                    <SendLaterMenu
-                      onPick={(iso) => void send(iso)}
-                      trigger={
-                        <button
-                          type="button"
-                          aria-label={t("sendLater")}
-                          title={t("sendLater")}
-                          disabled={
-                            sending ||
-                            !emailsOfRecipients(toList).length ||
-                            !attachmentsReady ||
-                            (!replyText.trim() && !attachItems.length)
-                          }
-                          className="flex h-8 items-center border-l border-white/25 bg-teal-600 px-2.5 text-white hover:bg-teal-700 disabled:opacity-50"
-                        >
-                          <ChevronDown className="h-4 w-4" aria-hidden />
-                        </button>
-                      }
-                    />
-                  ) : null}
+                  <SendLaterMenu
+                    schedule={canSendLater && !forwarding}
+                    onPick={(iso) => void send(iso)}
+                    extras={[
+                      ...(mailUsesCrmPeople() &&
+                      !forwarding &&
+                      (mode === "reply" || mode === "replyAll")
+                        ? [
+                            {
+                              id: "crm",
+                              label: t("sendAndProposeCrm"),
+                              disabled:
+                                sending ||
+                                !emailsOfRecipients(toList).length ||
+                                !attachmentsReady ||
+                                (!replyText.trim() && !attachItems.length),
+                              onSelect: () =>
+                                void send(undefined, { proposeCrm: true }),
+                            },
+                          ]
+                        : []),
+                      {
+                        id: "preview",
+                        label: t("previewFirst"),
+                        onSelect: () => setShowPreview(true),
+                      },
+                      ...(canOpenInOutlook
+                        ? [
+                            {
+                              id: "outlook",
+                              label: t("openInOutlookInstead"),
+                              icon: <ExternalLink aria-hidden />,
+                              title: outlookElsewhere
+                                ? t("openInOutlookFrom", {
+                                    account: outlookTarget,
+                                  })
+                                : undefined,
+                              disabled:
+                                sending ||
+                                handingOver ||
+                                !emailsOfRecipients(toList).length ||
+                                !attachmentsReady ||
+                                (!replyText.trim() && !attachItems.length),
+                              onSelect: () => void openInOutlook(),
+                            },
+                          ]
+                        : []),
+                    ]}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={t("sendOptions")}
+                        title={t("sendOptions")}
+                        className="flex h-8 items-center border-l border-white/25 bg-teal-600 pl-1.5 pr-2 text-white hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        <ChevronDown className="h-4 w-4" aria-hidden />
+                      </button>
+                    }
+                  />
                 </div>
-                {/* The bar only exists at full width. Narrow, the editor is
-                    built in Quill's bubble theme instead, which puts these
-                    same controls over the selection — so there is no bar to
-                    hide and no button to unhide it.
-
-                    Quill binds to this element by id and writes its own
+                {/* Quill binds to this element by id and writes its own
                     classes on it, so nothing here sets className: React
                     would overwrite them on the next render and leave the
-                    buttons unstyled. Rendering it only for "snow" also
-                    gives each editor fresh buttons to bind to. */}
-                {compactComposer ? null : (
-                  <div id="mail-reply-toolbar">
-                    <span className="ql-formats">
-                      {/* Neither this nor the Aa carries a ql- class, so
-                          Quill passes over both: they are in the row for the
-                          look of it, and reach the editor through the
-                          handle. In the compact row there is no toolbar to
-                          stand in, so the emoji button is rendered below
-                          instead, as a circle beside the other two. */}
-                      <EmojiPickerButton
-                        className={COMPOSER_TOOLBAR_BUTTON}
-                        onPick={(emoji) =>
-                          replyEditorHandle.current?.insertText(emoji)
-                        }
-                      />
-                      <button className="ql-bold" aria-label={t("bold")} />
-                      <button className="ql-italic" aria-label={t("italic")} />
-                      <button
-                        className="ql-underline"
-                        aria-label={t("underline")}
-                      />
-                      <button
-                        className="ql-list"
-                        value="bullet"
-                        aria-label={t("bulletList")}
-                      />
-                      <button
-                        className="ql-list"
-                        value="ordered"
-                        aria-label={t("numberedList")}
-                      />
-                      <button className="ql-link" aria-label={t("link")} />
-                      <TextStyleMenu
-                        editorHandle={replyEditorHandle}
-                        className={COMPOSER_TOOLBAR_BUTTON}
-                      />
-                    </span>
-                  </div>
-                )}
-                {/* Circles when the row is narrow, so the buttons that are
-                    always there read as one set. */}
+                    buttons unstyled.
+
+                    The lists live in Aa. They used to sit on this row and
+                    wrap it off the pane long before B, I, U and the link
+                    ran out of room. */}
+                <ComposerToolbar id="mail-reply-toolbar" editorHandle={replyEditorHandle} />
                 <AttachToolbarButton
                   onPick={addAttachFiles}
                   disabled={sending}
-                  className={compactComposer ? COMPOSER_CIRCLE_CLASS : undefined}
                 />
-                {compactComposer ? (
-                  <EmojiPickerButton
-                    onPick={(emoji) =>
-                      replyEditorHandle.current?.insertText(emoji)
-                    }
-                    className={cn(
-                      COMPOSER_CIRCLE_CLASS,
-                      "items-center justify-center [&_svg]:h-4 [&_svg]:w-4"
-                    )}
-                  />
-                ) : null}
-                <AttachmentSizeSummary
-                  count={attachItems.length}
-                  totalBytes={attachTotalBytes}
-                />
+                {/* No size line: the chips above the row name every file
+                    already, and the compose box says it once too. What is
+                    left of a warning is the one below, which speaks only
+                    when a forward is near the provider's limit. */}
                 {/* One row, so the bin sits level with Send rather than on
                     a line of its own under it. There were two rows because
                     the second held Add signature, Preview and Chat style
                     as well; those are under the card now, and what is left
                     belongs beside the buttons it is one of. */}
                 <span className="ml-auto flex items-center gap-3">
-                  {/* Only where there is a CRM to write to. The notes it
-                      offers to update live in the planner, so on a build
-                      without that layer this was offering to do a thing
-                      nothing would then do — the standalone transport does
-                      not even carry the flag. */}
-                  {mailUsesCrmPeople() &&
-                  !forwarding &&
-                  (mode === "reply" || mode === "replyAll") ? (
-                    <label className="flex cursor-pointer items-start gap-1.5 text-sm text-stone-700">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 rounded border-stone-300 accent-teal-700 focus:ring-teal-600"
-                        checked={updateCrmNotes}
-                        onChange={(e) => setUpdateCrmNotes(e.target.checked)}
-                      />
-                      <span className="flex flex-col leading-tight">
-                        <span className="text-xs font-normal">
-                          {t("proposeCrmAfterSending")}
-                        </span>
-                        <span className="text-xs text-stone-500">
-                          The AI reads the thread and this reply and proposes
-                          notes, a status, a next step. You apply.
-                        </span>
-                      </span>
-                    </label>
-                  ) : null}
                   {/* The bin only bins. Escape is what asks first, and
                       what it asks with is the dialog at the foot of this
                       component — over the whole reader rather than in the
@@ -5330,11 +6754,9 @@ export function ThreadPane({
             </div>
           </div>
           {/* Under the box, outside the card.
-              Both open something over the whole reader — a signature to
-              write, or the mail as it will land. Neither is part of writing
-              the message, and in the footer row they sat among the buttons
-              that are, on a row already too full to fit on a narrow pane. */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              Facts about the message, not the writing of it. Preview,
+              Outlook and a CRM propose sit on the Send chevron. */}
+          <div className="mt-1.5 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5">
             <SignatureMetaControls
               account={fromAccount}
               configured={Boolean(sigSettings?.signature)}
@@ -5346,13 +6768,25 @@ export function ThreadPane({
               onEdit={() => setSigDialogOpen(true)}
               onRemove={() => setIncludeSignature(false)}
             />
-            <button
-              type="button"
-              className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
-              onClick={() => setShowPreview(true)}
-            >
-              {t("preview")}
-            </button>
+            {/* A reply under a subject that no longer fits.
+                The conversation stays whole — same thread, same quoted
+                history — and only the name of it changes. Offered rather
+                than shown, because on most replies the subject is not a
+                question worth putting a field in front of somebody for.
+                A forward's row is always up, so it needs no way in. */}
+            {!forwarding && !subjectOpen ? (
+              <button
+                type="button"
+                title={t("changeSubjectHint")}
+                className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
+                onClick={() => {
+                  setSubjectDraft(replySubject);
+                  setSubjectOpen(true);
+                }}
+              >
+                {t("changeSubject")}
+              </button>
+            ) : null}
             {/* Asked the way round it is answered: quoting the history is
                 what a reply does, so the box is ticked and unticking it is
                 the choice. `chatStyle` is still the state underneath — the
@@ -5388,6 +6822,38 @@ export function ThreadPane({
             {/* The same drawn box as Quote history. This is the forward's
                 version of the same question — how much of the past goes
                 with the mail — so it stands where that one stands. */}
+            {/* Only where there is something to include. A message with no
+                files has nothing for this to say. The whole-conversation box
+                brings its own files, so this one stands down for it. */}
+            {forwarding &&
+            !forwardWhole &&
+            forwardSource?.attachments?.length ? (
+              <label
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 text-xs text-stone-500 hover:text-stone-800",
+                  forwardFilesBusy && "opacity-60"
+                )}
+              >
+                <span className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                  <input
+                    type="checkbox"
+                    className="peer h-3.5 w-3.5 appearance-none rounded-[3px] border border-stone-300 bg-white outline-none checked:border-stone-400 focus-visible:ring-2 focus-visible:ring-teal-600/40 disabled:opacity-50"
+                    checked={forwardFiles}
+                    disabled={forwardFilesBusy}
+                    onChange={(e) =>
+                      void setForwardIncludeFiles(e.target.checked)
+                    }
+                  />
+                  <Check
+                    aria-hidden
+                    className="pointer-events-none absolute h-3 w-3 text-stone-700 opacity-0 peer-checked:opacity-100"
+                  />
+                </span>
+                {forwardFilesBusy
+                  ? t("fetchingFiles")
+                  : t("includeAttachmentsCount", { count: forwardSource.attachments.length })}
+              </label>
+            ) : null}
             {forwarding ? (
               <label
                 className={cn(
@@ -5411,11 +6877,24 @@ export function ThreadPane({
                   />
                 </span>
                 {forwardWholeBusy
-                  ? "Fetching the conversation…"
+                  ? t("fetchingConversation")
                   : forwardWhole && forwardConversation
-                    ? `Forward the whole conversation · ${forwardConversation.length} messages`
-                    : "Forward the whole conversation"}
+                    ? t("forwardWholeConversationCount", { count: forwardConversation.length })
+                    : t("forwardWholeConversation")}
               </label>
+            ) : null}
+            {/* Quiet, on the right: the draft is about the whole mail,
+                the same kind of thing this row already holds. */}
+            {mailUsesCrmPeople() &&
+            !forwarding &&
+            (mode === "reply" || mode === "replyAll") ? (
+              <AiReplyMenu
+                className="ml-auto"
+                drafting={draftingReply}
+                disabled={sending}
+                onDraft={(hint) => void draftReplyWithAi(hint)}
+                onStop={stopAiReply}
+              />
             ) : null}
             {/* Providers refuse a mail past their limit. Said here, while
                 there are chips to prune, rather than as an error after the
@@ -5445,13 +6924,7 @@ export function ThreadPane({
               from={fromAccount}
               to={emailsOfRecipients(toList)}
               cc={emailsOfRecipients(ccList)}
-              subject={
-                forwarding
-                  ? forwardSubject
-                  : thread.subject.startsWith("Re:")
-                    ? thread.subject
-                    : `Re: ${thread.subject}`
-              }
+              subject={outgoingSubject}
               bodyHtml={bodyToEmailHtml(reply)}
               hasBody={Boolean(replyText.trim())}
               includeSignature={Boolean(
@@ -5519,11 +6992,50 @@ export function ThreadPane({
           </div>
           </div>
         </div>
+        </div>
       ) : null}
+      </div>
       {/* Over the whole reader, because it is a question about the whole
           draft. In the corner of the footer row it read as one more
           control among the buttons that write the message, which is the
           opposite of what a last chance should look like. */}
+      {forgottenAttachment ? (
+        <SettingsDialog
+          title={t("attachmentReminderAsk")}
+          width="w-[400px]"
+          bare
+          onClose={() => setForgottenAttachment(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className={settingsSecondaryButton}
+                onClick={() => setForgottenAttachment(null)}
+              >
+                {t("attachmentReminderBack")}
+              </button>
+              {/* Focused, so Enter sends: somebody who meant it should not
+                  have to reach for the mouse to say so. */}
+              <button
+                type="button"
+                autoFocus
+                className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800"
+                onClick={() => {
+                  const held = forgottenAttachment;
+                  setForgottenAttachment(null);
+                  void send(held?.sendAt, held?.extras, true);
+                }}
+              >
+                {t("attachmentReminderSend")}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-stone-600">
+            {t("attachmentReminderBody")}
+          </p>
+        </SettingsDialog>
+      ) : null}
       {confirmDiscard ? (
         <SettingsDialog
           title={t(forwarding ? "discardForwardAsk" : "discardDraftAsk")}
@@ -5572,612 +7084,19 @@ export function ThreadPane({
           if (savedAccount === fromAccount) setSigSettings(settings);
         }}
       />
-      {crmProposal ? (
-        <CrmProposalDialog
-          loading={crmProposal.loading}
-          stage={crmProposal.stage}
-          result={crmProposal.result}
-          attachmentCount={readableAttachments.length}
-          attachmentsIncluded={lastProposeRef.current.includeAttachments}
-          onIncludeAttachments={() =>
-            void updateCrmFromThread(lastProposeRef.current.hint, { includeAttachments: true })
-          }
-          onClose={() => setCrmProposal(null)}
-          onApplied={(applied) => {
-            if (applied) onCrmChanged();
-          }}
+      {diaryProposal ? (
+        <DiaryEntriesDialog
+          proposal={diaryProposal}
+          onClose={() => setDiaryProposal(null)}
         />
       ) : null}
     </div>
   );
 }
 
-/** Quiet divider when older messages live in an earlier part. */
 /**
- * The day, once, over the messages that belong to it.
- *
- * Every message used to carry its own full date. With that line gone, the
- * time in the corner of a bubble says 15:06 and nothing says which 15:06 —
- * so the day is said once, where it changes, the way a chat says it.
+ * How much of the reading pane the reply box may take before it scrolls
+ * inside itself, as a percentage. The rest is the thread, and the send row.
  */
-function DayHeading({ iso }: { iso: string | null }) {
-  const t = useMailT();
-  if (!iso) return null;
-  return (
-    /* The same small capitals the mail list puts over TODAY and
-       YESTERDAY. Both are one day naming the things under it, and they
-       were two different marks for that.
+const COMPOSER_MAX_SHARE = 45;
 
-       Centred, unlike the list's: over a column of bubbles this is a
-       seam across the conversation, where in a list of rows it is a
-       heading at the front of them. */
-    <p
-      /* `first:` — the space above a day is there to part it from the day
-         before it, and the one at the top of the thread has no day above
-         it, only the subject. The stream's own padding is the space it
-         needs. It keeps the padding whenever something does come first,
-         such as the button that fetches older messages. */
-      className="pb-1 pt-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)] first:pt-0"
-    >
-      {chatDayLabel(iso, t)}
-    </p>
-  );
-}
-
-function PartSeam({ onView }: { onView?: () => void }) {
-  const t = useMailT();
-  return (
-    <div className="flex items-center gap-3 py-2" role="separator">
-      <div className="h-px flex-1 bg-stone-200" />
-      <p className="shrink-0 text-[11px] text-stone-400">
-        {t("olderInEarlierPart")}
-        {onView ? (
-          <>
-            {" · "}
-            <button
-              type="button"
-              className="font-medium text-teal-700 hover:underline"
-              onClick={onView}
-            >
-              {t("view")}
-            </button>
-          </>
-        ) : null}
-      </p>
-      <div className="h-px flex-1 bg-stone-200" />
-    </div>
-  );
-}
-/** Sonner toast for CRM notes LLM results (toolbar + after-send). */
-function toastCrmNotesResult(
-  result: CrmNotesToastResult,
-  options?: { toastId?: string | number; onApplied?: () => void }
-): void {
-  const toastId = options?.toastId;
-  const changes = result.changes ?? [];
-  const applied = changes.filter((c) => c.applied);
-  const unchanged = changes.filter((c) => !c.applied);
-  const context = crmNotesContextLine(result);
-
-  if (result.skipped && !result.matched?.length && !changes.length) {
-    toast.message(result.skipped, { id: toastId });
-    return;
-  }
-
-  if (applied.length) {
-    const changeLines = applied
-      .map((c) => {
-        const note =
-          c.noteEntry.length > 220
-            ? `${c.noteEntry.slice(0, 220)}…`
-            : c.noteEntry;
-        return `${c.recordName} (${crmSourceLabel(c.source)})\n→ Notes: ${note}\nWhy: ${c.rationale}`;
-      })
-      .join("\n\n");
-    const description = [context, changeLines].filter(Boolean).join("\n\n");
-    toast.success(
-      applied.length === 1
-        ? `Updated Notes on ${applied[0].recordName}`
-        : `Updated Notes on ${applied.length} CRM records`,
-      { id: toastId, description, duration: 14_000 }
-    );
-    options?.onApplied?.();
-    return;
-  }
-
-  if (result.errors.length && !unchanged.length) {
-    toast.error(result.errors[0] ?? "Couldn't update CRM notes", {
-      id: toastId,
-      description: context ?? undefined,
-    });
-    return;
-  }
-
-  const why =
-    unchanged
-      .map((c) => `${c.recordName}: ${c.rationale}`)
-      .join("\n") ||
-    result.skipped ||
-    "Nothing new to add to Notes.";
-  toast.message(mailSay("noCrmNoteChanges"), {
-    id: toastId,
-    description: [context, why].filter(Boolean).join("\n\n"),
-    duration: 10_000,
-  });
-}
-type OutboxEntry = {
-  status: OutboxStatus;
-  mode: ComposerMode;
-  reply: string;
-  toList: MailRecipient[];
-  ccList: MailRecipient[];
-  showCc: boolean;
-  editRecipients: boolean;
-  includeSignature: boolean;
-  fromAccount: string;
-  /** POST /api/mail/send body (minus account-specific bits filled at send time). */
-  request: {
-    account: string;
-    to: string[];
-    cc?: string[];
-    bcc?: string[];
-    subject: string;
-    body: string;
-    html?: string;
-    includeSignature: boolean;
-    threadId?: string;
-    inReplyTo?: string;
-    references?: string;
-    discardProviderDraft?: string;
-    /** The thread's history, rebuilt by the composer. */
-    appendix?: { text: string; html: string };
-    noQuote?: boolean;
-    messageCount?: number;
-    /** After send, Grok prepends Notes on related CRM records. */
-    updateCrmNotes?: boolean;
-    attachments?: {
-      filename: string;
-      mimeType: string;
-      contentBase64: string;
-    }[];
-    /**
-     * Hold until this time (ISO 8601). Outlook only.
-     *
-     * A scheduled reply never reaches the outbox — nothing is in flight to
-     * retry or to paint ahead of — so this is only ever set on the body that
-     * goes straight out.
-     */
-    sendAt?: string;
-  };
-};
-/**
- * After send, providers can take a moment to index the message into the
- * conversation. Refetch with backoff and keep any optimistic bubble until
- * a real copy shows up (see mergeNewestThreadPage).
- */
-function scheduleThreadRefetchAfterSend(
-  account: string,
-  threadId: string,
-  setThread: React.Dispatch<React.SetStateAction<MailThreadDetail | null>>
-): void {
-  const delaysMs = [800, 2000, 4500];
-  void (async () => {
-    for (const delayMs of delaysMs) {
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, delayMs);
-      });
-      try {
-        const params = new URLSearchParams({ account, id: threadId });
-        const json = await apiJson<{ thread: MailThreadDetail }>(
-          `/api/mail/thread?${params.toString()}`
-        );
-        let stillHasLocal = false;
-        setThread((current) => {
-          if (!current) return json.thread;
-          const merged = mergeNewestThreadPage(current, json.thread);
-          stillHasLocal = merged.messages.some((m) =>
-            isPendingLocalMessage(m.id)
-          );
-          return merged;
-        });
-        if (!stillHasLocal) return;
-      } catch {
-        /* keep optimistic bubble; try again */
-      }
-    }
-  })();
-}
-
-/**
- * What stands where the reply box was, while a pop-out has the answer.
- *
- * Popping out carries the half-written reply into the other window and
- * shuts the box here, which is right — but on its own the box simply
- * vanishes and nothing says why. This is what makes the handover legible,
- * and it holds the two ways back: bring that window to the front, or bring
- * the message home.
- */
-function PopoutStrip({
-  onShow,
-  onBringBack,
-}: {
-  onShow: () => void;
-  onBringBack: () => void;
-}) {
-  const t = useMailT();
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  /**
-   * The box that had the focus has gone, so this takes it.
-   *
-   * Only when it is going spare. A reader who has since clicked somewhere
-   * else keeps what they clicked on.
-   */
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const active = document.activeElement;
-    if (active && active !== document.body) return;
-    el.focus({ preventScroll: true });
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      tabIndex={-1}
-      className="flex items-center gap-1.5 border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-8 py-3 text-[13px] text-[var(--mail-thread-muted)] outline-none"
-    >
-      <PictureInPicture2 className="h-4 w-4 shrink-0" aria-hidden />
-      <span>{t("answeringInPopout")}</span>
-      <span aria-hidden className="text-stone-300">
-        ·
-      </span>
-      <button
-        type="button"
-        className="font-semibold text-teal-700 hover:text-teal-800"
-        onClick={onShow}
-      >
-        {t("show")}
-      </button>
-      <span aria-hidden className="text-stone-300">
-        ·
-      </span>
-      <button
-        type="button"
-        className="font-semibold text-teal-700 hover:text-teal-800"
-        onClick={onBringBack}
-      >
-        {t("bringBack")}
-      </button>
-    </div>
-  );
-}
-
-/**
- * What will not fit on the action strip, behind one button.
- *
- * The four here are about looking at the thread rather than doing
- * anything to it — printing it, putting it in its own window, the text
- * size, and filling the screen with it. Nothing that changes the mail is
- * ever put away: reply, archive and the bin stay where they are at every
- * width.
- */
-function ThreadToolbarOverflow({
-  focusMode,
-  zoom,
-  onZoomAdjust,
-  onPrint,
-  onPopOut,
-  onToggleFocus,
-  pinned,
-  onTogglePin,
-  unread,
-  onToggleUnread,
-  onSnooze,
-  onCancelSnooze,
-  snoozedUntil,
-  folders,
-  onMoveToFolder,
-  onMoveToJunk,
-  printLabel,
-  popOutLabel,
-}: {
-  focusMode: boolean;
-  zoom: number;
-  onZoomAdjust: (delta: number) => void;
-  onPrint: () => void;
-  onPopOut: () => void;
-  onToggleFocus: () => void;
-  /** Off the strip while the pane is tight — see where this is used. */
-  pinned: boolean;
-  onTogglePin?: () => void;
-  unread: boolean;
-  /** Given only on the narrowest panes, where read and snooze fold in too. */
-  onToggleUnread?: () => void;
-  onSnooze: (untilIso: string) => void;
-  onCancelSnooze?: () => void;
-  snoozedUntil?: string;
-  folders: MailFolder[];
-  onMoveToFolder: (folderName: string, create: boolean) => Promise<void>;
-  /** Junk is a move, so it is pinned above the folders — not its own row. */
-  onMoveToJunk?: () => void;
-  printLabel: string;
-  popOutLabel: string;
-}) {
-  const t = useMailT();
-  const [open, setOpen] = React.useState(false);
-  const row =
-    "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]";
-  const pick = (run: () => void) => () => {
-    setOpen(false);
-    run();
-  };
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t("more")}
-          title={t("more")}
-          className={THREAD_ACTION_CLASS}
-        >
-          <MoreHorizontal />
-        </Button>
-      </PopoverTrigger>
-      <MailPopoverContent
-        align="end"
-        className="w-56 p-1"
-        /* The folder and snooze menus open out of rows in here, and their
-           cards are portalled out of this one — so this card is told that a
-           press in one of them is not a press outside itself. Without it the
-           folder list appeared and this closed underneath it, taking the
-           list with it. The same arrangement the settings panel makes for
-           the mark menu. */
-        onInteractOutside={(e) => {
-          const el = e.target;
-          if (
-            el instanceof Element &&
-            el.closest("[data-mail-move-menu], [data-mail-snooze-menu]")
-          ) {
-            e.preventDefault();
-          }
-        }}
-      >
-        {onToggleUnread ? (
-          <button type="button" className={row} onClick={pick(onToggleUnread)}>
-            <MailDotIcon
-              className="h-4 w-4 shrink-0 text-stone-400"
-              aria-hidden
-            />
-            {t(unread ? "markAsRead" : "markAsUnread")}
-          </button>
-        ) : null}
-        {onToggleUnread ? (
-          <SnoozeMenu
-            onSnooze={(untilIso) => {
-              setOpen(false);
-              onSnooze(untilIso);
-            }}
-            onCancelSnooze={
-              onCancelSnooze
-                ? () => {
-                    setOpen(false);
-                    onCancelSnooze();
-                  }
-                : undefined
-            }
-            currentUntil={snoozedUntil}
-            title={t("actionSnooze")}
-            trigger={
-              <button type="button" className={row}>
-                <RotateCwFadingClock
-                  className="h-4 w-4 shrink-0 text-stone-400"
-                  aria-hidden
-                />
-                {t(snoozedUntil ? "changeSnoozeEllipsis" : "snoozeEllipsis")}
-              </button>
-            }
-          />
-        ) : null}
-        {onTogglePin ? (
-          <button type="button" className={row} onClick={pick(onTogglePin)}>
-            <Pin
-              className={cn(
-                "h-4 w-4 shrink-0",
-                pinned
-                  ? "fill-current text-[var(--mail-accent)]"
-                  : "text-stone-400"
-              )}
-              aria-hidden
-            />
-            {t(pinned ? "unpin" : "pinToTop")}
-          </button>
-        ) : null}
-        <MoveToFolderMenu
-          folders={folders}
-          onMoved={onMoveToFolder}
-          onMoveToJunk={
-            onMoveToJunk
-              ? () => {
-                  setOpen(false);
-                  onMoveToJunk();
-                }
-              : undefined
-          }
-          title={t("moveToFolder")}
-          trigger={
-            <button type="button" className={row}>
-              <FolderInput
-                className="h-4 w-4 shrink-0 text-stone-400"
-                aria-hidden
-              />
-              {t("moveToFolder")}
-            </button>
-          }
-        />
-        <button type="button" className={row} onClick={pick(onPrint)}>
-          <Printer className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
-          {printLabel}
-        </button>
-        <button type="button" className={row} onClick={pick(onPopOut)}>
-          <PictureInPicture2
-            className="h-4 w-4 shrink-0 text-stone-400"
-            aria-hidden
-          />
-          {popOutLabel}
-        </button>
-        <button type="button" className={row} onClick={pick(onToggleFocus)}>
-          {focusMode ? (
-            <Minimize2 className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
-          ) : (
-            <Maximize2 className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
-          )}
-          {t(focusMode ? "showMailList" : "focusMode")}
-        </button>
-        {/* The size stays a pair of buttons rather than becoming two more
-            rows: it is set by trying it, and a menu that shut on every
-            press would be the wrong shape for that. */}
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm text-stone-800">
-          {t("textSize")}
-          <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
-        </div>
-      </MailPopoverContent>
-    </Popover>
-  );
-}
-
-function ThreadAction({
-  label,
-  icon: Icon,
-  className,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  icon: LucideIcon | React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  className?: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      className={cn(THREAD_ACTION_CLASS, className)}
-      onClick={onClick}
-    >
-      <Icon />
-    </Button>
-  );
-}
-
-/** What the composer at the bottom of a thread is currently writing. */
-type ComposerMode = "reply" | "replyAll" | "forward";
-/** Merge a newest-page fetch into a thread that may already have older pages. */
-function mergeNewestThreadPage(
-  current: MailThreadDetail,
-  newest: MailThreadDetail
-): MailThreadDetail {
-  const pageIds = new Set(newest.messages.map((m) => m.id));
-  const pageOldestAt = Date.parse(newest.messages[0]?.sentAt ?? "");
-  const older = current.messages.filter((m) => {
-    if (pageIds.has(m.id)) return false;
-    // Keep optimistic local-* bubbles until the provider returns a match.
-    if (isPendingLocalMessage(m.id)) {
-      return !optimisticCoveredBy(m, newest.messages);
-    }
-    const at = Date.parse(m.sentAt ?? "");
-    return Number.isFinite(pageOldestAt) && Number.isFinite(at)
-      ? at < pageOldestAt
-      : true;
-  });
-  // Locals that still aren't indexed belong after the server page (newest).
-  const pendingLocal = older.filter((m) => isPendingLocalMessage(m.id));
-  const olderHistory = older.filter((m) => !isPendingLocalMessage(m.id));
-  return {
-    ...newest,
-    messages: [...olderHistory, ...newest.messages, ...pendingLocal],
-    hasOlder: olderHistory.length ? current.hasOlder : newest.hasOlder,
-  };
-}
-
-type CrmNotesToastResult = {
-  updated: string[];
-  matched?: { recordName: string; source: string }[];
-  messageCount?: number;
-  changes?: Array<{
-    recordName: string;
-    source: string;
-    field: string;
-    noteEntry: string;
-    rationale: string;
-    applied: boolean;
-  }>;
-  skipped?: string;
-  errors: string[];
-};
-function crmSourceLabel(source: string): string {
-  return CRM_SOURCE_LABELS[source] ?? source;
-}
-function crmNotesContextLine(result: CrmNotesToastResult): string | null {
-  const parts: string[] = [];
-  if (result.messageCount != null) {
-    parts.push(
-      `Reviewed ${result.messageCount} message${
-        result.messageCount === 1 ? "" : "s"
-      }`
-    );
-  }
-  if (result.matched?.length) {
-    parts.push(
-      `matched ${result.matched
-        .map((m) => `${m.recordName} (${crmSourceLabel(m.source)})`)
-        .join(", ")}`
-    );
-  }
-  return parts.length ? parts.join(" · ") : null;
-}
-
-const CRM_SOURCE_LABELS: Record<string, string> = {
-  clients: "Clients",
-  collaborations: "Collaborations",
-  facilitators: "Facilitators",
-  grants: "Applications",
-};
-/**
- * True when a real (provider) message is the indexed copy of an optimistic
- * local-* bubble. Providers (especially Outlook) can lag on conversation
- * queries right after send — we must not drop the bubble until then.
- */
-function optimisticCoveredBy(
-  local: MailMessage,
-  reals: MailMessage[]
-): boolean {
-  const localLead = optimisticBodyLead(local.bodyText);
-  const localAt = Date.parse(local.sentAt ?? "") || 0;
-  return reals.some((m) => {
-    if (!m.own || isPendingLocalMessage(m.id)) return false;
-    const at = Date.parse(m.sentAt ?? "") || 0;
-    if (localAt && at && Math.abs(at - localAt) > 15 * 60 * 1000) return false;
-    const lead = optimisticBodyLead(m.bodyText);
-    if (!localLead) return Math.abs(at - localAt) < 2 * 60 * 1000;
-    const n = Math.min(40, localLead.length, lead.length || 40);
-    if (n <= 0) return Math.abs(at - localAt) < 2 * 60 * 1000;
-    return (
-      lead.slice(0, n) === localLead.slice(0, n) ||
-      lead.includes(localLead.slice(0, Math.min(30, localLead.length))) ||
-      localLead.includes(lead.slice(0, Math.min(30, lead.length)))
-    );
-  });
-}
-
-/** Normalize body text for matching optimistic bubbles to provider copies. */
-function optimisticBodyLead(text: string): string {
-  return text.trim().replace(/\s+/g, " ").slice(0, 120).toLowerCase();
-}

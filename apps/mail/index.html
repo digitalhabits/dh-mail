@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover`: on a phone the page runs under the notch and
+         the home bar, and the interface keeps out of them with the safe-area
+         insets. `maximum-scale=1` is for iOS, which otherwise zooms the page
+         in when a field is focused. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
     <!-- No referrer, ever: a mail reader's origin is nobody's business,
          and the CRM's logo bucket admits only the planner's origins by
          Referer — an image request with none is served. -->

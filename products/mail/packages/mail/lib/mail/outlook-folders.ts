@@ -62,6 +62,7 @@ const SYSTEM_SHOWN = new Map<string, MailFolderRole>([
   ["archive", "archive"],
   ["drafts", "drafts"],
   ["sentitems", "sent"],
+  ["junkemail", "junk"],
   ["deleteditems", "trash"],
 ]);
 
@@ -83,7 +84,6 @@ const SYSTEM_HIDE_SUBTREE = new Set([
   "clutter",
   "conflicts",
   "conversationhistory",
-  "junkemail",
   "localfailures",
   "outbox",
   "recoverableitemsdeletions",

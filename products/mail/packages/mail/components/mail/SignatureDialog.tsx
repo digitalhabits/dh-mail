@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import {
@@ -16,16 +16,24 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { useMailT } from "@/lib/mail/i18n";
 import {
+  readOnReplies,
+  type SignatureOnReplies,
+} from "@/lib/mail/signature-rules";
+import { cn } from "@/lib/utils";
+import {
   htmlToPlainText,
   isLikelyHtml,
   normalizeEditorHtml,
 } from "@/lib/client-email-html";
 
+export type { SignatureOnReplies };
+
 export type SignatureSettings = {
   /** Rich HTML; legacy signatures are plain text with [text](url) links. */
   signature: string;
   includeOnNew: boolean;
-  includeOnReplies: boolean;
+  /** See `MailSignatureOnReplies` in `@/lib/mail/settings`. */
+  onReplies: SignatureOnReplies;
 };
 
 function escapeHtml(text: string): string {
@@ -64,7 +72,7 @@ export function signatureToEditorHtml(signature: string): string {
 const EMPTY_SETTINGS: SignatureSettings = {
   signature: "",
   includeOnNew: false,
-  includeOnReplies: false,
+  onReplies: "never",
 };
 
 /** Per-account cache shared by the composers and this dialog. */
@@ -81,7 +89,8 @@ export async function fetchSignatureSettings(
   const settings: SignatureSettings = {
     signature: json.signature,
     includeOnNew: json.includeOnNew,
-    includeOnReplies: json.includeOnReplies,
+    // A store older than this build answers with the tick, not the word.
+    onReplies: readOnReplies(json),
   };
   settingsCache.set(account, settings);
   return settings;
@@ -346,10 +355,9 @@ function SignatureAccountSection({
             checked={settings.includeOnNew}
             onChange={(includeOnNew) => onToggle({ includeOnNew })}
           />
-          <IncludeCheckbox
-            label={t("onReplies")}
-            checked={settings.includeOnReplies}
-            onChange={(includeOnReplies) => onToggle({ includeOnReplies })}
+          <RepliesChoice
+            value={settings.onReplies}
+            onChange={(onReplies) => onToggle({ onReplies })}
           />
         </div>
       ) : null}
@@ -376,6 +384,51 @@ function IncludeCheckbox({
       />
       {label}
     </label>
+  );
+}
+
+/**
+ * How much of a conversation the signature goes on.
+ *
+ * Three words rather than a tick, because the answer people want is the
+ * middle one: sign the message that introduces you, and leave the back and
+ * forth after it plain. A checkbox could only offer the ends.
+ */
+function RepliesChoice({
+  value,
+  onChange,
+}: {
+  value: SignatureOnReplies;
+  onChange: (next: SignatureOnReplies) => void;
+}) {
+  const t = useMailT();
+  const options: { key: SignatureOnReplies; label: string }[] = [
+    { key: "never", label: t("onRepliesNever") },
+    { key: "first", label: t("onRepliesFirst") },
+    { key: "every", label: t("onRepliesEvery") },
+  ];
+  return (
+    <div className="flex items-center gap-2 text-sm text-stone-700">
+      <span>{t("onRepliesLabel")}</span>
+      <div className="flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5">
+        {options.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={value === option.key}
+            className={cn(
+              "rounded-md px-2.5 py-1 text-xs font-medium transition",
+              value === option.key
+                ? "bg-white text-stone-900 shadow-sm"
+                : "text-stone-500 hover:text-stone-800"
+            )}
+            onClick={() => onChange(option.key)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

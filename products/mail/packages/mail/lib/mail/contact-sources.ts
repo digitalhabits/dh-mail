@@ -1,6 +1,8 @@
+import { localStoreServes } from "@/lib/mail/local-store";
 import "server-only";
 
 import { mailStore } from "@/lib/mail/store";
+import type { MailProvider } from "@/lib/mail/types";
 import {
   getMessageMetadata,
   headerValue,
@@ -100,8 +102,18 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** A 403 that means "come back later", not "you may not". */
+function isRateLimit(err: unknown): boolean {
+  return /ratelimitexceeded|userratelimitexceeded|quota exceeded|too many requests|over its request limit/i.test(
+    errorMessage(err)
+  );
+}
+
 /** True when the OAuth token is missing contacts scopes (user must reconnect). */
 function isScopeError(err: unknown): boolean {
+  // Google says "over the limit" with a 403 too. Told to reconnect for
+  // that, the reader reconnects, and nothing changes — see the mail list.
+  if (isRateLimit(err)) return false;
   const message = errorMessage(err).toLowerCase();
   // People API disabled on the GCP project is also a 403 — not a reconnect issue.
   if (
@@ -125,6 +137,9 @@ function isScopeError(err: unknown): boolean {
 function friendlyContactSyncError(err: unknown): string {
   const message = errorMessage(err);
   const lower = message.toLowerCase();
+  if (isRateLimit(err)) {
+    return "Google is over its request limit for this account. Sync again in a minute.";
+  }
   if (isScopeError(err)) {
     return "Reconnect this account to grant contacts access";
   }
@@ -170,7 +185,7 @@ async function saveState(
 async function replaceSourceRows(
   source: "google" | "outlook",
   account: string,
-  rows: { email: string; name: string }[]
+  rows: { email: string; name: string; card?: string }[]
 ): Promise<void> {
   await mailStore().contactSources.replaceContacts(source, account, rows);
 }
@@ -195,7 +210,9 @@ export async function syncGoogleContactsForAccount(
 /** Google People API: the account's saved contacts. */
 async function syncGoogleContacts(account: string): Promise<void> {
   const token = await accessTokenFor(account);
-  const byEmail = new Map<string, string>();
+  // The card is the book's own id for the person, kept so two addresses on
+  // one card read as one person in the People view.
+  const byEmail = new Map<string, { name: string; card?: string }>();
   let pageToken: string | undefined;
   do {
     const params = new URLSearchParams({
@@ -215,6 +232,7 @@ async function syncGoogleContacts(account: string): Promise<void> {
     }
     const data = (await res.json()) as {
       connections?: {
+        resourceName?: string;
         names?: { displayName?: string }[];
         emailAddresses?: { value?: string }[];
       }[];
@@ -222,16 +240,17 @@ async function syncGoogleContacts(account: string): Promise<void> {
     };
     for (const person of data.connections ?? []) {
       const name = person.names?.[0]?.displayName?.trim() ?? "";
+      const card = person.resourceName?.trim() || undefined;
       for (const addr of person.emailAddresses ?? []) {
         const email = addr.value?.trim().toLowerCase();
         if (!email || !email.includes("@")) continue;
-        if (!byEmail.get(email)) byEmail.set(email, name);
+        if (!byEmail.get(email)) byEmail.set(email, { name, card });
       }
     }
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  const rows = [...byEmail.entries()].map(([email, name]) => ({ email, name }));
+  const rows = [...byEmail.entries()].map(([email, row]) => ({ email, ...row }));
   await replaceSourceRows("google", account, rows);
   await saveState("google", account, { count: rows.length, error: null, synced: true });
 }
@@ -239,22 +258,23 @@ async function syncGoogleContacts(account: string): Promise<void> {
 /** Microsoft Graph: the account's Outlook contacts. */
 async function syncOutlookContacts(account: string): Promise<void> {
   const token = await outlookAccessTokenFor(account);
-  const byEmail = new Map<string, string>();
+  const byEmail = new Map<string, { name: string; card?: string }>();
   let pageToken: string | undefined;
   do {
     const page = await listOutlookContacts(token, pageToken);
     for (const contact of page.contacts) {
       const name = contact.displayName?.trim() ?? "";
+      const card = contact.id?.trim() || undefined;
       for (const addr of contact.emailAddresses ?? []) {
         const email = addr.address?.trim().toLowerCase();
         if (!email || !email.includes("@")) continue;
-        if (!byEmail.get(email)) byEmail.set(email, name);
+        if (!byEmail.get(email)) byEmail.set(email, { name, card });
       }
     }
     pageToken = page.nextPageToken;
   } while (pageToken);
 
-  const rows = [...byEmail.entries()].map(([email, name]) => ({ email, name }));
+  const rows = [...byEmail.entries()].map(([email, row]) => ({ email, ...row }));
   await replaceSourceRows("outlook", account, rows);
   await saveState("outlook", account, { count: rows.length, error: null, synced: true });
 }
@@ -295,14 +315,19 @@ async function syncMacContacts(): Promise<void> {
   if (status !== "authorized" && status !== "limited") {
     throw new Error(macAccessMessage(status));
   }
-  const byEmail = new Map<string, string>();
+  const byEmail = new Map<string, { name: string; card?: string }>();
   for (const contact of await macContactsList()) {
     const email = contact.email.trim().toLowerCase();
     if (!email || !email.includes("@")) continue;
     // The first name wins, the same rule the other address books follow.
-    if (!byEmail.get(email)) byEmail.set(email, contact.name.trim());
+    if (!byEmail.get(email)) {
+      byEmail.set(email, {
+        name: contact.name.trim(),
+        card: contact.card?.trim() || undefined,
+      });
+    }
   }
-  const rows = [...byEmail.entries()].map(([email, name]) => ({ email, name }));
+  const rows = [...byEmail.entries()].map(([email, row]) => ({ email, ...row }));
   await mailStore().contactSources.replaceContacts("mac", MAC_ACCOUNT, rows);
   await saveState("mac", MAC_ACCOUNT, {
     count: rows.length,
@@ -332,6 +357,22 @@ function noteRecipient(
   if (!existing.name && name.trim()) existing.name = name.trim();
 }
 
+/**
+ * Who the mailbox wrote to, from the local copy: a query, no reads. Null
+ * when the copy does not serve this mailbox, so the scan of sent mail
+ * over the API still answers.
+ */
+async function collectFromLocalCopy(account: string): Promise<Map<string, HistoryEntry> | null> {
+  if (!(await localStoreServes(account))) return null;
+  const since = Date.now() - 365 * 24 * 3600 * 1000;
+  const rows = await mailStore().messages.recipients(account, since);
+  const entries = new Map<string, HistoryEntry>();
+  for (const row of rows) {
+    noteRecipient(entries, row.email, row.name, row.lastAt, account);
+  }
+  return entries;
+}
+
 async function collectGmailHistory(
   account: string
 ): Promise<Map<string, HistoryEntry>> {
@@ -351,25 +392,49 @@ async function collectGmailHistory(
 
   const entries = new Map<string, HistoryEntry>();
   const limited = ids.slice(0, HISTORY_MAX_GMAIL_MESSAGES);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(6, limited.length) }, async () => {
-      while (next < limited.length) {
-        const id = limited[next++];
-        try {
-          const message = await getMessageMetadata(token, id, ["To", "Cc"]);
-          const at = Number(message.internalDate ?? 0);
-          for (const header of ["To", "Cc"]) {
-            for (const addr of parseAddressList(headerValue(message, header))) {
-              noteRecipient(entries, addr.email, addr.name, at, account);
+  /*
+    Paced, so the scan shares the minute.
+
+    Five hundred message reads is two and a half thousand units, and
+    Google allows a mailbox six thousand a minute. Read in one go, as it
+    was, the scan took most of the minute's allowance in a few seconds
+    and the inbox behind it was refused. Read thirty at a time with six
+    seconds between chunks, it spends fifteen hundred a minute and is
+    done inside two minutes — a background job's pace, which is what it
+    is. The client's own allowance (see gmail/api) is the hard stop
+    under this.
+  */
+  const CHUNK = 30;
+  const CHUNK_MS = 6_000;
+  for (let start = 0; start < limited.length; start += CHUNK) {
+    const chunk = limited.slice(start, start + CHUNK);
+    const began = Date.now();
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(6, chunk.length) }, async () => {
+        while (next < chunk.length) {
+          const id = chunk[next++];
+          try {
+            const message = await getMessageMetadata(token, id, ["To", "Cc"]);
+            const at = Number(message.internalDate ?? 0);
+            for (const header of ["To", "Cc"]) {
+              for (const addr of parseAddressList(headerValue(message, header))) {
+                noteRecipient(entries, addr.email, addr.name, at, account);
+              }
             }
+          } catch {
+            // Skip unreadable messages; the scan is best-effort.
           }
-        } catch {
-          // Skip unreadable messages; the scan is best-effort.
         }
+      })
+    );
+    if (start + CHUNK < limited.length) {
+      const elapsed = Date.now() - began;
+      if (elapsed < CHUNK_MS) {
+        await new Promise((resolve) => setTimeout(resolve, CHUNK_MS - elapsed));
       }
-    })
-  );
+    }
+  }
   return entries;
 }
 
@@ -420,12 +485,12 @@ async function upsertHistoryRows(
 }
 
 async function syncHistory(
-  provider: "gmail" | "outlook",
+  provider: MailProvider,
   account: string
 ): Promise<void> {
   const entries =
     provider === "gmail"
-      ? await collectGmailHistory(account)
+      ? (await collectFromLocalCopy(account)) ?? (await collectGmailHistory(account))
       : await collectOutlookHistory(account);
   const count = await upsertHistoryRows(account, entries);
   await saveState("history", account, { count, error: null, synced: true });

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Clock, SquarePen, Users, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import {
   CONTACTS_CHANGED_EVENT,
@@ -33,6 +33,8 @@ import {
   useMailT,
   type MailStringKey,
 } from "@/lib/mail/i18n";
+import { copyTextToClipboard } from "@/lib/mail/copy-text";
+import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { mailApiFetch } from "@/lib/mail/api";
@@ -376,29 +378,6 @@ function selfSuggestionsFromAccounts(
   return out;
 }
 
-/** Put text on the clipboard, one way or another. */
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    /* fall through to the old way */
-  }
-  try {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    area.remove();
-    return ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * "Save as list…", for a set of people already gathered.
@@ -774,15 +753,21 @@ function ListChip({
   variant,
   selected,
   onSelect,
+  onRelease,
   onChange,
   onExpand,
   onRemove,
+  carry,
 }: {
   recipient: Extract<MailRecipient, { kind: "list" }>;
   contacts: ContactSuggestion[];
   variant: "boxed" | "inline";
   selected?: boolean;
+  /** Set where the chip may be carried to another field. */
+  carry?: React.HTMLAttributes<HTMLElement> & { draggable?: boolean };
   onSelect: (e: React.MouseEvent) => void;
+  /** The mouse let go without a drag: give the input its focus back. */
+  onRelease?: () => void;
   onChange: (next: Extract<MailRecipient, { kind: "list" }>) => void;
   onExpand: () => void;
   onRemove: () => void;
@@ -811,19 +796,24 @@ function ListChip({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <span
+          {...carry}
           className={cn(
-            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-teal-100 py-0.5 pl-2 pr-1 text-teal-900",
+            "select-none inline-flex cursor-pointer items-center gap-1 rounded-full bg-teal-100 py-0.5 pl-2 pr-1 text-teal-900",
             variant === "inline"
               ? "text-[13px]"
               : "mb-1 mr-1.5 align-middle text-xs",
             selected && "ring-2 ring-teal-600 ring-offset-1"
           )}
           aria-selected={selected}
+          /* Focusable for the same reason as an address chip: see there. */
+          tabIndex={-1}
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
-            // Keep the draft input focused so arrow keys keep working.
-            e.preventDefault();
             onSelect(e);
+          }}
+          onMouseUp={(e) => {
+            if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
+            onRelease?.();
           }}
         >
           <Users className="h-3.5 w-3.5 shrink-0 text-teal-700" />
@@ -1052,6 +1042,8 @@ function ListEditorCard({
   return (
     <div
       ref={cardRef}
+      // The reply band clips what hangs out of it; see mail.css.
+      data-recipient-menu=""
       className={cn(
         "absolute left-0 right-0 z-30 overflow-y-auto rounded-lg border border-stone-200 bg-white p-3 shadow-lg",
         above ? "bottom-full mb-1" : "top-full mt-1"
@@ -1258,23 +1250,66 @@ function listSubtitle(t: ReturnType<typeof useMailT>, count: number): string {
  * (that is how several are cut or deleted at once), and a tooltip cannot
  * be copied from, which is most of the reason for looking.
  */
+/**
+ * A recipient being carried from one field to another.
+ *
+ * To, Cc and Bcc are three fields that do not know about each other, and
+ * moving somebody between them meant taking them out of one and typing
+ * them into the next. The chip carries what it is and how to take it out
+ * of where it came from, so the field it lands on can finish the move by
+ * itself — no field has to know what the others are.
+ *
+ * Without a provider round them there is nothing to carry to, and the
+ * chips are simply not draggable.
+ */
+type CarriedRecipient = {
+  fieldId: string;
+  recipient: MailRecipient;
+  /** Take it out of the field it came from, once it has landed. */
+  takeFromSource: () => void;
+};
+
+const RecipientCarry = React.createContext<{
+  carried: CarriedRecipient | null;
+  setCarried: (next: CarriedRecipient | null) => void;
+} | null>(null);
+
+export function RecipientCarryProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [carried, setCarried] = React.useState<CarriedRecipient | null>(null);
+  const value = React.useMemo(() => ({ carried, setCarried }), [carried]);
+  return (
+    <RecipientCarry.Provider value={value}>{children}</RecipientCarry.Provider>
+  );
+}
+
 function EmailChip({
   recipient,
   contacts,
   variant,
   selected,
   onSelect,
+  onRelease,
   onRemove,
+  carry,
 }: {
   recipient: Extract<MailRecipient, { kind: "email" }>;
   contacts: ContactSuggestion[];
   variant: "boxed" | "inline";
   selected: boolean;
   onSelect: (e: React.MouseEvent) => void;
+  /** The mouse let go without a drag: give the input its focus back. */
+  onRelease?: () => void;
   onRemove: () => void;
+  /** Set where the chip may be carried to another field. */
+  carry?: React.HTMLAttributes<HTMLElement> & { draggable?: boolean };
 }) {
   const t = useMailT();
   const [open, setOpen] = React.useState(false);
+  const { openAddressMenu, addressMenu } = useAddressMenu();
   const label = recipient.name || recipient.email;
   const known = contacts.find(
     (c) => c.email.trim().toLowerCase() === recipient.email.trim().toLowerCase()
@@ -1282,11 +1317,13 @@ function EmailChip({
   const badge = known ? contactSourceBadge(known) : null;
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <span
+          {...carry}
           className={cn(
-            "inline-flex cursor-pointer items-center gap-1 rounded-full bg-[var(--mail-chip)] py-0.5 pl-2 pr-1 text-[var(--mail-chip-fg)]",
+            "inline-flex cursor-pointer select-none items-center gap-1 rounded-full bg-[var(--mail-chip)] py-0.5 pl-2 pr-1 text-[var(--mail-chip-fg)]",
             variant === "inline"
               ? "text-[13px]"
               : // Block flow in a boxed field, so the spacing a flex gap
@@ -1296,15 +1333,34 @@ function EmailChip({
           )}
           title={recipient.name ? recipient.email : undefined}
           aria-selected={selected}
+          /* Focusable, so the mouse going down on it moves focus here and
+             not out of the field: the input's blur then does nothing, and
+             the mouse coming up hands focus back. The default used to be
+             cancelled instead, which kept the focus but also kept WebKit
+             from starting a drag — a chip could be selected but never
+             carried to another field. */
+          tabIndex={-1}
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
-            e.preventDefault();
             onSelect(e);
           }}
+          onMouseUp={(e) => {
+            if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
+            onRelease?.();
+          }}
+          /* A click selects; the card is for a double-click. The trigger
+             would open it on the click as well, and the card takes the
+             focus with it — so a chip picked with the mouse could not be
+             cut or copied, the keys went to the card. Marking the click
+             handled is what tells the trigger to leave it. */
+          onClick={(e) => e.preventDefault()}
           onDoubleClick={(e) => {
             e.preventDefault();
             setOpen(true);
           }}
+          onContextMenu={(e) =>
+            openAddressMenu(e, recipient.email, recipient.name)
+          }
         >
           {label}
           <button
@@ -1368,6 +1424,8 @@ function EmailChip({
         </div>
       </MailPopoverContent>
     </Popover>
+    {addressMenu}
+    </>
   );
 }
 
@@ -1669,8 +1727,8 @@ export function RecipientField({
       } else {
         selectOnly(index);
       }
-      // Chip mousedown uses preventDefault so the input doesn't steal the
-      // click — but then the input may never be focused, and arrow keys die.
+      // The chip takes focus on mouse-down and hands it back on mouse-up.
+      // Focus the input here too, for a selection made without a mouse.
       focusDraftInput();
     },
     [selectOnly, selectRange, focusDraftInput]
@@ -1832,8 +1890,14 @@ export function RecipientField({
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const margin = 12;
-      const below = window.innerHeight - rect.bottom - margin;
-      const above = rect.top - margin;
+      // The room is measured in screen pixels and spent in the field's
+      // own, and the two differ by whatever `zoom` the composer card is
+      // under: at 122% a menu given the room it measured ran a fifth past
+      // the bottom of the window. The field's rect against its offset
+      // height is that zoom, whatever ancestor carries it.
+      const scale = el.offsetHeight ? rect.height / el.offsetHeight : 1;
+      const below = (window.innerHeight - rect.bottom - margin) / scale;
+      const above = (rect.top - margin) / scale;
       // Downwards by default, which is where a reader expects it. Upwards
       // only when there is really no room and more of it the other way.
       const flip = below < 200 && above > below;
@@ -1864,17 +1928,97 @@ export function RecipientField({
   const shownValues = folding ? values.slice(0, collapseAfter) : values;
   const foldedCount = values.length - shownValues.length;
 
+  /*
+    Carrying somebody from this field to another.
+
+    The chip says what it is and how to take it out of here; the field it
+    is dropped on adds it and then calls that. So neither field knows the
+    other exists — which is what lets To, Cc and Bcc trade without a
+    composer standing between them holding all three.
+  */
+  const carry = React.useContext(RecipientCarry);
+  const fieldId = React.useId();
+  const [carriedOver, setCarriedOver] = React.useState(false);
+  const carriedFromElsewhere =
+    carry?.carried != null && carry.carried.fieldId !== fieldId;
+
+  const carryProps = (value: MailRecipient) =>
+    carry
+      ? {
+          draggable: true,
+          onDragStart: (event: React.DragEvent) => {
+            // Something has to be on the drag or the browser refuses it.
+            event.dataTransfer.setData("text/plain", recipientKey(value));
+            event.dataTransfer.effectAllowed = "move";
+            // The mouse going down selected this chip and no mouse-up will
+            // follow; once it has gone the ring would fall on the next
+            // chip, and a Backspace would take that one.
+            clearChipSelection();
+            carry.setCarried({
+              fieldId,
+              recipient: value,
+              takeFromSource: () =>
+                onChange(
+                  values.filter((v) => recipientKey(v) !== recipientKey(value))
+                ),
+            });
+          },
+          onDragEnd: () => carry.setCarried(null),
+        }
+      : undefined;
+
+  const dropProps = carry
+    ? {
+        onDragOver: (event: React.DragEvent) => {
+          if (!carriedFromElsewhere) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move" as const;
+          if (!carriedOver) setCarriedOver(true);
+        },
+        onDragLeave: (event: React.DragEvent) => {
+          // Only when the pointer has left the field, not one of its chips.
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setCarriedOver(false);
+        },
+        onDrop: (event: React.DragEvent) => {
+          setCarriedOver(false);
+          const carried = carry.carried;
+          if (!carried || carried.fieldId === fieldId) return;
+          event.preventDefault();
+          carry.setCarried(null);
+          // Already here: the move is only a removal from where it was.
+          const here = new Set(values.map((v) => recipientKey(v)));
+          if (!here.has(recipientKey(carried.recipient))) {
+            onChange([...values, carried.recipient]);
+          }
+          carried.takeFromSource();
+        },
+      }
+    : undefined;
+
   return (
     <div
       className={cn(
         "relative flex min-w-0 flex-1 flex-wrap items-start gap-1.5",
         className
       )}
+      /* On the whole field, not on the box inside it: a chip is let go
+         over the row it is meant for, and the gaps between the chips are
+         as much a part of that row as the chips are. */
+      {...dropProps}
     >
       <div
         ref={fieldElRef}
         className={cn(
           "relative min-w-0 flex-1",
+          /* Lit while somebody is being carried over it, so it is plain
+             which field they will land in — and read from the carry as
+             well as from the pointer, so a drag abandoned outside the
+             window does not leave a field lit for a drop that is not
+             coming. */
+          carriedOver &&
+            carriedFromElsewhere &&
+            "rounded-xl ring-2 ring-teal-500/60",
           /* Block rather than flex when the field has a box round it, so
              "Save as list…" can float into its top right corner: the chips
              wrap around it on the first line and take the whole width
@@ -1916,8 +2060,10 @@ export function RecipientField({
                 recipient={value}
                 contacts={contacts}
                 variant={variant}
+                carry={carryProps(value)}
                 selected={isSelected}
                 onSelect={(e) => handleChipSelect(index, e)}
+                onRelease={focusDraftInput}
                 onChange={(next) => {
                   const copy = [...values];
                   copy[index] = next;
@@ -1953,8 +2099,10 @@ export function RecipientField({
               recipient={value}
               contacts={contacts}
               variant={variant}
+              carry={carryProps(value)}
               selected={isSelected}
               onSelect={(e) => handleChipSelect(index, e)}
+              onRelease={focusDraftInput}
               onRemove={() => {
                 clearChipSelection();
                 onChange(values.filter((_, i) => i !== index));
@@ -1994,6 +2142,18 @@ export function RecipientField({
             setWriting(true);
             if (chipNavRef.current.focusIndex == null) setMenuOpen(true);
           }}
+          /*
+            Addresses pasted in become chips at once, not text waiting for
+            an Enter. That is what a paste of cut or copied chips expects,
+            and a list from a spreadsheet or an email header too. Text with
+            no address in it is left to the browser, as typing.
+          */
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text/plain");
+            if (!parseEmails(text).length) return;
+            e.preventDefault();
+            commitDraft(`${draft} ${text}`);
+          }}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
               if (values.length) {
@@ -2015,10 +2175,14 @@ export function RecipientField({
              */
             if (
               (e.metaKey || e.ctrlKey) &&
-              e.key.toLowerCase() === "c" &&
+              (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x") &&
               chipNavRef.current.selected.size > 0
             ) {
               e.preventDefault();
+              // Cut is copy and then take them out, the way text is cut:
+              // the chips are gone from here and waiting on the clipboard
+              // for the field they are meant for.
+              const cutting = e.key.toLowerCase() === "x";
               const picked = values.filter((_, i) =>
                 chipNavRef.current.selected.has(i)
               );
@@ -2029,8 +2193,11 @@ export function RecipientField({
                   toast.error(mailSay("couldNotCopy"));
                   return;
                 }
+                if (cutting) removeSelectedChips();
                 const n = text.split(", ").length;
-                toast(`${n} address${n === 1 ? "" : "es"} copied`);
+                toast(
+                  `${n} address${n === 1 ? "" : "es"} ${cutting ? "cut" : "copied"}`
+                );
               });
               return;
             }
@@ -2123,8 +2290,13 @@ export function RecipientField({
             "min-w-[16ch] bg-transparent outline-none placeholder:text-stone-400",
             variant === "boxed"
               ? // Wide enough to type in, and it takes the rest of the line
-                // rather than a line of its own.
-                "mb-1 w-[16ch] max-w-full align-middle"
+                // rather than a line of its own. Empty, it shows the
+                // placeholder, which is longer than sixteen letters: it
+                // takes the line, less the label and the list button.
+                cn(
+                  "mb-1 max-w-full align-middle",
+                  values.length ? "w-[16ch]" : "w-[calc(100%-4.5rem)]"
+                )
               : "flex-1",
             // While the rest are folded away, "Add…" beside "and 24 more"
             // reads as a second thing to press. The field is one click from
@@ -2200,6 +2372,8 @@ export function RecipientField({
         {showMenu && !editingList ? (
           <ul
             role="listbox"
+            // The reply band clips what hangs out of it; see mail.css.
+            data-recipient-menu=""
             className={cn(
               "absolute left-0 right-0 z-30 overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg",
               menuBox.above ? "bottom-full mb-1" : "top-full mt-1"

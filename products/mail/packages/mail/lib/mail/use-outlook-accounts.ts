@@ -52,6 +52,29 @@ function loadOutlookAccounts(): Promise<Set<string>> {
  * no provider to hold the message, something of ours has to be awake at
  * the send time.
  */
+/**
+ * The connected Outlook mailboxes, in the order the app knows them.
+ *
+ * Asked because of the hand-over to Outlook: a draft made over Graph has to
+ * be made in a mailbox Graph holds, and which mailbox that is has nothing
+ * to do with the account the reply is being written from. Somebody whose
+ * university will not let them send from anywhere else needs the draft in
+ * the university's mailbox, whatever they were reading when they asked.
+ */
+export function useOutlookAccounts(): string[] {
+  const [outlook, setOutlook] = React.useState<string[]>(() => []);
+  React.useEffect(() => {
+    let live = true;
+    void loadOutlookAccounts().then((set) => {
+      if (live) setOutlook([...set]);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return outlook;
+}
+
 export function useCanSendLater(account: string): boolean {
   const [outlook, setOutlook] = React.useState<Set<string>>(() => new Set());
   React.useEffect(() => {

@@ -13,6 +13,7 @@ import {
   dedupeMessagesByRfcId,
   dedupeThreadsByTip,
   everyCopy,
+  rowStandsFor,
   threadKey,
 } from "@/lib/mail/thread-copies";
 
@@ -159,4 +160,51 @@ assert.deepEqual(
     { id: "three", rfcMessageId: "" },
   ]);
   assert.deepEqual(kept.map((m) => m.id), ["one", "two", "three"]);
+}
+
+/*
+ * Which copy wins the row is a sort whose ties fall to fetch order, so
+ * between two polls the same conversation's row can change key. Everything
+ * that matches the open thread against the list has to survive that.
+ */
+
+/** A row stands for its own key and for every copy folded into it. */
+{
+  const rows = dedupeThreadsByTip([
+    row("ulrik@a.example", "t-a", "<m1@x>", "2026-08-16T10:00:00Z"),
+    row("team@a.example", "t-b", "<m1@x>", "2026-08-16T10:00:00Z"),
+  ]);
+  const kept = rows[0];
+  assert.equal(rowStandsFor(kept, { account: "ulrik@a.example", threadId: "t-a" }), true);
+  assert.equal(rowStandsFor(kept, { account: "team@a.example", threadId: "t-b" }), true);
+  assert.equal(rowStandsFor(kept, { account: "ulrik@a.example", threadId: "t-x" }), false);
+}
+
+/** An action on the copy the row is NOT standing on still takes both. */
+{
+  const rows = dedupeThreadsByTip([
+    row("ulrik@a.example", "t-a", "<m1@x>", "2026-08-16T10:00:00Z"),
+    row("team@a.example", "t-b", "<m1@x>", "2026-08-16T10:00:00Z"),
+  ]);
+  // The reader opened the conversation when the row stood on t-a; a later
+  // poll flipped the row to t-b. Deleting the open thread must reach the
+  // row's copy too, or the row survives its own deletion.
+  const folded = rows[0].alsoIn[0];
+  const copies = everyCopy(folded, rows).map(threadKey);
+  assert.deepEqual(copies.sort(), [
+    "team@a.example|t-b",
+    "ulrik@a.example|t-a",
+  ].sort());
+}
+
+/** A thread the list has never held acts on itself alone, as before. */
+{
+  const rows = dedupeThreadsByTip([
+    row("ulrik@a.example", "t-a", "<m1@x>", "2026-08-16T10:00:00Z"),
+  ]);
+  const copies = everyCopy(
+    { account: "other@a.example", threadId: "t-z" },
+    rows
+  ).map(threadKey);
+  assert.deepEqual(copies, ["other@a.example|t-z"]);
 }

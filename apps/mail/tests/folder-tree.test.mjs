@@ -94,20 +94,36 @@ suite(async () => {
     { account: GMAIL, name: "Deleted Items", count: 33, role: "trash" },
     { account: GMAIL, name: "Archive", count: 36, role: "archive" },
     { account: GMAIL, name: "Drafts", count: 14, role: "drafts" },
+    { account: GMAIL, name: "Junk Email", count: 4, role: "junk" },
   ]);
   check(
     "they sort to the top of the mailbox, in their own order, above what somebody made",
+    // The order the head of the rail uses, so an account reads the same as
+    // the six above it: inbox, sent, archived, drafts, junk, trash.
     withSystem.map((n) => n.label).join(", ") ===
-      "Archive, Drafts, Sent Items, Deleted Items, 62 Abingdon, ScanSoc",
+      "Sent Items, Archive, Drafts, Junk Email, Deleted Items, 62 Abingdon, ScanSoc",
     withSystem.map((n) => n.label).join(", ")
+  );
+  /*
+   * Junk above the bin.
+   *
+   * They are not the same kind of place: one holds what the provider is
+   * unsure about and the reader may want back, the other holds what the
+   * reader has already thrown away. Reaching junk used to mean a menu
+   * beside the list, and on Outlook it was hidden from the tree outright.
+   */
+  check(
+    "junk stands above the bin, not in it",
+    withSystem.findIndex((n) => n.role === "junk") <
+      withSystem.findIndex((n) => n.role === "trash")
   );
   check(
     "each keeps what it is, so the rail can draw it as itself",
-    withSystem[0].role === "archive" && withSystem[3].role === "trash"
+    withSystem[0].role === "sent" && withSystem[4].role === "trash"
   );
   check(
     "a folder somebody made carries no role and sorts by name as before",
-    withSystem[4].role === undefined && withSystem[5].role === undefined
+    withSystem[5].role === undefined && withSystem[6].role === undefined
   );
 
   /** ── the filter ────────────────────────────────────────────────────── */

@@ -16,6 +16,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 
+import { useMailColorMode } from "@/lib/mail/theme";
+import { hostOsFromUserAgent, markPhoneForm } from "@/lib/mail/host-form";
+
 import { ChatPopout } from "@/components/mail/ChatPopout";
 import { openMailAccountsMenu } from "@/components/mail/MailPage";
 import { setMailApiTransport } from "@/lib/mail/api";
@@ -25,6 +28,7 @@ import {
 } from "@/lib/mail/theme";
 
 import { App } from "./App";
+import { ReaderWindow } from "./ReaderWindow";
 import { WindowControls } from "./WindowControls";
 import { showScrollbarsWhileScrolling } from "./scrollbars";
 import { importPlannerStateOnce } from "./import-planner-state";
@@ -56,13 +60,20 @@ const demoMode = isDemoMode();
  */
 setMailApiTransport(demoMode ? handleDemoMailApi : handleStandaloneMailApi);
 const isPopout = params.get("popout") === "1";
+// A thread in an ordinary window of its own — see ThreadReaderWindow. The
+// same one-document arrangement as the popout, with `reader=1` saying so.
+const isReader = params.get("reader") === "1";
+// A person's mail in a reader window rather than one thread — see
+// PersonReaderWindow. With it set, no thread is named.
+const person = params.get("person") ?? "";
 const account = params.get("account") ?? "";
 const threadId = params.get("thread") ?? "";
 
 function Root() {
   // The window buttons on Windows sit over the title strip. Not in the
-  // popout, which draws its own card and closes from it.
-  if (!isPopout) {
+  // popout, which draws its own card and closes from it, and not in the
+  // reader window, which has the system's own.
+  if (!isPopout && !isReader) {
     return (
       <>
         <App />
@@ -70,11 +81,23 @@ function Root() {
       </>
     );
   }
-  if (!account || !threadId) {
+  if (!(isReader && person) && (!account || !threadId)) {
     return (
       <p className="p-6 text-sm text-stone-500">
         Missing thread reference — open this window from the mail client.
       </p>
+    );
+  }
+  if (isReader) {
+    return (
+      <ReaderWindow
+        account={account}
+        threadId={threadId}
+        name={params.get("name") ?? ""}
+        email={params.get("email") ?? ""}
+        subject={params.get("subject") ?? ""}
+        person={person || undefined}
+      />
     );
   }
   return (
@@ -112,6 +135,24 @@ if (isPopout) document.documentElement.classList.add("dh-popout");
     navigator as Navigator & { userAgentData?: { platform?: string } }
   ).userAgentData?.platform;
   if (platform) document.documentElement.dataset.dhOs = platform.toLowerCase();
+  /*
+    A phone says so in the user agent the platform configs set —
+    `dh-mail-mobile/ios` or `dh-mail-mobile/android`, see
+    src-tauri/tauri.ios.conf.json and tauri.android.conf.json. That puts the
+    system on the document the way Windows is put there, and turns on the
+    phone layout. A browser can ask for the same layout with `?mobile=1`
+    or a `VITE_MAIL_MOBILE=1` build (`pnpm ui:dev:phone`), which is how the
+    layout is looked at without a phone.
+  */
+  const phoneOs = hostOsFromUserAgent(navigator.userAgent);
+  if (phoneOs) document.documentElement.dataset.dhOs = phoneOs;
+  if (
+    phoneOs ||
+    import.meta.env.VITE_MAIL_MOBILE === "1" ||
+    params.get("mobile") === "1"
+  ) {
+    markPhoneForm();
+  }
 }
 
 /**
@@ -142,7 +183,7 @@ window
  * opens the same panel the title-bar button does. Not in the popout, which
  * has no such panel; Rust only sends it here.
  */
-if (!isPopout) {
+if (!isPopout && !isReader) {
   const tauriEvent = (
     window as unknown as {
       __TAURI__?: {
@@ -159,9 +200,10 @@ if (!isPopout) {
  * The mail pane's first launch takes over what the planner server held. It
  * runs before the interface reads the store, so a mailbox list or a snooze
  * that came across is there on the first paint. See import-planner-state.ts.
- * The popout skips it: the main pane has done it or will.
+ * The popout and the reader window skip it: the main pane has done it or
+ * will.
  */
-if (!isPopout) await importPlannerStateOnce();
+if (!isPopout && !isReader) await importPlannerStateOnce();
 
 /**
  * Trackpad pinch. The shell catches it in AppKit — WKWebView swallows it —
@@ -189,6 +231,42 @@ if (!isPopout) await importPlannerStateOnce();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <Root />
-    <Toaster position="bottom-center" richColors closeButton />
+    {/*
+      Five, not the three sonner keeps.
+
+      Toasts stack: the front one whole, the ones behind peeking out by a
+      dozen pixels, and hovering the stack fans them out — which is the right
+      shape and already works. But past three the older ones stop being drawn
+      at all, so a run of quick actions loses the first of them before the
+      reader can look. Five is enough to read back over a handful of
+      archives, or to see that one press really did raise two toasts.
+    */}
+    <MailToaster />
   </React.StrictMode>
 );
+
+/**
+ * The toasts, in the interface's own colour mode. Sonner draws them light
+ * unless told, and a pale green card over a dark window read as a shout.
+ */
+function MailToaster() {
+  const colorMode = useMailColorMode();
+  return (
+    <Toaster
+      position="bottom-center"
+      theme={colorMode}
+      richColors
+      closeButton
+      visibleToasts={5}
+      /*
+        Eight seconds for everything, unless a toast says otherwise.
+
+        The archive and delete toasts already ask for eight, so the CRM
+        "updated: N changes" — which had the library's four — went down
+        while its neighbours stood. One default, and a toast that wants
+        longer (the CRM notes detail asks for fourteen) still gets it.
+      */
+      toastOptions={{ duration: 8000 }}
+    />
+  );
+}

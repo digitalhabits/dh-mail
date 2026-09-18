@@ -35,9 +35,20 @@ export const FromAccountMenu = React.forwardRef<
      */
     variant?: "inline" | "row";
     label?: string;
+    /**
+     * Offer to keep the address that gets picked, the way the calendar card
+     * offers to keep where an invite goes. Left out where the choice belongs
+     * to the message rather than the reader — a reply is answered from the
+     * address it was sent to, so there is nothing there to remember.
+     */
+    remember?: {
+      checked: boolean;
+      onChange: (next: boolean) => void;
+      label: string;
+    };
   }
 >(function FromAccountMenu(
-  { value, accounts, onChange, variant = "inline", label = "Send from" },
+  { value, accounts, onChange, variant = "inline", label = "Send from", remember },
   ref
 ) {
   const [open, setOpen] = React.useState(false);
@@ -152,6 +163,24 @@ export const FromAccountMenu = React.forwardRef<
             </button>
           );
         })}
+        {/* Below the addresses, as on the calendar card: the tick is about
+            the pick that is coming, so it has to be readable before one is
+            made. Ticked, the next address chosen becomes the one new
+            messages open on. */}
+        {remember ? (
+          <>
+            <div className="mx-1.5 my-1 border-t border-stone-100" />
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-100">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-teal-700"
+                checked={remember.checked}
+                onChange={(event) => remember.onChange(event.target.checked)}
+              />
+              {remember.label}
+            </label>
+          </>
+        ) : null}
       </MailPopoverContent>
     </Popover>
   );

@@ -10,7 +10,9 @@
  * the standalone from the core running in its own webview.
  */
 
+import { isWindowsHost } from "@/lib/mail/host-os";
 import * as React from "react";
+import type { MailProvider } from "@/lib/mail/types";
 import {
   closestCenter,
   DndContext,
@@ -34,7 +36,8 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
+import { mailStore } from "@/lib/mail/store";
 
 import { AccountMarkButton } from "@/components/mail/AccountMarkButton";
 import {
@@ -63,7 +66,7 @@ import { useMailRouter } from "@/lib/mail-router";
 import { cn } from "@/lib/utils";
 
 export type MailAccountRow = GmailAccountDto & {
-  provider: "gmail" | "outlook";
+  provider: MailProvider;
 };
 
 /** The rows, in the order the reader dragged them into. */
@@ -139,6 +142,7 @@ function SortableAccountRow({
   account,
   autoReply,
   reconnecting,
+  disconnecting,
   onReconnect,
   onDisconnect,
   onToggleInMailTab,
@@ -149,6 +153,8 @@ function SortableAccountRow({
   /** Undefined while status is loading or when hidden from the Mail tab. */
   autoReply: AutoReplyDto | undefined;
   reconnecting?: boolean;
+  /** The grant is being dropped and the copy's rows with it; the bin waits. */
+  disconnecting?: boolean;
   onReconnect: () => void;
   onDisconnect: () => void;
   onToggleInMailTab: () => void;
@@ -285,11 +291,20 @@ function SortableAccountRow({
           size="icon"
           className="h-7 w-7 text-muted-foreground hover:text-red-600"
           aria-label={t("disconnectAccount", { email: account.email })}
+          aria-busy={disconnecting || undefined}
           title={t("disconnect")}
+          disabled={disconnecting}
           onPointerDown={stopDrag}
           onClick={onDisconnect}
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          {/* Dropping a mailbox also drops its copy, which for a big one
+              takes a few seconds; a bin that gave no sign was pressed
+              again, and the second press found the account gone. */}
+          {disconnecting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
       </div>
@@ -339,8 +354,9 @@ function SortableAccountRow({
             /* Nothing to offer, and a reason rather than a silence. A personal
                Microsoft account is the case: Graph will not hand over its
                mailbox settings, so the reply has to be set where the mailbox
-               lives. */
-            <span className="text-stone-400">
+               lives. The line says that it cannot be done here; the title
+               says why, in the words the server used. */
+            <span className="text-stone-400" title={autoReply.unavailable}>
               {t("outOfOfficeUnavailable")}
             </span>
           ) : (
@@ -361,7 +377,7 @@ function SortableAccountRow({
     </li>
   );
 }
-function guessMailProvider(email: string): "gmail" | "outlook" {
+function guessMailProvider(email: string): MailProvider {
   const domain = email.split("@")[1]?.toLowerCase() ?? "";
   if (
     domain === "outlook.com" ||
@@ -399,7 +415,7 @@ function ConnectButton({
   disabledReason,
   onClick,
 }: {
-  provider: "gmail" | "outlook";
+  provider: MailProvider;
   busy?: boolean;
   /** Set when this build has no client for the provider. Says why on hover. */
   disabledReason?: string | null;
@@ -439,6 +455,138 @@ function ConnectButton({
  * server environment has nothing to edit here, and offering a box that saves
  * nothing would be worse than offering none.
  */
+/** Something, an @, and a dotted domain: the bar this list uses to decide what is you. */
+function looksLikeAddress(value: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.trim());
+}
+
+function normalizeColleagueDomain(value: string): string {
+  return value.trim().toLowerCase().replace(/^.*@/, "");
+}
+
+/**
+ * One chip field: stored values as chips, and a draft for the next one.
+ *
+ * The chips are the props. A change elsewhere re-renders them. The draft is
+ * only what is being typed, so a value that fails the check stays in the
+ * box instead of being stored or dropped.
+ */
+function OwnIdentityChipField({
+  values,
+  onChange,
+  kind,
+  placeholder,
+  ariaLabel,
+  invalidHint,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+  kind: "alias" | "domain";
+  placeholder: string;
+  ariaLabel: string;
+  invalidHint: string;
+}) {
+  const t = useMailT();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = React.useState("");
+  const [invalid, setInvalid] = React.useState(false);
+
+  const parse = (
+    raw: string
+  ): { ok: true; value: string } | { ok: false } => {
+    if (kind === "alias") {
+      const value = raw.trim();
+      return looksLikeAddress(value) ? { ok: true, value } : { ok: false };
+    }
+    const value = normalizeColleagueDomain(raw);
+    return value.includes(".") ? { ok: true, value } : { ok: false };
+  };
+
+  const commit = (raw: string): boolean => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setInvalid(false);
+      return true;
+    }
+    const parsed = parse(trimmed);
+    if (!parsed.ok) {
+      setInvalid(true);
+      return false;
+    }
+    setInvalid(false);
+    setDraft("");
+    const taken = parsed.value.toLowerCase();
+    if (values.some((item) => item.toLowerCase() === taken)) return true;
+    onChange([...values, parsed.value]);
+    return true;
+  };
+
+  return (
+    <div>
+      <div
+        className={cn(
+          "flex w-full flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1.5 focus-within:border-stone-400",
+          invalid ? "border-red-400 focus-within:border-red-500" : "border-stone-200"
+        )}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) inputRef.current?.focus();
+        }}
+      >
+        {values.map((value) => (
+          <span
+            key={value}
+            className="inline-flex items-center gap-1 rounded-full bg-[var(--mail-chip)] py-0.5 pl-2 pr-1 text-xs text-[var(--mail-chip-fg)]"
+          >
+            {value}
+            <button
+              type="button"
+              data-chip-remove
+              aria-label={t("removeNamed", { name: value })}
+              title={t("removeNamed", { name: value })}
+              className="rounded-full px-1 text-[var(--mail-chip-muted)] hover:text-red-500"
+              onClick={() =>
+                onChange(values.filter((item) => item !== value))
+              }
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={draft}
+          placeholder={values.length === 0 ? placeholder : undefined}
+          aria-label={ariaLabel}
+          aria-invalid={invalid}
+          className="min-w-[12ch] flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400"
+          onChange={(event) => {
+            setDraft(event.target.value);
+            if (invalid) setInvalid(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === ",") {
+              event.preventDefault();
+              commit(draft);
+              return;
+            }
+            if (event.key === "Backspace" && draft === "" && values.length > 0) {
+              event.preventDefault();
+              onChange(values.slice(0, -1));
+            }
+          }}
+          onBlur={() => {
+            commit(draft);
+          }}
+        />
+      </div>
+      {invalid ? (
+        <p className="mt-1 text-xs text-red-600">{invalidHint}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function OwnIdentityFields({
   addresses,
   domains,
@@ -449,31 +597,6 @@ function OwnIdentityFields({
   onSave: (next: { addresses: string[]; domains: string[] }) => void;
 }) {
   const t = useMailT();
-  const [addressText, setAddressText] = React.useState(addresses.join(", "));
-  const [domainText, setDomainText] = React.useState(domains.join(", "));
-
-  // Follow the stored values when they load or change elsewhere.
-  React.useEffect(() => {
-    setAddressText(addresses.join(", "));
-  }, [addresses]);
-  React.useEffect(() => {
-    setDomainText(domains.join(", "));
-  }, [domains]);
-
-  const commit = (nextAddresses: string, nextDomains: string) => {
-    const split = (text: string) =>
-      text
-        .split(/[\s,;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean);
-    onSave({
-      addresses: split(nextAddresses),
-      domains: split(nextDomains).map((d) => d.toLowerCase().replace(/^.*@/, "")),
-    });
-  };
-
-  const field =
-    "w-full rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-stone-400";
 
   // No wrapper element. SettingsHeading drops its top margin when it is the
   // first child, so that the panel does not open with a gap — and a div here
@@ -487,28 +610,26 @@ function OwnIdentityFields({
           label={t("aliases")}
           hint={t("aliasesHint")}
         >
-          <input
-            type="text"
-            value={addressText}
-            placeholder="you@old.example, alias@example.com"
-            onChange={(e) => setAddressText(e.target.value)}
-            onBlur={() => commit(addressText, domainText)}
-            className={field}
-            aria-label={t("aliases")}
+          <OwnIdentityChipField
+            values={addresses}
+            onChange={(next) => onSave({ addresses: next, domains })}
+            kind="alias"
+            placeholder={t("aliasPlaceholder")}
+            ariaLabel={t("aliases")}
+            invalidHint={t("aliasInvalid")}
           />
         </SettingsStackedRow>
         <SettingsStackedRow
           label={t("colleagueDomains")}
           hint={t("colleagueDomainsHint")}
         >
-          <input
-            type="text"
-            value={domainText}
-            placeholder="example.com"
-            onChange={(e) => setDomainText(e.target.value)}
-            onBlur={() => commit(addressText, domainText)}
-            className={field}
-            aria-label={t("colleagueDomains")}
+          <OwnIdentityChipField
+            values={domains}
+            onChange={(next) => onSave({ addresses, domains: next })}
+            kind="domain"
+            placeholder={t("domainPlaceholder")}
+            ariaLabel={t("colleagueDomains")}
+            invalidHint={t("domainInvalid")}
           />
         </SettingsStackedRow>
       </SettingsGroup>
@@ -557,6 +678,12 @@ export function MailAccountsPanel({
   const [reconnectingEmail, setReconnectingEmail] = React.useState<
     string | null
   >(null);
+  // The row spins from the click until the connect flow is over. Nothing
+  // cleared it before: a reconnected mailbox spun until the panel was
+  // reopened, which read as the reconnect never finishing.
+  React.useEffect(() => {
+    if (!connecting) setReconnectingEmail(null);
+  }, [connecting]);
   const knownEmailsRef = React.useRef(knownEmails);
   knownEmailsRef.current = knownEmails;
 
@@ -728,14 +855,49 @@ export function MailAccountsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [disconnectingEmail, setDisconnectingEmail] = React.useState<string | null>(null);
   const disconnect = async (account: MailAccountRow) => {
+    if (disconnectingEmail) return;
+    setDisconnectingEmail(account.email);
     try {
+      // The grant, read before it goes, so a slip of the hand can be
+      // undone: the bin sits next to the reconnect arrows. Held only for
+      // as long as the toast is up.
+      const kept = await mailStore()
+        .accounts.getToken(account.provider, account.email)
+        .catch(() => null);
       const path =
         account.provider === "outlook"
           ? `/api/outlook/accounts?email=${encodeURIComponent(account.email)}`
           : `/api/gmail/accounts?email=${encodeURIComponent(account.email)}`;
       await apiJson(path, { method: "DELETE" });
-      toast.success(t("accountDisconnected", { email: account.email }));
+      const restore = kept
+        ? async () => {
+            await mailStore().accounts.save(account.provider, {
+              email: account.email,
+              ownerId: kept.ownerId,
+              refreshToken: kept.refreshToken,
+            });
+            onVisibilityChange(account.email, true);
+            await loadAccounts();
+            router.refresh();
+            onChanged();
+            toast.success(t("accountRestored", { email: account.email }));
+          }
+        : null;
+      toast.success(t("accountDisconnected", { email: account.email }), {
+        duration: restore ? 10_000 : undefined,
+        action: restore
+          ? {
+              label: t("undo"),
+              onClick: () => {
+                void restore().catch((err: unknown) => {
+                  toast.error(err instanceof Error ? err.message : t("couldNotDisconnect"));
+                });
+              },
+            }
+          : undefined,
+      });
       onVisibilityChange(account.email, false);
       await loadAccounts();
       router.refresh();
@@ -744,6 +906,8 @@ export function MailAccountsPanel({
       toast.error(
         err instanceof Error ? err.message : t("couldNotDisconnect")
       );
+    } finally {
+      setDisconnectingEmail(null);
     }
   };
 
@@ -786,11 +950,7 @@ export function MailAccountsPanel({
 
   return (
     <div>
-      {/* `first:mt-0` is meant for the heading at the top of a panel. This one
-          opens a panel of its own that sits below another section, so it needs
-          the same air as any other heading. */}
-      <SettingsHeading className="first:mt-6">{t("accounts")}</SettingsHeading>
-
+      {/* No heading of its own: the Accounts page in Settings is titled. */}
       {gmailConfigError ? (
         <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
           Gmail: {gmailConfigError}
@@ -830,12 +990,11 @@ export function MailAccountsPanel({
                 <SortableAccountRow
                   key={`${account.provider}:${account.email}`}
                   account={account}
-                  autoReply={
-                    account.provider === "gmail"
-                      ? autoReplies.find((a) => a.account === account.email)
-                      : undefined
-                  }
+                  autoReply={autoReplies.find(
+                    (a) => a.account === account.email
+                  )}
                   reconnecting={reconnectingEmail === account.email}
+                  disconnecting={disconnectingEmail === account.email}
                   onReconnect={() => {
                     if (reconnectingEmail) return;
                     setReconnectingEmail(account.email);
@@ -881,6 +1040,17 @@ export function MailAccountsPanel({
           it was a bright white rule across the card; `bg-white` is the same
           class the gaps above are drawn with, and the theme answers it. */}
       <div aria-hidden className="h-[4px] bg-white" />
+      {/* macOS asks for a password when the token goes to the Keychain.
+          Say so before the sheet, or a careful person quits — but only
+          while a connect is under way, since that is when the sheet comes;
+          standing there always, it was a paragraph of warning under every
+          visit to Settings. And only where it happens: Windows keeps the
+          token in its own credential store and asks nobody. */}
+      {isWindowsHost() || !connecting ? null : (
+        <p className="px-3 pt-2 text-sm text-muted-foreground">
+          {t("connectKeychainHint")}
+        </p>
+      )}
       {/* Side by side: two ways of doing the same thing, so neither leads. */}
       <div className="grid grid-cols-2 gap-2 p-2">
         {gmailConfigError ? (

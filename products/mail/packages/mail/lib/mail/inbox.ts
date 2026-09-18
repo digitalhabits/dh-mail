@@ -1,3 +1,9 @@
+import { applyLocalAction, localStoreServes, localStoreServesFolder, queueLocalAction } from "@/lib/mail/local-store";
+import { highlightRanges, searchHighlightTerms } from "@/lib/mail/search-highlight";
+import { wakeOutlookSync } from "@/lib/mail/outlook-sync";
+import { IMAP_ATTACHMENT_PREFIX, threadFromLocalStore } from "@/lib/mail/local-thread";
+import { tauriInvoke } from "@/lib/mail/store/tauri";
+import type { MailStoredThread, MailStoredView } from "@/lib/mail/store/types";
 import "server-only";
 
 import {
@@ -21,6 +27,8 @@ import {
   resolveInlineImages,
   listMessageIds,
   getMessageMetadata,
+  getMessageRaw,
+  isGmailRateLimit,
   findGmailDraftIdForMessage,
   deleteGmailDraft,
   sendRawMessage,
@@ -40,14 +48,11 @@ import {
   type MailAccountScope,
 } from "@/lib/mail/account-scope";
 import { mailStore } from "@/lib/mail/store";
+import { extractInlineImages } from "@/lib/mail/inline-images";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
-import { sentFromThisMailbox } from "@/lib/mail/reply-target";
+import { replyAllRecipients, sentFromThisMailbox } from "@/lib/mail/reply-target";
 import type { MailListSyncRow } from "@/lib/mail/store/types";
-import {
-  crmLogoUrlIfLoaded,
-  loadCrmContacts,
-  resetCrmGate,
-} from "@/lib/mail/crm-gate";
+import { loadCrmContacts, resetCrmGate } from "@/lib/mail/crm-gate";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 import {
   expandMailSearchQuery,
@@ -62,11 +67,13 @@ import {
 import {
   archiveOutlookThread,
   fetchOutlookMailAttachment,
+  fetchOutlookMessageSource,
   getOutlookMailThread,
   listOutlookAccountThreads,
   markOutlookThreadRead,
   markOutlookThreadUnread,
   outlookAccessTokenFor,
+  draftOutlookMailMessage,
   sendOutlookMailMessage,
   listScheduledOutlookMessages,
   cancelScheduledOutlookMessage,
@@ -92,13 +99,23 @@ import type {
   MailThreadDetail,
   MailThreadSummary,
 } from "@/lib/mail/types";
-import {
-  isOwnOrgAddress,
-  isOwnPersonalAddress,
-  normalizeEmail,
-} from "@/lib/own-addresses";
+import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
 import type { ContactIndex, CrmRecordRef } from "@/lib/crm-contact-index";
 import { senderNameFor } from "@/lib/mail/sender-identity";
+import {
+  type Classifier,
+  classifyThread,
+  crmLogoFor,
+  crmNameFor,
+  displayName,
+  THREAD_AROUND_RADIUS,
+  THREAD_PAGE_SIZE,
+} from "@/lib/mail/thread-classify";
+import {
+  escapeHtml,
+  signatureHtml,
+  signaturePlainText,
+} from "@/lib/mail/signature-html";
 import { formatFromHeader } from "@/lib/mail/sender-name";
 import { getMailSignatureSettings } from "@/lib/mail/settings";
 import {
@@ -108,6 +125,7 @@ import {
 } from "@/lib/mail/inbox-cache";
 import { PlanError } from "@/lib/plan/errors";
 import {
+  base64ToBytes,
   base64UrlToBytes,
   base64UrlToUtf8,
   utf8ToBase64,
@@ -187,24 +205,19 @@ function normalizeRfcMessageId(raw: string | null | undefined): string | null {
   return trimmed.replace(/^<|>$/g, "");
 }
 
-/**
- * Own addresses whose self-mail (notes/forwards into the work inbox) should
- * file under Other rather than In CRM.
- */
-/** Optional self-addresses that should file under Other (comma-separated env). */
-const NOT_CRM_SELF_ADDRESSES = new Set(
-  (process.env.MAIL_OWN_PERSONAL_ADDRESSES ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map(normalizeEmail)
-);
-
 export { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 
 /** Surfaces Gmail's 403 (old readonly token) as an actionable message. */
 function translateGmailError(err: unknown, accountEmail: string): never {
   const status = (err as Error & { status?: number }).status;
+  // Gmail says "over the limit" with a 403 as well, and reconnecting does
+  // nothing for that. Said as what it is, so the reader waits instead.
+  if (status === 403 && isGmailRateLimit(err)) {
+    throw new PlanError(
+      `Gmail is over its request limit for ${accountEmail}. Try again in a minute.`,
+      429
+    );
+  }
   if (status === 403) {
     throw new PlanError(
       `The Gmail connection for ${accountEmail} is read-only — reconnect the account to enable sending and archiving.`,
@@ -218,12 +231,9 @@ function translateGmailError(err: unknown, accountEmail: string): never {
 // People / everything-else classification (CRM contact matcher)
 // ---------------------------------------------------------------------------
 
-type Classifier = {
-  contacts: ContactIndex;
-  domains: Map<string, CrmRecordRef[]>;
-};
-
 let classifierCache: { value: Classifier; expiresAt: number } | null = null;
+/** How long a list waits for the CRM before filing by address books. */
+const CRM_WAIT_MS = 8_000;
 /** One in-flight build — parallel /threads?account=… must not stampede Postgres. */
 let classifierInflight: Promise<Classifier> | null = null;
 
@@ -241,10 +251,33 @@ async function getClassifier(ownerId: string): Promise<Classifier> {
   classifierInflight = (async () => {
     let contacts: ContactIndex;
     let domains: Map<string, CrmRecordRef[]>;
+    // Without the CRM the list still reads; the People tab is only
+    // thinner. Short-lived, so the next refresh asks the CRM again.
+    let withoutCrm = false;
     const crm = await loadCrmContacts();
     if (crm) {
-      contacts = await crm.buildContactIndex();
-      domains = crm.buildContactDomainIndex();
+      try {
+        // Not for long: a planner that hangs would hold every list behind
+        // it. Past this the address books answer and the next refresh asks
+        // again.
+        contacts = await Promise.race([
+          crm.buildContactIndex(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("the CRM did not answer in time")), CRM_WAIT_MS)
+          ),
+        ]);
+        domains = await crm.buildContactDomainIndex();
+      } catch (err) {
+        // The planner did not answer: a session being renewed, or the
+        // server away. That is not a mailbox that cannot be read, which
+        // is what failing here told the reader. File by the address
+        // books instead, and say so once in the console.
+        console.warn("[mail] CRM not reachable; filing by address books:", err);
+        const people = await import("@/lib/mail/people-contacts");
+        contacts = await people.buildPeopleContactIndex(ownerId);
+        domains = new Map();
+        withoutCrm = true;
+      }
     } else {
       // Public: People = address-book emails only (no CRM org-domain matching).
       const people = await import("@/lib/mail/people-contacts");
@@ -254,7 +287,7 @@ async function getClassifier(ownerId: string): Promise<Classifier> {
     const value = { contacts, domains };
     classifierCache = {
       value,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: Date.now() + (withoutCrm ? 20 * 1000 : 5 * 60 * 1000),
     };
     return value;
   })().finally(() => {
@@ -262,30 +295,6 @@ async function getClassifier(ownerId: string): Promise<Classifier> {
   });
 
   return classifierInflight;
-}
-
-function emailDomain(email: string): string {
-  const at = email.lastIndexOf("@");
-  return at >= 0 ? email.slice(at + 1) : "";
-}
-
-function isKnownContact(email: string, classifier: Classifier): boolean {
-  return (
-    classifier.contacts.has(email) ||
-    classifier.domains.has(emailDomain(email))
-  );
-}
-
-/** CRM record name a contact belongs to (for the People view's affiliation label). */
-function crmNameFor(email: string, classifier: Classifier): string | undefined {
-  const byEmail = classifier.contacts.get(email);
-  if (byEmail?.length) return byEmail[0].recordName;
-  const byDomain = classifier.domains.get(emailDomain(email));
-  return byDomain?.length ? byDomain[0].recordName : undefined;
-}
-
-function crmLogoFor(email: string, classifier: Classifier): string | undefined {
-  return crmLogoUrlIfLoaded(email, classifier.contacts, classifier.domains);
 }
 
 // ---------------------------------------------------------------------------
@@ -322,11 +331,6 @@ function messageDate(message: GmailMessage): number {
   return Number.isFinite(header) ? header : 0;
 }
 
-function displayName(entry: { email: string; name: string }): string {
-  if (entry.name) return entry.name;
-  return entry.email;
-}
-
 /**
  * Invite detection is expensive (it probes full payloads of up to six
  * messages per meeting-looking thread), and a thread's invite status can
@@ -339,6 +343,137 @@ const gmailCalendarCache = new Map<
 const GMAIL_CALENDAR_CACHE_MAX = 5000;
 
 /** Build a list row from Gmail thread metadata (no bodies). */
+/**
+ * A page of a mailbox from the local copy, or null when the copy does not
+ * serve this mailbox or this shape of request.
+ *
+ * The rows are the same MailThreadSummary the provider path builds, with
+ * the same classifier, so everything downstream — dedupe across mailboxes,
+ * snoozes, tabs, the People view — sees no difference.
+ */
+/**
+ * A search in the provider's language rather than in words: operators,
+ * OR, a minus, a quoted phrase. The copy's index reads every word as a
+ * required prefix, so these go to the provider, which speaks them.
+ */
+async function listFromLocalStore(input: {
+  accountEmail: string;
+  folder: string;
+  label?: string;
+  q?: string;
+  folderScoped: boolean;
+  includeDeleted: boolean;
+  pageToken?: string;
+  classifier: Classifier;
+}): Promise<{ summaries: SummaryEntry[]; nextPageToken?: string } | null> {
+  const { accountEmail, classifier } = input;
+  if (!(await localStoreServes(accountEmail))) return null;
+  const store = mailStore().messages;
+  if (input.q) {
+    if (input.pageToken) return { summaries: [] };
+    // A copy still filling answers too. The first read goes newest
+    // first, so the part in hand is the part a search most often wants,
+    // and the list says how much is read. Asking the provider meanwhile
+    // was worse: each pause in typing was another search on the API,
+    // and a few of those put the mailbox over its request limit.
+    // Inside a folder when the reader asked for that; the folders the
+    // copy does not hold fall back to the provider.
+    let within: { view: MailStoredView; label?: string } | null = null;
+    if (input.label) {
+      within = { view: "label", label: input.label };
+    } else if (input.folderScoped) {
+      const view = viewForFolder(input.folder);
+      if (!view) return null;
+      within = { view };
+    }
+    const { threads, handled } = await store.search({
+      accounts: [accountEmail],
+      q: input.q,
+      limit: PER_ACCOUNT_MESSAGES,
+      includeDeleted: input.includeDeleted,
+      ...(within ?? {}),
+    });
+    // The copy reads the words Gmail reads — from:, has:attachment,
+    // before:, quotes, OR — and says when a query asks something only the
+    // provider knows, such as in: or is:unread. That one goes out.
+    if (handled === false) return null;
+    return { summaries: threads.map((t) => summaryFromStored(t, classifier)) };
+  }
+  const view: MailStoredView | null = input.label ? "label" : viewForFolder(input.folder);
+  if (!view) return null;
+  if (view === "trash" && !(await localStoreServesFolder(accountEmail, "trash"))) return null;
+  if (view === "junk" && !(await localStoreServesFolder(accountEmail, "spam"))) return null;
+  const before = input.pageToken ? Number(input.pageToken) : null;
+  const page = await store.list({
+    accounts: [accountEmail],
+    view,
+    label: input.label,
+    before: Number.isFinite(before) ? before : null,
+    limit: PER_ACCOUNT_MESSAGES,
+  });
+  return {
+    summaries: page.threads.map((t) => summaryFromStored(t, classifier)),
+    nextPageToken: page.nextBefore != null ? String(page.nextBefore) : undefined,
+  };
+}
+
+/** The copy's view for a folder, or null for one it has no view of. */
+function viewForFolder(folder: string): MailStoredView | null {
+  switch (folder) {
+    case "inbox":
+      return "inbox";
+    case "sent":
+      return "sent";
+    case "archived":
+      return "archived";
+    case "trash":
+      return "trash";
+    case "junk":
+      return "junk";
+    default:
+      return null;
+  }
+}
+
+type SummaryEntry = {
+  summary: MailThreadSummary;
+  latestRfcId: string;
+  latestReferences?: string;
+};
+
+function summaryFromStored(t: MailStoredThread, classifier: Classifier): SummaryEntry {
+  const { tab, counterpart, externalParticipants } = classifyThread({
+    accountEmail: t.account,
+    participants: t.participants,
+    senders: t.senders,
+    latestFrom: { name: t.latest.fromName, email: t.latest.fromEmail },
+    latestTo: t.latest.to,
+    classifier,
+  });
+  return {
+    summary: {
+      account: t.account,
+      threadId: t.threadId,
+      subject: t.subject.trim() || "(no subject)",
+      fromName: displayName(counterpart),
+      fromEmail: counterpart.email,
+      snippet: t.latest.snippet,
+      lastAt: new Date(t.lastAt).toISOString(),
+      unread: t.unread,
+      messageCount: t.messageCount,
+      tab,
+      externalParticipants,
+      crmName: crmNameFor(counterpart.email, classifier),
+      crmLogoUrl: crmLogoFor(counterpart.email, classifier),
+      ...(t.focusMessageId ? { focusMessageId: t.focusMessageId } : null),
+      ...(t.hasAttachments ? { hasAttachments: true } : null),
+    },
+    latestRfcId: (t.latest.rfcMessageId ?? "").trim(),
+    latestReferences:
+      [t.latest.references ?? "", t.latest.inReplyTo ?? ""].join(" ").trim() || undefined,
+  };
+}
+
 async function summarizeGmailThread(options: {
   token: string;
   accountEmail: string;
@@ -346,6 +481,8 @@ async function summarizeGmailThread(options: {
   classifier: Classifier;
   focusMessageId?: string;
   resolveCalendar?: boolean;
+  /** Set on a row of the Snoozed list. */
+  snoozedUntil?: string;
 }): Promise<{
   summary: MailThreadSummary;
   latestRfcId: string;
@@ -358,47 +495,20 @@ async function summarizeGmailThread(options: {
   threadMessages.sort((a, b) => messageDate(a) - messageDate(b));
   const latest = threadMessages[threadMessages.length - 1];
 
-  const participants = threadMessages.flatMap((m) => [
-    ...parseAddressList(headerValue(m, "From")),
-    ...parseAddressList(headerValue(m, "To")),
-    ...parseAddressList(headerValue(m, "Cc")),
-  ]);
-  // Own mailbox(es), not colleagues — sent mail should face the To recipient.
-  const external = participants.filter(
-    (p) => !isSelfAddress(p.email, accountEmail)
-  );
-  const matchesContact = external.some((p) =>
-    isKnownContact(p.email, classifier)
-  );
-  const fromNotCrmSelf = threadMessages.some((m) => {
-    const from = parseAddressList(headerValue(m, "From"))[0];
-    return from && NOT_CRM_SELF_ADDRESSES.has(normalizeEmail(from.email));
+  const { tab, counterpart, externalParticipants } = classifyThread({
+    accountEmail,
+    participants: threadMessages.flatMap((m) => [
+      ...parseAddressList(headerValue(m, "From")),
+      ...parseAddressList(headerValue(m, "To")),
+      ...parseAddressList(headerValue(m, "Cc")),
+    ]),
+    senders: threadMessages.flatMap((m) =>
+      parseAddressList(headerValue(m, "From")).slice(0, 1)
+    ),
+    latestFrom: parseAddressList(headerValue(latest, "From"))[0],
+    latestTo: parseAddressList(headerValue(latest, "To")),
+    classifier,
   });
-
-  const tab: MailThreadSummary["tab"] =
-    matchesContact || (external.length === 0 && !fromNotCrmSelf)
-      ? "people"
-      : "other";
-
-  const latestFrom = parseAddressList(headerValue(latest, "From"))[0];
-  // When the tip is from us (Sent / reply we sent), lead with the first To
-  // on that message — never ourselves.
-  const latestToExternal = parseAddressList(headerValue(latest, "To")).filter(
-    (p) => !isSelfAddress(p.email, accountEmail)
-  );
-  const counterpart =
-    latestFrom && !isSelfAddress(latestFrom.email, accountEmail)
-      ? latestFrom
-      : latestToExternal[0] ??
-        external[0] ??
-        latestFrom ?? { email: accountEmail, name: "" };
-
-  const externalByEmail = new Map<string, { name: string; email: string }>();
-  for (const p of external) {
-    const existing = externalByEmail.get(p.email);
-    if (!existing) externalByEmail.set(p.email, { ...p });
-    else if (p.name) existing.name = p.name;
-  }
 
   const subject = headerValue(latest, "Subject").trim() || "(no subject)";
   const snippet = decodeSnippet(latest.snippet ?? "");
@@ -436,10 +546,11 @@ async function summarizeGmailThread(options: {
       ),
       messageCount: threadMessages.length,
       tab,
-      externalParticipants: [...externalByEmail.values()],
+      externalParticipants,
       crmName: crmNameFor(counterpart.email, classifier),
       crmLogoUrl: crmLogoFor(counterpart.email, classifier),
       ...(focusMessageId ? { focusMessageId } : null),
+      ...(options.snoozedUntil ? { snoozedUntil: options.snoozedUntil } : null),
       // A file somebody attached, not a logo in a signature. Reading the
       // parts costs nothing here: the metadata is already in hand.
       ...(threadMessages.some(gmailMessageHasFile)
@@ -889,17 +1000,16 @@ export async function listUnifiedInbox(options: {
    */
   const snoozed = await mailStore().snoozes.listActive();
   const snoozedByKey = new Map<string, string | null>();
+  /** When each snooze wakes, by thread and by tip: a search shows it. */
+  const wakeByKey = new Map<string, string>();
+  const wakeByTip = new Map<string, string>();
   for (const r of snoozed) {
-    snoozedByKey.set(
-      `${r.accountEmail}|${r.threadId}`,
-      normalizeRfcMessageId(r.tipMessageId)
-    );
+    const tip = normalizeRfcMessageId(r.tipMessageId);
+    snoozedByKey.set(`${r.accountEmail}|${r.threadId}`, tip);
+    wakeByKey.set(`${r.accountEmail}|${r.threadId}`, r.snoozedUntil);
+    if (tip) wakeByTip.set(tip, r.snoozedUntil);
   }
-  const snoozedTipIds = new Set(
-    snoozed
-      .map((r) => normalizeRfcMessageId(r.tipMessageId))
-      .filter((id): id is string => Boolean(id))
-  );
+  const snoozedTipIds = new Set(wakeByTip.keys());
 
   const nextTokens: Record<string, string> = {};
   const summaries: {
@@ -916,6 +1026,8 @@ export async function listUnifiedInbox(options: {
   // (clients cache that as “inbox zero”).
   let accountFetchAttempts = 0;
   let accountFetchFailures = 0;
+  /** What the first mailbox that failed said, so the reader is told why. */
+  let firstFetchFailure = "";
 
   await Promise.all(
     fetchEmails.map(async (accountEmail) => {
@@ -931,12 +1043,32 @@ export async function listUnifiedInbox(options: {
             pageToken: pageTokens?.[accountEmail],
             maxConversations: PER_ACCOUNT_MESSAGES,
             classifier,
-            notCrmSelfAddresses: NOT_CRM_SELF_ADDRESSES,
           });
           if (result.nextPageToken) {
             nextTokens[accountEmail] = result.nextPageToken;
           }
           summaries.push(...result.summaries);
+          return;
+        }
+
+        // The local copy first, when it has this mailbox. A folder-scoped
+        // search is the one shape it does not answer; that still goes out.
+        const stored = await listFromLocalStore({
+          accountEmail,
+          folder,
+          label: label || undefined,
+          // The words as typed. `q` is Gmail's shape — one word grown into
+          // "word OR words OR worded" — and the copy's index reads every
+          // word as required, so the grown form found nothing.
+          q: rawQ || undefined,
+          folderScoped: Boolean(options.folderScoped),
+          includeDeleted: Boolean(options.includeDeleted),
+          pageToken: pageTokens?.[accountEmail],
+          classifier,
+        });
+        if (stored) {
+          if (stored.nextPageToken) nextTokens[accountEmail] = stored.nextPageToken;
+          summaries.push(...stored.summaries);
           return;
         }
 
@@ -1179,6 +1311,7 @@ export async function listUnifiedInbox(options: {
         accountFetchFailures += 1;
         // Auth failures already log a one-liner in accessTokenFor — no stack dump.
         const msg = err instanceof Error ? err.message : String(err);
+        if (!firstFetchFailure) firstFetchFailure = msg;
         if (!/needs reconnect|invalid_grant/i.test(msg)) {
           console.warn(`[mail] inbox fetch failed for ${accountEmail}: ${msg}`);
         }
@@ -1190,8 +1323,12 @@ export async function listUnifiedInbox(options: {
     accountFetchAttempts > 0 &&
     accountFetchFailures === accountFetchAttempts
   ) {
+    // With the reason: "from any connected account" on its own told the
+    // reader nothing, and the line at the top of the list repeats this.
     throw new PlanError(
-      "Couldn't load inbox from any connected account",
+      firstFetchFailure
+        ? `Couldn't load inbox: ${firstFetchFailure}`
+        : "Couldn't load inbox from any connected account",
       502
     );
   }
@@ -1224,13 +1361,19 @@ export async function listUnifiedInbox(options: {
        */
       if (storedTip && tipKey && tipKey !== storedTip) {
         wokenByReply.add(snoozeKey);
+      } else if (hasSearchQuery) {
+        // A search finds what is asleep too — the booking put off until
+        // Friday is still the booking being looked for — and the row
+        // says when it wakes, so it is not taken for an inbox row.
+        summary.snoozedUntil = wakeByKey.get(snoozeKey);
       } else {
         continue;
       }
     } else if (tipKey && snoozedTipIds.has(tipKey)) {
       // A copy of a snoozed thread in another mailbox, still on the tip
       // that was put to sleep — it sleeps with it.
-      continue;
+      if (!hasSearchQuery) continue;
+      summary.snoozedUntil = wakeByTip.get(tipKey);
     }
     if (tipKey) summary.tipId = tipKey;
     const key = latestRfcId || `${summary.account}|${summary.threadId}`;
@@ -1282,7 +1425,10 @@ export async function listUnifiedInbox(options: {
   // conversation here in the list, so it never presents as a stranger. Only
   // the plain inbox: Sent, Trash and search answer different questions.
   // Capped, because splits are rare and the next refresh catches stragglers.
-  if (!q && !label && !folder) {
+  // `folder` always holds a view name — it defaults to "inbox" above — so
+  // the test is for that name. `!folder` was never true, and this ran for
+  // nobody between August 13 and the day that was noticed.
+  if (!q && !label && folder === "inbox") {
     let attempts = 0;
     for (const t of deduped) {
       if (attempts >= 8) break;
@@ -1412,22 +1558,6 @@ export async function listUnifiedInbox(options: {
 // Thread detail
 // ---------------------------------------------------------------------------
 
-/**
- * Sent by the reader personally: the account being read, or another of their
- * own mailboxes. Colleagues and shared mailboxes on the same domains are
- * deliberately *not* self — a reply to them must still reach them.
- */
-function isSelfAddress(email: string, account: string): boolean {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return false;
-  if (normalized === normalizeEmail(account)) return true;
-  return isOwnPersonalAddress(normalized);
-}
-
-const THREAD_PAGE_SIZE = 50;
-/** Messages on each side of a search hit (plus the hit itself). */
-const THREAD_AROUND_RADIUS = 50;
-
 function emptyThreadDetail(
   account: string,
   threadId: string
@@ -1525,6 +1655,9 @@ export async function getMailThread(
   if ((await resolveMailProvider(account)) === "outlook") {
     return getOutlookMailThread(account, threadId, options);
   }
+  const stored = await threadFromLocalStore(account, threadId, options);
+  if (stored) return stored;
+
   const token = await accessTokenFor(account);
   const limit = options?.limit ?? THREAD_PAGE_SIZE;
 
@@ -1675,8 +1808,9 @@ export async function getMailThread(
   const accountKey = normalizeEmail(account);
   /**
    * Dedupe (ignoring case and Gmail dot/+tag variants) and drop the mailbox
-   * we're sending from, so a reply never lands back in this inbox. Other
-   * addresses of ours stay, as in Outlook — they're visible, editable chips.
+   * we're sending from, so a reply never lands back in this inbox. A
+   * reply-all also drops the reader's other addresses: see
+   * `replyAllRecipients`.
    */
   const recipients = (items: string[]) => {
     const seen = new Set<string>();
@@ -1695,7 +1829,13 @@ export async function getMailThread(
   // Replying to our own last message keeps whoever we addressed it to,
   // rather than addressing the reply to ourselves.
   const replyTo = sentByUs ? lastTo : [lastFrom?.email ?? ""];
-  const allTo = sentByUs ? lastTo : [lastFrom?.email ?? "", ...lastTo];
+  const replyAll = replyAllRecipients({
+    from: lastFrom?.email ?? "",
+    to: lastTo,
+    cc: lastCc,
+    account,
+    sentByUs,
+  });
 
   const references = last
     ? [
@@ -1823,8 +1963,8 @@ export async function getMailThread(
       // to nobody — replying to yourself is legitimate, so keep the mailbox.
       to: withSelfFallback(recipients(replyTo), account),
       cc: [],
-      allTo: withSelfFallback(recipients(allTo), account),
-      allCc: recipients(lastCc),
+      allTo: replyAll.to,
+      allCc: replyAll.cc,
     },
   };
 }
@@ -1865,91 +2005,13 @@ export type OutgoingAttachment = {
   mimeType: string;
   /** Standard base64 (not base64url). */
   contentBase64: string;
+  /**
+   * Set when this is a picture written into the body rather than hung off
+   * the end of it: the body refers to it as `cid:` this value, and it is
+   * sent inside `multipart/related` instead of beside the message.
+   */
+  contentId?: string;
 };
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-const MARKDOWN_LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
-
-/**
- * A link in a signature: the words' own colour, and an underline.
- *
- * Inline, because a mail client cannot be relied on to read a stylesheet.
- * The underline is permanent — `:hover` needs one of those stylesheets,
- * and Outlook's engine has no notion of it — and it is what makes the link
- * findable now that it is not blue.
- *
- * #444 is the colour of the signature block this sits in. Not `inherit`:
- * a client's own `a { color }` rule beats an inherited colour, so an
- * anchor has to say the colour outright to keep it.
- */
-const SIGNATURE_LINK_STYLE = "color:#444;text-decoration:underline";
-
-/** Renders one signature line, converting [text](url) into anchors. */
-function signatureLineHtml(line: string): string {
-  let html = "";
-  let lastIndex = 0;
-  for (const match of line.matchAll(MARKDOWN_LINK)) {
-    html += escapeHtml(line.slice(lastIndex, match.index));
-    // The span repeats the colour inside the anchor. Some clients — the
-    // phone ones especially — repaint every `<a>` their own colour and
-    // leave what is nested in it alone, so this is the copy that survives.
-    html += `<a href="${escapeHtml(match[2])}" style="${SIGNATURE_LINK_STYLE}"><span style="color:#444">${escapeHtml(match[1])}</span></a>`;
-    lastIndex = match.index + match[0].length;
-  }
-  html += escapeHtml(line.slice(lastIndex));
-  return html;
-}
-
-function isHtmlSignature(signature: string): boolean {
-  return /<[a-z][\s\S]*>/i.test(signature.trim());
-}
-
-/** Signature rendered slightly smaller than the 12pt body text. */
-function signatureHtml(signature: string): string {
-  if (isHtmlSignature(signature)) {
-    // Rich-text signatures from the editor: keep lines tight and style links
-    // inline (email clients ignore stylesheets).
-    const styled = signature
-      .replace(/<p(?![a-z])(?![^>]*style=)/gi, '<p style="margin:0"')
-      // No nested span on this path: the anchor's text is whatever the
-      // editor put there, and finding the matching `</a>` for each one is
-      // not a job for a regular expression. A client that repaints anchors
-      // will repaint these.
-      .replace(
-        /<a(?![a-z])(?![^>]*style=)/gi,
-        `<a style="${SIGNATURE_LINK_STYLE}"`
-      );
-    return `<div style="margin-top:16px;font-size:13px;line-height:1.5;color:#444">${styled}</div>`;
-  }
-  const lines = signature.split("\n").map(signatureLineHtml).join("<br>");
-  return `<div style="margin-top:16px;font-size:13px;line-height:1.5;color:#444">${lines}</div>`;
-}
-
-/** Links become their text in the plain-text part. */
-function signaturePlainText(signature: string): string {
-  if (isHtmlSignature(signature)) {
-    return signature
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(?:p|li)>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-  return signature.replace(MARKDOWN_LINK, "$1");
-}
 
 /** Original message quoted below a forward, Gmail-style. */
 export type ForwardedMessage = {
@@ -2042,8 +2104,11 @@ function quotedHtml(quote: QuotedMessage): string {
 /**
  * The messages a provider is holding for this thread, and when each goes.
  *
- * Empty for Gmail, which cannot hold one — nothing was ever scheduled there,
- * so there is nothing to show or to take back.
+ * Only Outlook can send later. A Gmail message in the local outbox is on
+ * its way now, and the thread already shows it as a bubble. Listed here
+ * too, it showed a second time: an empty box with "Sends 12:16", Edit,
+ * Send now and Cancel. The Outbox group at the top of the list still
+ * shows it, through `listAllScheduledMailMessages`.
  */
 export async function listScheduledMailMessages(input: {
   account: string;
@@ -2054,12 +2119,50 @@ export async function listScheduledMailMessages(input: {
   return listScheduledOutlookMessages(input.account, input.threadId);
 }
 
+/** Gmail messages the outbox holds for a time, as scheduled rows. */
+async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
+  const invoke = tauriInvoke();
+  if (!invoke) return [];
+  if (!(await localStoreServes(account))) return [];
+  const answer = (await invoke("mail_sync_outbox", { account })) as
+    | {
+        id: number;
+        threadId?: string | null;
+        subject: string;
+        to: string[];
+        sendAt: number;
+        status?: "waiting" | "sending" | "failed";
+        lastError?: string | null;
+      }[]
+    | null;
+  // A shell without the command answers nothing, which is an empty outbox.
+  const rows = Array.isArray(answer) ? answer : [];
+  // Every row, whatever its state: a message on its way and one given
+  // up are both the reader's to see, in the Outbox at the top of the
+  // list, until they have gone.
+  return rows.map((row) => ({
+    id: String(row.id),
+    sendAt: new Date(row.sendAt).toISOString(),
+    account,
+    threadId: row.threadId ?? "",
+    toName: row.to[0] ?? "",
+    subject: row.subject,
+    bodyText: "",
+    to: row.to,
+    cc: [],
+    status: row.status ?? "waiting",
+    ...(row.lastError ? { error: row.lastError } : null),
+  }));
+}
+
 /**
  * Everything being held, across every mailbox that can hold anything.
  *
- * For the group at the top of the list. Gmail mailboxes are skipped rather
- * than asked: they have nothing to say, and asking would cost a round trip
- * to be told so.
+ * For the group at the top of the list. Outlook holds messages on the
+ * server. A Gmail mailbox with a local copy holds them in the outbox — a
+ * message on its way, one waiting for its time, one the server refused —
+ * and a Gmail mailbox without one holds nothing, which `heldInOutbox`
+ * answers without a round trip.
  */
 export async function listAllScheduledMailMessages(input: {
   clerkUserId: string;
@@ -2068,12 +2171,13 @@ export async function listAllScheduledMailMessages(input: {
   const accounts = filterAccountsForScope(
     await listConnectedMailAccounts(input.clerkUserId),
     input.scope ?? "all"
-  ).filter((a) => a.provider === "outlook");
+  );
   if (!accounts.length) return [];
 
   const pages = await Promise.all(
     accounts.map(async (a) => {
       try {
+        if (a.provider !== "outlook") return await heldInOutbox(a.email);
         return await listScheduledOutlookMessages(a.email);
       } catch (err) {
         // One mailbox refusing must not empty the group for the others.
@@ -2091,7 +2195,11 @@ export async function cancelScheduledMailMessage(input: {
   id: string;
 }): Promise<void> {
   if ((await resolveMailProvider(input.account)) !== "outlook") {
-    throw new PlanError("Only Outlook holds a message for a time", 400);
+    const invoke = tauriInvoke();
+    if (!invoke) throw new PlanError("Only Outlook holds a message for a time", 400);
+    await invoke("mail_sync_outbox_cancel", { account: input.account, id: Number(input.id) });
+    invalidateInboxCache();
+    return;
   }
   await cancelScheduledOutlookMessage(input.account, input.id);
   invalidateInboxCache();
@@ -2103,10 +2211,87 @@ export async function sendScheduledMailMessageNow(input: {
   id: string;
 }): Promise<void> {
   if ((await resolveMailProvider(input.account)) !== "outlook") {
-    throw new PlanError("Only Outlook holds a message for a time", 400);
+    const invoke = tauriInvoke();
+    if (!invoke) throw new PlanError("Only Outlook holds a message for a time", 400);
+    await invoke("mail_sync_outbox_send_now", { account: input.account, id: Number(input.id) });
+    invalidateInboxCache();
+    return;
   }
   await sendScheduledOutlookMessageNow(input.account, input.id);
   invalidateInboxCache();
+}
+
+/**
+ * Hand the message to Outlook, by leaving it in the mailbox as a draft.
+ *
+ * For the times the reader wants to finish a mail in Outlook itself. A file
+ * handed to Outlook opens read-only — it previews a message rather than
+ * composing one — so the draft is made where Outlook already looks: in the
+ * mailbox. It appears in Drafts on the next sync, formatted, editable, and
+ * in the conversation it answers.
+ *
+ * Outlook mailboxes only. Gmail has drafts too, but a draft in Gmail is not
+ * a draft in Outlook, and offering this on an account Outlook does not hold
+ * would promise something nothing can do.
+ */
+export async function draftMailInOutlook(input: {
+  account: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  html?: string;
+  includeSignature?: boolean;
+  threadId?: string;
+  forward?: ForwardedMessage;
+  quote?: QuotedMessage;
+  appendix?: { text: string; html: string };
+  attachments?: OutgoingAttachment[];
+}): Promise<{ id: string; webLink?: string }> {
+  // Somebody, anywhere on the envelope. A course mail goes to two dozen
+  // people in Bcc and to nobody in To, which is what Bcc is for — counting
+  // only To refused exactly the message Bcc exists for.
+  if (!input.to.length && !input.cc?.length && !input.bcc?.length) {
+    throw new PlanError("Add at least one recipient", 400);
+  }
+
+  const provider = await resolveMailProvider(input.account);
+  if (provider !== "outlook") {
+    throw new PlanError(
+      "Only an Outlook mailbox can hand a draft to Outlook.",
+      400
+    );
+  }
+
+  // The same lift a send does: the composer can only hold a picture as a
+  // `data:` URI, and Outlook will not draw one.
+  const lifted = input.html
+    ? extractInlineImages(input.html)
+    : { html: input.html, images: [] };
+  const attachments = lifted.images.length
+    ? [...(input.attachments ?? []), ...lifted.images]
+    : input.attachments;
+
+  const appendixHtml = input.forward
+    ? forwardedHtml(input.forward)
+    : input.quote
+      ? quotedHtml(input.quote)
+      : (input.appendix?.html ?? "");
+
+  return draftOutlookMailMessage({
+    account: input.account,
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: input.subject,
+    body: input.body,
+    html: lifted.html,
+    includeSignature: input.includeSignature,
+    threadId: input.threadId,
+    attachments,
+    appendixHtml: appendixHtml || undefined,
+  });
 }
 
 export async function sendMailMessage(input: {
@@ -2155,7 +2340,12 @@ export async function sendMailMessage(input: {
    */
   sendAt?: string;
 }): Promise<{ messageId?: string; threadId?: string }> {
-  if (!input.to.length) throw new PlanError("Add at least one recipient", 400);
+  // Somebody, anywhere on the envelope. A course mail goes to two dozen
+  // people in Bcc and to nobody in To, which is what Bcc is for — counting
+  // only To refused exactly the message Bcc exists for.
+  if (!input.to.length && !input.cc?.length && !input.bcc?.length) {
+    throw new PlanError("Add at least one recipient", 400);
+  }
 
   if (input.sendAt) {
     const at = Date.parse(input.sendAt);
@@ -2167,8 +2357,30 @@ export async function sendMailMessage(input: {
     }
   }
 
+  /*
+   * The pictures in the body become parts of the message.
+   *
+   * Done once, above the split, because it is the same job on both
+   * providers: the composer can only hold a picture as a `data:` URI, and
+   * neither Gmail's web client nor Outlook will draw one of those. What
+   * goes out refers to `cid:` instead, with the bytes travelling as their
+   * own part — see `extractInlineImages`.
+   */
+  const lifted = input.html
+    ? extractInlineImages(input.html)
+    : { html: input.html, images: [] };
+  if (lifted.images.length) {
+    input = {
+      ...input,
+      html: lifted.html,
+      attachments: [...(input.attachments ?? []), ...lifted.images],
+    };
+  }
+
   const provider = await resolveMailProvider(input.account);
-  if (input.sendAt && provider !== "outlook") {
+  // The outbox holds a Gmail message for its time; the API never could.
+  const viaOutbox = provider === "gmail" && Boolean(tauriInvoke()) && (await localStoreServes(input.account));
+  if (input.sendAt && provider !== "outlook" && !viaOutbox) {
     throw new PlanError(
       "Only Outlook accounts can send later. Gmail has no way to hold a message for us.",
       400
@@ -2207,7 +2419,9 @@ export async function sendMailMessage(input: {
     return { threadId: input.threadId };
   }
 
-  const token = await accessTokenFor(input.account);
+  // Only the API path needs a token; the outbox path never asks for one.
+  let tokenPromise: Promise<string> | null = null;
+  const tokenFor = () => (tokenPromise ??= accessTokenFor(input.account));
 
   const attachments = input.attachments ?? [];
   let attachmentBytes = 0;
@@ -2241,7 +2455,7 @@ export async function sendMailMessage(input: {
   // The name Gmail already puts on their mail. Never throws: an account we
   // cannot ask sends with the bare address, the way every send did before.
   const senderName = await senderNameFor(input.account, {
-    token,
+    token: await tokenFor(),
     provider: "gmail",
   });
 
@@ -2297,9 +2511,53 @@ export async function sendMailMessage(input: {
     };
   };
 
-  let raw: string;
-  if (attachments.length) {
+  /*
+   * The pictures written into the body, and the files hung off the end.
+   *
+   * They are not the same kind of part and cannot share a wrapper: a picture
+   * the body refers to by `cid:` has to sit in `multipart/related` *with*
+   * that body, or the client has nothing to resolve the reference against
+   * and draws a broken image. A file beside the message sits in
+   * `multipart/mixed`, outside all of it.
+   *
+   * So the nesting is mixed( related( alternative, pictures ), files ) —
+   * and where there are no pictures it stays exactly the shape it was.
+   */
+  const inlineParts = attachments.filter((a) => a.contentId);
+  const fileParts = attachments.filter((a) => !a.contentId);
+
+  /** The body, with any pictures it refers to wrapped in with it. */
+  const buildRelated = (): { headers: string[]; body: string } => {
     const alt = buildAlternative();
+    if (!inlineParts.length) return alt;
+    const related = `=_redd_rel_${Date.now().toString(36)}`;
+    const parts: string[] = [`--${related}`, ...alt.headers, "", alt.body];
+    for (const image of inlineParts) {
+      const filename = sanitizeMimeFilename(image.filename);
+      const mimeType =
+        image.mimeType.replace(/[\r\n]+/g, "").trim() || "image/png";
+      parts.push(
+        `--${related}`,
+        `Content-Type: ${mimeType}; name="${filename}"`,
+        // Angle brackets, because that is what a Content-ID is. The body
+        // says `cid:x`; the header says `<x>`.
+        `Content-ID: <${image.contentId}>`,
+        `Content-Disposition: inline; filename="${filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        wrapBase64(image.contentBase64)
+      );
+    }
+    parts.push(`--${related}--`);
+    return {
+      headers: [`Content-Type: multipart/related; boundary="${related}"`],
+      body: parts.join("\r\n"),
+    };
+  };
+
+  let raw: string;
+  if (fileParts.length) {
+    const alt = buildRelated();
     const mixed = `=_redd_mix_${Date.now().toString(36)}`;
     const parts: string[] = [
       ...headers,
@@ -2310,7 +2568,7 @@ export async function sendMailMessage(input: {
       "",
       alt.body,
     ];
-    for (const file of attachments) {
+    for (const file of fileParts) {
       const filename = sanitizeMimeFilename(file.filename);
       const mimeType =
         file.mimeType.replace(/[\r\n]+/g, "").trim() ||
@@ -2327,19 +2585,46 @@ export async function sendMailMessage(input: {
     parts.push(`--${mixed}--`);
     raw = parts.join("\r\n");
   } else {
-    const alt = buildAlternative();
+    const alt = buildRelated();
     raw = [...headers, ...alt.headers, "", alt.body].join("\r\n");
+  }
+
+  if (viaOutbox) {
+    // Written to the outbox and shown as sent; the worker carries it over
+    // SMTP as soon as it is woken, a first sync included, and Gmail files
+    // the copy in Sent itself. Until it has gone it stands in the Outbox
+    // group at the top of the list.
+    const invoke = tauriInvoke();
+    if (invoke) {
+      const recipients = [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])]
+        .map((e) => e.trim())
+        .filter(Boolean);
+      await invoke("mail_sync_send", {
+        account: input.account,
+        threadId: input.threadId ?? null,
+        recipients,
+        raw,
+        subject: input.subject,
+        to: input.to,
+        sendAt: input.sendAt ? Date.parse(input.sendAt) : null,
+        // Discarded by the worker once the send has gone through, not
+        // here: a message the server refused kept its draft that way.
+        draftMessageId: input.discardProviderDraft ?? null,
+      });
+      invalidateInboxCache();
+      return { threadId: input.threadId };
+    }
   }
 
   let sent: { id: string; threadId?: string } | undefined;
   try {
-    sent = await sendRawMessage(token, raw, input.threadId);
+    sent = await sendRawMessage(await tokenFor(), raw, input.threadId);
   } catch (err) {
     translateGmailError(err, input.account);
   }
   if (input.discardProviderDraft) {
     await discardGmailDraft(
-      token,
+      await tokenFor(),
       input.discardProviderDraft,
       sent?.threadId ?? input.threadId
     );
@@ -2417,6 +2702,10 @@ export async function discardProviderDraft(input: {
     invalidateInboxCache();
     return;
   }
+  if (await queueLocalAction(input.account, input.threadId ?? "", "discardDraft", { messageId: input.ref })) {
+    invalidateInboxCache();
+    return;
+  }
   const token = await accessTokenFor(input.account);
   await discardGmailDraft(token, input.ref, input.threadId);
   invalidateInboxCache();
@@ -2451,6 +2740,22 @@ export async function listProviderDrafts(
     }));
   }
 
+  // The copy holds the drafts too: they sit in All Mail with the draft
+  // label. One query, no reads.
+  if (await localStoreServes(account)) {
+    const page = await mailStore().messages.list({ accounts: [account], view: "drafts", limit: MAX_DRAFT_ROWS });
+    return page.threads.map((t) => ({
+      id: t.latest.messageId,
+      origin: "gmail" as const,
+      account,
+      threadId: t.threadId,
+      subject: t.subject.trim() || "(no subject)",
+      snippet: t.latest.snippet,
+      to: t.latest.to.map((a) => a.email),
+      updatedAt: t.latest.sentAt ? new Date(t.latest.sentAt).toISOString() : null,
+    }));
+  }
+
   const token = await accessTokenFor(account);
   const { ids } = await listMessageIds(token, "in:drafts");
   const rows = await mapWithConcurrency(
@@ -2475,13 +2780,89 @@ export async function listProviderDrafts(
 }
 
 /** Streamable attachment bytes for preview/download. */
+/*
+  Files already read, kept for the life of the window.
+
+  A file in a message never changes, and the same one is asked for again
+  and again: once for the small picture in the thread, once more to look
+  at it, and once more to save it. Each time was a new read from the
+  mailbox — for a four-megabyte photograph, five megabytes of base64 over
+  IMAP, after a connection that may have to be opened first. The download
+  button therefore took as long as the thumbnail had, to fetch what the
+  page was already showing.
+
+  Only in the desktop app, where this memory is the reader's own. A server
+  would be keeping people's files in a process they share.
+
+  Newest last. When the sum goes over the cap, the oldest go. A read that is
+  still on its way is shared too, so two askers make one request.
+*/
+const ATTACHMENT_CACHE_MAX_BYTES = 96 * 1024 * 1024;
+const attachmentCache = new Map<string, Uint8Array>();
+const attachmentReads = new Map<string, Promise<{ bytes: Uint8Array }>>();
+let attachmentCacheBytes = 0;
+
+function rememberAttachment(key: string, bytes: Uint8Array): void {
+  // One file over the cap would push everything else out and then itself.
+  if (bytes.length > ATTACHMENT_CACHE_MAX_BYTES / 2) return;
+  const had = attachmentCache.get(key);
+  if (had) {
+    attachmentCacheBytes -= had.length;
+    attachmentCache.delete(key);
+  }
+  attachmentCache.set(key, bytes);
+  attachmentCacheBytes += bytes.length;
+  for (const [oldKey, oldBytes] of attachmentCache) {
+    if (attachmentCacheBytes <= ATTACHMENT_CACHE_MAX_BYTES) break;
+    attachmentCache.delete(oldKey);
+    attachmentCacheBytes -= oldBytes.length;
+  }
+}
+
 export async function fetchMailAttachment(input: {
+  account: string;
+  messageId: string;
+  attachmentId: string;
+}): Promise<{ bytes: Uint8Array }> {
+  if (!tauriInvoke()) return readMailAttachment(input);
+  const key = `${input.account.trim().toLowerCase()}|${input.messageId}|${input.attachmentId}`;
+  const kept = attachmentCache.get(key);
+  if (kept) {
+    // Asked for again: it is the newest once more.
+    attachmentCache.delete(key);
+    attachmentCache.set(key, kept);
+    return { bytes: kept };
+  }
+  const running = attachmentReads.get(key);
+  if (running) return running;
+  const read = readMailAttachment(input)
+    .then((result) => {
+      rememberAttachment(key, result.bytes);
+      return result;
+    })
+    .finally(() => attachmentReads.delete(key));
+  attachmentReads.set(key, read);
+  return read;
+}
+
+async function readMailAttachment(input: {
   account: string;
   messageId: string;
   attachmentId: string;
 }): Promise<{ bytes: Uint8Array }> {
   if ((await resolveMailProvider(input.account)) === "outlook") {
     return fetchOutlookMailAttachment(input);
+  }
+  // A file the copy named by its IMAP section: fetched by that section.
+  if (input.attachmentId.startsWith(IMAP_ATTACHMENT_PREFIX)) {
+    const invoke = tauriInvoke();
+    if (!invoke) throw new PlanError("This file is read from the local copy, which needs the desktop app", 501);
+    const part = (await invoke("mail_sync_fetch_part", {
+      account: input.account,
+      messageId: input.messageId,
+      section: input.attachmentId.slice(IMAP_ATTACHMENT_PREFIX.length),
+    })) as { bytesBase64: string };
+    return { bytes: base64ToBytes(part.bytesBase64) };
   }
   const token = await accessTokenFor(input.account);
   const { data } = await getGmailAttachment(
@@ -2493,14 +2874,50 @@ export async function fetchMailAttachment(input: {
   return { bytes };
 }
 
+/**
+ * The RFC 5322 source of one message, for "Show original" and the .eml.
+ *
+ * Bytes, not text: a message is not always UTF-8, and the download should
+ * be the message as it came, not as it was decoded.
+ */
+export async function fetchMailMessageSource(input: {
+  account: string;
+  messageId: string;
+}): Promise<{ bytes: Uint8Array }> {
+  if ((await resolveMailProvider(input.account)) === "outlook") {
+    return fetchOutlookMessageSource(input);
+  }
+  if (await localStoreServes(input.account)) {
+    const invoke = tauriInvoke();
+    if (invoke) {
+      const encoded = (await invoke("mail_sync_fetch_source", {
+        account: input.account,
+        messageId: input.messageId,
+      })) as string;
+      return { bytes: base64ToBytes(encoded) };
+    }
+  }
+  const token = await accessTokenFor(input.account);
+  const raw = await getMessageRaw(token, input.messageId);
+  return { bytes: base64UrlToBytes(raw) };
+}
+
 export async function archiveMailThread(
   account: string,
   threadId: string,
   /** Owner of the stored list page, so the row can be dropped from it too. */
   clerkUserId?: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "archive")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     await archiveOutlookThread(account, threadId);
+    await applyLocalAction(account, threadId, "archive");
+    wakeOutlookSync(account);
     if (clerkUserId) {
       await forgetThreadInStoredPages(clerkUserId, account, threadId);
     }
@@ -2526,14 +2943,28 @@ export async function unarchiveMailThread(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "unarchive")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     await unarchiveOutlookThread(account, threadId);
+    await applyLocalAction(account, threadId, "unarchive");
+    wakeOutlookSync(account);
     invalidateInboxCache();
     return;
   }
   const token = await accessTokenFor(account);
   try {
-    await modifyThreadLabels(token, threadId, { addLabelIds: ["INBOX"] });
+    // Spam and Trash come off with it. Gmail hides a thread that still
+    // carries either, whatever else it is labelled, so "back to the inbox"
+    // from Junk added the inbox label and left the thread in Junk.
+    await modifyThreadLabels(token, threadId, {
+      addLabelIds: ["INBOX"],
+      removeLabelIds: ["SPAM", "TRASH"],
+    });
   } catch (err) {
     translateGmailError(err, account);
   }
@@ -2553,8 +2984,16 @@ export async function markMailThreadUnread(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "unread")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     await markOutlookThreadUnread(account, threadId);
+    await applyLocalAction(account, threadId, "unread");
+    wakeOutlookSync(account, "inbox");
     invalidateInboxCache();
     return;
   }
@@ -2584,8 +3023,16 @@ export async function markMailThreadRead(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "read")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     await markOutlookThreadRead(account, threadId);
+    await applyLocalAction(account, threadId, "read");
+    wakeOutlookSync(account, "inbox");
     invalidateInboxCache();
     return;
   }
@@ -2613,17 +3060,29 @@ export async function markMailThreadJunk(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "junk")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     const token = await outlookAccessTokenFor(account);
     await moveOutlookConversation(token, threadId, "junkemail");
+    await applyLocalAction(account, threadId, "junk");
+    wakeOutlookSync(account);
     invalidateInboxCache();
     return;
   }
   const token = await accessTokenFor(account);
-  await modifyThreadLabels(token, threadId, {
-    addLabelIds: ["SPAM"],
-    removeLabelIds: ["INBOX"],
-  });
+  try {
+    await modifyThreadLabels(token, threadId, {
+      addLabelIds: ["SPAM"],
+      removeLabelIds: ["INBOX"],
+    });
+  } catch (err) {
+    translateGmailError(err, account);
+  }
   invalidateInboxCache();
 }
 
@@ -2632,17 +3091,29 @@ export async function markMailThreadNotJunk(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "notjunk")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     const token = await outlookAccessTokenFor(account);
     await moveOutlookConversation(token, threadId, "inbox");
+    await applyLocalAction(account, threadId, "notjunk");
+    wakeOutlookSync(account);
     invalidateInboxCache();
     return;
   }
   const token = await accessTokenFor(account);
-  await modifyThreadLabels(token, threadId, {
-    addLabelIds: ["INBOX"],
-    removeLabelIds: ["SPAM"],
-  });
+  try {
+    await modifyThreadLabels(token, threadId, {
+      addLabelIds: ["INBOX"],
+      removeLabelIds: ["SPAM"],
+    });
+  } catch (err) {
+    translateGmailError(err, account);
+  }
   invalidateInboxCache();
 }
 
@@ -2652,6 +3123,12 @@ export async function trashMailThread(
   /** Owner of the stored list page, so the row can be dropped from it too. */
   clerkUserId?: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "trash")) {
+    invalidateInboxCache();
+    return;
+  }
   const forget = async () => {
     if (clerkUserId) {
       await forgetThreadInStoredPages(clerkUserId, account, threadId);
@@ -2659,6 +3136,8 @@ export async function trashMailThread(
   };
   if ((await resolveMailProvider(account)) === "outlook") {
     await trashOutlookThread(account, threadId);
+    await applyLocalAction(account, threadId, "trash");
+    wakeOutlookSync(account);
     await forget();
     invalidateInboxCache();
     return;
@@ -2678,8 +3157,16 @@ export async function untrashMailThread(
   account: string,
   threadId: string
 ): Promise<void> {
+  // The copy first, when it serves this mailbox: the worker carries the
+  // change to the server on its next pass.
+  if (await queueLocalAction(account, threadId, "untrash")) {
+    invalidateInboxCache();
+    return;
+  }
   if ((await resolveMailProvider(account)) === "outlook") {
     await untrashOutlookThread(account, threadId);
+    await applyLocalAction(account, threadId, "untrash");
+    wakeOutlookSync(account);
     invalidateInboxCache();
     return;
   }
@@ -2756,6 +3243,8 @@ export async function listSnoozedThreads(options: {
   account?: string;
   scope?: MailAccountScope;
   clerkUserId: string;
+  /** Words typed in the search box; only rows with all of them come back. */
+  q?: string;
 }): Promise<{ accounts: string[]; threads: MailThreadSummary[] }> {
   const scope = options.scope ?? "all";
   const allAccounts = filterAccountsForScope(
@@ -2787,86 +3276,68 @@ export async function listSnoozedThreads(options: {
       const provider = providerByEmail.get(accountEmail) ?? "gmail";
       try {
         if (provider === "outlook") {
+          // One message is enough for a row. The list rule runs on that
+          // message's envelope, the same rule the inbox applies to Graph's
+          // newest message.
           const detail = await getOutlookMailThread(accountEmail, threadId, {
             limit: 1,
+            markRead: false,
           });
           const latest = detail.messages[detail.messages.length - 1];
-          const counterpartEmail =
-            latest && !latest.own
-              ? latest.fromEmail
-              : detail.reply.to[0] || accountEmail;
-          const counterpartName =
-            latest && !latest.own ? latest.fromName : counterpartEmail;
-          const matchesContact = isKnownContact(counterpartEmail, classifier);
+          const from = latest
+            ? { name: latest.fromName, email: latest.fromEmail }
+            : undefined;
+          const to = (latest?.toEmails ?? []).map((email) => ({
+            name: "",
+            email,
+          }));
+          const cc = (latest?.ccEmails ?? []).map((email) => ({
+            name: "",
+            email,
+          }));
+          const { tab, counterpart, externalParticipants } = classifyThread({
+            accountEmail,
+            participants: [...(from ? [from] : []), ...to, ...cc],
+            senders: from ? [from] : [],
+            latestFrom: from,
+            latestTo: to,
+            classifier,
+          });
           return {
             account: accountEmail,
             threadId,
             subject: detail.subject,
-            fromName: counterpartName || counterpartEmail,
-            fromEmail: counterpartEmail,
+            fromName: displayName(counterpart),
+            fromEmail: counterpart.email,
             snippet: latest?.bodyText?.slice(0, 160) ?? "",
             lastAt: latest?.sentAt ?? snoozedUntil,
             unread: false,
             messageCount: detail.messages.length,
-            tab: matchesContact ? "people" : "other",
-            externalParticipants: counterpartEmail
-              ? [{ name: counterpartName, email: counterpartEmail }]
-              : [],
-            crmName: crmNameFor(counterpartEmail, classifier),
-            crmLogoUrl: crmLogoFor(counterpartEmail, classifier),
+            tab,
+            externalParticipants,
+            crmName: crmNameFor(counterpart.email, classifier),
+            crmLogoUrl: crmLogoFor(counterpart.email, classifier),
             snoozedUntil,
           };
         }
 
+        // The same row the inbox builds, minus the invite probe: a snoozed
+        // row is a reminder, and the chip is not worth a payload per thread.
         const token = await accessTokenFor(accountEmail);
         const thread = await getThreadMetadata(
           token,
           threadId,
           METADATA_HEADERS
         );
-        const threadMessages = [...(thread.messages ?? [])];
-        if (!threadMessages.length) return null;
-        threadMessages.sort((a, b) => messageDate(a) - messageDate(b));
-        const latest = threadMessages[threadMessages.length - 1];
-        const participants = threadMessages.flatMap((m) => [
-          ...parseAddressList(headerValue(m, "From")),
-          ...parseAddressList(headerValue(m, "To")),
-          ...parseAddressList(headerValue(m, "Cc")),
-        ]);
-        const external = participants.filter(
-          (p) => !isSelfAddress(p.email, accountEmail)
-        );
-        const matchesContact = external.some((p) =>
-          isKnownContact(p.email, classifier)
-        );
-        const latestFrom = parseAddressList(headerValue(latest, "From"))[0];
-        const latestToExternal = parseAddressList(
-          headerValue(latest, "To")
-        ).filter((p) => !isSelfAddress(p.email, accountEmail));
-        const counterpart =
-          latestFrom && !isSelfAddress(latestFrom.email, accountEmail)
-            ? latestFrom
-            : latestToExternal[0] ??
-              external[0] ??
-              latestFrom ?? { email: accountEmail, name: "" };
-        return {
-          account: accountEmail,
-          threadId,
-          subject: headerValue(latest, "Subject").trim() || "(no subject)",
-          fromName: displayName(counterpart),
-          fromEmail: counterpart.email,
-          snippet: decodeSnippet(latest.snippet ?? ""),
-          lastAt: new Date(messageDate(latest)).toISOString(),
-          unread: threadMessages.some((m) =>
-            (m.labelIds ?? []).includes("UNREAD")
-          ),
-          messageCount: threadMessages.length,
-          tab: matchesContact ? "people" : "other",
-          externalParticipants: external.map((p) => ({ ...p })),
-          crmName: crmNameFor(counterpart.email, classifier),
-          crmLogoUrl: crmLogoFor(counterpart.email, classifier),
+        const built = await summarizeGmailThread({
+          token,
+          accountEmail,
+          thread,
+          classifier,
+          resolveCalendar: false,
           snoozedUntil,
-        };
+        });
+        return built?.summary ?? null;
       } catch (err) {
         console.warn(
           `[mail] snoozed thread fetch failed for ${accountEmail}/${threadId}:`,
@@ -2877,9 +3348,21 @@ export async function listSnoozedThreads(options: {
     }
   );
 
+  // The Snoozed list is short and already in hand, so a search over it
+  // is a look at each row: sender, subject, and the first words, with
+  // the words the rows would mark. Filters such as has:attachment name
+  // no text and leave every row in.
+  const terms = searchHighlightTerms(options.q ?? "");
+  const threads = built.filter((t): t is MailThreadSummary => t != null);
+  const matching = terms.length
+    ? threads.filter((t) => {
+        const hay = [t.fromName, t.fromEmail, t.subject, t.snippet].filter(Boolean).join(" ");
+        return terms.every((term) => highlightRanges(hay, [term]).length > 0);
+      })
+    : threads;
   return {
     accounts: allAccounts.map((a) => a.email),
-    threads: built.filter((t): t is MailThreadSummary => t != null),
+    threads: matching,
   };
 }
 

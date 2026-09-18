@@ -22,6 +22,10 @@ inside it:
 So a check like "the exchange proves the verifier and sends no secret" reads
 the form body the app would really have posted.
 
+The suites named `mounted-` are different. They render the real page in
+happy-dom, so React is inside their bundle. They check what is on the page
+after a click. They do not check pixels or scroll.
+
 ## Adding one
 
 Name the file `<thing>.test.mjs`, import `check` and `suite` from

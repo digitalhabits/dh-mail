@@ -15,6 +15,7 @@
  */
 
 import { Mail } from "lucide-react";
+import type { MailProvider } from "@/lib/mail/types";
 
 import { cn } from "@/lib/utils";
 
@@ -92,7 +93,7 @@ export function AccountMark({
   className,
 }: {
   mark?: string;
-  provider: "gmail" | "outlook" | "unknown";
+  provider: MailProvider | "unknown";
   className?: string;
 }) {
   const size = cn("h-4 w-4 shrink-0", className);

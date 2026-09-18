@@ -22,6 +22,7 @@ import {
   AttachmentSizeSummary,
   AttachToolbarButton,
   ComposerDropOverlay,
+  DraftAttachmentPreviewDialog,
   DraftAttachmentThumbs,
   openAttachmentOutside,
   useComposerFileDrop,
@@ -44,7 +45,9 @@ import {
   CHAT_POPOUT_EXPANDED_HEIGHT,
   CHAT_POPOUT_WIDTH,
   readPopoutSeed,
+  MAIL_POPOUT_SENT_KEY,
   signalPopoutSend,
+  signalEditAsNewRequest,
   signalForwardRequest,
 } from "@/lib/mail/popout";
 import {
@@ -61,6 +64,8 @@ import {
 import { teamAvatarSrc } from "@/lib/mail/team-avatars";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { closeChatPopout, resizeChatPopout } from "@/lib/native-shell";
+import { actionForEvent } from "@/lib/mail/shortcuts";
+import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import { saveThreadDraft, threadDraftKey } from "@/lib/mail/local-drafts";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
@@ -68,6 +73,23 @@ import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { useMailColorMode } from "@/lib/mail/theme";
 
 const POLL_MS = 30_000;
+
+/** The same page of the same conversation, word for word. */
+function sameThreadPage(a: MailThreadDetail, b: MailThreadDetail): boolean {
+  if (a.messages.length !== b.messages.length) return false;
+  for (let i = 0; i < a.messages.length; i++) {
+    const x = a.messages[i];
+    const y = b.messages[i];
+    if (
+      x.id !== y.id ||
+      x.bodyText !== y.bodyText ||
+      (x.bodyHtml ?? "") !== (y.bodyHtml ?? "")
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 
 
@@ -103,7 +125,25 @@ export function ChatPopout({
 }) {
   const t = useMailT();
   const colorMode = useMailColorMode();
-  const [collapsed, setCollapsed] = React.useState(false);
+  /*
+    Folded or not — asked of the window, not assumed.
+
+    The window keeps its size across a reload and the state did not: a
+    chat parked as a bar came back believing it was open, drew the header
+    and the composer into fifty-six pixels, and showed a clipped name
+    above a box with no conversation over it. Anything that reloads the
+    page does this — the app restarting, and the dev server on every save.
+
+    The window's own height is the answer. Halfway between the two heights
+    is the line, so neither a title bar nor a pixel of rounding can put it
+    on the wrong side.
+  */
+  const [collapsed, setCollapsed] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    const midpoint =
+      (CHAT_POPOUT_COLLAPSED_HEIGHT + CHAT_POPOUT_EXPANDED_HEIGHT) / 2;
+    return window.innerHeight > 0 && window.innerHeight < midpoint;
+  });
   const [thread, setThread] = React.useState<MailThreadDetail | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   /**
@@ -143,6 +183,8 @@ export function ChatPopout({
    * down and stop short of the end.
    */
   const readerScrolledRef = React.useRef(false);
+  /** When this window last announced a send of its own. */
+  const ownSignalAtRef = React.useRef(0);
   const inputRef = React.useRef<RichTextEditorHandle | null>(null);
   /** The box and its buttons — for asking whether the caret is in there. */
   const composerRef = React.useRef<HTMLDivElement>(null);
@@ -158,6 +200,10 @@ export function ChatPopout({
     clear: clearAttachments,
     payload: attachmentPayload,
   } = useDraftAttachments();
+  /** The draft attachment open in the preview, by strip id. */
+  const [draftPreviewId, setDraftPreviewId] = React.useState<string | null>(
+    null
+  );
   /**
    * A file dropped anywhere on the window is attached to the reply.
    *
@@ -204,7 +250,19 @@ export function ChatPopout({
       const json = await apiJson<{ thread: MailThreadDetail }>(
         `/api/mail/thread?${params.toString()}`
       );
-      setThread(json.thread);
+      /*
+        Keep the state we have when the answer is the state we have.
+
+        Every poll used to replace the thread object whether or not anything
+        changed, and every replacement re-rendered the message frames and
+        attachment tiles — whose heights settle again a beat later, jolting
+        a reader parked at the bottom a few hundred pixels up. Same
+        messages, same words: nothing to paint.
+      */
+      setThread((current) => {
+        if (current && sameThreadPage(current, json.thread)) return current;
+        return json.thread;
+      });
       setLoadError(null);
       // Drop optimistic bubbles once the provider echoes the real message.
       setLocalBubbles((current) =>
@@ -250,6 +308,69 @@ export function ChatPopout({
       window.removeEventListener("focus", onFocus);
     };
   }, [loadThread]);
+
+  /*
+    A reply sent from the reader shows here at once, not at the next poll.
+
+    The reader announces every send the same two ways this window announces
+    its own — a localStorage write for browsers, a Tauri event for the
+    desktop shell — and a signal naming this thread reloads it on the same
+    backoff the reader uses, because the provider can take a moment to
+    index the new message into the conversation.
+  */
+  React.useEffect(() => {
+    const matches = (payload: unknown) => {
+      const p = payload as { account?: string; threadId?: string } | null;
+      if (p?.account !== account || p?.threadId !== threadId) return false;
+      // The Tauri broadcast reaches every window, this one included. Its
+      // own send already schedules its own reloads.
+      return Date.now() - ownSignalAtRef.current > 5000;
+    };
+    const timers: number[] = [];
+    const reloadSoon = () => {
+      for (const delay of [400, 1500, 4000]) {
+        timers.push(window.setTimeout(() => void loadThread(), delay));
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== MAIL_POPOUT_SENT_KEY || !event.newValue) return;
+      try {
+        if (matches(JSON.parse(event.newValue))) reloadSoon();
+      } catch {}
+    };
+    window.addEventListener("storage", onStorage);
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    const tauriEvent = (
+      window as unknown as {
+        __TAURI__?: {
+          event?: {
+            listen?: (
+              name: string,
+              handler: (event: { payload: unknown }) => void
+            ) => Promise<() => void>;
+          };
+        };
+      }
+    ).__TAURI__?.event;
+    if (tauriEvent?.listen) {
+      void tauriEvent
+        .listen("mail-sent", (event) => {
+          if (matches(event.payload)) reloadSoon();
+        })
+        .then((fn) => {
+          if (cancelled) fn();
+          else unlisten = fn;
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", onStorage);
+      unlisten?.();
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [account, threadId, loadThread]);
 
   /**
    * Earlier pages, fetched when a reader scrolls to the top.
@@ -483,17 +604,28 @@ export function ChatPopout({
       .finally(done);
   }, [draft, draftText, thread, account, threadId, personEmail]);
 
-  /** Escape asks for it from in here. */
+  /**
+   * Escape asks for it from in here — and so does the key that opened it.
+   *
+   * A key that shows a window should put it away again; that is what makes
+   * it one key rather than two things to remember. It leaves the same way
+   * Escape leaves, draft and all.
+   */
+  const shortcuts = useMailShortcuts();
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const plainEscape =
+        event.key === "Escape" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey;
+      if (!plainEscape && actionForEvent(event, shortcuts) !== "popOut") return;
       event.preventDefault();
       handBack();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handBack]);
+  }, [handBack, shortcuts]);
 
   /**
    * "Bring back" asks for it from the thread.
@@ -539,6 +671,7 @@ export function ChatPopout({
       unlisten?.();
     };
   }, []);
+
 
   /**
    * The box is ready to type in as soon as the window is there.
@@ -607,6 +740,47 @@ export function ChatPopout({
         // Plain tab (opened directly): nothing to resize.
       }
     }
+  }, []);
+
+  /**
+   * "Show", pressed on the strip in the reader, unfolds this window.
+   *
+   * Folded is a kind of hidden: somebody asking to see the conversation
+   * is not asking for the naming bar it was folded into. The shell brings
+   * the window forward and says so here; the fold is this page's to undo,
+   * because it is this page that holds it and asks for the resize.
+   */
+  const unfoldRef = React.useRef<() => void>(() => {});
+  unfoldRef.current = () => {
+    if (collapsedRef.current) void setWindowCollapsed(false);
+  };
+  React.useEffect(() => {
+    const tauriEvent = (
+      window as unknown as {
+        __TAURI__?: {
+          event?: {
+            listen?: (
+              name: string,
+              handler: () => void
+            ) => Promise<() => void>;
+          };
+        };
+      }
+    ).__TAURI__?.event;
+    if (!tauriEvent?.listen) return;
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void tauriEvent
+      .listen("chat-popout-unfold", () => unfoldRef.current())
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   /**
@@ -739,6 +913,7 @@ export function ChatPopout({
       }
       // Nudge the main window so its list/reader update without waiting
       // for the next poll.
+      ownSignalAtRef.current = Date.now();
       signalPopoutSend(account, threadId);
     } catch (err) {
       setLocalBubbles((current) => current.filter((b) => b.id !== local.id));
@@ -799,6 +974,8 @@ export function ChatPopout({
       // both is asked to do it, and comes to the front — see popout.ts.
       onForward: () =>
         signalForwardRequest({ account, threadId, messageId: m.id }),
+      onEditAsNew: () =>
+        signalEditAsNewRequest({ account, threadId, messageId: m.id }),
     }),
     // `send` belongs here. Without it this kept the first one ever made —
     // the one closed over a thread that had not loaded — and every reaction
@@ -816,9 +993,17 @@ export function ChatPopout({
       // The same cream as the main window's chrome, so the strip that names
       // who you are talking to reads as chrome here too, and the messages
       // below it keep the pane to themselves. The rule only makes sense when
-      // there is something under it — folded, this strip is the whole card.
+      // there is something under it — folded, this strip is the whole card,
+      // and fills it.
       className={cn(
-        "flex shrink-0 items-center gap-3 bg-[var(--mail-chrome)] px-4 py-2",
+        "flex shrink-0 items-center bg-[var(--mail-chrome)]",
+        // Folded it is the whole window, so it gives back the room it does
+        // not need: a smaller face, less air around it.
+        collapsed ? "gap-2.5 px-3 py-1.5" : "gap-3 px-4 py-2",
+        // Folded, this strip is the whole card, so it takes the whole of it.
+        // Left at its own height it sat centred in a taller white card, and
+        // the card showed above and below it as two white bands.
+        collapsed && "grow",
         !collapsed && "border-b border-[var(--mail-chrome-border)]"
       )}
     >
@@ -828,14 +1013,18 @@ export function ChatPopout({
           data-tauri-drag-region
           src={teamAvatarSrc(personEmail)}
           alt=""
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
+          className={cn(
+            "shrink-0 rounded-full object-cover",
+            collapsed ? "h-8 w-8" : "h-10 w-10"
+          )}
         />
       ) : (
         <span
           aria-hidden
           data-tauri-drag-region
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+            "flex shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+            collapsed ? "h-8 w-8" : "h-10 w-10",
             avatarStyle((personEmail || personName).toLowerCase())
           )}
         >
@@ -910,8 +1099,7 @@ export function ChatPopout({
             // widen the card past the window via flex min-content sizing.
             // mail-surface-root: the card is the shell itself, so the dark
             // rules for descendants cannot reach it. See mail.css.
-            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-stone-200 bg-white",
-            collapsed ? "justify-center rounded-full" : "rounded-lg",
+            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-stone-200 bg-white",
             // relative: the drop overlay covers the card, not the desktop.
             !collapsed && "relative"
           )}
@@ -1081,6 +1269,7 @@ export function ChatPopout({
                     <DraftAttachmentThumbs
                       items={attachItems}
                       onRemove={removeAttach}
+                      onPreview={setDraftPreviewId}
                     />
                     <div className="px-1 pt-1">
                       <AttachmentSizeSummary
@@ -1163,6 +1352,12 @@ export function ChatPopout({
           ) : null}
         </div>
       </div>
+      <DraftAttachmentPreviewDialog
+        items={attachItems}
+        previewId={draftPreviewId}
+        onSelect={setDraftPreviewId}
+        onClose={() => setDraftPreviewId(null)}
+      />
     </>
   );
 }

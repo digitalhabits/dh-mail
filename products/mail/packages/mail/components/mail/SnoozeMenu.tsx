@@ -10,13 +10,15 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight, RotateCwFadingClock } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { THREAD_ACTION_CLASS } from "@/components/mail/thread-actions";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { currentMailLocale, mailSay, useMailT } from "@/lib/mail/i18n";
+import { readSnoozeSettings } from "@/lib/mail/snooze-settings";
+import { resolveOptions } from "@/lib/mail/timed-options";
 import { cn } from "@/lib/utils";
 
 /** One offered time: what it is called, when it is, and the time itself. */
@@ -106,72 +108,27 @@ function combineSnoozeDateTime(date: Date, hm: string): Date | null {
   next.setHours(hours, minutes, 0, 0);
   return next;
 }
-/** Presets: in 1 hour, later today, tomorrow 8am, Sat 10am, next Mon 8am. */
 /**
- * The times on offer, worked out from now.
+ * The times on offer, worked out from now, from the options the reader set
+ * up under Settings → Snooze options.
  *
  * Send later shows the same list, so the two menus cannot drift into
  * offering different hours for the same words.
  */
 export function snoozeOptions(): SnoozeOption[] {
-  const now = new Date();
-  const options: SnoozeOption[] = [];
-
-  const inOneHour = new Date(now.getTime() + 60 * 60 * 1000);
-  options.push({
-    id: "1h",
-    label: mailSay("snoozeInOneHour"),
-    detail: formatSnoozeClock(inOneHour),
-    iso: inOneHour.toISOString(),
-  });
-
-  const laterToday = new Date(now);
-  // Morning → 15:00; once past noon, evening 21:00.
-  laterToday.setHours(now.getHours() < 12 ? 15 : 21, 0, 0, 0);
-  if (laterToday.getTime() > now.getTime()) {
-    options.push({
-      id: "later",
-      label: mailSay("snoozeLaterToday"),
-      detail: formatSnoozeClock(laterToday),
-      iso: laterToday.toISOString(),
-    });
-  }
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(8, 0, 0, 0);
-  options.push({
-    id: "tomorrow",
-    label: mailSay("snoozeTomorrow"),
-    detail: formatSnoozeDayTime(tomorrow),
-    iso: tomorrow.toISOString(),
-  });
-
-  const weekend = new Date(now);
-  weekend.setHours(10, 0, 0, 0);
-  // Days until Saturday (6); on Sat after 10am or Sun, jump to next Saturday.
-  const untilSat = (6 - weekend.getDay() + 7) % 7;
-  weekend.setDate(weekend.getDate() + untilSat);
-  if (weekend.getTime() <= now.getTime()) weekend.setDate(weekend.getDate() + 7);
-  options.push({
-    id: "weekend",
-    label: mailSay("snoozeThisWeekend"),
-    detail: formatSnoozeDayTime(weekend),
-    iso: weekend.toISOString(),
-  });
-
-  const nextWeek = new Date(now);
-  nextWeek.setHours(8, 0, 0, 0);
-  const day = nextWeek.getDay() === 0 ? 7 : nextWeek.getDay();
-  nextWeek.setDate(nextWeek.getDate() + (8 - day));
-  options.push({
-    id: "nextweek",
-    label: mailSay("snoozeNextWeek"),
-    detail: formatSnoozeDayTime(nextWeek),
-    iso: nextWeek.toISOString(),
-  });
-
-  return options;
+  // Rows whose time has passed, or that come to the same time as a row above
+  // them, are left out — see resolveOptions.
+  return resolveOptions(
+    readSnoozeSettings(),
+    new Date(),
+    formatSnoozeClock,
+    formatSnoozeDayTime
+  ).map((row) => ({
+    id: row.id,
+    label: row.label,
+    detail: row.detail,
+    iso: row.at.toISOString(),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +177,6 @@ export function SnoozeMenu({
   const [viewMonth, setViewMonth] = React.useState(() => snoozeDayStart(new Date()));
   const [selectedDate, setSelectedDate] = React.useState<Date | null>(null);
   const [timeHm, setTimeHm] = React.useState("09:00");
-  const [customTimeOpen, setCustomTimeOpen] = React.useState(false);
 
   const listRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -283,7 +239,6 @@ export function SnoozeMenu({
     setViewMonth(snoozeDayStart(now));
     setSelectedDate(null);
     setTimeHm("09:00");
-    setCustomTimeOpen(false);
   };
 
   const choose = (iso: string) => {
@@ -305,8 +260,6 @@ export function SnoozeMenu({
     }
     choose(customUntil.toISOString());
   };
-
-  const chipActive = (chip: string) => !customTimeOpen && timeHm === chip;
 
   return (
     <Popover
@@ -420,7 +373,7 @@ export function SnoozeMenu({
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <p className="text-sm font-semibold text-stone-800">{monthLabel}</p>
+              <p className="font-serif text-[15px] font-bold text-stone-900">{monthLabel}</p>
               <button
                 type="button"
                 aria-label={t("nextMonth")}
@@ -478,51 +431,41 @@ export function SnoozeMenu({
               })}
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="shrink-0 text-sm text-stone-400">at</span>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {/*
+              The time is a field you can always see and type in, and the
+              chips under it are shortcuts that fill it. There used to be a
+              "…" chip that opened the field, and nobody could tell what the
+              dots were for. The field shows the time that will be used, so
+              the chips have no chosen look of their own.
+            */}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 border-t border-stone-100 pt-3">
+              <span className="text-sm text-stone-400">at</span>
+              <input
+                type="time"
+                aria-label={t("customTime")}
+                value={timeHm}
+                onChange={(e) => setTimeHm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  submitCustom();
+                }}
+                className="w-full rounded-lg border border-teal-600 bg-white px-2.5 py-1.5 text-sm tabular-nums text-stone-800 outline-none focus:ring-2 focus:ring-teal-600/20"
+              />
+              <span aria-hidden />
+              <div className="grid grid-cols-4 gap-1.5">
                 {SNOOZE_TIME_CHIPS.map((chip) => (
                   <button
                     key={chip}
                     type="button"
-                    onClick={() => {
-                      setTimeHm(chip);
-                      setCustomTimeOpen(false);
-                    }}
-                    className={cn(
-                      "rounded-lg border px-2 py-1 text-xs font-medium tabular-nums transition-colors",
-                      chipActive(chip)
-                        ? "border-teal-700 bg-teal-700 text-white"
-                        : "border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-50"
-                    )}
+                    onClick={() => setTimeHm(chip)}
+                    className="rounded-lg border border-stone-200 py-1 text-xs font-medium tabular-nums text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-50"
                   >
                     {chip}
                   </button>
                 ))}
-                <button
-                  type="button"
-                  aria-label={t("customTime")}
-                  onClick={() => setCustomTimeOpen(true)}
-                  className={cn(
-                    "rounded-lg border border-dashed px-2 py-1 text-xs font-medium transition-colors",
-                    customTimeOpen
-                      ? "border-teal-700 bg-teal-700 text-white"
-                      : "border-stone-300 text-stone-500 hover:border-stone-400 hover:bg-stone-50"
-                  )}
-                >
-                  …
-                </button>
               </div>
             </div>
-
-            {customTimeOpen ? (
-              <input
-                type="time"
-                value={timeHm}
-                onChange={(e) => setTimeHm(e.target.value || "09:00")}
-                className="w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm tabular-nums outline-none focus:border-teal-600"
-              />
-            ) : null}
 
             <button
               type="button"

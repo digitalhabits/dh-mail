@@ -27,6 +27,8 @@ import type {
   MailContactSourceState,
   MailListSyncEntry,
   MailSnoozeRecord,
+  MailStoredBody,
+  MailStoredMessage,
   MailSourceContact,
   MailStore,
   MailStoredToken,
@@ -37,14 +39,34 @@ type TauriInvoke = (
   args?: Record<string, unknown>
 ) => Promise<unknown>;
 
-/** The invoke bridge, or null outside a desktop shell. */
+type BridgeWindow = {
+  __TAURI__?: { core?: { invoke?: TauriInvoke } };
+  __TAURI_INTERNALS__?: { invoke?: TauriInvoke };
+};
+
+function ownBridge(w: BridgeWindow | null | undefined): TauriInvoke | null {
+  return w?.__TAURI__?.core?.invoke ?? w?.__TAURI_INTERNALS__?.invoke ?? null;
+}
+
+/**
+ * The invoke bridge, or null outside a desktop shell.
+ *
+ * A page shown in a planner tile is a frame inside the shell's page and has
+ * no bridge of its own; the shell's is on the top window. Without looking
+ * there, a tile offered Open in Mail (the planner's own check looks up) and
+ * then said "Opening Outlook needs the desktop app". A top window of another
+ * origin throws on the read, and counts as none.
+ */
 export function tauriInvoke(): TauriInvoke | null {
   if (typeof window === "undefined") return null;
-  const w = window as unknown as {
-    __TAURI__?: { core?: { invoke?: TauriInvoke } };
-    __TAURI_INTERNALS__?: { invoke?: TauriInvoke };
-  };
-  return w.__TAURI__?.core?.invoke ?? w.__TAURI_INTERNALS__?.invoke ?? null;
+  const own = ownBridge(window as unknown as BridgeWindow);
+  if (own) return own;
+  if (window.top === window) return null;
+  try {
+    return ownBridge(window.top as unknown as BridgeWindow);
+  } catch {
+    return null;
+  }
 }
 
 const COMMAND = "mail_store_call";
@@ -105,6 +127,20 @@ export const MAIL_STORE_OPERATIONS = [
   "chats.bindThread",
   "chats.touch",
   "chats.listParts",
+  "messages.list",
+  "messages.counts",
+  "messages.thread",
+  "messages.search",
+  "messages.upsertMany",
+  "messages.putBody",
+  "messages.removeAccount",
+  "messages.setUnread",
+  "messages.recipients",
+  "messages.labelCounts",
+  "messages.applyAction",
+  "messages.removeMessages",
+  "sync.list",
+  "sync.set",
 ] as const;
 
 export type MailStoreOperation = (typeof MAIL_STORE_OPERATIONS)[number];
@@ -227,6 +263,61 @@ export function createTauriMailStore(): MailStore {
         call<MailSourceContact[]>("contactSources.listVisible", { accounts }),
       hideHistoryContact: (email) =>
         call("contactSources.hideHistoryContact", { email }),
+    },
+
+    messages: {
+      list: (input) =>
+        call("messages.list", {
+          accounts: input.accounts,
+          view: input.view,
+          label: input.label ?? null,
+          before: input.before ?? null,
+          limit: input.limit ?? null,
+        }),
+      counts: (input) =>
+        call("messages.counts", {
+          accounts: input.accounts,
+          view: input.view,
+          label: input.label ?? null,
+        }),
+      thread: async (account, threadId) => {
+        const out = await call<{ messages: (MailStoredMessage & { body: MailStoredBody | null })[] }>(
+          "messages.thread",
+          { account, threadId }
+        );
+        return out.messages;
+      },
+      search: (input) =>
+        call("messages.search", {
+          accounts: input.accounts,
+          q: input.q,
+          limit: input.limit ?? null,
+          includeDeleted: input.includeDeleted ?? false,
+          view: input.view ?? null,
+          label: input.label ?? null,
+        }),
+      recipients: (account, since) => call("messages.recipients", { account, since }),
+      labelCounts: (account) => call("messages.labelCounts", { account }),
+      applyAction: (input) =>
+        call("messages.applyAction", {
+          account: input.account,
+          threadId: input.threadId,
+          kind: input.kind,
+          payload: input.payload ?? {},
+        }),
+      upsertMany: (account, rows) => call("messages.upsertMany", { account, rows }),
+      putBody: (account, messageId, body) =>
+        call("messages.putBody", { account, messageId, body }),
+      removeAccount: (account) => call("messages.removeAccount", { account }),
+      removeMessages: (account, messageIds) =>
+        call("messages.removeMessages", { account, messageIds }),
+      setUnread: (account, threadId, unread) =>
+        call("messages.setUnread", { account, threadId, unread }),
+    },
+
+    sync: {
+      list: () => call("sync.list"),
+      set: (state) => call("sync.set", { state }),
     },
 
     chats: {

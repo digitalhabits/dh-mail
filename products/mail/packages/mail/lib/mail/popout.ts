@@ -2,6 +2,7 @@ import { loadCachedMailThread } from "@/lib/mail/thread-cache";
 import type { MailThreadDetail } from "@/lib/mail/types";
 import {
   isNativeShell,
+  notifyMailEditAsNew,
   notifyMailForward,
   notifyMailSent,
   openChatPopout,
@@ -73,9 +74,111 @@ export function readForwardRequest(raw: unknown): MailForwardRequest | null {
   };
 }
 
+/**
+ * A message written elsewhere, for this composer to open.
+ *
+ * The planner's Facilitators tab writes the joining details for a course,
+ * addressed and with a calendar file attached, and hands it to the shell
+ * (see notify_mail_compose_seed). The pane hears it as an event, or asks
+ * for it on load. Everything here is the message itself; the pane writes
+ * the draft and opens the composer on it.
+ */
+export type MailComposeSeed = {
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  bodyHtml: string;
+  attachments: { filename: string; mimeType: string; contentBase64: string }[];
+};
+
+function addressList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/** A seed off the event or the command, or null when it is not one. */
+export function readComposeSeed(raw: unknown): MailComposeSeed | null {
+  const value =
+    typeof raw === "string"
+      ? (() => {
+          try {
+            return JSON.parse(raw) as unknown;
+          } catch {
+            return null;
+          }
+        })()
+      : raw;
+  if (!value || typeof value !== "object") return null;
+  const seed = value as Record<string, unknown>;
+  const subject = typeof seed.subject === "string" ? seed.subject : "";
+  const bodyHtml = typeof seed.bodyHtml === "string" ? seed.bodyHtml : "";
+  if (!subject.trim() && !bodyHtml.trim()) return null;
+  const attachments = Array.isArray(seed.attachments)
+    ? seed.attachments
+        .filter(
+          (a): a is { filename: string; mimeType: string; contentBase64: string } =>
+            !!a &&
+            typeof a === "object" &&
+            typeof (a as { filename?: unknown }).filename === "string" &&
+            typeof (a as { contentBase64?: unknown }).contentBase64 === "string"
+        )
+        .map((a) => ({
+          filename: a.filename,
+          mimeType: typeof a.mimeType === "string" ? a.mimeType : "application/octet-stream",
+          contentBase64: a.contentBase64,
+        }))
+    : [];
+  return {
+    to: addressList(seed.to),
+    cc: addressList(seed.cc),
+    bcc: addressList(seed.bcc),
+    subject,
+    bodyHtml,
+    attachments,
+  };
+}
+
+/**
+ * Cross-window "edit this message as a new one" request.
+ *
+ * Same reason as a forward: the chat popout has no subject line and no
+ * recipient picker, so the window that does is asked. The same two channels.
+ */
+export const MAIL_EDIT_AS_NEW_REQUEST_KEY =
+  "redd-plan-mail-edit-as-new-request";
+
+export type MailEditAsNewRequest = MailForwardRequest;
+
+export function signalEditAsNewRequest(request: MailEditAsNewRequest): void {
+  try {
+    window.localStorage.setItem(
+      MAIL_EDIT_AS_NEW_REQUEST_KEY,
+      JSON.stringify({ ...request, at: Date.now() })
+    );
+  } catch {}
+  void notifyMailEditAsNew(request).catch(() => {});
+}
+
+export function readEditAsNewRequest(
+  raw: unknown
+): MailEditAsNewRequest | null {
+  return readForwardRequest(raw);
+}
+
 export const CHAT_POPOUT_WIDTH = 380;
 export const CHAT_POPOUT_EXPANDED_HEIGHT = 560;
-export const CHAT_POPOUT_COLLAPSED_HEIGHT = 72;
+/**
+ * Folded, the window is the naming strip and nothing more.
+ *
+ * The Rust side holds this number too — it is the window's minimum, and
+ * the resize is clamped to it, so a smaller one asked for here alone would
+ * be ignored. See CHAT_POPOUT_COLLAPSED_HEIGHT in popout.rs.
+ */
+export const CHAT_POPOUT_COLLAPSED_HEIGHT = 56;
 
 /**
  * One-shot handoff of an already-loaded thread to the popout window via
@@ -197,6 +300,7 @@ export async function openMailChatPopout(input: {
   }
   if (isNativeShell()) {
     await openChatPopout(target);
+    notePopoutOpened(input.account, input.threadId);
     return;
   }
   const params = new URLSearchParams({
@@ -225,4 +329,114 @@ export async function openMailChatPopout(input: {
     throw new Error("Popup blocked — allow popups for this site");
   }
   popup.focus();
+}
+
+/**
+ * Which threads have a chat window open, as far as this window knows.
+ *
+ * The shell's window list is the truth — see `chat_popout_open` — but the
+ * list cannot ask it once per row on every repaint. So the threads this
+ * window has popped out are kept here, and each one is checked against
+ * the shell when the window comes back to the front. A window the reader
+ * closed drops out on that pass; nothing is trusted for longer than it
+ * takes to look.
+ *
+ * Kept in localStorage so a reload does not lose a chat that is still on
+ * screen, and shared with the reader's other tabs the same way the sent
+ * signal is.
+ */
+const POPOUT_OPEN_KEY = "redd-plan-mail-popout-open";
+
+export function popoutThreadKey(account: string, threadId: string): string {
+  return `${account}|${threadId}`;
+}
+
+const popoutListeners = new Set<() => void>();
+let popoutKeys: ReadonlySet<string> = new Set();
+let popoutSnapshot: ReadonlySet<string> = popoutKeys;
+
+function readStoredPopoutKeys(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(POPOUT_OPEN_KEY);
+    const list = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(list) ? list.filter((k): k is string => typeof k === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writePopoutKeys(keys: Set<string>): void {
+  try {
+    window.localStorage.setItem(POPOUT_OPEN_KEY, JSON.stringify([...keys]));
+  } catch {}
+  popoutKeys = keys;
+  // A new object every time, so `useSyncExternalStore` sees the change —
+  // but only when the set actually differs, or the list would repaint on
+  // every check the focus makes.
+  popoutSnapshot = keys;
+  for (const listener of popoutListeners) listener();
+}
+
+function sameKeys(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const key of a) if (!b.has(key)) return false;
+  return true;
+}
+
+/** Note that this thread now has a chat window. */
+export function notePopoutOpened(account: string, threadId: string): void {
+  const next = new Set(popoutKeys);
+  next.add(popoutThreadKey(account, threadId));
+  if (!sameKeys(next, popoutKeys)) writePopoutKeys(next);
+}
+
+/** Replace the set with what the shell says is actually open. */
+export function setOpenPopoutKeys(keys: Set<string>): void {
+  if (sameKeys(keys, popoutKeys)) return;
+  writePopoutKeys(keys);
+}
+
+/**
+ * The keys to check against the shell — what we last believed.
+ *
+ * From memory, not from storage. Storage is where this survives a reload,
+ * and it can refuse a write (a private window, a full quota) without
+ * saying so; reading it back as the truth then left the set that decides
+ * what the list draws disagreeing with the set that decides what is
+ * checked, and only on the machines where storage was unavailable.
+ */
+export function believedPopoutKeys(): string[] {
+  return [...popoutKeys];
+}
+
+export function subscribeMailPopouts(listener: () => void): () => void {
+  popoutListeners.add(listener);
+  return () => {
+    popoutListeners.delete(listener);
+  };
+}
+
+export function getPopoutKeysSnapshot(): ReadonlySet<string> {
+  return popoutSnapshot;
+}
+
+/** Server render, and a host with no storage: nothing is popped out. */
+const NO_POPOUTS: ReadonlySet<string> = new Set();
+export function getPopoutKeysServerSnapshot(): ReadonlySet<string> {
+  return NO_POPOUTS;
+}
+
+if (typeof window !== "undefined") {
+  popoutKeys = readStoredPopoutKeys();
+  popoutSnapshot = popoutKeys;
+  // Another window of the same reader popped one out, or closed one.
+  window.addEventListener("storage", (event) => {
+    if (event.key !== POPOUT_OPEN_KEY) return;
+    const next = readStoredPopoutKeys();
+    if (!sameKeys(next, popoutKeys)) {
+      popoutKeys = next;
+      popoutSnapshot = next;
+      for (const listener of popoutListeners) listener();
+    }
+  });
 }

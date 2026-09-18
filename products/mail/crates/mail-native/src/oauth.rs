@@ -8,19 +8,22 @@
 //! No secret takes part. The webview holds a PKCE verifier and proves it at the
 //! exchange. See `products/mail/packages/mail/lib/mail/pkce.ts`.
 //!
-//! Two commands, because the port has to exist before the authorization URL can
-//! name it: `oauth_bind` takes a port and holds it, then `oauth_await_redirect`
-//! waits on it.
+//! Three commands, because the port has to exist before the authorization URL
+//! can name it: `oauth_bind` takes a port and holds it, `oauth_await_redirect`
+//! waits on it, and `oauth_cancel` gives up on a wait the browser is never
+//! going to answer — a user who closed the tab, or changed their mind.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tiny_http::{Header, Response, Server};
 
 #[derive(Default)]
 pub struct OauthListener {
-  server: Mutex<Option<Server>>,
+  /// Held behind an `Arc` rather than moved out to wait on, so that `cancel`
+  /// can still reach the listener while a thread is blocked inside it.
+  server: Mutex<Option<Arc<Server>>>,
 }
 
 /// Shown in the browser tab the user is left looking at.
@@ -38,8 +41,23 @@ impl OauthListener {
       .to_ip()
       .ok_or_else(|| "loopback address has no port".to_string())?
       .port();
-    *self.server.lock().unwrap() = Some(server);
+    *self.server.lock().unwrap() = Some(Arc::new(server));
     Ok(port)
+  }
+
+  /// Give up on a wait, so the thread in `await_redirect` comes back.
+  ///
+  /// Nothing else could end it: `recv` blocks until a request arrives, and
+  /// none is coming once the user has closed the browser tab or decided
+  /// against connecting the mailbox at all. Without this the thread was held
+  /// for the life of the app, the port with it, and the interface had no
+  /// honest way to offer the reader a way out.
+  ///
+  /// Does nothing when no wait is in flight, so calling it twice is safe.
+  pub fn cancel(&self) {
+    if let Some(server) = self.server.lock().unwrap().take() {
+      server.unblock();
+    }
   }
 
   /// Wait for the redirect, and answer what it carried.
@@ -47,14 +65,20 @@ impl OauthListener {
   /// The state must match the one that started the flow. A mismatch means this
   /// redirect belongs to a different request, so it is refused.
   pub fn await_redirect(&self, expected_state: &str) -> Result<Value, String> {
+    // Cloned, not taken: `cancel` needs to find it here while this waits.
     let server = self
       .server
       .lock()
       .unwrap()
-      .take()
+      .clone()
       .ok_or_else(|| "no listener is bound".to_string())?;
 
-    let request = server.recv().map_err(|e| e.to_string())?;
+    let received = server.recv();
+    // Done with it either way — the port goes back, and a cancel arriving
+    // after this finds nothing to unblock rather than the next flow's
+    // listener.
+    self.server.lock().unwrap().take();
+    let request = received.map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1{}", request.url());
     let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
     let mut code = None;
@@ -88,6 +112,7 @@ impl OauthListener {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::time::Duration;
 
   fn get(port: u16, query: &str) {
     use std::io::Write;
@@ -139,6 +164,39 @@ mod tests {
     let a = OauthListener::default();
     let b = OauthListener::default();
     assert_ne!(a.bind().unwrap(), b.bind().unwrap());
+  }
+
+  #[test]
+  fn a_cancelled_wait_comes_back() {
+    let listener = Arc::new(OauthListener::default());
+    listener.bind().expect("bind");
+
+    let waiting = Arc::clone(&listener);
+    let thread = std::thread::spawn(move || waiting.await_redirect("state-1"));
+    // Let the wait get as far as recv before it is called off.
+    std::thread::sleep(Duration::from_millis(50));
+    listener.cancel();
+
+    let result = thread.join().expect("the wait ended");
+    assert!(result.is_err(), "a cancelled wait answers with an error");
+  }
+
+  #[test]
+  fn cancelling_when_nothing_waits_is_harmless() {
+    let listener = OauthListener::default();
+    listener.cancel();
+    listener.bind().expect("bind");
+    listener.cancel();
+    listener.cancel();
+  }
+
+  #[test]
+  fn a_new_sign_in_may_start_after_a_cancel() {
+    let listener = OauthListener::default();
+    let first = listener.bind().expect("bind");
+    listener.cancel();
+    let second = listener.bind().expect("bind again");
+    assert_ne!(first, second, "the second sign-in takes a port of its own");
   }
 }
 
@@ -220,4 +278,5 @@ mod token_request_tests {
     assert!(refuse("file:///etc/passwd").contains("https"));
     assert!(refuse("not a url").contains("bad endpoint"));
   }
+
 }

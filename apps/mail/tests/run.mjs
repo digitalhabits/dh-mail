@@ -3,10 +3,11 @@
  *
  * Each `*.test.mjs` is bundled against the real source with the same aliases
  * the app is built with — `../build-aliases.mjs`, which vite.config.ts also
- * reads — and then run as plain Node. No test framework, no jsdom: these check
+ * reads — and then run as plain Node. No test framework: most suites check
  * behaviour that is about tokens, paths, and bytes, and a fake browser would
- * only get in the way. The pieces that need a browser say so, and are left to
- * a person.
+ * only get in the way. The one suite named `mounted-` renders the real page
+ * against happy-dom instead, so it is bundled with React rather than around
+ * it. Anything about pixels and scroll is still left to a person.
  *
  *   pnpm --dir apps/mail test          all suites
  *   pnpm --dir apps/mail test connect  one, by name
@@ -55,6 +56,9 @@ let failed = 0;
 
 for (const suite of suites) {
   const bundle = path.join(out, suite.replace(".mjs", ".cjs"));
+  // The mounted suite renders, so React rides inside its bundle; every
+  // other suite never calls it, and leaving it external keeps them lean.
+  const mounted = suite.startsWith("mounted-");
   await esbuild.build({
     entryPoints: [path.join(here, suite)],
     outfile: bundle,
@@ -75,9 +79,23 @@ for (const suite of suites) {
       // The same flavor the app ships as. The team layer is off.
       "process.env.NEXT_PUBLIC_MAIL_PRODUCT_FLAVOR": '"public"',
       "process.env.MAIL_PRODUCT_FLAVOR": '"public"',
+      // React's CJS entry branches on this at require time.
+      ...(mounted ? { "process.env.NODE_ENV": '"production"' } : {}),
     },
-    // Nothing here renders, and pg must never enter this graph at all.
-    external: ["react", "react-dom", "pg"],
+    // pg must never enter this graph at all.
+    external: mounted ? ["pg"] : ["react", "react-dom", "pg"],
+    // The app builds with the automatic JSX runtime (vite); components
+    // written for it carry no React import of their own.
+    jsx: mounted ? "automatic" : undefined,
+    // The mounted page's import graph reaches image and style assets
+    // (pdf.js, editor styles). None of them matter to a smoke walk.
+    loader: mounted
+      ? Object.fromEntries(
+          [".svg", ".css", ".png", ".gif", ".webp", ".jpg", ".woff", ".woff2", ".mp3"].map(
+            (ext) => [ext, "empty"]
+          )
+        )
+      : undefined,
   });
 
   console.log(`\n── ${suite.replace(".test.mjs", "")}`);

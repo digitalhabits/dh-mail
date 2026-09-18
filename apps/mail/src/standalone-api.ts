@@ -9,6 +9,7 @@
  * calls the same strings on every host, and only the transport differs.
  */
 
+import { trackMailWrite } from "./pending-writes";
 import {
   archiveMailThread,
   getMailThread,
@@ -35,6 +36,7 @@ import {
   moveMailThreadToFolder,
   unmoveMailThreadFromFolder,
 } from "@/lib/mail/folders";
+import { asMailFolderView } from "@/lib/mail/folder-views";
 import {
   createMailContactList,
   deleteMailContactList,
@@ -49,7 +51,8 @@ import {
   setContactSourceEnabled,
   syncAllContactSources,
 } from "@/lib/mail/contact-sources";
-import { fetchMailAttachment } from "@/lib/mail/inbox";
+import { fetchMailAttachment, fetchMailMessageSource } from "@/lib/mail/inbox";
+import { mailStore } from "@/lib/mail/store";
 import {
   ATTACHMENT_SNIFF_HEADERS,
   attachmentContentDisposition,
@@ -75,6 +78,7 @@ import {
   listProviderDrafts,
   markMailThreadJunk,
   markMailThreadNotJunk,
+  draftMailInOutlook,
   sendMailMessage,
   listScheduledMailMessages,
   listAllScheduledMailMessages,
@@ -103,8 +107,10 @@ import {
 } from "@/lib/mail/product-flavor";
 import { PlanError } from "@/lib/plan/errors";
 
+import { loadCachedMailThread } from "@/lib/mail/thread-cache";
 import { connectConfigError } from "./oauth-config";
 import { plannerJson } from "./planner-api";
+import { stopLocalStoreSync } from "./local-store";
 
 /** Single user, so every call is for the same owner. */
 const OWNER_ID = "local";
@@ -114,9 +120,19 @@ const OWNER_ID = "local";
  * thread; the planner has no mailbox token to load one with, so it goes in
  * the request. Bodies are cut: the server cuts them again for the model, and
  * an attachment-heavy thread should not travel whole.
+ *
+ * The copy on screen first. A thread that is open, or was warmed for the
+ * list, is in the thread cache, and that copy is what the reader is looking
+ * at when they ask. This used to go to the provider again, twice for one
+ * proposal, and after a mailbox rebuild that was the request that met
+ * Gmail's per-minute quota and failed the whole dialog. The provider is
+ * asked only when the cache has nothing.
  */
 async function threadForPlanner(account: string, threadId: string) {
-  const thread = await getMailThread(account, threadId, { limit: 50, markRead: false });
+  const cached = await loadCachedMailThread(account, threadId);
+  const thread =
+    cached?.thread ??
+    (await getMailThread(account, threadId, { limit: 50, markRead: false }));
   return {
     subject: thread.subject,
     messages: thread.messages.map((m) => ({
@@ -184,8 +200,23 @@ function failed(error: unknown, status?: number): Response {
   });
 }
 
-/** Routes one path to the core. Unknown paths say so, with the path. */
-export async function handleStandaloneMailApi(
+/**
+ * Routes one path to the core. Unknown paths say so, with the path.
+ *
+ * A mutating call is counted while it runs, so the shell can hold a
+ * closing window until the mailbox has actually been told. See
+ * `pending-writes.ts`.
+ */
+export function handleStandaloneMailApi(
+  path: string,
+  init?: RequestInit
+): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const work = routeStandaloneMailApi(path, init);
+  return method === "GET" ? work : trackMailWrite(work);
+}
+
+async function routeStandaloneMailApi(
   path: string,
   init?: RequestInit
 ): Promise<Response> {
@@ -201,15 +232,8 @@ export async function handleStandaloneMailApi(
         const result = await listUnifiedInbox({
           clerkUserId: OWNER_ID,
           account: q.get("account") ?? undefined,
-          // The core takes a closed set, so anything else is not a folder.
-          folder:
-            q.get("folder") === "sent"
-              ? "sent"
-              : q.get("folder") === "trash"
-                ? "trash"
-                : q.get("folder") === "junk"
-                  ? "junk"
-                  : undefined,
+          // The closed set lives in one place now — see folder-views.
+          folder: asMailFolderView(q.get("folder")),
           label: q.get("label") ?? undefined,
           q: q.get("q") ?? undefined,
           includeDeleted: q.get("includeDeleted") === "1",
@@ -420,6 +444,7 @@ export async function handleStandaloneMailApi(
         const result = await listSnoozedThreads({
           clerkUserId: OWNER_ID,
           account: q.get("account") ?? undefined,
+          q: q.get("q") ?? undefined,
         });
         return ok({ success: true, ...result });
       }
@@ -439,7 +464,7 @@ export async function handleStandaloneMailApi(
           account: string;
           signature: string;
           includeOnNew: boolean;
-          includeOnReplies: boolean;
+          onReplies: "never" | "first" | "every";
         }>();
         await setMailSignatureSettings(account, settings);
         return ok({ ok: true });
@@ -462,17 +487,58 @@ export async function handleStandaloneMailApi(
        * the thread the message goes to is the one prepareChatSend names, not
        * the one the composer started from.
        */
+      /*
+        Finish this one in Outlook.
+
+        The draft is made in the mailbox rather than in a file: a file handed
+        to Outlook opens as a preview of a message, not as a message being
+        written. In Drafts it is editable, formatted, and in the conversation
+        it answers — and Outlook is already watching that folder.
+      */
+      case "/api/mail/outlook-draft": {
+        const input = await body<SendInput>();
+        // To, Cc or Bcc — a message addressed only in Bcc is a message,
+        // and it is the one a course list is sent as.
+        if (
+          !input.account ||
+          !(input.to?.length || input.cc?.length || input.bcc?.length)
+        ) {
+          return failed("account and at least one recipient are required", 400);
+        }
+        const draft = await draftMailInOutlook({
+          account: input.account,
+          to: input.to,
+          cc: input.cc,
+          bcc: input.bcc,
+          subject: input.subject,
+          body: input.body,
+          html: input.html,
+          includeSignature: input.includeSignature,
+          threadId: input.threadId,
+          appendix: input.appendix,
+          attachments: input.attachments,
+        });
+        return ok({ draft });
+      }
+
       case "/api/mail/send": {
         const input = await body<SendInput>();
-        if (!input.account || !input.to?.length) {
+        // To, Cc or Bcc — a message addressed only in Bcc is a message,
+        // and it is the one a course list is sent as.
+        if (
+          !input.account ||
+          !(input.to?.length || input.cc?.length || input.bcc?.length)
+        ) {
           return failed("account and at least one recipient are required", 400);
         }
         const wantNoQuote = Boolean(
           input.noQuote || input.chatMode || input.startChat
         );
 
-        // A new message with chat style on: send it, then remember the choice.
-        if (input.startChat) {
+        // A new message with chat style on: send it, then remember the
+        // choice. A chat is a conversation with somebody named on it, so a
+        // message with nobody in To goes as an ordinary one.
+        if (input.startChat && input.to?.length) {
           const counterpartEmail = input.to[0]!;
           const title = chatTitleFromCounterpart("", counterpartEmail);
           const sent = await sendMailMessage({
@@ -754,6 +820,11 @@ export async function handleStandaloneMailApi(
               : await deleteOutlookAccount(email, OWNER_ID);
           if (!removed) return failed("Account not found", 404);
           invalidateInboxCache();
+          // The local copy goes with the grant: the worker is told to stop,
+          // and the rows it wrote are dropped. Nothing on the provider's
+          // side changes; the mail is still there to sync again.
+          await stopLocalStoreSync(email).catch(() => {});
+          await mailStore().messages.removeAccount(email).catch(() => {});
           return ok({ ok: true, success: true });
         }
 
@@ -795,6 +866,26 @@ export async function handleStandaloneMailApi(
         return ok({ success: true });
       }
 
+      case "/api/mail/message/source": {
+        const account = q.get("account");
+        const messageId = q.get("messageId");
+        if (!account || !messageId) {
+          return failed("account and messageId are required", 400);
+        }
+        const { bytes } = await fetchMailMessageSource({ account, messageId });
+        const download = q.get("download") === "1";
+        const filename = (q.get("filename") || "message.eml").replace(/["\r\n]/g, "");
+        // Not JSON: the sheet reads this as text, and the download as bytes.
+        return new Response(new Uint8Array(bytes), {
+          status: 200,
+          headers: {
+            "Content-Type": "message/rfc822; charset=utf-8",
+            ...(download
+              ? { "Content-Disposition": `attachment; filename="${filename}"` }
+              : {}),
+          },
+        });
+      }
       case "/api/mail/attachment": {
         const account = q.get("account");
         const messageId = q.get("messageId");
@@ -889,33 +980,6 @@ export async function handleStandaloneMailApi(
        * The public flavor never gets here: the interface hides these
        * actions, and the answer says why if it asks anyway.
        */
-      case "/api/mail/add-to-crm": {
-        if (!mailUsesCrmPeople()) return failed(MAIL_PUBLIC_CRM_DISABLED_MESSAGE, 403);
-        const input = await body<{
-          account: string;
-          threadId: string;
-          targets: string[];
-          note?: string;
-        }>();
-        if (!input.account || !input.threadId) {
-          return failed("account and threadId are required", 400);
-        }
-        const answer = await plannerJson<{ results: unknown[] }>(
-          "/api/agent/mail/add-to-crm",
-          {
-            method: "POST",
-            body: {
-              account: input.account,
-              thread: await threadForPlanner(input.account, input.threadId),
-              targets: input.targets,
-              note: input.note,
-            },
-          }
-        );
-        invalidateMailCaches();
-        return ok({ success: true, results: answer.results });
-      }
-
       case "/api/mail/update-crm": {
         if (!mailUsesCrmPeople()) return failed(MAIL_PUBLIC_CRM_DISABLED_MESSAGE, 403);
         const input = await body<{ account: string; threadId: string; phase?: string }>();
@@ -978,6 +1042,59 @@ export async function handleStandaloneMailApi(
         return ok(answer);
       }
 
+      /*
+       * A reply, drafted by the planner from the thread, the CRM records it
+       * matches and the mail we exchanged with them before. The pane sends
+       * the thread it holds; the planner has no mailbox token to load one.
+       * Nothing is stored or sent — the draft goes into the composer.
+       */
+      case "/api/mail/reply-draft": {
+        if (!mailUsesCrmPeople()) return failed(MAIL_PUBLIC_CRM_DISABLED_MESSAGE, 403);
+        const input = await body<{
+          account: string;
+          threadId?: string;
+          /** A new message: the people and the subject, and no thread. */
+          compose?: { to: string[]; cc?: string[]; subject: string };
+          hint?: string;
+          /** What was already in the box — the brief for the draft. */
+          notes?: string;
+          phase?: "match" | "draft";
+        }>();
+        if (!input.account) return failed("account is required", 400);
+        const composing = Boolean(input.compose) && !input.threadId;
+        if (!input.threadId && !input.compose) {
+          return failed("threadId or compose is required", 400);
+        }
+        const thread = composing
+          ? {
+              subject: input.compose!.subject,
+              messages: [
+                {
+                  fromEmail: input.account,
+                  fromName: "",
+                  toEmails: input.compose!.to,
+                  ccEmails: input.compose!.cc ?? [],
+                  sentAt: null,
+                  own: true,
+                  bodyText: (input.notes || "").slice(0, 8000),
+                },
+              ],
+            }
+          : await threadForPlanner(input.account, input.threadId!);
+        const answer = await plannerJson<Record<string, unknown>>("/api/agent/mail/reply-draft", {
+          method: "POST",
+          body: {
+            account: input.account,
+            kind: composing ? "compose" : "reply",
+            thread,
+            hint: input.hint,
+            notes: input.notes,
+            phase: input.phase,
+          },
+        });
+        return ok(answer);
+      }
+
       case "/api/mail/crm-find-logo": {
         if (!mailUsesCrmPeople()) return failed(MAIL_PUBLIC_CRM_DISABLED_MESSAGE, 403);
         const input = await body<{ site: string }>();
@@ -985,6 +1102,48 @@ export async function handleStandaloneMailApi(
           await plannerJson<Record<string, unknown>>("/api/agent/mail/find-logo", {
             method: "POST",
             body: { site: input.site },
+          })
+        );
+      }
+
+      /*
+       * The same two steps for the reader's own diary, and none of the CRM:
+       * the planner reads the thread and says what it fixes to a date and a
+       * place, and the second call writes the ones the reader kept. The
+       * thread is loaded here, as it is for a proposal, because the mailbox
+       * is local and the planner has no way to fetch it.
+       */
+      case "/api/mail/diary-propose": {
+        if (!mailOrgAiAllowed()) return failed(MAIL_PUBLIC_AI_DISABLED_MESSAGE, 403);
+        const input = await body<{
+          account: string;
+          threadId: string;
+          hint?: string;
+          attachments?: { filename: string; text: string }[];
+        }>();
+        if (!input.account) return failed("account is required", 400);
+        if (!input.threadId) return failed("threadId is required", 400);
+        const thread = await threadForPlanner(input.account, input.threadId);
+        return ok(
+          await plannerJson<Record<string, unknown>>("/api/agent/mail/diary-propose", {
+            method: "POST",
+            body: {
+              thread,
+              hint: input.hint,
+              attachments: input.attachments,
+              today: new Date().toISOString().slice(0, 10),
+            },
+          })
+        );
+      }
+
+      case "/api/mail/diary-apply": {
+        if (!mailOrgAiAllowed()) return failed(MAIL_PUBLIC_AI_DISABLED_MESSAGE, 403);
+        const input = await body<{ entries: unknown[]; calendarName?: string }>();
+        return ok(
+          await plannerJson<Record<string, unknown>>("/api/agent/mail/diary-apply", {
+            method: "POST",
+            body: { entries: input.entries, calendarName: input.calendarName },
           })
         );
       }
@@ -1058,6 +1217,7 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/sender-name",
   "/api/mail/chat/parts",
   "/api/mail/attachment",
+  "/api/mail/message/source",
   "/api/mail/contact-sources",
   "/api/mail/contact-sources/sync",
   "/api/mail/send",

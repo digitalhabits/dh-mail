@@ -18,7 +18,7 @@
  */
 
 import * as React from "react";
-import { ChevronsUpDown, X } from "lucide-react";
+import { ChevronLeft, ChevronsUpDown, X } from "lucide-react";
 
 import {
   LANGUAGE_FLAG_SVG,
@@ -32,8 +32,10 @@ import {
   UI_SCALE_MIN,
   nextUiScaleStop,
 } from "@/lib/mail/ui-scale";
+import { formatShortcut } from "@/lib/mail/shortcuts";
 import { useUiScale } from "@/lib/mail/use-ui-scale";
 import { cn } from "@/lib/utils";
+import { useCardDrag } from "@/components/mail/use-card-drag";
 
 /** The small capitals over a section. */
 export function SettingsHeading({
@@ -223,6 +225,9 @@ export function SettingsTextSizeRow() {
   const [scale, setScale] = useUiScale();
   const percent = Math.round(scale * 100);
   const step = (direction: 1 | -1) => setScale(nextUiScaleStop(scale, direction));
+  const smallerHint = `${t("smallerText")} (${formatShortcut({ key: "-", meta: true, alt: true })})`;
+  const biggerHint = `${t("biggerText")} (${formatShortcut({ key: "+", meta: true, alt: true })})`;
+  const resetHint = `${t("resetTextSize")} (${formatShortcut({ key: "0", meta: true, alt: true })})`;
   const buttonClass =
     "rounded-full px-1.5 text-[15px] leading-none text-stone-500 hover:bg-stone-200/70 hover:text-stone-800 disabled:opacity-40 disabled:hover:bg-transparent";
   return (
@@ -233,8 +238,8 @@ export function SettingsTextSizeRow() {
         <span className="flex items-center gap-0.5 rounded-full border border-stone-200 bg-white px-1.5 py-1">
           <button
             type="button"
-            aria-label={t("smallerText")}
-            title={t("smallerText")}
+            aria-label={smallerHint}
+            title={smallerHint}
             disabled={scale <= UI_SCALE_MIN}
             onClick={() => step(-1)}
             className={buttonClass}
@@ -249,8 +254,8 @@ export function SettingsTextSizeRow() {
             </span>
             <button
               type="button"
-              title={t("resetTextSize")}
-              aria-label={t("resetTextSize")}
+              title={resetHint}
+              aria-label={resetHint}
               disabled={scale === 1}
               onClick={() => setScale(1)}
               className="col-start-1 row-start-1 text-center hover:text-stone-800 disabled:hover:text-stone-500"
@@ -260,8 +265,8 @@ export function SettingsTextSizeRow() {
           </span>
           <button
             type="button"
-            aria-label={t("biggerText")}
-            title={t("biggerText")}
+            aria-label={biggerHint}
+            title={biggerHint}
             disabled={scale >= UI_SCALE_MAX}
             onClick={() => step(1)}
             className={buttonClass}
@@ -378,6 +383,48 @@ export const settingsSecondaryButton =
   "rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-60";
 
 /**
+ * One category's page in Settings.
+ *
+ * A title, a line that says what the category is for, the rows, and a footer
+ * with Done. The rows scroll and the footer does not, so the way out stays on
+ * screen however long the list gets. Every category has the same frame, so
+ * moving along the rail changes only what is in it.
+ */
+export function SettingsPane({
+  title,
+  description,
+  onDone,
+  footerStart,
+  children,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  onDone: () => void;
+  /** Buttons for this category only, such as a reset, left of Done. */
+  footerStart?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const t = useMailT();
+  return (
+    <>
+      <div className="px-6 pb-3 pt-5">
+        <h2 className="font-serif text-2xl font-bold text-stone-900">{title}</h2>
+        {description ? (
+          <p className="mt-1 text-sm leading-snug text-stone-500">{description}</p>
+        ) : null}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">{children}</div>
+      <div className="flex items-center gap-2 border-t border-stone-200 px-6 py-3">
+        <div className="mr-auto flex min-w-0 items-center gap-2">{footerStart}</div>
+        <button type="button" className={settingsSecondaryButton} onClick={onDone}>
+          {t("done")}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
  * The shell every settings dialog sits in.
  *
  * A title, an optional line saying what the dialog is for, the body, and a
@@ -388,12 +435,15 @@ export function SettingsDialog({
   title,
   subtitle,
   nav,
+  onBack,
+  backLabel,
   onClose,
   children,
   footer,
   width = "w-[520px]",
   closeLabel = "Close",
   bare = false,
+  draggable = false,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -404,6 +454,15 @@ export function SettingsDialog({
    * through what you are editing about it.
    */
   nav?: React.ReactNode;
+  /**
+   * A way back into the panel that opened this dialog.
+   *
+   * The cross shuts everything. Without this, a row that left Settings
+   * has no way to return to the list it left.
+   */
+  onBack?: () => void;
+  /** The name of the panel this goes back to — Settings, when it is that. */
+  backLabel?: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -418,8 +477,25 @@ export function SettingsDialog({
    * backdrop still shut it.
    */
   bare?: boolean;
+  /**
+   * The card can be carried out of the way by its heading.
+   *
+   * For a dialog whose answer is in what it covers: the CRM proposals are
+   * read against the thread that earned them, and a reader checking a
+   * quoted line had no way to see it. Off by default — a settings panel
+   * covers nothing anybody needs, and a card that slides under the hand is
+   * worse than one that stays where it was put.
+   *
+   * It also leaves what it covers alive — the thread scrolls under the card
+   * and can be clicked into, and the backdrop no longer shuts the dialog.
+   * See `seeThrough` below.
+   */
+  draggable?: boolean;
 }) {
+  const t = useMailT();
   const titleId = React.useId();
+  // See useCardDrag: the same carry the floating reply uses.
+  const { cardRef, startDrag, cardStyle } = useCardDrag(draggable);
 
   /**
    * Escape shuts it.
@@ -436,14 +512,33 @@ export function SettingsDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  /*
+    A dialog that is read against what it covers leaves what it covers
+    alive: the thread scrolls under it, and a line can be clicked into,
+    without the card going away. The same fact that makes such a card
+    draggable makes its backdrop nothing but a shade — so the two follow
+    from one flag rather than from two that are always set together.
+
+    The way out is then the cross and Escape. A press on the thread means
+    "let me look at that", which is the opposite of "put this away", so it
+    would be a poor thing to shut the dialog with.
+  */
+  const seeThrough = draggable;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center p-6",
+        seeThrough && "pointer-events-none"
+      )}
+    >
       <div
-        className="absolute inset-0 bg-black/20"
-        onClick={onClose}
+        className={cn("absolute inset-0 bg-black/20", seeThrough && "pointer-events-none")}
+        onClick={seeThrough ? undefined : onClose}
         aria-hidden
       />
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -452,16 +547,38 @@ export function SettingsDialog({
           // the app's zoom, and at 120% the foot of the panel was below the
           // sill of the window.
           "relative flex max-h-[calc(var(--mail-viewport-h,100dvh)*0.88)] max-w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl",
+          // The card itself still answers the pointer when the shade does not.
+          seeThrough && "pointer-events-auto",
           width
         )}
+        style={cardStyle}
       >
-        <div className="flex items-start justify-between gap-3 px-6 pt-5">
-          <h2
-            id={titleId}
-            className="font-serif text-xl font-bold text-stone-900"
-          >
-            {title}
-          </h2>
+        <div
+          className={cn(
+            "flex items-start justify-between gap-3 px-6 pt-5",
+            draggable && "cursor-grab touch-none select-none active:cursor-grabbing"
+          )}
+          onPointerDown={startDrag}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {onBack ? (
+              <button
+                type="button"
+                aria-label={t("back")}
+                className="-ml-1.5 flex shrink-0 items-center gap-0.5 rounded-md py-1 pl-0.5 pr-1.5 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+                onClick={onBack}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+                {backLabel ?? t("settings")}
+              </button>
+            ) : null}
+            <h2
+              id={titleId}
+              className="font-serif text-xl font-bold text-stone-900"
+            >
+              {title}
+            </h2>
+          </div>
           {bare ? null : (
             <button
               type="button"
@@ -474,7 +591,15 @@ export function SettingsDialog({
           )}
         </div>
         {subtitle ? (
-          <p className="px-6 pt-1 text-sm text-stone-600">{subtitle}</p>
+          <p
+            className={cn(
+              "px-6 pt-1 text-sm text-stone-600",
+              draggable && "cursor-grab select-none active:cursor-grabbing"
+            )}
+            onPointerDown={startDrag}
+          >
+            {subtitle}
+          </p>
         ) : null}
         {nav ? <div className="mt-3 px-6">{nav}</div> : null}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>

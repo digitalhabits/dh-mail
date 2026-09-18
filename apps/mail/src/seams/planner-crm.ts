@@ -40,13 +40,26 @@ async function load(): Promise<Snapshot> {
   if (snapshot && Date.now() - snapshot.fetchedAt < TTL_MS) return snapshot;
   if (inflight) return inflight;
   inflight = (async () => {
-    const data = await plannerJson<{
+    let data: {
       contacts: [string, CrmRecordRef[]][];
       domains: [string, CrmRecordRef[]][];
       recipients: RecipientSuggestion[];
       team: RecipientSuggestion[];
       contactEmailCount: number;
-    }>("/api/agent/mail/crm-context");
+    };
+    try {
+      data = await plannerJson("/api/agent/mail/crm-context");
+    } catch (err) {
+      // The planner did not answer — a session being renewed, or the
+      // server away for a moment. What it said last time is still a
+      // better answer than nothing, so the stale snapshot stands until
+      // the next ask, which comes with the next list refresh.
+      if (snapshot) {
+        console.warn("[mail] CRM context not refreshed; using the last one:", err);
+        return snapshot;
+      }
+      throw err;
+    }
     snapshot = {
       contacts: new Map(data.contacts),
       domains: new Map(data.domains),

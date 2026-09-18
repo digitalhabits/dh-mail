@@ -103,6 +103,27 @@ function attachmentBody(filename: string, mimeType: string): Response {
   });
 }
 
+/** The invented out-of-office reply. `enabled` false is the "set up" half. */
+function demoAutoReply(account: string, enabled = true) {
+  const day = 24 * 60 * 60 * 1000;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const isGmail = account === DEMO_ACCOUNT;
+  return {
+    account,
+    provider: isGmail ? "gmail" : "outlook",
+    subjectSupported: true,
+    enabled,
+    subject: "Away from the studio",
+    bodyHtml:
+      "<p>Thanks for your mail. I am away from the studio until Monday and not reading email while I am gone. I will reply when I am back.</p><p>Vera</p>",
+    restrictToContacts: false,
+    startTime: enabled ? start.getTime() - day : null,
+    endTime: enabled ? start.getTime() + 5 * day : null,
+    needsReconnect: false,
+  };
+}
+
 export async function handleDemoMailApi(
   path: string,
   init?: RequestInit
@@ -156,6 +177,22 @@ export async function handleDemoMailApi(
       return json({
         success: true,
         folders: [
+          /*
+            The ones the provider manages, as a real mailbox reports them.
+            They were left out, so the rail in this mode showed an account
+            with three folders and none of the places mail actually is —
+            which is not what the app looks like for anybody.
+
+            `role` is what sorts them above the rest and draws each as
+            itself; the rail puts them in its own order, so the order here
+            does not matter.
+          */
+          { account: DEMO_ACCOUNT, name: "Inbox", count: 0, role: "inbox" },
+          { account: DEMO_ACCOUNT, name: "Archive", count: 0, role: "archive" },
+          { account: DEMO_ACCOUNT, name: "Drafts", count: 3, role: "drafts" },
+          { account: DEMO_ACCOUNT, name: "Sent", count: 0, role: "sent" },
+          { account: DEMO_ACCOUNT, name: "Junk", count: 2, role: "junk" },
+          { account: DEMO_ACCOUNT, name: "Trash", count: 0, role: "trash" },
           { account: DEMO_ACCOUNT, name: "Exhibitions", count: 12 },
           { account: DEMO_ACCOUNT, name: "Suppliers", count: 5 },
           { account: DEMO_ACCOUNT, name: "Receipts", count: 31 },
@@ -174,6 +211,23 @@ export async function handleDemoMailApi(
         },
       });
 
+    // The out-of-office reply, so the row under the account in Settings and
+    // the dialog behind its Edit button have something to show. One account
+    // is away and the other is not, which is both halves of the row. The end
+    // is a few days out from today rather than a fixed date, because the row
+    // only reads "Out of office" while the end is still ahead.
+    case "/api/mail/autoreply": {
+      const away = demoAutoReply(DEMO_ACCOUNT);
+      if ((init?.method ?? "GET").toUpperCase() === "POST") {
+        const input = init?.body ? JSON.parse(String(init.body)) : {};
+        return json({ autoReply: { ...away, ...input } });
+      }
+      return json({
+        success: true,
+        autoReplies: [away, demoAutoReply(DEMO_SECOND_ACCOUNT, false)],
+      });
+    }
+
     case "/api/mail/sender-name":
       return json({ success: true, settings: { name: DEMO_NAME } });
 
@@ -181,6 +235,27 @@ export async function handleDemoMailApi(
     // pretending: a screenshot of a sent message is not worth a surprise.
     case "/api/mail/send":
       return json({ error: "Demo mode — nothing is sent" });
+
+    // The AI reply, canned. Only the internal flavor shows the button, so
+    // this is for a dev run of that flavor over demo data — enough to see
+    // the draft land in the box and the notes above it, with no planner.
+    case "/api/mail/reply-draft":
+      return json({
+        ok: true,
+        body: [
+          "Hi Anton,",
+          "",
+          "thanks for the numbers — eighteen is a good problem to have.",
+          "",
+          "Let's take the larger room. Could you confirm it is free on the 14th, and whether it has a projector? If it does, we can leave the setup as planned. If not, I will bring [the projector we used in June].",
+          "",
+          "Best wishes,",
+          DEMO_NAME.split(" ")[0],
+        ].join("\n"),
+        scenario: "ongoing",
+        usedRecords: [{ source: "clients", recordId: "demo", recordName: "Asmund Presse" }],
+        gaps: ["Whether the larger room has a projector, and which projector we own"],
+      });
 
     default:
       break;

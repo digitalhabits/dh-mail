@@ -63,6 +63,28 @@ suite(async () => {
     seen.savedProvider === "gmail" && seen.saved?.input?.refreshToken === "rt-1",
     JSON.stringify(seen.saved?.input));
 
+  // ---- Gmail, a grant with the full-mail box unticked ---------------------
+  seen = harness({ tokenReply: {
+    refresh_token: "rt-short",
+    id_token: idToken({ email: "short@example.org" }),
+    scope: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send openid email",
+  } });
+  let refused = null;
+  try { await connectMailbox("gmail"); } catch (e) { refused = e; }
+  check("gmail: a grant without the full-mail scope is refused, with the remedy",
+    refused instanceof Error && /tick every permission/.test(refused.message),
+    refused?.message);
+  check("gmail: and nothing is stored for it",
+    seen.saved === null, JSON.stringify(seen.saved));
+  seen = harness({ tokenReply: {
+    refresh_token: "rt-full",
+    id_token: idToken({ email: "full@example.org" }),
+    scope: "https://mail.google.com/ https://www.googleapis.com/auth/gmail.modify openid email",
+  } });
+  result = await connectMailbox("gmail");
+  check("gmail: a grant with the full-mail scope connects",
+    result.email === "full@example.org" && seen.saved?.input?.refreshToken === "rt-full");
+
   // ---- Outlook -------------------------------------------------------------
   seen = harness({ tokenReply: { refresh_token: "rt-2", id_token: idToken({ preferred_username: "Parent@Outlook.COM" }) } });
   result = await connectMailbox("outlook");

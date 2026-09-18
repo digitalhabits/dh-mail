@@ -29,8 +29,7 @@ function threadKey(t: { account: string; threadId: string }): string {
 async function fetchThreadNoMarkRead(
   account: string,
   threadId: string,
-  messageCount: number,
-  signal?: AbortSignal
+  messageCount: number
 ): Promise<MailThreadDetail> {
   const params = new URLSearchParams({
     account,
@@ -39,9 +38,7 @@ async function fetchThreadNoMarkRead(
   });
   // Short threads then cost one Gmail call instead of one per message.
   if (messageCount > 0) params.set("count", String(messageCount));
-  const res = await mailApiFetch(`/api/mail/thread?${params.toString()}`, {
-    signal,
-  });
+  const res = await mailApiFetch(`/api/mail/thread?${params.toString()}`);
   let json: { thread?: MailThreadDetail; error?: string };
   try {
     json = (await res.json()) as { thread?: MailThreadDetail; error?: string };
@@ -82,6 +79,24 @@ export async function prefetchMailThreadBodies(
   const stopped = () =>
     Boolean(options?.isCancelled?.() || options?.signal?.aborted);
 
+  /*
+   * A cancelled sweep finishes what it has started, and keeps it.
+   *
+   * Cancelling stops the *next* fetch from beginning; it does not abort the
+   * one in flight, and it does not throw the answer away. Both used to
+   * happen, and neither did what it looked like it did. The abort never
+   * reached the provider — the route takes no signal, so Gmail did every
+   * bit of the work and its quota was spent either way. And the answer,
+   * arriving a moment after the cancel, was dropped rather than cached, so
+   * the next sweep asked Gmail the same question again.
+   *
+   * The sweep runs on every change to the top of the list, and archiving
+   * changes the top of the list. Archive faster than a fetch takes and it
+   * cancelled itself on every keystroke: three fetches burned, three
+   * answers dropped, no thread ever cached, and the same three fetched
+   * again a second later. That is what ran a mailbox into Gmail's
+   * per-minute limit during an afternoon of clearing the inbox.
+   */
   const worker = async () => {
     while (next < queue.length) {
       if (stopped()) return;
@@ -93,10 +108,11 @@ export async function prefetchMailThreadBodies(
         const thread = await fetchThreadNoMarkRead(
           t.account,
           t.threadId,
-          t.messageCount,
-          options?.signal
+          t.messageCount
         );
-        if (stopped()) return;
+        // Kept even if the sweep was cancelled while this was out: the
+        // provider has already answered, and the answer is what a later
+        // sweep or a real open would otherwise have to ask for again.
         setCachedMailThread(t.account, t.threadId, thread, t.lastAt);
       } catch {
         // Best-effort warm — real open will fetch normally.
@@ -109,7 +125,12 @@ export async function prefetchMailThreadBodies(
   );
 }
 
-/** Schedule prefetch after the list settles; returns a cancel function. */
+/**
+ * Schedule prefetch after the list settles; returns a cancel function.
+ *
+ * Cancel means "start nothing more" — a fetch already out is allowed to
+ * land and be kept. See the note on the worker for why.
+ */
 export function scheduleMailThreadPrefetch(
   summaries: readonly MailThreadSummary[],
   options?: { delayMs?: number; limit?: number }

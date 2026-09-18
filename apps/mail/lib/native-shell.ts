@@ -237,6 +237,35 @@ export async function closeChatPopout(): Promise<void> {
   await invoke("close_chat_popout");
 }
 
+/**
+ * Open a thread in an ordinary window of its own — system title bar, its own
+ * close button, sitting in the window order like any window. The reader
+ * window, the way Outlook opens a message. See open_mail_reader_window.
+ */
+export async function openMailReaderWindow(input: {
+  account: string;
+  threadId: string;
+  name: string;
+  email: string;
+  subject: string;
+  /** A person's mail instead of one thread — see openMailPersonWindow. */
+  person?: string;
+}): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) throw new Error("Not running in the desktop app");
+  await invoke("open_mail_reader_window", {
+    ...input,
+    userAgent: navigator.userAgent,
+  });
+}
+
+/** Close the current reader window (called from inside it). */
+export async function closeMailReaderWindow(): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) throw new Error("Not running in the desktop app");
+  await invoke("close_mail_reader_window");
+}
+
 /** Tell the other shell windows a send happened (no-op outside the shell). */
 export async function notifyMailSent(input: {
   account: string;
@@ -245,6 +274,20 @@ export async function notifyMailSent(input: {
   const invoke = tauriInvoke();
   if (!invoke) return;
   await invoke("notify_mail_sent", input);
+}
+
+/**
+ * Tell the other shell windows a thread was archived, deleted or moved, so
+ * the list drops the row now rather than at the next poll (no-op outside
+ * the shell).
+ */
+export async function notifyMailChanged(input: {
+  account: string;
+  threadId: string;
+}): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) return;
+  await invoke("notify_mail_changed", input);
 }
 
 /**
@@ -261,6 +304,43 @@ export async function notifyMailForward(input: {
   const invoke = tauriInvoke();
   if (!invoke) return;
   await invoke("notify_mail_forward", input);
+}
+
+/**
+ * Ask the window that has a composer to open a message as a new one.
+ *
+ * The chat popout cannot do it itself — no recipient picker, no subject
+ * line. It asks the main window, which comes to the front.
+ */
+export async function notifyMailEditAsNew(input: {
+  account: string;
+  threadId: string;
+  messageId: string;
+}): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) return;
+  await invoke("notify_mail_edit_as_new", input);
+}
+
+/**
+ * What is on the pasteboard, as plain text.
+ *
+ * For paste-without-formatting: a page asking its own clipboard puts a
+ * Paste button on screen in WebKit, which is a second press for something
+ * the reader has already asked for. The app owns the pasteboard and can
+ * simply read it. Null outside the desktop app, where the page's own
+ * clipboard is the only one there is.
+ */
+export async function readClipboardText(): Promise<string | null> {
+  const invoke = tauriInvoke();
+  if (!invoke) return null;
+  try {
+    const text = await invoke("read_clipboard_text");
+    return typeof text === "string" ? text : null;
+  } catch {
+    // An older shell without the command: the caller falls back.
+    return null;
+  }
 }
 
 /**
@@ -359,7 +439,7 @@ export async function macContactsRequestAccess(): Promise<MacContactsStatus> {
 
 /** Every address in the book, one row per address. */
 export async function macContactsList(): Promise<
-  { email: string; name: string }[]
+  { email: string; name: string; card?: string }[]
 > {
   const invoke = tauriInvoke();
   if (!invoke) return [];
@@ -396,6 +476,22 @@ export async function showPlannerRecord(input: {
   if (!invoke) return false;
   try {
     await invoke("planner_show_record", { source: input.source, recordId: input.recordId });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tell the planner that the mail pane wrote to the CRM, so a CRM tab that is
+ * open fetches fresh rows. Resolves false when there is no planner window to
+ * tell: the browser, or the standalone Mail app.
+ */
+export async function notifyPlannerCrmChanged(source?: string): Promise<boolean> {
+  const invoke = tauriInvoke();
+  if (!invoke) return false;
+  try {
+    await invoke("planner_crm_changed", { source: source ?? null });
     return true;
   } catch {
     return false;

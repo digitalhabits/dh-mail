@@ -20,6 +20,7 @@ import { listGmailSendAs } from "@/lib/gmail/api";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import { mailStore } from "@/lib/mail/store";
+import type { MailProvider } from "@/lib/mail/types";
 import {
   cleanDisplayName,
   pickSendAsName,
@@ -99,7 +100,7 @@ export async function getSenderNameSettings(
  */
 export async function senderNameFor(
   account: string,
-  options?: { token?: string; provider?: "gmail" | "outlook" }
+  options?: { token?: string; provider?: MailProvider }
 ): Promise<string> {
   // Graph fills the sender in from the mailbox itself, so there is nothing
   // for us to read and nothing to put in the header.

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Font, size, colour, highlight and the marks in between, behind one button.
+ * Font, size, colour, highlight, lists and the marks in between, behind
+ * one button.
  *
- * These are used rarely, and a message reads better without most of them.
- * They stay off the toolbar row so the six controls worth a click stay easy
- * to find, and open together here instead.
+ * Lists used to sit on the toolbar. They wrapped the row off the pane
+ * long before the other marks ran out of room, so they live here with the
+ * rest of the less-clicked formats. B, I, U and the link stay on the row.
  *
  * Laid out as labelled rows rather than a column of sections: five headings
  * with their options stacked underneath made a menu taller than the composer
@@ -18,6 +19,7 @@
  */
 
 import * as React from "react";
+import { List, ListOrdered } from "lucide-react";
 
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
@@ -308,6 +310,8 @@ export function TextStyleMenu({
   const striking = active.strike === true;
   /** Quill keeps both under one format, so they take turns rather than stack. */
   const script = active.script;
+  /** Same one-at-a-time rule: a line is a bullet list, a numbered list, or neither. */
+  const list = active.list;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -345,6 +349,42 @@ export function TextStyleMenu({
         */
         onFocusOutside={(e) => e.preventDefault()}
       >
+        <Row label={t("lists")}>
+          <button
+            type="button"
+            aria-pressed={list === "bullet"}
+            title={t("bulletList")}
+            aria-label={t("bulletList")}
+            className={cn(
+              PILL,
+              "inline-flex items-center gap-1.5",
+              list === "bullet" ? PILL_ON : PILL_OFF
+            )}
+            onClick={() =>
+              apply("list", list === "bullet" ? false : "bullet")
+            }
+          >
+            <List className="h-3.5 w-3.5" aria-hidden />
+            {t("bulletList")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={list === "ordered"}
+            title={t("numberedList")}
+            aria-label={t("numberedList")}
+            className={cn(
+              PILL,
+              "inline-flex items-center gap-1.5",
+              list === "ordered" ? PILL_ON : PILL_OFF
+            )}
+            onClick={() =>
+              apply("list", list === "ordered" ? false : "ordered")
+            }
+          >
+            <ListOrdered className="h-3.5 w-3.5" aria-hidden />
+            {t("numberedList")}
+          </button>
+        </Row>
         <Row label={t("style")}>
           <button
             type="button"

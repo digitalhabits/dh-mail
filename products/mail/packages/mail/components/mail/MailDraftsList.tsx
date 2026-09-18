@@ -70,14 +70,46 @@ function DraftOriginBadge({ origin }: { origin: MailDraftRow["origin"] }) {
   );
 }
 
+/**
+ * A copy left behind by a message that went out through Outlook.
+ *
+ * It does not say "sent", because nobody here knows that: the send happens
+ * in Outlook, in a mailbox this app usually holds no token for. It says the
+ * one thing that did happen — the words were handed over, on this day — so
+ * a reader looking down the list can tell a letter nobody finished from one
+ * that left by another door.
+ */
+function HandedOverBadge({ at }: { at: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded bg-stone-200/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-stone-600"
+      title={`Handed to Outlook on ${rowTime(at, { withYear: true })}. Whether it was sent from there, this app cannot know.`}
+    >
+      To Outlook
+    </span>
+  );
+}
+
 export function MailDraftsList({
   rows,
   loading,
   onOpen,
+  openKey,
+  onClearHandedOver,
 }: {
   rows: MailDraftRow[];
   loading: boolean;
   onOpen: (row: MailDraftRow) => void;
+  /** Discard every copy that went to Outlook, in one press. */
+  onClearHandedOver?: () => void;
+  /**
+   * The draft that is open in the composer, so its row says so.
+   *
+   * A thread list marks the thread being read; this list marked nothing,
+   * and a reader who opened a draft had no way to see which one of a
+   * hundred rows they were looking at.
+   */
+  openKey?: string | null;
 }) {
   const t = useMailT();
   if (!rows.length) {
@@ -88,22 +120,58 @@ export function MailDraftsList({
     );
   }
 
+  const handedOver = rows.filter((row) => row.handedOverAt).length;
+
   return (
+    <>
+    {/* The sweep. One press for all of them, because they arrive in
+        handfuls — a morning of outreach through Outlook is a morning of
+        copies — and going through them one at a time is the work this is
+        for. */}
+    {handedOver && onClearHandedOver ? (
+      <div className="flex items-center justify-between gap-2 px-5 py-2 text-xs text-[var(--mail-chrome-muted)]">
+        <span>
+          {handedOver === 1
+            ? "1 copy went to Outlook"
+            : `${handedOver} copies went to Outlook`}
+        </span>
+        <button
+          type="button"
+          className="shrink-0 font-medium text-[var(--mail-accent)] underline-offset-2 hover:underline"
+          onClick={onClearHandedOver}
+        >
+          {handedOver === 1 ? "Discard it" : "Discard them"}
+        </button>
+      </div>
+    ) : null}
     <ul className="py-1">
       {rows.map((row) => {
         const recipients = row.to.join(", ");
         // A reply draft has no subject; say who it is to instead.
         const title =
           row.subject || (recipients ? `To ${recipients}` : "(no recipient)");
+        const open = Boolean(openKey) && row.id === openKey;
         return (
           <li key={`${row.origin}:${row.id}`}>
             <button
               type="button"
               onClick={() => onOpen(row)}
-              className="flex w-full flex-col gap-0.5 px-5 py-2 text-left hover:bg-[var(--mail-chrome-hover)]"
+              aria-current={open ? "true" : undefined}
+              // The open one said the way the thread list says it: a fill
+              // and a bar down the left, and the hover kept a grey so a row
+              // under the pointer never reads as the row that is open.
+              className={cn(
+                "relative flex w-full flex-col gap-0.5 px-5 py-2 text-left",
+                open
+                  ? "bg-[var(--mail-row-selected)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                  : "hover:bg-[var(--mail-chrome-hover)]"
+              )}
             >
               <span className="flex w-full items-center gap-2">
                 <DraftOriginBadge origin={row.origin} />
+                {row.handedOverAt ? (
+                  <HandedOverBadge at={row.handedOverAt} />
+                ) : null}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--mail-chrome-fg)]">
                   {title}
                 </span>
@@ -126,5 +194,6 @@ export function MailDraftsList({
         );
       })}
     </ul>
+    </>
   );
 }

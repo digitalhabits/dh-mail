@@ -1,32 +1,42 @@
 # Security and privacy
 
-Digital Habits: Mail is a Mac app that reads your mail directly from Gmail or
-Outlook. This page says what it asks for, where it keeps things, and what
-leaves the machine — with the file to read for each, so none of it has to be
-taken on trust.
+Digital Habits: Mail is a desktop app for Mac and Windows that reads your
+mail directly from Gmail or Outlook. This page says what it asks for, where
+it keeps things, and what leaves the machine — with the file to read for
+each, so none of it has to be taken on trust.
 
-It describes the **standalone app**, the one distributed as a `.dmg`.
+It describes the **standalone app**, the one distributed as a `.dmg` or a
+Windows installer.
 
 ## What leaves your machine
 
-Your mail goes between your Mac and your provider, and nowhere else. There is
-no server of ours in the path — nothing to run, nothing to breach, and no
-copy of your mail anywhere we could read it.
+Your mail goes between your computer and your provider, and nowhere else.
+There is no server of ours in the path — nothing to run, nothing to breach,
+and no copy of your mail anywhere we could read it.
 
-The app talks to exactly two hosts:
+The app talks to these hosts:
 
 | Host | What for | Where |
 | --- | --- | --- |
-| `gmail.googleapis.com` | Gmail | [`lib/gmail/api.ts`](/products/mail/packages/mail/lib/gmail/api.ts) |
-| `graph.microsoft.com` | Outlook | [`lib/outlook/api.ts`](/products/mail/packages/mail/lib/outlook/api.ts) |
+| `imap.gmail.com` | Reading Gmail, and filing, archiving and deleting | [`sync.rs`](/products/mail/crates/mail-native/src/sync.rs), [`imap.rs`](/products/mail/crates/mail-native/src/imap.rs) |
+| `smtp.gmail.com` | Sending Gmail | [`smtp.rs`](/products/mail/crates/mail-native/src/smtp.rs) |
+| `gmail.googleapis.com` | Out-of-office reply, the send-as name, and a mailbox whose local copy is not yet complete | [`lib/gmail/api.ts`](/products/mail/packages/mail/lib/gmail/api.ts) |
+| `people.googleapis.com` | Google Contacts, for the address book | [`contact-sources.ts`](/products/mail/packages/mail/lib/mail/contact-sources.ts) |
+| `graph.microsoft.com` | Outlook: mail, contacts and settings | [`lib/outlook/api.ts`](/products/mail/packages/mail/lib/outlook/api.ts) |
+| `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com` | Sign-in, and every token refresh after it | [`oauth.rs`](/products/mail/crates/mail-native/src/oauth.rs), [`oauth-config.ts`](/apps/mail/src/oauth-config.ts) |
+| Whatever host a sender put an image on | Remote images in HTML mail — see "Reading a message safely" below. On by default; off in Settings | [`images.rs`](/products/mail/crates/mail-native/src/images.rs) |
 
-Sign-in additionally contacts Google's and Microsoft's own OAuth endpoints —
-see [`oauth-config.ts`](/apps/mail/src/oauth-config.ts).
+That is the whole list. Links in mail, calendar invites and the Help menu
+open in your browser, not in the app.
 
-**There is no analytics, no crash reporting and no telemetry.** Nothing counts
-what you do or reports it anywhere. You can check this: there is no analytics
-SDK in the dependency list, and nothing in `apps/mail/src` or
-`apps/mail/src-tauri/src` contacts any host but the two above.
+**There is no analytics, no crash reporting, no telemetry and no update
+check.** Nothing counts what you do or reports it anywhere. You can check
+this: there is no analytics SDK in the dependency lists
+(`apps/mail/package.json`, `apps/mail/src-tauri/Cargo.toml`,
+`products/mail/crates/mail-native/Cargo.toml`), and nothing in
+`apps/mail/src`, `apps/mail/lib`, `packages/shared`,
+`products/mail/packages/mail` or `products/mail/crates/mail-native/src`
+contacts any host but the ones above.
 
 ## What it asks your provider for
 
@@ -34,13 +44,14 @@ SDK in the dependency list, and nothing in `apps/mail/src` or
 
 | Scope | Why |
 | --- | --- |
-| `gmail.modify` | Read mail, and mark it read, archived, filed or deleted |
-| `gmail.send` | Send the mail you write |
-| `gmail.settings.basic` | Read and set your out-of-office reply, and read the name Gmail puts on your mail |
-| `contacts.readonly` | Fill the address book, so a name completes to an address |
+| `https://mail.google.com/` | The full-mailbox scope. It is the only scope Gmail's IMAP and SMTP servers accept, and the app reads and sends over IMAP and SMTP so that a local copy of the mailbox can be kept without a request budget. Google describes it as read, compose, send and permanently delete. The only thing the app deletes for good is a draft you discard ([`actions.rs`](/products/mail/crates/mail-native/src/actions.rs)); mail goes to Trash, and Gmail empties Trash on its own schedule. |
+| `openid`, `email` | Sign-in only: so Google returns an ID token naming the account. Added in [`connect-mailbox.ts`](/apps/mail/src/connect-mailbox.ts). |
+| `gmail.settings.basic` | Read and **set** your out-of-office reply. Setting it accepts only this scope. The same scope reads the name Gmail puts on mail you send; the app only reads that, never changes it. |
+| `contacts.readonly` | Read your Google Contacts, so a name completes to an address |
 
-Not requested: `gmail.readonly` is too narrow to file or send; full-account or
-Drive scopes are not asked for at all.
+Not requested: `gmail.modify` and `gmail.send`, which the full-mailbox scope
+already contains; nor Drive, Calendar, Docs, or any scope outside mail and
+contacts.
 
 ### Microsoft
 
@@ -48,22 +59,49 @@ Drive scopes are not asked for at all.
 `MailboxSettings.ReadWrite`, plus `openid`, `profile`, `email` and
 `offline_access` for sign-in and refresh.
 
-Both lists are in [`oauth-config.ts`](/apps/mail/src/oauth-config.ts), and that
-is the only place they are set.
+Both lists are in [`oauth-config.ts`](/apps/mail/src/oauth-config.ts);
+[`connect-mailbox.ts`](/apps/mail/src/connect-mailbox.ts) adds `openid` and
+`email` to the Google request. Nothing else asks for a scope.
 
 ## Where things are kept
 
-**Refresh tokens go in the macOS keychain**, not in the app's own files, under
-the service `org.digitalhabits.mail` — see `KeychainVault` in
-[`db.rs`](/products/mail/crates/mail-native/src/db.rs). A copy of the app's database is
-worth nothing to anyone without the keychain as well.
+**Refresh tokens go in the operating system's credential store**, not in
+the app's own files — the macOS keychain, or Windows Credential Manager —
+under the service `org.digitalhabits.mail`. See
+[`secrets.rs`](/products/mail/crates/mail-native/src/secrets.rs). The
+database holds no token, so a copy of it cannot be used to sign in as you.
 
-**Mail is cached in a local SQLite file**, `mail.sqlite3`, in the app's data
-directory (`database_path` in the same file). It holds what you have browsed,
-searched or opened. Deleting the app's data directory removes it.
+On a Mac, a build that carries a provisioning profile uses the
+data-protection keychain, where access is decided by the app's entitlement
+and macOS never asks the user. A build without one uses the login keychain,
+where macOS may ask once per item with a password dialog — choose "Always
+Allow". See [`KEYCHAIN.md`](/products/mail/crates/mail-native/KEYCHAIN.md).
 
-**Settings stay on the machine** — in `localStorage` for the interface, and in
-the SQLite file for accounts.
+**Mail is kept in a local SQLite file**, `mail.sqlite3`, in the app's data
+directory (`database_path` in
+[`db.rs`](/products/mail/crates/mail-native/src/db.rs)). It holds a copy of
+every message's headers, the bodies of recent mail and of mail you have
+opened, and your contacts. Attachments are fetched only when you open them,
+and are not kept; one you save goes to your Downloads folder. The file is
+not encrypted: anyone who can read your user account's files can read the
+mail in it, as with Apple Mail or Outlook.
+
+Disconnecting an account in Settings removes its token from the credential
+store and its messages, bodies and sync state from the file
+([`db.rs`](/products/mail/crates/mail-native/src/db.rs) `accounts_remove`,
+[`messages.rs`](/products/mail/crates/mail-native/src/messages.rs)
+`messages_clear_account`). A few smaller tables — contacts, snoozes, queued
+actions, the outbox — keep their rows until the app's data directory is
+deleted, which removes everything.
+
+**Settings stay on the machine** — in `localStorage` for the interface, and
+in the SQLite file for accounts. `localStorage` also holds a cache of the
+thread list (senders, subjects, snippets) so the list draws before the
+database answers ([`list-cache.ts`](/products/mail/packages/mail/lib/mail/list-cache.ts)).
+
+**A log file** in the operating system's log folder records what the sync
+worker did. It names the account, and for mail you send, the subject and
+the recipients. It never contains a message body.
 
 ## How sign-in works
 
@@ -80,47 +118,64 @@ protection, not the secret.
 
 ## Reading a message safely
 
-HTML mail is rendered in a sandboxed iframe, so a sender's CSS and scripts
-cannot reach the app around it — see
+HTML mail is shown in an iframe of its own, with a Content-Security-Policy
+that lets no script run except one hash-pinned helper of ours, after the
+HTML has been stripped of scripts, forms, embeds and event handlers. The
+iframe keeps the sender's CSS away from the app — see
 [`EmailHtmlView.tsx`](/products/mail/packages/mail/components/mail/EmailHtmlView.tsx).
 
-**Remote images are blocked until you allow them**, per sender. An image
-fetched from a sender's server tells them you opened their mail and roughly
-where you are; blocking by default means opening a message tells the sender
-nothing. Pictures carried inside the message are shown, because fetching those
-tells nobody anything.
+**Remote images load by default**, as they do in Apple Mail and Outlook. An
+image fetched from a sender's server can tell them that you opened their
+mail, and roughly where you are. We accept that trade so mail looks the way
+it was sent. To change this behaviour, turn off "Load images by default" in
+Settings. The app then blocks remote images, and you allow them per sender.
+Pictures carried inside the message are always shown, because fetching
+those tells nobody anything. A remote image is fetched by the app itself,
+with no cookies and no referrer, never by the page — see
+[`images.rs`](/products/mail/crates/mail-native/src/images.rs).
 
 ## Checking the app you install
 
-Every release is signed with an Apple Developer ID and notarised by Apple —
-both the app and the disk image, because Gatekeeper judges the image you open.
-To check a copy before installing it:
+**Mac.** Every release is signed with an Apple Developer ID and notarised by
+Apple — both the app and the disk image, because Gatekeeper judges the image
+you open. To check a copy before installing it:
 
 ```bash
 spctl -a -vvv -t install "Digital Habits Mail_<version>_universal.dmg"
 ```
 
-`accepted` and `source=Notarized Developer ID` mean it is the build we signed.
+`accepted` and `source=Notarized Developer ID` mean it is the build we
+signed.
 
-Each release also publishes the disk image's SHA-256 next to it, so you can
-confirm the file you downloaded is the file we built:
+**Windows.** Every installer is signed with Azure Trusted Signing. To check
+a copy, in PowerShell:
 
-```bash
-shasum -a 256 "Digital Habits Mail_<version>_universal.dmg"
+```
+Get-AuthenticodeSignature .\Digital-Habits-Mail_<version>_x64-setup.exe |
+  Format-List Status, @{n='Subject';e={$_.SignerCertificate.Subject}}
 ```
 
-The version the app is running is in its **Help** menu, so a report can say
-which build it came from.
+`Status: Valid` and a subject of `CN=Reduce Digital Distraction Ltd` mean it
+is the build we signed. The Microsoft Store copy is re-signed by Microsoft
+and lists `Centre for Digital Habits` as the publisher; both names are ours.
+
+The build writes a SHA-256 checksum beside every installer, and we
+publish it with the download, so you can confirm the file you downloaded
+is the file we built.
+
+The version the app is running is shown in **Settings** on both platforms,
+and in the **Help** menu on a Mac, so a report can say which build it came
+from.
 
 ## This repository
 
 The code here is a snapshot of each release, exported whole from the private
 repository the app is developed in. One commit is one version. Releases are
-tagged, so `git diff v0.2.2 v0.2.3` shows everything that changed between two
-builds.
+tagged `mail-v<version>`, so `git diff mail-v0.3.3 mail-v0.3.4` shows
+everything that changed between two builds.
 
 ## Reporting something
 
-Please open an issue: <https://github.com/ulyngs/digital-habits-mail/issues>.
+Please open an issue: <https://github.com/digitalhabits/dh-mail/issues>.
 For anything you would rather not post in public, write to
 team@digitalhabits.org.

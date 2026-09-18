@@ -19,12 +19,14 @@ import {
   unreadMessageIds,
   updateOutlookAutomaticReplies,
   moveOutlookConversation,
+  createOutlookDraft,
   sendOutlookMail,
   clearOutlookDeferredSend,
   deleteOutlookMessage,
   listOutlookScheduledMessages,
   sendOutlookDraftNow,
   type GraphMessage,
+  getOutlookMessageSource,
 } from "@/lib/outlook/api";
 import { findOutlookFolder } from "@/lib/mail/outlook-folders";
 import {
@@ -44,81 +46,26 @@ import type {
   MailThreadDetail,
   MailThreadSummary,
 } from "@/lib/mail/types";
-import {
-  isOwnOrgAddress,
-  isOwnPersonalAddress,
-  normalizeEmail,
-} from "@/lib/own-addresses";
+import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
-import { sentFromThisMailbox } from "@/lib/mail/reply-target";
-import { crmLogoUrlIfLoaded } from "@/lib/mail/crm-gate";
-import type { ContactIndex, CrmRecordRef } from "@/lib/crm-contact-index";
+import { replyAllRecipients, sentFromThisMailbox } from "@/lib/mail/reply-target";
+import {
+  type Classifier,
+  classifyThread,
+  crmLogoFor,
+  crmNameFor,
+  displayName,
+  THREAD_AROUND_RADIUS,
+  THREAD_PAGE_SIZE,
+} from "@/lib/mail/thread-classify";
+import { signatureHtml } from "@/lib/mail/signature-html";
+import { htmlToText } from "@/lib/mail/html-to-text";
 import { getMailSignatureSettings } from "@/lib/mail/settings";
 import { PlanError } from "@/lib/plan/errors";
-
-const THREAD_PAGE_SIZE = 50;
-/** Messages on each side of a search hit (plus the hit itself). */
-const THREAD_AROUND_RADIUS = 50;
 
 // Tokens live in their own module so folders can reach them too. Re-exported
 // here because most callers already import them from the inbox.
 export { clearOutlookAccessToken, outlookAccessTokenFor };
-
-export type OutlookClassifier = {
-  contacts: ContactIndex;
-  domains: Map<string, CrmRecordRef[]>;
-};
-
-function emailDomain(email: string): string {
-  const at = email.lastIndexOf("@");
-  return at >= 0 ? email.slice(at + 1) : "";
-}
-
-function isKnownContact(
-  email: string,
-  classifier: OutlookClassifier
-): boolean {
-  return (
-    classifier.contacts.has(email) ||
-    classifier.domains.has(emailDomain(email))
-  );
-}
-
-function crmNameFor(
-  email: string,
-  classifier: OutlookClassifier
-): string | undefined {
-  const byEmail = classifier.contacts.get(email);
-  if (byEmail?.length) return byEmail[0].recordName;
-  const byDomain = classifier.domains.get(emailDomain(email));
-  return byDomain?.length ? byDomain[0].recordName : undefined;
-}
-
-function crmLogoFor(
-  email: string,
-  classifier: OutlookClassifier
-): string | undefined {
-  return crmLogoUrlIfLoaded(email, classifier.contacts, classifier.domains);
-}
-
-function isSelfAddress(email: string, account: string): boolean {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return false;
-  if (normalized === normalizeEmail(account)) return true;
-  return isOwnPersonalAddress(normalized);
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function messageHtml(m: GraphMessage): string {
   const body = m.body;
@@ -149,8 +96,7 @@ export async function listOutlookAccountThreads(options: {
   label?: string;
   pageToken?: string;
   maxConversations: number;
-  classifier: OutlookClassifier;
-  notCrmSelfAddresses: Set<string>;
+  classifier: Classifier;
 }): Promise<{
   summaries: { summary: MailThreadSummary; latestRfcId: string }[];
   nextPageToken?: string;
@@ -201,37 +147,16 @@ export async function listOutlookAccountThreads(options: {
     const from = graphAddress(latest.from);
     const to = graphAddresses(latest.toRecipients);
     const cc = graphAddresses(latest.ccRecipients);
-    const participants = [from, ...to, ...cc].filter((p) => p.email);
-    // Own mailboxes (this account + personal aliases), not colleagues.
-    const external = participants.filter(
-      (p) => !isSelfAddress(p.email, options.accountEmail)
-    );
-    const matchesContact = external.some((p) =>
-      isKnownContact(p.email, options.classifier)
-    );
-    const fromNotCrmSelf = options.notCrmSelfAddresses.has(
-      normalizeEmail(from.email)
-    );
-    const tab: MailThreadSummary["tab"] =
-      matchesContact || (external.length === 0 && !fromNotCrmSelf)
-        ? "people"
-        : "other";
-
-    // Sent tip: lead with the first external To on that message, not ourselves.
-    const latestToExternal = to.filter(
-      (p) => p.email && !isSelfAddress(p.email, options.accountEmail)
-    );
-    const counterpart =
-      from.email && !isSelfAddress(from.email, options.accountEmail)
-        ? from
-        : latestToExternal[0] ?? external[0] ?? from;
-
-    const externalByEmail = new Map<string, { name: string; email: string }>();
-    for (const p of external) {
-      const existing = externalByEmail.get(p.email);
-      if (!existing) externalByEmail.set(p.email, { ...p });
-      else if (p.name) existing.name = p.name;
-    }
+    // Graph hands the list one message per conversation, so the rule runs
+    // on that message's envelope. Gmail's runs on the whole thread.
+    const { tab, counterpart, externalParticipants } = classifyThread({
+      accountEmail: options.accountEmail,
+      participants: [from, ...to, ...cc],
+      senders: [from],
+      latestFrom: from,
+      latestTo: to,
+      classifier: options.classifier,
+    });
 
     const lastAt = latest.receivedDateTime || latest.sentDateTime;
     const fromMeeting = outlookIsMeetingMessage(latest);
@@ -239,7 +164,7 @@ export async function listOutlookAccountThreads(options: {
       account: options.accountEmail,
       threadId,
       subject: (latest.subject || "").trim() || "(no subject)",
-      fromName: counterpart.name || counterpart.email,
+      fromName: displayName(counterpart),
       fromEmail: counterpart.email,
       snippet: (latest.bodyPreview || "").trim(),
       lastAt: lastAt
@@ -248,7 +173,7 @@ export async function listOutlookAccountThreads(options: {
       unread: conv.unread,
       messageCount: conv.messageCount,
       tab,
-      externalParticipants: [...externalByEmail.values()],
+      externalParticipants,
       crmName: crmNameFor(counterpart.email, options.classifier),
       crmLogoUrl: crmLogoFor(counterpart.email, options.classifier),
       ...(options.q ? { focusMessageId: conv.focusMessageId } : null),
@@ -315,7 +240,7 @@ async function graphMessageToMailMessage(
   const own = from.email === account || isOwnOrgAddress(from.email);
   const bodyHtml = messageHtml(m) || undefined;
   const bodyText = bodyHtml
-    ? stripHtml(bodyHtml)
+    ? htmlToText(bodyHtml)
     : (m.bodyPreview || "").trim();
   /**
    * A picture in the body, which arrives as an inline attachment.
@@ -558,7 +483,13 @@ export async function getOutlookMailThread(
   };
 
   const replyTo = sentByUs ? lastTo : [lastFrom.email];
-  const allTo = sentByUs ? lastTo : [lastFrom.email, ...lastTo];
+  const replyAll = replyAllRecipients({
+    from: lastFrom.email,
+    to: lastTo,
+    cc: lastCc,
+    account,
+    sentByUs,
+  });
 
   const names: string[] = [];
   let hasOwn = false;
@@ -640,7 +571,7 @@ export async function getOutlookMailThread(
             // Graph deletes a draft by its message id — no second id to find.
             ref: draft.id,
             bodyText: messageHtml(draft)
-              ? stripHtml(messageHtml(draft)!)
+              ? htmlToText(messageHtml(draft)!)
               : (draft.bodyPreview || "").trim(),
             bodyHtml: messageHtml(draft) || undefined,
             to: graphAddresses(draft.toRecipients).map((p) => p.email),
@@ -657,21 +588,10 @@ export async function getOutlookMailThread(
       // to nobody — replying to yourself is legitimate, so keep the mailbox.
       to: recipients(replyTo).length ? recipients(replyTo) : [account],
       cc: [],
-      allTo: recipients(allTo).length ? recipients(allTo) : [account],
-      allCc: recipients(lastCc),
+      allTo: replyAll.to,
+      allCc: replyAll.cc,
     },
   };
-}
-
-function signatureHtml(signature: string): string {
-  const trimmed = signature.trim();
-  if (!trimmed) return "";
-  if (/<[a-z][\s\S]*>/i.test(trimmed)) return trimmed;
-  return trimmed
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
 }
 
 /** The messages Exchange is holding for this conversation, soonest first. */
@@ -691,7 +611,7 @@ export async function listScheduledOutlookMessages(
       threadId: message.conversationId || message.id,
       toName: to[0]?.name?.trim() || to[0]?.email || "",
       subject: (message.subject || "").trim(),
-      bodyText: html ? stripHtml(html) : (message.bodyPreview || "").trim(),
+      bodyText: html ? htmlToText(html) : (message.bodyPreview || "").trim(),
       ...(html ? { bodyHtml: html } : null),
       to: to.map((p) => p.email),
       cc: graphAddresses(message.ccRecipients).map((p) => p.email),
@@ -716,6 +636,70 @@ export async function sendScheduledOutlookMessageNow(
   const token = await outlookAccessTokenFor(account);
   await clearOutlookDeferredSend(token, messageId);
   await sendOutlookDraftNow(token, messageId);
+}
+
+/**
+ * Put the message in Drafts instead of sending it.
+ *
+ * The body is built exactly as a send builds it — signature, quoted
+ * history, pictures lifted out — so what the reader finds in Outlook is the
+ * mail they were writing here, not an approximation of it.
+ */
+export async function draftOutlookMailMessage(input: {
+  account: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  html?: string;
+  includeSignature?: boolean;
+  threadId?: string;
+  attachments?: {
+    filename: string;
+    mimeType: string;
+    contentBase64: string;
+    contentId?: string;
+  }[];
+  /** Quoted history or forwarded original, already rendered as HTML. */
+  appendixHtml?: string;
+}): Promise<{ id: string; webLink?: string }> {
+  if (!input.to.length) throw new PlanError("Add at least one recipient", 400);
+  const token = await outlookAccessTokenFor(input.account);
+
+  const signature =
+    input.includeSignature === false
+      ? ""
+      : (await getMailSignatureSettings(input.account)).signature;
+
+  const htmlInner =
+    input.html ||
+    input.body
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+  const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:12pt;line-height:1.6;color:#222">${htmlInner}${
+    signature ? signatureHtml(signature) : ""
+  }${input.appendixHtml ?? ""}</div>`;
+
+  let replyToMessageId: string | undefined;
+  if (input.threadId) {
+    const newest = await listConversationMessages(token, input.threadId, {
+      top: 1,
+    });
+    replyToMessageId = newest.messages[newest.messages.length - 1]?.id;
+  }
+
+  return createOutlookDraft(token, {
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: input.subject,
+    html,
+    replyToMessageId,
+    attachments: input.attachments,
+  });
 }
 
 export async function sendOutlookMailMessage(input: {
@@ -961,4 +945,14 @@ export async function fetchOutlookMailAttachment(input: {
     input.attachmentId
   );
   return { bytes };
+}
+
+/** The RFC 5322 source of one message, for "Show original" and the .eml. */
+export async function fetchOutlookMessageSource(input: {
+  account: string;
+  messageId: string;
+}): Promise<{ bytes: Uint8Array }> {
+  const token = await outlookAccessTokenFor(input.account);
+  const text = await getOutlookMessageSource(token, input.messageId);
+  return { bytes: new TextEncoder().encode(text) };
 }

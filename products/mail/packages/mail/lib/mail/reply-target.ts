@@ -52,3 +52,63 @@ export function sentFromThisMailbox(input: {
 
   return isOwnPersonalAddress(from);
 }
+
+/**
+ * Who a reply-all goes to, from the newest message's sender, To and Cc.
+ *
+ * Every address of the reader's own is taken off — the mailbox it leaves
+ * from, and their other mailboxes and aliases too. Before, only the sending
+ * mailbox came off, so a reply-all from one address of yours to a thread
+ * that had also reached another of yours put that one in To, and the
+ * reply went to yourself as well as to everyone else.
+ *
+ * Two cases keep an address of yours on purpose:
+ *
+ * - The message came from another mailbox of yours and was delivered here.
+ *   Its sender is the place to reply to — the thread-with-yourself case
+ *   `sentFromThisMailbox` guards — so the sender stays.
+ * - Nobody would be left: a message you sent only to your own addresses.
+ *   Then the reply goes where that one went, and failing that to the
+ *   mailbox itself.
+ *
+ * Duplicates go, ignoring case and Gmail dot and +tag variants, and nobody
+ * is both in To and in Cc.
+ */
+export function replyAllRecipients(input: {
+  from: string;
+  to: readonly string[];
+  cc: readonly string[];
+  account: string;
+  /** The answer of `sentFromThisMailbox` for this message. */
+  sentByUs: boolean;
+}): { to: string[]; cc: string[] } {
+  const accountKey = normalizeEmail(input.account);
+  const seen = new Set<string>([accountKey]);
+  const take = (items: readonly string[], keepOwn: boolean) => {
+    const out: string[] = [];
+    for (const raw of items) {
+      const email = (raw ?? "").trim();
+      if (!email) continue;
+      const key = normalizeEmail(email);
+      if (seen.has(key)) continue;
+      if (!keepOwn && isOwnPersonalAddress(email)) continue;
+      seen.add(key);
+      out.push(email);
+    }
+    return out;
+  };
+
+  const to = [
+    ...(input.sentByUs ? [] : take([input.from], true)),
+    ...take(input.to, false),
+  ];
+  const cc = take(input.cc, false);
+  if (to.length) return { to, cc };
+
+  // Nobody else on it. A message you wrote to your own addresses is answered
+  // where it went; failing even that, the mailbox itself.
+  seen.clear();
+  seen.add(accountKey);
+  const own = take(input.sentByUs ? input.to : [input.from, ...input.to], true);
+  return { to: own.length ? own : [input.account], cc };
+}

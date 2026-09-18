@@ -6,8 +6,10 @@
  * which this build has neither of. It uses the app's own desktop client
  * instead, the same one that connected the mailbox.
  *
- * Only `refreshAccessToken` is needed. The rest of the planner's OAuth module
- * belongs to a flow that runs on a server.
+ * `refreshAccessToken` is what it needs. `missingGoogleFeatures` is here too,
+ * because the token helper imports it, and it answers "nothing": this app
+ * asks for mail only, so there is no planner feature to be short of. The
+ * rest of the planner's OAuth module belongs to a flow that runs on a server.
  */
 
 import { buildRefreshBody } from "@/lib/mail/pkce";
@@ -25,7 +27,9 @@ import {
  * matches on to mark a mailbox as needing to reconnect. Anything else looks
  * like a temporary fault and is retried forever.
  */
-export async function refreshAccessToken(refreshToken: string): Promise<string> {
+export async function refreshAccessToken(
+  refreshToken: string
+): Promise<{ accessToken: string; grantedScopes: string | null }> {
   if (!GOOGLE_CLIENT_ID) {
     throw new Error("VITE_GOOGLE_CLIENT_ID is not set");
   }
@@ -41,6 +45,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
 
   const data = (await response.json().catch(() => ({}))) as {
     access_token?: string;
+    scope?: string;
     error?: string;
     error_description?: string;
   };
@@ -52,5 +57,17 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
   if (!data.access_token) {
     throw new Error("Google returned no access token on refresh");
   }
-  return data.access_token;
+  return {
+    accessToken: data.access_token,
+    grantedScopes: data.scope?.trim() || null,
+  };
+}
+
+/** The planner's feature names. This app has none of them to be short of. */
+export type GoogleFeature = "Mail" | "Docs" | "Calendar";
+
+export function missingGoogleFeatures(
+  _grantedScopes: string | null | undefined
+): GoogleFeature[] {
+  return [];
 }

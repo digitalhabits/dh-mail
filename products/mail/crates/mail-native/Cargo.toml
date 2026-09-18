@@ -20,24 +20,42 @@ tauri = { version = "2.11.3", features = ["macos-private-api"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 # Fetching remote images for the message view, where a webview cannot.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# The IMAP client speaks TLS on a plain socket. The same rustls and roots
+# reqwest already brought in, on the ring provider, so nothing is doubled.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+base64 = "0.22"
 # Loopback listener for the OAuth redirect, and the planner sign-in.
 tiny_http = "0.12"
 url = "2.5"
 urlencoding = "2.1"
 tauri-plugin-opener = "2.5.4"
 
-# Refresh tokens live in the OS keychain, never in the SQLite file. The store
-# behind `keyring::Entry` is chosen at build time and differs per platform: the
-# macOS keychain, and the Windows Credential Manager. The crate's own code is
-# the same on both — see db.rs and planner.rs.
+# Secrets live in the OS keychain, never in the SQLite file. See secrets.rs:
+# on macOS the data-protection keychain through `SecItem*` directly, with
+# `keyring` (the login keychain) as the fallback and the thing to migrate
+# from; on Windows `keyring` is the Credential Manager.
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+# The chat popout is a non-activating panel, so clicking it does not bring
+# this app to the front and take the front from whatever is behind it — a
+# slideshow, a call. Only an NSPanel can carry that style bit, and only this
+# crate reclasses the window. Same revision as the planner's focus panel.
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+security-framework-sys = "2"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
   "NSEvent",
+  "NSPasteboard",
   "NSPrintInfo",
   "NSPrintOperation",
+  "NSResponder",
+  "NSView",
+  "NSWindow",
   "block2",
 ] }
 # The Mac address book, as a read-only contact source. See contacts.rs.
@@ -48,7 +66,19 @@ objc2-contacts = { version = "0.3", features = [
   "CNFetchRequest",
   "block2",
 ] }
-objc2-foundation = { version = "0.3", features = ["NSArray", "NSString", "NSError"] }
+objc2-foundation = { version = "0.3", features = [
+  "NSArray",
+  "NSString",
+  "NSError",
+  "NSGeometry",
+] }
+drag = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
+
+# On iOS the same crate reaches the app's keychain. Android has no keychain
+# it can reach, so there the secrets go to a file in the app's private data
+# directory — see the `file` module in secrets.rs.
+[target.'cfg(target_os = "ios")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }

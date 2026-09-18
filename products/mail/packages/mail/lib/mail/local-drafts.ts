@@ -3,6 +3,7 @@
  * Survives refresh / tab close until send, explicit discard, or ~90 days idle.
  */
 
+import { enqueueDraftWrite } from "@/lib/mail/draft-write-queue";
 import type { MailRecipient } from "@/lib/mail/contact-list-types";
 import { htmlToPlainText } from "@/lib/client-email-html";
 import { newMailId } from "@/lib/mail/uuid";
@@ -31,6 +32,16 @@ type DraftBase = {
   updatedAt: number;
   /** Ready attachments only (with contentBase64). */
   attachments: DraftAttachmentSnapshot[];
+  /**
+   * The message was handed to Outlook, and when.
+   *
+   * Not that it was sent — nobody here can know that. The send happens in
+   * Outlook, usually in a mailbox this app holds no token for, which is the
+   * reason the handover exists. What is recorded is the one thing that did
+   * happen in this app, so a list of drafts can tell work that was never
+   * finished from work that left by another door.
+   */
+  handedOver?: { at: number; account: string };
 };
 
 export type ThreadMailDraft = DraftBase & {
@@ -54,6 +65,14 @@ export type ThreadMailDraft = DraftBase & {
    * before this existed, and on one nobody was in the middle of.
    */
   caret?: number;
+  /**
+   * The message a forward carries or a reply quotes, when the reader picked
+   * one. Absent means the newest message in the thread.
+   *
+   * Carried so a forward handed to the floating card is still a forward of
+   * the same message. Without it the card forwarded the newest one.
+   */
+  quoteMessageId?: string | null;
 };
 
 export type ComposeMailDraft = DraftBase & {
@@ -117,20 +136,22 @@ function rebuildThreadDraftKeysSnapshot(): void {
 }
 
 function notifyDraftListeners(): void {
-  rebuildThreadDraftKeysSnapshot();
   for (const listener of draftListeners) listener();
 }
 
-function rememberThreadDraftKey(key: string, present: boolean): void {
+/**
+ * The badge index holds only thread drafts, and its snapshot changes
+ * reference only when the set really changes — the rows reading it
+ * through useSyncExternalStore re-render on membership, not on every
+ * save of a body.
+ */
+function updateThreadDraftKey(key: string, present: boolean): void {
   if (!key.startsWith("thread:")) return;
   const had = threadDraftKeys.has(key);
-  if (present && !had) {
-    threadDraftKeys.add(key);
-    notifyDraftListeners();
-  } else if (!present && had) {
-    threadDraftKeys.delete(key);
-    notifyDraftListeners();
-  }
+  if (present === had) return;
+  if (present) threadDraftKeys.add(key);
+  else threadDraftKeys.delete(key);
+  rebuildThreadDraftKeysSnapshot();
 }
 
 function txDone(tx: IDBTransaction): Promise<void> {
@@ -171,6 +192,7 @@ async function loadAndPruneDrafts(): Promise<void> {
       await txDone(tx);
       threadDraftKeys.clear();
       for (const key of nextKeys) threadDraftKeys.add(key);
+      rebuildThreadDraftKeysSnapshot();
     } finally {
       db.close();
     }
@@ -236,7 +258,13 @@ function idbRequest<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-export async function getDraft(key: string): Promise<MailDraft | null> {
+export function getDraft(key: string): Promise<MailDraft | null> {
+  // Behind the queue: a hydrate right after Send must not read the row the
+  // queued delete is about to remove.
+  return enqueueDraftWrite(key, () => readDraft(key));
+}
+
+async function readDraft(key: string): Promise<MailDraft | null> {
   try {
     const db = await openDb();
     try {
@@ -287,38 +315,72 @@ export async function listMailDrafts(): Promise<MailDraft[]> {
   }
 }
 
-export async function setDraft(draft: MailDraft): Promise<void> {
-  try {
-    const db = await openDb();
+export function setDraft(draft: MailDraft): Promise<void> {
+  // Queued per key — see draft-write-queue. The save on a pause in the
+  // typing and the delete on Send must land in the order they were asked
+  // for, or the sent message comes back as a draft.
+  return enqueueDraftWrite(draft.key, async () => {
     try {
-      const tx = db.transaction(STORE, "readwrite");
-      await idbRequest(
-        tx.objectStore(STORE).put({ ...draft, updatedAt: Date.now() })
-      );
-    } finally {
-      db.close();
+      const db = await openDb();
+      try {
+        const tx = db.transaction(STORE, "readwrite");
+        await idbRequest(
+          tx.objectStore(STORE).put({ ...draft, updatedAt: Date.now() })
+        );
+      } finally {
+        db.close();
+      }
+      if (draft.kind === "thread") {
+        updateThreadDraftKey(draft.key, true);
+      }
+      // Every save, not only a thread badge flipping: the Drafts list
+      // reads through the same subscription, and a compose draft that
+      // was written or discarded never reached it — the row stood in
+      // the list after the bin had done its work.
+      notifyDraftListeners();
+    } catch {
+      /* private mode / quota — drafts are best-effort */
     }
-    if (draft.kind === "thread") {
-      rememberThreadDraftKey(draft.key, true);
-    }
-  } catch {
-    /* private mode / quota — drafts are best-effort */
-  }
+  });
 }
 
-export async function deleteDraft(key: string): Promise<void> {
-  try {
-    const db = await openDb();
+/**
+ * Mark a draft as handed to Outlook. Quiet where there is no draft: a
+ * handover from a composer that has not saved one yet is nothing to record.
+ */
+export async function markDraftHandedOver(
+  key: string,
+  account: string
+): Promise<void> {
+  const draft = await getDraft(key);
+  if (!draft) return;
+  await setDraft({ ...draft, handedOver: { at: Date.now(), account } });
+}
+
+/** The keys of every draft that went to Outlook, newest first. */
+export async function listHandedOverDraftKeys(): Promise<string[]> {
+  return (await listMailDrafts())
+    .filter((draft) => draft.handedOver)
+    .map((draft) => draft.key);
+}
+
+export function deleteDraft(key: string): Promise<void> {
+  // Queued behind any save still in the air for this key — see setDraft.
+  return enqueueDraftWrite(key, async () => {
     try {
-      const tx = db.transaction(STORE, "readwrite");
-      await idbRequest(tx.objectStore(STORE).delete(key));
-    } finally {
-      db.close();
+      const db = await openDb();
+      try {
+        const tx = db.transaction(STORE, "readwrite");
+        await idbRequest(tx.objectStore(STORE).delete(key));
+      } finally {
+        db.close();
+      }
+      updateThreadDraftKey(key, false);
+      notifyDraftListeners();
+    } catch {
+      /* ignore */
     }
-    rememberThreadDraftKey(key, false);
-  } catch {
-    /* ignore */
-  }
+  });
 }
 
 /** Persist only attachments that already have base64 (skip in-progress reads). */
@@ -382,10 +444,16 @@ export function isComposeDraftEmpty(
 export async function saveThreadDraft(
   draft: Omit<ThreadMailDraft, "updatedAt">,
   defaultTo: MailRecipient[],
-  defaultCc: MailRecipient[]
+  defaultCc: MailRecipient[],
+  /**
+   * Keep a draft that says nothing yet. The hand-over to the floating card
+   * asks for this: the card opens from the draft, and with no draft it has
+   * no composer to show.
+   */
+  keepEmpty = false
 ): Promise<void> {
   const { key, kind: _kind, ...rest } = draft;
-  if (isThreadDraftEmpty(rest, defaultTo, defaultCc)) {
+  if (!keepEmpty && isThreadDraftEmpty(rest, defaultTo, defaultCc)) {
     await deleteDraft(key);
     return;
   }

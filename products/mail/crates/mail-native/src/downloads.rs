@@ -113,24 +113,45 @@ pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
 ///
 /// `open` opens the file with whatever handles it. Otherwise the file manager
 /// is pointed at it, which says where it went without launching anything.
+///
+/// Async, and the work on a blocking thread. A plain command runs on the
+/// main thread, which is the thread the windows are drawn on: decoding
+/// thirty megabytes of base64 and writing them there stopped the whole app
+/// for as long as it took.
 #[tauri::command]
-pub fn save_attachment(
+pub async fn save_attachment(
   app: tauri::AppHandle,
   filename: String,
   content_base64: String,
   open: bool,
 ) -> Result<String, String> {
+  tauri::async_runtime::spawn_blocking(move || save_attachment_now(&app, &filename, &content_base64, open))
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn save_attachment_now(
+  app: &tauri::AppHandle,
+  filename: &str,
+  content_base64: &str,
+  open: bool,
+) -> Result<String, String> {
   use tauri::Manager;
 
-  let bytes = decode_base64(&content_base64)?;
+  let bytes = decode_base64(content_base64)?;
+  // A phone has no downloads folder the app may write to as a desktop
+  // does — iOS answers with an error, and Android's is not this app's — so
+  // the file goes under the app's own data directory there, where the
+  // system's file app can still reach it.
   let dir = app
     .path()
     .download_dir()
+    .or_else(|_| app.path().app_data_dir().map(|d| d.join("Downloads")))
     .map_err(|e| format!("Couldn't find the downloads folder: {e}"))?;
   std::fs::create_dir_all(&dir)
     .map_err(|e| format!("Couldn't open the downloads folder: {e}"))?;
 
-  let path = unique_path(&dir, &safe_file_name(&filename), &|p| p.exists());
+  let path = unique_path(&dir, &safe_file_name(filename), &|p| p.exists());
   std::fs::write(&path, &bytes).map_err(|e| format!("Couldn't save the file: {e}"))?;
 
   // The file is written either way. Failing to show it is not a failure to
@@ -141,7 +162,14 @@ pub fn save_attachment(
     if !open {
       command.arg("-R");
     }
-    let _ = command.arg(&path).status();
+    // Started, not waited for. The file is written by now, and Finder can
+    // take a second or more to come forward: the answer used to wait for it,
+    // so "Saved" was said that much later than the file was saved.
+    // On a thread of its own, which waits so that the child is reaped.
+    command.arg(&path);
+    std::thread::spawn(move || {
+      let _ = command.status();
+    });
   }
 
   // Everywhere else, through the opener plugin rather than a command line of

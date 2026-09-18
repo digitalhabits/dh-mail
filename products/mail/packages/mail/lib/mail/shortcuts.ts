@@ -5,7 +5,7 @@
  * Mac mail client does. Gmail's single letters exist because a browser owns
  * every Cmd key; they are a workaround, not a standard.
  *
- * A reader can change any of them — see `MailShortcutsDialog`. Only the
+ * A reader can change any of them — see `MailShortcutsPanel`. Only the
  * changes are stored, so a default that moves later moves for everyone who
  * never touched it.
  *
@@ -17,9 +17,10 @@
  * Cmd+R is browser reload, which is why these only fire with a thread open
  * and the focus outside a field.
  *
- * Send is the exception, and has to be: it is pressed from inside the message
- * it sends. The composers listen for that one themselves rather than through
- * the thread handler, which stands down wherever a reply is written.
+ * Send, focus-message, and float-message are the exceptions, and have to be:
+ * they are pressed from inside the message being written. The composers
+ * listen for those themselves rather than through the thread handler, which
+ * stands down wherever a reply is written.
  */
 import type { MailStringKey } from "@/lib/mail/i18n-strings";
 
@@ -36,7 +37,11 @@ export type MailShortcutAction =
   | "moveToFolder"
   | "print"
   | "popOut"
-  | "togglePin";
+  | "floatMessage"
+  | "togglePin"
+  | "expandList"
+  | "focusThread"
+  | "focusMessage";
 
 export type MailShortcut = {
   /**
@@ -51,21 +56,47 @@ export type MailShortcut = {
   ctrl?: boolean;
 };
 
-/** The order the settings dialog lists them in. */
-export const MAIL_SHORTCUT_ACTIONS: MailShortcutAction[] = [
-  "reply",
-  "replyAll",
-  "forward",
-  "send",
-  "snooze",
-  "archive",
-  "delete",
-  "toggleUnread",
-  "moveToFolder",
-  "print",
-  "popOut",
-  "togglePin",
+/**
+ * The settings list, in groups.
+ *
+ * Sixteen keys on one card is a wall. A heading names the kind of work, and
+ * the card under it holds only those rows. One scroll, not a page per group.
+ */
+export const MAIL_SHORTCUT_GROUPS: {
+  label: MailStringKey;
+  actions: readonly MailShortcutAction[];
+}[] = [
+  {
+    label: "shortcutGroupCompose",
+    actions: ["reply", "replyAll", "forward", "send"],
+  },
+  {
+    label: "shortcutGroupTriage",
+    actions: [
+      "snooze",
+      "archive",
+      "delete",
+      "toggleUnread",
+      "moveToFolder",
+      "togglePin",
+    ],
+  },
+  {
+    label: "shortcutGroupView",
+    actions: [
+      "expandList",
+      "popOut",
+      "floatMessage",
+      "focusThread",
+      "focusMessage",
+      "print",
+    ],
+  },
 ];
+
+/** Flattened group order. A clash goes to the earlier action in this list. */
+export const MAIL_SHORTCUT_ACTIONS: MailShortcutAction[] =
+  MAIL_SHORTCUT_GROUPS.flatMap((group) => [...group.actions]);
 
 /** What each action is called, as keys into `@/lib/mail/i18n`. */
 export const MAIL_SHORTCUT_LABELS: Record<MailShortcutAction, MailStringKey> = {
@@ -79,8 +110,12 @@ export const MAIL_SHORTCUT_LABELS: Record<MailShortcutAction, MailStringKey> = {
   toggleUnread: "actionToggleUnread",
   moveToFolder: "actionMoveToFolder",
   print: "actionPrint",
-  popOut: "actionPopOut",
+  popOut: "popOutChat",
+  floatMessage: "actionFloatMessage",
   togglePin: "actionTogglePin",
+  expandList: "actionExpandList",
+  focusThread: "actionFocusThread",
+  focusMessage: "actionFocusMessage",
 };
 
 export const DEFAULT_MAIL_SHORTCUTS: Record<MailShortcutAction, MailShortcut> = {
@@ -88,7 +123,7 @@ export const DEFAULT_MAIL_SHORTCUTS: Record<MailShortcutAction, MailShortcut> = 
   replyAll: { key: "r", meta: true, shift: true },
   forward: { key: "f", meta: true, shift: true },
   /**
-   * The one shortcut that fires while typing.
+   * One of the two shortcuts that fire while typing.
    *
    * Every other action here is refused when the focus is in a field, so that
    * Cmd+R still reloads and a reply can contain the letter R. Send has to
@@ -102,13 +137,39 @@ export const DEFAULT_MAIL_SHORTCUTS: Record<MailShortcutAction, MailShortcut> = 
   toggleUnread: { key: "u", meta: true },
   moveToFolder: { key: "m", meta: true, shift: true },
   print: { key: "p", meta: true },
-  /** Beside Print, which is the other thing you do with a whole thread. */
-  popOut: { key: "p", meta: true, shift: true },
+  /**
+   * The letter names the surface: C for the chat window. Shift+Cmd, same
+   * family as floating the message being written.
+   */
+  popOut: { key: "c", meta: true, shift: true },
+  /**
+   * The other shortcut that fires while typing.
+   *
+   * ⇧⌘P is pressed from inside the message it moves. The composer listens
+   * for it itself, the same arrangement Send uses. The letter names the
+   * picture-in-picture card.
+   */
+  floatMessage: { key: "p", meta: true, shift: true },
   /**
    * No mail client has a convention for this, so it takes a free key beside
    * the rest of the Cmd+Shift group. Not Cmd+I: the composer's italics.
    */
   togglePin: { key: "i", meta: true, shift: true },
+  /**
+   * How much room this pane gets. Option+Cmd, not Shift+Cmd — Shift+Cmd is
+   * the action family (archive, forward, pop out). The letter names the
+   * pane: list, thread, or the message being written.
+   */
+  expandList: { key: "l", meta: true, alt: true },
+  focusThread: { key: "t", meta: true, alt: true },
+  /**
+   * The other shortcut that fires while typing.
+   *
+   * Focus-message is pressed from inside the message it enlarges — a reply
+   * or a new email. The composer listens for it itself, the same
+   * arrangement Send uses.
+   */
+  focusMessage: { key: "r", meta: true, alt: true },
 };
 
 const STORAGE_KEY = "redd-plan-mail-shortcuts";
@@ -124,11 +185,30 @@ function normalizeKey(key: string): string {
   return lower;
 }
 
+/**
+ * The letter a press meant, when Option has already turned it into a mark.
+ *
+ * Cmd+Option+F arrives as "ƒ", Cmd+Option+L as "¬". The search box already
+ * reads `code` for that reason. A binding is the letter on the key.
+ */
+function eventLetter(event: KeyboardEvent): string | null {
+  const code = event.code;
+  if (!code || code.length !== 4 || !code.toLowerCase().startsWith("key")) {
+    return null;
+  }
+  return code.slice(3).toLowerCase();
+}
+
 export function shortcutMatchesEvent(
   event: KeyboardEvent,
   shortcut: MailShortcut
 ): boolean {
-  if (normalizeKey(event.key) !== normalizeKey(shortcut.key)) return false;
+  const wanted = normalizeKey(shortcut.key);
+  const typed = normalizeKey(event.key);
+  if (typed !== wanted) {
+    // Option is held, and the character is not the letter. Trust the key.
+    if (!event.altKey || eventLetter(event) !== wanted) return false;
+  }
   if (event.metaKey !== Boolean(shortcut.meta)) return false;
   if (event.shiftKey !== Boolean(shortcut.shift)) return false;
   if (event.altKey !== Boolean(shortcut.alt)) return false;
@@ -137,6 +217,31 @@ export function shortcutMatchesEvent(
 }
 
 /** The action a key press asks for, if any. */
+/**
+ * Which composer a send key belongs to, when there is more than one.
+ *
+ * A reply can be open in the thread and in the floating card at the same
+ * time, and two listeners both answering the key would send from whichever
+ * heard it first — not a thing to leave to chance with mail. So each sends
+ * only when the caret is inside it.
+ *
+ * A caret that is nowhere is the exception: the reader pressed the key after
+ * clicking the thread, or the window has just come back, and there is one
+ * composer they can mean — the one docked in the pane. The card answers for
+ * itself and nothing else.
+ */
+export function sendsFromHere(input: {
+  /** The caret is inside this pane. */
+  caretHere: boolean;
+  /** The caret is nowhere in particular: the body, or nothing at all. */
+  caretNowhere: boolean;
+  /** This is the floating card rather than the pane in the thread. */
+  floating: boolean;
+}): boolean {
+  if (input.caretHere) return true;
+  return input.caretNowhere && !input.floating;
+}
+
 export function actionForEvent(
   event: KeyboardEvent,
   shortcuts: Record<MailShortcutAction, MailShortcut>
@@ -293,3 +398,17 @@ export function subscribeMailShortcuts(onChange: () => void): () => void {
     window.removeEventListener("storage", listener);
   };
 }
+
+/**
+ * What the composer's formatting keys are called, for the buttons' tooltips.
+ *
+ * These are Quill's own bindings rather than the app's, so they are not in
+ * the table above — but a button that has a key should say so, the way
+ * every action in the reader's header does.
+ */
+export const FORMAT_SHORTCUTS = {
+  bold: formatShortcut({ key: "b", meta: true }),
+  italic: formatShortcut({ key: "i", meta: true }),
+  underline: formatShortcut({ key: "u", meta: true }),
+  link: formatShortcut({ key: "k", meta: true }),
+} as const;

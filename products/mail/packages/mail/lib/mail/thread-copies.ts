@@ -18,7 +18,10 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 export type ThreadRef = { account: string; threadId: string };
 
 export function threadKey(t: ThreadRef): string {
-  return `${t.account}|${t.threadId}`;
+  // The mailbox in lower case: a row's account comes from the store and
+  // the open thread's from wherever it was opened, and a key that differs
+  // only in case is a row that survives its own deletion.
+  return `${t.account.toLowerCase()}|${t.threadId}`;
 }
 
 /**
@@ -111,23 +114,52 @@ export function dedupeMessagesByRfcId<
 }
 
 /**
+ * Whether this row is the one that stands for that conversation.
+ *
+ * Not the same question as key equality. A conversation cc'd into two of
+ * our mailboxes is one row, and which copy wins the row is decided by a
+ * sort whose ties fall to fetch order — so the row's own key can change
+ * between two polls while the row looks exactly the same. Anything that
+ * matches the open thread against the list by key alone — the highlight,
+ * the arrow keys, the copies an action gathers — quietly loses the row
+ * when that happens, and every one of those losses has been a way to act
+ * on a conversation the reader never chose. The row stands for its own
+ * key and for every copy folded into it, and this is the question to ask.
+ */
+export function rowStandsFor(
+  row: MailThreadSummary,
+  ref: ThreadRef
+): boolean {
+  const key = threadKey(ref);
+  if (threadKey(row) === key) return true;
+  return row.alsoIn?.some((c) => threadKey(c) === key) ?? false;
+}
+
+/**
  * The row and every copy behind it: what an action on the row acts on.
  *
  * `t` may be a bare {account, threadId} — the open thread, say — so the
- * copies are read off the row in the list that stands for it. Deduplicated,
- * and the row's own copy first.
+ * copies are read off the row in the list that stands for it. Found by
+ * what the row stands for, not by its key: when the row is standing on
+ * its other copy, the action must still take both, or the row survives
+ * its own deletion and invites a second press that lands on a
+ * conversation the reader never meant to touch. Deduplicated, and the
+ * asked-for copy first.
  */
 export function everyCopy(
   t: { account: string; threadId: string },
   rows: MailThreadSummary[]
 ): { account: string; threadId: string }[] {
   const key = threadKey(t);
-  const row = rows.find((x) => threadKey(x) === key);
+  const row = rows.find((x) => rowStandsFor(x, t));
   const out: { account: string; threadId: string }[] = [
     { account: t.account, threadId: t.threadId },
   ];
   const seen = new Set([key]);
-  for (const c of row?.alsoIn ?? []) {
+  const copies = row
+    ? [{ account: row.account, threadId: row.threadId }, ...(row.alsoIn ?? [])]
+    : [];
+  for (const c of copies) {
     const k = threadKey(c);
     if (seen.has(k)) continue;
     seen.add(k);

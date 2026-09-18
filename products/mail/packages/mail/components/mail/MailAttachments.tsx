@@ -2,32 +2,45 @@
 
 import * as React from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   Calendar,
   Download,
   ExternalLink,
+  Eye,
   FileUp,
   ImageIcon,
   Loader2,
   Paperclip,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
+
+import { MENU_ICON, MENU_ITEM, MenuShell } from "@/components/mail/MenuShell";
 
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
-import { MAIL_PINCH_SCALE_EVENT } from "@/components/mail/EmailHtmlView";
-import { canRenderPdf, mountPdfViewer } from "@/lib/mail/attachment-text";
+import { MAIL_PINCH_SCALE_EVENT, readMailPinch } from "@/lib/mail/pinch";
+import {
+  canRenderPdf,
+  mountPdfViewer,
+  renderPdfThumbnail,
+} from "@/lib/mail/attachment-text";
 import type { PdfViewerHandle } from "@/lib/mail/pdf-viewer-types";
 import {
   attachmentSourceNow,
   hostSavesAttachments,
   openAttachmentSource,
+  prepareAttachmentDrag,
   saveAttachment,
+  saveAttachmentBytes,
+  startAttachmentDrag,
 } from "@/lib/mail/attachment-source";
 import {
   clipboardAttachments,
   uniqueAttachmentName,
 } from "@/lib/mail/clipboard-attachments";
+import { dragCarriesOnlyImages } from "@/lib/mail/dragged-attachments";
 import { isCalendarAttachment } from "@/lib/mail/ics";
 import { openExternalUrl } from "@/lib/native-shell";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
@@ -215,6 +228,35 @@ export function attachmentDownloadProps(input: {
   };
 }
 
+/**
+ * What makes one file draggable out of the window and into a folder.
+ *
+ * A file on a message is a file: the reader who wants it in a folder should
+ * be able to take it there, rather than save it to Downloads and then move
+ * it. What that takes differs by host, so the work is behind the seam and
+ * the tiles and rows here only say which file they are showing.
+ *
+ * The pointer going down is the signal to get ready — see
+ * `prepareAttachmentDrag`. It fires on a plain click too, which reads the
+ * file for a drag that never happens; that is the same reading a preview
+ * does, and it is what makes the drag itself start on time.
+ */
+export function attachmentDragProps(input: {
+  path: string;
+  filename: string;
+  mimeType: string;
+}): {
+  draggable: boolean;
+  onPointerDown: () => void;
+  onDragStart: (event: React.DragEvent) => void;
+} {
+  return {
+    draggable: true,
+    onPointerDown: () => prepareAttachmentDrag(input),
+    onDragStart: (event) => startAttachmentDrag(event, input),
+  };
+}
+
 /** Read files into draft attachments with progress (client-side, pre-send). */
 export function useDraftAttachments() {
   const [items, setItems] = React.useState<DraftAttachment[]>([]);
@@ -384,9 +426,9 @@ export function openAttachmentOutside(input: {
   filename: string;
 }): void {
   if (hostSavesAttachments) {
-    void saveAttachment({ ...input, open: true }).catch((err: unknown) => {
-      toast.error(err instanceof Error ? err.message : "Couldn't open the file");
-    });
+    // The host says what went wrong itself, on the toast it put up when
+    // the request began; a second toast here said it twice.
+    void saveAttachment({ ...input, open: true }).catch(() => undefined);
     return;
   }
   void openExternalUrl(new URL(input.path, window.location.origin).toString());
@@ -401,27 +443,160 @@ export function openAttachmentOutside(input: {
  * three sizes down one message, which read as a mess rather than as a set
  * of files.
  */
+/**
+ * How big a PDF may be before its first page is not drawn.
+ *
+ * Drawing one means reading the whole file through the transport, and the
+ * tile is a hundred pixels of a message somebody is only reading. A scan
+ * of a contract is a megabyte or two; past this it is a document to open
+ * rather than to glance at, and the badge says what it is.
+ */
+const PDF_THUMBNAIL_MAX_BYTES = 8 * 1024 * 1024;
+/** The tile is 184 wide; the page is drawn to that and no larger. */
+const PDF_THUMBNAIL_WIDTH = 184;
+
+/**
+ * The first page of a PDF, once the tile has been looked at.
+ *
+ * Not on mount: a message with eight attachments would read eight whole
+ * files the moment it opened, for pictures nobody may scroll to. The page
+ * is drawn when the tile comes into view, and once for as long as it is
+ * there.
+ */
+function usePdfThumbnail(
+  ref: React.RefObject<HTMLElement | null>,
+  path: string | null,
+  sizeBytes: number
+): string | null {
+  const [src, setSrc] = React.useState<string | null>(null);
+  const wanted =
+    canRenderPdf && path != null && sizeBytes <= PDF_THUMBNAIL_MAX_BYTES;
+
+  React.useEffect(() => {
+    setSrc(null);
+    const el = ref.current;
+    if (!wanted || !el || !path) return;
+    let live = true;
+    let started = false;
+
+    const draw = async () => {
+      if (started) return;
+      started = true;
+      let source: { url: string; release: () => void } | null = null;
+      try {
+        source = await openAttachmentSource(path);
+        const res = await fetch(source.url);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (!live) return;
+        const drawn = await renderPdfThumbnail(bytes, PDF_THUMBNAIL_WIDTH);
+        if (live && drawn) setSrc(drawn);
+      } catch (err) {
+        console.warn("mail: no first page for this PDF", err);
+      } finally {
+        source?.release();
+      }
+    };
+
+    /*
+      Asked of the rectangle, not of an observer.
+
+      An IntersectionObserver is the obvious tool and it did not report at
+      all on these tiles — no zoom above them, no content-visibility, the
+      tile plainly on screen. Rather than build a picture on a thing that
+      answers sometimes, the tile is measured: it is a comparison of two
+      numbers on scroll, which is what the observer was going to say.
+    */
+    const nearlyVisible = () => {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 && box.height === 0) return false;
+      // A margin, so a tile just under the fold is ready by the time it
+      // arrives rather than drawing while it is looked at.
+      const margin = 200;
+      return box.bottom > -margin && box.top < window.innerHeight + margin;
+    };
+
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      if (!live || started) return;
+      if (nearlyVisible()) {
+        stop();
+        void draw();
+      }
+    };
+    const schedule = () => {
+      if (frame || started) return;
+      frame = window.requestAnimationFrame(check);
+    };
+    const stop = () => {
+      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = 0;
+    };
+    window.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    check();
+    return () => {
+      live = false;
+      stop();
+    };
+  }, [ref, path, wanted]);
+
+  return src;
+}
+
 function AttachmentTile({
   account,
   messageId,
   attachment,
   onPreview,
+  onMenu,
 }: {
   account: string;
   messageId: string;
   attachment: MailAttachment;
   onPreview: () => void;
+  onMenu: (
+    e: React.MouseEvent,
+    file: { path: string; filename: string; onPreview: () => void }
+  ) => void;
 }) {
   const pending = attachment.attachmentId.startsWith("local-");
   const image = isImageMime(attachment.mimeType, attachment.filename);
+  const pdf = isPdfMime(attachment.mimeType, attachment.filename);
   const src = useAttachmentSource(
     pending || !image ? null : attachmentUrl({ account, messageId, attachment })
   );
+  const tileRef = React.useRef<HTMLButtonElement | null>(null);
+  const pdfSrc = usePdfThumbnail(
+    tileRef,
+    pending || !pdf ? null : attachmentUrl({ account, messageId, attachment }),
+    attachment.size
+  );
+  // Not one still being attached to a draft: there is nothing at the provider
+  // to read, so there is nothing to hand over.
+  const filePath = pending
+    ? null
+    : attachmentUrl({ account, messageId, attachment, download: true });
+  const drag = filePath
+    ? attachmentDragProps({
+        path: filePath,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+      })
+    : null;
   return (
     <button
       type="button"
+      ref={tileRef}
+      {...drag}
       onClick={() => {
         if (!pending) onPreview();
+      }}
+      onContextMenu={(e) => {
+        if (!filePath) return;
+        onMenu(e, { path: filePath, filename: attachment.filename, onPreview });
       }}
       title={attachment.filename}
       className="mail-light-surface w-[184px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:border-stone-300 hover:shadow"
@@ -439,6 +614,16 @@ function AttachmentTile({
           />
         ) : image ? (
           <ImageIcon className="h-7 w-7 text-stone-300" aria-hidden />
+        ) : pdfSrc ? (
+          /* The page from the top, on white: a document is recognised by
+             its first lines, and `cover` from the middle would show the
+             middle of a page and cut off the letterhead. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={pdfSrc}
+            alt=""
+            className="absolute inset-0 h-full w-full bg-white object-cover object-top"
+          />
         ) : (
           <TypeBadge filename={attachment.filename} />
         )}
@@ -467,22 +652,235 @@ async function downloadAllAttachments(
   items: { path: string; filename: string }[]
 ): Promise<void> {
   for (const item of items) {
-    if (hostSavesAttachments) {
-      await saveAttachment(item).catch((err: unknown) => {
-        toast.error(
-          err instanceof Error ? err.message : `Couldn't save ${item.filename}`
-        );
-      });
-      continue;
-    }
-    const a = document.createElement("a");
-    a.href = item.path;
-    a.download = item.filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    await downloadAttachment(item);
     await new Promise((r) => window.setTimeout(r, 150));
   }
+}
+
+/** Save one file: the host writes it, or the browser downloads it. */
+async function downloadAttachment(item: {
+  path: string;
+  filename: string;
+}): Promise<void> {
+  if (hostSavesAttachments) {
+    // The host's own toast carries the error; see openAttachmentOutside.
+    await saveAttachment(item).catch(() => undefined);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = item.path;
+  a.download = item.filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * What a right-click on a file offers: see it, open it, or save it.
+ *
+ * The tile does the first on a click, and the other two were only in the
+ * preview's toolbar; a reader who knows what a file is should not have to
+ * look at it to save it. Not offered for a file still on its way into a
+ * draft: there is nothing at the provider to read yet.
+ */
+export function useAttachmentMenu(): {
+  openAttachmentMenu: (
+    e: React.MouseEvent,
+    file: { path: string; filename: string; onPreview: () => void }
+  ) => void;
+  attachmentMenu: React.ReactNode;
+} {
+  const t = useMailT();
+  const [at, setAt] = React.useState<{
+    x: number;
+    y: number;
+    path: string;
+    filename: string;
+    onPreview: () => void;
+  } | null>(null);
+  const openAttachmentMenu = React.useCallback(
+    (
+      e: React.MouseEvent,
+      file: { path: string; filename: string; onPreview: () => void }
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setAt({ x: e.clientX, y: e.clientY, ...file });
+    },
+    []
+  );
+  const dismiss = React.useCallback(() => setAt(null), []);
+  const attachmentMenu = at ? (
+    <MenuShell x={at.x} y={at.y} label={at.filename} onDismiss={dismiss}>
+      <div
+        className="max-w-[min(24rem,calc(100vw-1rem))] truncate px-3 pb-1.5 pt-1 text-xs text-stone-500"
+        title={at.filename}
+      >
+        {at.filename}
+      </div>
+      <div className="mb-1 border-t border-stone-200" />
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          at.onPreview();
+        }}
+      >
+        <Eye className={MENU_ICON} aria-hidden />
+        {t("previewFile")}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          openAttachmentOutside({ path: at.path, filename: at.filename });
+        }}
+      >
+        <ExternalLink className={MENU_ICON} aria-hidden />
+        {t("open")}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          void downloadAttachment({ path: at.path, filename: at.filename });
+        }}
+      >
+        <Download className={MENU_ICON} aria-hidden />
+        {t("download")}
+      </button>
+    </MenuShell>
+  ) : null;
+  return { openAttachmentMenu, attachmentMenu };
+}
+
+/** A file on a draft, written out: the host saves it, or a link does. */
+async function saveDraftAttachment(
+  item: DraftAttachment,
+  open: boolean
+): Promise<void> {
+  if (!item.contentBase64) return;
+  if (hostSavesAttachments) {
+    await saveAttachmentBytes({
+      filename: item.filename,
+      contentBase64: item.contentBase64,
+      open,
+    }).catch((err: unknown) => {
+      toast.error(
+        err instanceof Error ? err.message : `Couldn't save ${item.filename}`
+      );
+    });
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = `data:${item.mimeType || "application/octet-stream"};base64,${item.contentBase64}`;
+  a.download = item.filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * The same menu for a file on a draft, with one more line: take it off
+ * the draft. The file is on this machine already, so Open and Download
+ * write the bytes the page holds rather than fetch anything. Not offered
+ * while the file is still being read in, or when reading it failed.
+ */
+export function useDraftAttachmentMenu({
+  onPreview,
+  onRemove,
+}: {
+  onPreview?: (id: string) => void;
+  onRemove: (id: string) => void;
+}): {
+  openDraftAttachmentMenu: (e: React.MouseEvent, item: DraftAttachment) => void;
+  draftAttachmentMenu: React.ReactNode;
+} {
+  const t = useMailT();
+  const [at, setAt] = React.useState<{
+    x: number;
+    y: number;
+    item: DraftAttachment;
+  } | null>(null);
+  const openDraftAttachmentMenu = React.useCallback(
+    (e: React.MouseEvent, item: DraftAttachment) => {
+      if (item.progress != null || !item.contentBase64 || item.error) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setAt({ x: e.clientX, y: e.clientY, item });
+    },
+    []
+  );
+  const dismiss = React.useCallback(() => setAt(null), []);
+  const draftAttachmentMenu = at ? (
+    <MenuShell x={at.x} y={at.y} label={at.item.filename} onDismiss={dismiss}>
+      <div
+        className="max-w-[min(24rem,calc(100vw-1rem))] truncate px-3 pb-1.5 pt-1 text-xs text-stone-500"
+        title={at.item.filename}
+      >
+        {at.item.filename}
+      </div>
+      <div className="mb-1 border-t border-stone-200" />
+      {onPreview ? (
+        <button
+          type="button"
+          role="menuitem"
+          className={MENU_ITEM}
+          onClick={() => {
+            dismiss();
+            onPreview(at.item.id);
+          }}
+        >
+          <Eye className={MENU_ICON} aria-hidden />
+          {t("previewFile")}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          void saveDraftAttachment(at.item, true);
+        }}
+      >
+        <ExternalLink className={MENU_ICON} aria-hidden />
+        {t("open")}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          void saveDraftAttachment(at.item, false);
+        }}
+      >
+        <Download className={MENU_ICON} aria-hidden />
+        {t("download")}
+      </button>
+      <div className="my-1 border-t border-stone-200" />
+      <button
+        type="button"
+        role="menuitem"
+        className={MENU_ITEM}
+        onClick={() => {
+          dismiss();
+          onRemove(at.item.id);
+        }}
+      >
+        <X className={MENU_ICON} aria-hidden />
+        {t("remove")}
+      </button>
+    </MenuShell>
+  ) : null;
+  return { openDraftAttachmentMenu, draftAttachmentMenu };
 }
 
 /** Files on a received message: uniform tiles, and a way to take them all. */
@@ -499,12 +897,26 @@ export function MessageAttachmentChips({
 }) {
   const t = useMailT();
   const [saving, setSaving] = React.useState(false);
+  const { openAttachmentMenu, attachmentMenu } = useAttachmentMenu();
   if (!attachments.length) return null;
   const savable = attachments.filter(
     (a) => !a.attachmentId.startsWith("local-")
   );
+  /*
+    The bubble sizes to its words, and to these tiles: a flex row that
+    wraps asks for all its tiles in one line, and the bubble grows to
+    that or to the pane, whichever is less, so the files sit abreast
+    rather than in one long column under a short note. Capped at three
+    tiles across, which is as wide as a row of files should get.
+  */
+  const tiles = attachments.length + (savable.length > 1 ? 1 : 0);
+  const columns = Math.min(3, Math.max(1, tiles));
+  const wanted = columns * 184 + (columns - 1) * 8;
   return (
-    <div className="mt-1 flex flex-wrap items-start gap-2">
+    <div
+      className="mail-attachment-grid mt-1 flex flex-wrap items-start gap-2"
+      style={{ maxWidth: `${wanted}px` }}
+    >
       {attachments.map((att) => (
         <AttachmentTile
           key={att.attachmentId}
@@ -512,15 +924,21 @@ export function MessageAttachmentChips({
           messageId={messageId}
           attachment={att}
           onPreview={() => onPreview(att)}
+          onMenu={openAttachmentMenu}
         />
       ))}
+      {attachmentMenu}
       {savable.length > 1 ? (
         /* In the flow with the tiles, so it takes the gap the last row
-           leaves rather than a line of its own. */
+           leaves rather than a line of its own. Where the box is too
+           narrow for two tiles the files stack in one column, the gap it
+           was made for does not exist, and a tile-sized button is a tile
+           of empty air — the container query in mail.css folds it to a
+           compact row there. */
         <button
           type="button"
           disabled={saving}
-          className="flex h-[152px] w-[184px] flex-col items-center justify-center gap-1.5 rounded-xl text-sm font-medium text-teal-700 transition hover:bg-teal-50/60 disabled:opacity-60"
+          className="mail-download-all-tile flex h-[152px] w-[184px] flex-col items-center justify-center gap-1.5 rounded-xl text-sm font-medium text-teal-700 transition hover:bg-teal-50/60 disabled:opacity-60"
           onClick={() => {
             setSaving(true);
             void downloadAllAttachments(
@@ -560,6 +978,7 @@ export function ThreadAttachmentsRollup({
 }) {
   const t = useMailT();
   const [saving, setSaving] = React.useState(false);
+  const { openAttachmentMenu, attachmentMenu } = useAttachmentMenu();
   if (!items.length) return null;
   const calendarOnly = items.every((item) =>
     isCalendarAttachment(item.attachment)
@@ -578,11 +997,20 @@ export function ThreadAttachmentsRollup({
   const savable = items.filter(
     (item) => !item.attachment.attachmentId.startsWith("local-")
   );
+  const chipLabel = calendarOnly
+    ? items.length === 1
+      ? t("inviteCountOne")
+      : t("inviteCountMany", { count: items.length })
+    : items.length === 1
+      ? t("attachmentCountOne")
+      : t("attachmentCountMany", { count: items.length });
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
+          title={chipLabel}
+          aria-label={chipLabel}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 hover:border-stone-300 hover:bg-stone-50"
         >
           {calendarOnly ? (
@@ -590,13 +1018,7 @@ export function ThreadAttachmentsRollup({
           ) : (
             <Paperclip className="h-3.5 w-3.5" />
           )}
-          {calendarOnly
-            ? items.length === 1
-              ? t("inviteCountOne")
-              : t("inviteCountMany", { count: items.length })
-            : items.length === 1
-              ? t("attachmentCountOne")
-              : t("attachmentCountMany", { count: items.length })}
+          {items.length}
         </button>
       </PopoverTrigger>
       <MailPopoverContent align="end" className="w-80 p-2">
@@ -637,8 +1059,33 @@ export function ThreadAttachmentsRollup({
             <li key={`${messageId}:${attachment.attachmentId}`}>
               <button
                 type="button"
+                {...(attachment.attachmentId.startsWith("local-")
+                  ? null
+                  : attachmentDragProps({
+                      path: attachmentUrl({
+                        account,
+                        messageId,
+                        attachment,
+                        download: true,
+                      }),
+                      filename: attachment.filename,
+                      mimeType: attachment.mimeType,
+                    }))}
                 className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-stone-50"
                 onClick={() => onPreview(messageId, attachment)}
+                onContextMenu={(e) => {
+                  if (attachment.attachmentId.startsWith("local-")) return;
+                  openAttachmentMenu(e, {
+                    path: attachmentUrl({
+                      account,
+                      messageId,
+                      attachment,
+                      download: true,
+                    }),
+                    filename: attachment.filename,
+                    onPreview: () => onPreview(messageId, attachment),
+                  });
+                }}
               >
                 <TypeBadge filename={attachment.filename} />
                 <span className="min-w-0 flex-1">
@@ -654,6 +1101,7 @@ export function ThreadAttachmentsRollup({
           ))}
         </ul>
       </MailPopoverContent>
+      {attachmentMenu}
     </Popover>
   );
 }
@@ -663,30 +1111,183 @@ export function AttachmentPreviewDialog({
   account,
   messageId,
   attachment,
+  siblings,
+  onSelect,
   onClose,
 }: {
   account: string;
   messageId: string;
   attachment: MailAttachment | null;
+  /** The message's other files, for stepping through without closing. */
+  siblings?: MailAttachment[];
+  onSelect?: (attachment: MailAttachment) => void;
   onClose: () => void;
 }) {
+  /*
+    One file, or a walk through the message's files: with siblings and a
+    way to choose, the arrows and the arrow keys step through them, the
+    way every viewer of a message with three screenshots is expected to.
+  */
+  const index =
+    attachment && siblings
+      ? siblings.findIndex((a) => a.attachmentId === attachment.attachmentId)
+      : -1;
+  const canStep = Boolean(onSelect && siblings && siblings.length > 1);
+  const step = React.useCallback(
+    (by: number) => {
+      if (!canStep || !siblings || index < 0) return;
+      const next = siblings[(index + by + siblings.length) % siblings.length];
+      onSelect?.(next);
+    },
+    [canStep, siblings, index, onSelect]
+  );
+
   React.useEffect(() => {
     if (!attachment) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [attachment, onClose]);
+  }, [attachment, onClose, step]);
 
   if (!attachment) return null;
   return (
-    <AttachmentPreviewBody
-      account={account}
-      messageId={messageId}
-      attachment={attachment}
-      onClose={onClose}
-    />
+    <>
+      <AttachmentPreviewBody
+        account={account}
+        messageId={messageId}
+        attachment={attachment}
+        onClose={onClose}
+      />
+      {canStep ? (
+        <PreviewStepChrome
+          index={index}
+          count={siblings?.length ?? 0}
+          step={step}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The arrows, and the "2 / 5" that says where the walk is.
+ *
+ * Drawn over the dark margin the preview leaves round the document, on both
+ * sides, where every image viewer puts them.
+ */
+function PreviewStepChrome({
+  index,
+  count,
+  step,
+}: {
+  index: number;
+  count: number;
+  step: (by: number) => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Previous file"
+        className="fixed left-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-stone-900/50 p-2 text-white hover:bg-stone-900/70"
+        onClick={(e) => {
+          e.stopPropagation();
+          step(-1);
+        }}
+      >
+        <ChevronLeft className="h-5 w-5" aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label="Next file"
+        className="fixed right-3 top-1/2 z-[90] -translate-y-1/2 rounded-full bg-stone-900/50 p-2 text-white hover:bg-stone-900/70"
+        onClick={(e) => {
+          e.stopPropagation();
+          step(1);
+        }}
+      >
+        <ChevronRight className="h-5 w-5" aria-hidden />
+      </button>
+      <span className="fixed bottom-4 left-1/2 z-[90] -translate-x-1/2 rounded-full bg-stone-900/50 px-2.5 py-0.5 text-xs text-white">
+        {index + 1} / {count}
+      </span>
+    </>
+  );
+}
+
+/**
+ * The same preview, for a file that is still being written into a draft.
+ *
+ * A draft attachment's bytes are already in memory — the strip read them to
+ * send them — so the preview is a data URL and no host seam is involved.
+ * Open and Download make no sense for a file the writer just picked off
+ * their own disk, so the body hides them.
+ */
+export function DraftAttachmentPreviewDialog({
+  items,
+  previewId,
+  onSelect,
+  onClose,
+}: {
+  items: DraftAttachment[];
+  previewId: string | null;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const openable = items.filter((a) => a.contentBase64 && !a.error);
+  const index = previewId
+    ? openable.findIndex((a) => a.id === previewId)
+    : -1;
+  const item = index >= 0 ? openable[index] : null;
+  const step = React.useCallback(
+    (by: number) => {
+      if (index < 0 || openable.length < 2) return;
+      onSelect(openable[(index + by + openable.length) % openable.length].id);
+    },
+    [index, openable, onSelect]
+  );
+
+  React.useEffect(() => {
+    if (!item) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [item, onClose, step]);
+
+  // Rebuilt only when the file changes: the string copies the whole file.
+  const localSrc = React.useMemo(
+    () =>
+      item ? `data:${item.mimeType};base64,${item.contentBase64}` : null,
+    [item]
+  );
+
+  if (!item || !localSrc) return null;
+  return (
+    <>
+      <AttachmentPreviewBody
+        account=""
+        messageId=""
+        attachment={{
+          attachmentId: item.id,
+          filename: item.filename,
+          mimeType: item.mimeType,
+          size: item.size,
+        }}
+        localSrc={localSrc}
+        onClose={onClose}
+      />
+      {openable.length > 1 ? (
+        <PreviewStepChrome index={index} count={openable.length} step={step} />
+      ) : null}
+    </>
   );
 }
 
@@ -719,17 +1320,26 @@ function AttachmentPreviewBody({
   account,
   messageId,
   attachment,
+  localSrc,
   onClose,
 }: {
   account: string;
   messageId: string;
   attachment: MailAttachment;
+  /**
+   * Bytes already in hand, as a URL the browser can load. Set for a draft
+   * attachment, whose file never came from a mailbox; the host seam and
+   * the Open / Download row both stand down.
+   */
+  localSrc?: string;
   onClose: () => void;
 }) {
   const t = useMailT();
-  const { url: src, error } = useAttachmentSourceState(
-    attachmentUrl({ account, messageId, attachment })
+  const sourceState = useAttachmentSourceState(
+    localSrc ? null : attachmentUrl({ account, messageId, attachment })
   );
+  const src = localSrc ?? sourceState.url;
+  const error = localSrc ? null : sourceState.error;
   const download = attachmentDownloadProps({
     path: attachmentUrl({ account, messageId, attachment, download: true }),
     filename: attachment.filename,
@@ -842,7 +1452,7 @@ function AttachmentPreviewBody({
     };
     const onScale = (event: Event) => {
       event.stopImmediatePropagation();
-      byRatio((event as CustomEvent<number>).detail);
+      byRatio(readMailPinch(event).value);
     };
     let gestureScale = 1;
     const onGestureStart = (event: Event) => {
@@ -952,31 +1562,35 @@ function AttachmentPreviewBody({
           {/* A way through that does not depend on the frame below.
               On the desktop app the file is written out and handed to
               whatever the reader opens PDFs with. */}
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
-            onClick={() =>
-              openAttachmentOutside({
-                path: attachmentUrl({
-                  account,
-                  messageId,
-                  attachment,
-                  download: true,
-                }),
-                filename: attachment.filename,
-              })
-            }
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-              {t("open")}
-            </button>
-          <a
-            {...download}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
-          >
-            <Download className="h-3.5 w-3.5" />
-              {t("download")}
-            </a>
+          {localSrc ? null : (
+            <>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                onClick={() =>
+                  openAttachmentOutside({
+                    path: attachmentUrl({
+                      account,
+                      messageId,
+                      attachment,
+                      download: true,
+                    }),
+                    filename: attachment.filename,
+                  })
+                }
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {t("open")}
+              </button>
+              <a
+                {...download}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {t("download")}
+              </a>
+            </>
+          )}
           <button
             type="button"
             aria-label={t("close")}
@@ -1108,15 +1722,98 @@ function DraftAttachmentThumb({ item }: { item: DraftAttachment }) {
 export function DraftAttachmentChips({
   items,
   onRemove,
+  onPreview,
   className,
+  docked = false,
 }: {
   items: DraftAttachment[];
   onRemove: (id: string) => void;
+  /** Open this file in the preview. A chip without one is not clickable. */
+  onPreview?: (id: string) => void;
   /** For a composer that frames the files itself, rather than ruling them off. */
   className?: string;
+  /**
+   * Small pills for the composer's pinned foot, in a strip right above
+   * Send and beside the paperclip that added them. The cards used to sit
+   * at the end of the body, where a long reply scrolled them out of view
+   * and a file was attached twice for want of seeing it once.
+   */
+  docked?: boolean;
 }) {
   const t = useMailT();
+  const { openDraftAttachmentMenu, draftAttachmentMenu } =
+    useDraftAttachmentMenu({ onPreview, onRemove });
   if (!items.length) return null;
+  if (docked) {
+    return (
+      /* Two rows at most, then the strip scrolls inside itself. Five files
+         wrapped to three rows and pushed the Send row out of the box. */
+      <div
+        className={cn(
+          "flex max-h-[4.6rem] flex-wrap content-start items-center gap-1.5 overflow-y-auto",
+          className
+        )}
+      >
+        {draftAttachmentMenu}
+        {items.map((att) => {
+          const uploading = att.progress != null;
+          const openable = Boolean(onPreview && att.contentBase64 && !att.error);
+          const ext = fileExtension(att.filename);
+          return (
+            <div
+              key={att.id}
+              className={cn(
+                "inline-flex h-8 max-w-[280px] items-center gap-2 rounded-full border bg-white pl-1.5 pr-1 text-xs",
+                uploading ? "border-dashed border-stone-300" : "border-stone-200",
+                att.error && "border-red-200 bg-red-50/40",
+                openable && "cursor-pointer hover:border-stone-300"
+              )}
+              role={openable ? "button" : undefined}
+              tabIndex={openable ? 0 : undefined}
+              title={att.error ?? att.filename}
+              onClick={openable ? () => onPreview?.(att.id) : undefined}
+              onContextMenu={(e) => openDraftAttachmentMenu(e, att)}
+              onKeyDown={
+                openable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onPreview?.(att.id);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <span
+                className={cn(
+                  "inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-[10px] font-bold tracking-wide",
+                  badgeTone(ext)
+                )}
+              >
+                {uploading ? <Paperclip className="h-3 w-3" /> : ext}
+              </span>
+              <span className="min-w-0 truncate font-medium text-stone-800">{att.filename}</span>
+              <span className="shrink-0 tabular-nums text-stone-400">
+                {uploading ? `${att.progress}%` : att.error ?? formatFileSize(att.size)}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove ${att.filename}`}
+                title={t("remove")}
+                className="rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(att.id);
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -1124,8 +1821,12 @@ export function DraftAttachmentChips({
         className
       )}
     >
+      {draftAttachmentMenu}
       {items.map((att) => {
         const uploading = att.progress != null;
+        const openable = Boolean(
+          onPreview && att.contentBase64 && !att.error
+        );
         return (
           <div
             key={att.id}
@@ -1134,8 +1835,24 @@ export function DraftAttachmentChips({
               uploading
                 ? "border-dashed border-stone-300"
                 : "border-stone-200",
-              att.error && "border-red-200 bg-red-50/40"
+              att.error && "border-red-200 bg-red-50/40",
+              openable && "cursor-pointer hover:border-stone-300"
             )}
+            role={openable ? "button" : undefined}
+            tabIndex={openable ? 0 : undefined}
+            title={openable ? att.filename : undefined}
+            onClick={openable ? () => onPreview?.(att.id) : undefined}
+            onContextMenu={(e) => openDraftAttachmentMenu(e, att)}
+            onKeyDown={
+              openable
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onPreview?.(att.id);
+                    }
+                  }
+                : undefined
+            }
           >
             {uploading ? (
               <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
@@ -1173,7 +1890,10 @@ export function DraftAttachmentChips({
               aria-label={`Remove ${att.filename}`}
               title={t("remove")}
               className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-              onClick={() => onRemove(att.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(att.id);
+              }}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -1241,14 +1961,20 @@ export function AttachToolbarButton({
 export function DraftAttachmentThumbs({
   items,
   onRemove,
+  onPreview,
 }: {
   items: DraftAttachment[];
   onRemove: (id: string) => void;
+  /** Open this file in the preview. A tile without one is not clickable. */
+  onPreview?: (id: string) => void;
 }) {
   const t = useMailT();
+  const { openDraftAttachmentMenu, draftAttachmentMenu } =
+    useDraftAttachmentMenu({ onPreview, onRemove });
   if (!items.length) return null;
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+      {draftAttachmentMenu}
       {items.map((att) => {
         const image = isImageMime(att.mimeType, att.filename);
         const src =
@@ -1256,14 +1982,32 @@ export function DraftAttachmentThumbs({
             ? `data:${att.mimeType};base64,${att.contentBase64}`
             : null;
         const reading = att.progress != null;
+        const openable = Boolean(
+          onPreview && att.contentBase64 && !att.error
+        );
         return (
           <div
             key={att.id}
             className={cn(
               "relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border bg-stone-100",
-              att.error ? "border-red-300" : "border-stone-200"
+              att.error ? "border-red-300" : "border-stone-200",
+              openable && "cursor-pointer"
             )}
             title={`${att.filename} · ${formatFileSize(att.size)}`}
+            role={openable ? "button" : undefined}
+            tabIndex={openable ? 0 : undefined}
+            onClick={openable ? () => onPreview?.(att.id) : undefined}
+            onContextMenu={(e) => openDraftAttachmentMenu(e, att)}
+            onKeyDown={
+              openable
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onPreview?.(att.id);
+                    }
+                  }
+                : undefined
+            }
           >
             {src ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1285,7 +2029,10 @@ export function DraftAttachmentThumbs({
               type="button"
               title={t("remove")}
               aria-label={`Remove ${att.filename}`}
-              onClick={() => onRemove(att.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(att.id);
+              }}
               className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-stone-900/60 text-white backdrop-blur transition-colors hover:bg-stone-900/80"
             >
               <X className="h-3 w-3" />
@@ -1345,28 +2092,117 @@ export function ComposerDropOverlay({ visible }: { visible: boolean }) {
  *
  * A paste carrying no file is not touched, so pasting text is unaffected.
  */
-export function useComposerPaste(onFiles: (files: File[]) => void) {
+/**
+ * What a paste into the composer does with what it is carrying.
+ *
+ * A picture goes into the message where the caret is. Everything else is
+ * hung off the end as a file. Pasting a screenshot and watching it land as
+ * `image.png` beside the message — rather than in the sentence being written
+ * about it — is the thing every other mail app gets right.
+ *
+ * `onImage` is optional: a composer with no editor to insert into (or one
+ * that has not mounted yet) keeps the old behaviour, which is a file.
+ */
+export function useComposerPaste(
+  onFiles: (files: File[]) => void,
+  onImage?: (dataUrl: string) => boolean | void
+) {
   const onPasteCapture = (event: React.ClipboardEvent) => {
     const files = clipboardAttachments(event.clipboardData);
     if (!files.length) return;
     event.preventDefault();
     event.stopPropagation();
-    onFiles(files);
+
+    if (!onImage) {
+      onFiles(files);
+      return;
+    }
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    const rest = files.filter((f) => !f.type.startsWith("image/"));
+    if (rest.length) onFiles(rest);
+    for (const image of images) {
+      // Read then insert, in the order they were pasted. A reader is async,
+      // so each waits for its own — two screenshots pasted at once must not
+      // land back to front.
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = typeof reader.result === "string" ? reader.result : "";
+        // Refused — too big to write into a message, say — so it goes the
+        // way it always went rather than nowhere at all.
+        if (url && onImage(url) === false) onFiles([image]);
+      };
+      reader.onerror = () => onFiles([image]);
+      reader.readAsDataURL(image);
+    }
   };
   return { pasteHandlers: { onPasteCapture } };
 }
 
+/**
+ * The element the message is written in, from whatever the pointer is over.
+ *
+ * Quill's own class, the same way both composers find the editor to focus
+ * it. The body is the one region of the card where a picture goes into the
+ * words rather than onto the end of the message.
+ */
+function overMessageBody(target: EventTarget | null): boolean {
+  return Boolean(
+    target instanceof Element && target.closest(".ql-editor") !== null
+  );
+}
+
+/** A file as a `data:` URI, or an empty string when it cannot be read. */
+function readDataUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * What a file dragged onto the composer does.
+ *
+ * A picture dropped in the message goes into the message, where it was
+ * dropped. The overlay stays away while it is over the words, because the
+ * writer is aiming at a place in a sentence and the overlay both hides the
+ * sentence and says the wrong thing about what the drop will do. Over the
+ * subject, the addresses, the signature or the buttons there is no place
+ * to aim at, so the overlay comes back and the picture is attached.
+ *
+ * Every file that is not a picture is an attachment, wherever it lands. A
+ * PDF has nothing to show inside a sentence.
+ *
+ * `intoBody` is optional. A composer that gives none keeps the old
+ * behaviour, which is to attach whatever is dropped anywhere on it.
+ */
 export function useComposerFileDrop(
-  onFiles: (files: FileList | File[]) => void
+  onFiles: (files: FileList | File[]) => void,
+  intoBody?: {
+    /** Move the caret to the pointer. False when it is not in the text. */
+    caretToPoint: (clientX: number, clientY: number) => boolean;
+    /** Write the picture in at the caret. False when it cannot go in. */
+    insert: (dataUrl: string) => boolean | void;
+  }
 ) {
   const [dragging, setDragging] = React.useState(false);
   const depth = React.useRef(0);
+
+  /** Whether this drag goes into the words rather than onto the message. */
+  const goesInline = (e: React.DragEvent) =>
+    Boolean(
+      intoBody &&
+        overMessageBody(e.target) &&
+        dragCarriesOnlyImages(e.dataTransfer.items)
+    );
 
   const onDragEnter = (e: React.DragEvent) => {
     if (![...e.dataTransfer.types].includes("Files")) return;
     e.preventDefault();
     depth.current += 1;
-    setDragging(true);
+    setDragging(!goesInline(e));
   };
   const onDragLeave = (e: React.DragEvent) => {
     if (![...e.dataTransfer.types].includes("Files")) return;
@@ -1378,13 +2214,38 @@ export function useComposerFileDrop(
     if (![...e.dataTransfer.types].includes("Files")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+    // Every move, because the pointer crosses from the words to the rest of
+    // the card and back. The caret follows it while it is over the words.
+    const inline = goesInline(e);
+    setDragging(!inline);
+    if (inline) intoBody?.caretToPoint(e.clientX, e.clientY);
   };
   const onDrop = (e: React.DragEvent) => {
     if (![...e.dataTransfer.types].includes("Files")) return;
     e.preventDefault();
+    const inline = goesInline(e);
+    const files = [...(e.dataTransfer.files ?? [])];
     depth.current = 0;
     setDragging(false);
-    if (e.dataTransfer.files?.length) onFiles(e.dataTransfer.files);
+    if (!files.length) return;
+    if (!inline || !intoBody) {
+      onFiles(files);
+      return;
+    }
+    // Where it was dropped, before anything is read: a reader is async, and
+    // by the time it answers the pointer is gone.
+    if (!intoBody.caretToPoint(e.clientX, e.clientY)) {
+      onFiles(files);
+      return;
+    }
+    void (async () => {
+      for (const file of files) {
+        const url = await readDataUrl(file);
+        // Refused — too big to write into a message, say — so it goes the
+        // way it always went rather than nowhere at all.
+        if (!url || intoBody.insert(url) === false) onFiles([file]);
+      }
+    })();
   };
 
   return {

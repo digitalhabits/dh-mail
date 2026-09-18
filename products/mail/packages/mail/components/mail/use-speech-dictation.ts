@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { mailSay } from "@/lib/mail/i18n";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 type BrowserSpeechRecognition = {
   continuous: boolean;

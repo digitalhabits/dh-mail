@@ -15,7 +15,7 @@ Universities of Oxford, Maastricht, Copenhagen, and Santa Clara (see [digitalhab
 > It is published so the code can be read and checked. Issues are welcome; see
 > the note on pull requests at the end.
 
-![The inbox, with one message open and nothing else asking to be read](apps/mail/docs/screenshots/inbox.png)
+![The inbox, with no message open and nothing else asking to be read](apps/mail/docs/screenshots/inbox.png)
 
 ## Why
 
@@ -67,16 +67,29 @@ read it:
 ![Writing a message, with the formatting controls in one row under the text](apps/mail/docs/screenshots/compose.png)
 
 <p align="center">
-  <em>Writing a message. The six controls worth a click sit in one row; font,
-  size, colour and highlight wait behind the Aa, where they are out of the way
-  of the writing.</em>
+  <em>Writing a message. The few controls worth a click sit in one row. Lists,
+  font, size, colour and highlight wait behind the Aa, where they are out of
+  the way of the writing.</em>
 </p>
 
 ## How it works
 
-A macOS app that reads Gmail and Outlook directly from the machine it runs on.
-Messages are kept in a local SQLite file and refresh tokens in the macOS
-keychain; no server of ours sits in between.
+A desktop app for macOS and Windows that reads Gmail and Outlook directly from
+the machine it runs on. No server of ours sits in between.
+
+- **Gmail** is read over IMAP and sent over SMTP, with an OAuth token
+  (SASL XOAUTH2). See `products/mail/crates/mail-native/src/imap.rs` and
+  `smtp.rs`. This is why the app asks Google for the full-mailbox scope: it
+  is the only scope Gmail's IMAP and SMTP servers accept. The Gmail REST API
+  is used for the out-of-office reply and the send-as name, and for a mailbox
+  whose local copy is not yet complete.
+- **Outlook** is read and sent through Microsoft Graph.
+- The app keeps a local copy of each mailbox in a SQLite file on your machine.
+- Refresh tokens are kept in the operating system's store: the keychain on
+  macOS, Credential Manager on Windows.
+
+[SECURITY.md](SECURITY.md) lists every host the app talks to and every
+permission it asks for, with the file that does it.
 
 Extracted from a private monorepo, so the directory layout is the monorepo's.
 That is deliberate: `vite.config.ts`, `build-aliases.mjs` and `tsconfig.json`
@@ -84,25 +97,43 @@ are copied unmodified, so this builds the way the released app builds.
 
 ## Building
 
-Needs Node 20, pnpm 9, and a Rust toolchain with Xcode command line tools.
+Needs Node 20 or later, pnpm 9, and a Rust toolchain. On macOS it also needs the Xcode
+command line tools. On Windows it needs the MSVC build tools.
 
 ```
 pnpm install
-pnpm --dir apps/mail app:standalone:dev     # run it
+pnpm --dir apps/mail app:dev:demo           # run it with an invented mailbox
+pnpm --dir apps/mail app:dev                # run it with your own mailboxes
 pnpm --dir apps/mail test                   # the suites
 pnpm --dir apps/mail typecheck
-cd apps/mail/src-tauri && cargo test --lib  # the store, OAuth, attachments
+cd products/mail/crates/mail-native && cargo test --lib   # IMAP, SMTP, the store, OAuth
 ```
 
-You will need your own OAuth clients — see `apps/mail/.env.example`. A Google
-client of type "Desktop app", and a Microsoft Entra registration with a
-"Mobile and desktop applications" platform on `http://localhost`. Both are
-free, and neither has to be verified to sign in to your own mailbox.
+The release builds are `pnpm --dir apps/mail app:build` on macOS and
+`pnpm --dir apps/mail app:build:win` on Windows. They sign the app only when
+the signing credentials are in the environment. Without them the build is
+unsigned.
+
+To sign in to a mailbox you need your own OAuth clients. Put them in
+`apps/mail/.env.local`:
+
+```
+VITE_GOOGLE_CLIENT_ID=
+VITE_GOOGLE_CLIENT_SECRET=
+VITE_MICROSOFT_CLIENT_ID=
+```
+
+The Google client is of type "Desktop app". The Microsoft one is an Entra
+registration with a "Mobile and desktop applications" platform on
+`http://localhost`. Both are free. Neither has to be verified to sign in to
+your own mailbox. The demo mailbox needs none of them.
 
 ## What is here
 
 - `apps/mail` — the desktop app: the Tauri shell in `src-tauri`, and the seams
   in `src/seams` that make the mail interface run with no server behind it
+- `products/mail/crates/mail-native` — the Rust core: IMAP, SMTP, MIME, the
+  sync loop, the local store, OAuth and the keychain
 - `products/mail/packages/mail` — the mail interface and the logic under it
 - `packages/shared` — code that the monorepo this came from also uses elsewhere
 

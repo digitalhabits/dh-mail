@@ -16,7 +16,9 @@ import * as React from "react";
 import {
   MAIL_PINCH_SCALE_EVENT,
   MAIL_PINCH_WHEEL_EVENT,
-} from "@/components/mail/EmailHtmlView";
+  readMailPinch,
+} from "@/lib/mail/pinch";
+import { startPointerDrag } from "@/lib/pointer-drag";
 import {
   getMailListPlacement,
   MAIL_LIST_PLACEMENT_EVENT,
@@ -46,6 +48,19 @@ export const MIN_READER_WIDTH = 240;
  * padding; not meant for free resize between this and MIN_LIST_WIDTH.
  */
 export const NARROW_LIST_WIDTH = 56;
+/**
+ * Least list width at which a thread still reads as one line.
+ *
+ * Below this the row stacks again. The number is in rem so it grows with
+ * the reader's text size. Width chooses the layout. The row is the same.
+ */
+export const WIDE_LIST_ROW_REMS = 40;
+
+export function wideListRowMinPx(): number {
+  if (typeof document === "undefined") return WIDE_LIST_ROW_REMS * 16;
+  const root = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return WIDE_LIST_ROW_REMS * (Number.isFinite(root) && root > 0 ? root : 16);
+}
 /** Outward drag (px) from the rail that restores a normal list width. */
 const NARROW_ESCAPE_PX = 20;
 export const MIN_LIST_HEIGHT = 160;
@@ -74,6 +89,108 @@ const MAIL_COMPOSER_WIDTH_KEY = "redd-plan-mail-composer-width-pct";
 const MIN_COMPOSER_PCT = 40;
 const MAX_COMPOSER_PCT = 100;
 const DEFAULT_COMPOSER_PCT = 82;
+const MAIL_COMPOSER_HEIGHT_KEY = "redd-plan-mail-composer-height-px";
+/** Two lines and the room to see they are two. */
+const MIN_COMPOSER_HEIGHT = 80;
+const MAX_COMPOSER_HEIGHT = 900;
+export const DEFAULT_COMPOSER_HEIGHT = 80;
+
+/**
+ * How tall the reply box is, dragged by its top edge and remembered.
+ *
+ * The box grew with what was typed and started at two lines, and the only
+ * way to more room was the button that takes the whole pane. A long reply
+ * wants a bigger box without giving up the conversation above it, so the
+ * top edge is a handle, the way the sides already are.
+ *
+ * Pixels rather than a percentage: this is a number of lines to write in,
+ * and lines do not get taller because the window did. The ceiling at the
+ * drag is the pane itself, so the box cannot be dragged past the top of
+ * what it is being written under.
+ */
+export function useComposerHeightPx(): {
+  height: number;
+  /**
+   * True once the reader has said what the height is — by dragging now, or
+   * by dragging on some earlier day and having it remembered.
+   *
+   * It decides whether the height is a floor or the height. Untouched, the
+   * box is at least this tall and grows with what is written in it, which
+   * is what a composer should do before anybody has an opinion. Dragged, it
+   * is exactly this tall and the words scroll inside it — which is the only
+   * way a box can be made smaller than what it holds.
+   */
+  set: boolean;
+  startResize: (event: React.PointerEvent) => void;
+} {
+  const [height, setHeight] = React.useState(DEFAULT_COMPOSER_HEIGHT);
+  const [set, setSet] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const stored = Number.parseFloat(
+        localStorage.getItem(MAIL_COMPOSER_HEIGHT_KEY) ?? ""
+      );
+      if (
+        Number.isFinite(stored) &&
+        stored >= MIN_COMPOSER_HEIGHT &&
+        stored <= MAX_COMPOSER_HEIGHT
+      ) {
+        setHeight(stored);
+        setSet(true);
+      }
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  const startResize = React.useCallback(
+    (event: React.PointerEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const handle = event.currentTarget as HTMLElement;
+      // The pane the composer sits in, so the box cannot be dragged taller
+      // than the thread it is being written under. Two thirds of it: the
+      // rest is the conversation, which is the reason not to be in focus
+      // mode in the first place.
+      const pane = handle.closest(".mail-thread-surface");
+      const ceiling = pane
+        ? Math.min(MAX_COMPOSER_HEIGHT, Math.round(pane.clientHeight * 0.66))
+        : MAX_COMPOSER_HEIGHT;
+      const startY = event.clientY;
+      const startHeight = height;
+      const clamp = (dy: number) =>
+        Math.min(
+          Math.max(ceiling, MIN_COMPOSER_HEIGHT),
+          Math.max(MIN_COMPOSER_HEIGHT, startHeight - dy)
+        );
+
+      const onMove = (e: PointerEvent) => {
+        setSet(true);
+        setHeight(clamp(e.clientY - startY));
+      };
+      const onUp = (e: PointerEvent) => {
+        const final = clamp(e.clientY - startY);
+        setSet(true);
+        setHeight(final);
+        try {
+          localStorage.setItem(MAIL_COMPOSER_HEIGHT_KEY, String(final));
+        } catch {
+          /* private mode */
+        }
+      };
+
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "ns-resize", onMove, onEnd: onUp }
+      );
+    },
+    [height]
+  );
+
+  return { height, set, startResize };
+}
+
 /**
  * Reply-box width as a % of the reading pane, resizable by dragging its
  * edges; persisted across sessions. Message bubbles keep a fixed max width.
@@ -127,10 +244,6 @@ export function useComposerWidthPct(): {
         );
       };
       const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
         const dx = e.clientX - startX;
         const deltaPct = ((edge === "right" ? dx : -dx) / available) * 100;
         const finalPct = Math.min(
@@ -145,10 +258,10 @@ export function useComposerWidthPct(): {
         }
       };
 
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "col-resize", onMove, onEnd: onUp }
+      );
     },
     [pct]
   );
@@ -156,13 +269,23 @@ export function useComposerWidthPct(): {
   return { pct, startResize };
 }
 /** True when a double-click landed on a control (don't also toggle expand). */
-export function isInteractiveDoubleClickTarget(target: EventTarget | null): boolean {
+export function isInteractiveDoubleClickTarget(
+  target: EventTarget | null,
+  /**
+   * A container that is itself a control, and so does not count as one.
+   *
+   * A thread row is `role="button"`, so without this the test answers yes
+   * about every double click anywhere on a row — the row is the nearest
+   * control to everything inside it. What the caller wants to know is
+   * whether one of the row's own controls was hit.
+   */
+  container?: EventTarget | null
+): boolean {
   if (!(target instanceof Element)) return false;
-  return Boolean(
-    target.closest(
-      "button, a, input, select, textarea, label, [role='button'], [role='menuitem'], [role='option'], [contenteditable='true']"
-    )
+  const hit = target.closest(
+    "button, a, input, select, textarea, label, [role='button'], [role='menuitem'], [role='option'], [contenteditable='true']"
   );
+  return Boolean(hit) && hit !== container;
 }
 /**
  * Clamp a list size: snap-hide when tiny (if allowed), snap to an avatar rail
@@ -316,10 +439,6 @@ export function useMailListWidth(options: {
         if (size > 0) setWidth(size);
       };
       const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
 
         if (fromNarrow && !escapedNarrow) {
           const outward = dragSign * (e.clientX - startX);
@@ -363,10 +482,10 @@ export function useMailListWidth(options: {
         persistWidth(size);
       };
 
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "col-resize", onMove, onEnd: onUp }
+      );
     },
     [persistWidth, rememberNormalWidth, width]
   );
@@ -391,17 +510,13 @@ export function useMailListWidth(options: {
         setWidth(clamp(startWidth + (e.clientX - startX)));
       };
       const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
         persistWidth(clamp(startWidth + (e.clientX - startX)));
       };
 
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "col-resize", onMove, onEnd: onUp }
+      );
     },
     [persistWidth, width]
   );
@@ -458,10 +573,6 @@ export function useMailListHeight(options: {
         if (size > 0) setHeight(size);
       };
       const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
         const raw = startHeight + signed(e.clientY);
         const { size, collapsed } = clampListSize(
           raw,
@@ -483,10 +594,10 @@ export function useMailListHeight(options: {
         }
       };
 
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "row-resize", onMove, onEnd: onUp }
+      );
     },
     [height]
   );
@@ -537,10 +648,6 @@ export function useMailControlsWidth(): [number, (e: React.PointerEvent) => void
         setWidth(clamp(startWidth + (e.clientX - startX)));
       };
       const onUp = (e: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
         const next = clamp(startWidth + (e.clientX - startX));
         setWidth(next);
         try {
@@ -550,10 +657,10 @@ export function useMailControlsWidth(): [number, (e: React.PointerEvent) => void
         }
       };
 
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { cursor: "col-resize", onMove, onEnd: onUp }
+      );
     },
     [width]
   );
@@ -698,11 +805,21 @@ export function usePinchZoom(
   ref: React.RefObject<HTMLDivElement | null>,
   onAdjust: (delta: number) => void,
   /** The pane renders conditionally; re-attach once it exists. */
-  enabled: boolean
+  enabled: boolean,
+  /**
+   * Called with the pointer's y, in window pixels, before every step of a
+   * gesture. A pane that holds a place still while it resizes takes its
+   * reading here: the place is the one under the fingers, and this is the
+   * last moment it can be read at the old size. Null when the gesture says
+   * nothing about where it is.
+   */
+  onZoomStart?: (clientY: number | null) => void
 ) {
   const onAdjustRef = React.useRef(onAdjust);
+  const onZoomStartRef = React.useRef(onZoomStart);
   React.useEffect(() => {
     onAdjustRef.current = onAdjust;
+    onZoomStartRef.current = onZoomStart;
   });
 
   React.useEffect(() => {
@@ -710,13 +827,15 @@ export function usePinchZoom(
 
     // Continuous zoom: pinch movement maps onto the zoom value, no
     // stepping. See PINCH_DAMPING for how far a gesture goes.
-    const applyWheel = (deltaY: number) => {
+    const applyWheel = (deltaY: number, at: number | null) => {
       if (!Number.isFinite(deltaY) || deltaY === 0) return;
+      onZoomStartRef.current?.(at);
       onAdjustRef.current(-deltaY * 0.0025 * PINCH_DAMPING);
     };
 
-    const applyScaleRatio = (ratio: number) => {
+    const applyScaleRatio = (ratio: number, at: number | null) => {
       if (!Number.isFinite(ratio) || ratio <= 0) return;
+      onZoomStartRef.current?.(at);
       onAdjustRef.current((ratio - 1) * PINCH_DAMPING);
     };
 
@@ -755,7 +874,7 @@ export function usePinchZoom(
       if (!e.ctrlKey) return; // plain scrolling
       if (!eventOverPane(e)) return;
       e.preventDefault(); // keep the browser from zooming the whole page
-      applyWheel(e.deltaY);
+      applyWheel(e.deltaY, e.clientY);
     };
 
     let gestureScale = 1;
@@ -770,7 +889,10 @@ export function usePinchZoom(
       if (!gestureActive) return;
       e.preventDefault();
       const scale = (e as Event & { scale?: number }).scale ?? 1;
-      if (gestureScale > 0) applyScaleRatio(scale / gestureScale);
+      const at = (e as Event & { clientY?: number }).clientY;
+      if (gestureScale > 0) {
+        applyScaleRatio(scale / gestureScale, typeof at === "number" ? at : null);
+      }
       gestureScale = scale;
     };
     const onGestureEnd = () => {
@@ -780,11 +902,13 @@ export function usePinchZoom(
     // Iframe forwards + native Tauri magnify bridge — already scoped upstream.
     const onForwardedWheel = (e: Event) => {
       if (previewHasZoom()) return;
-      applyWheel((e as CustomEvent<number>).detail);
+      const d = readMailPinch(e);
+      applyWheel(d.value, d.y);
     };
     const onForwardedScale = (e: Event) => {
       if (previewHasZoom()) return;
-      applyScaleRatio((e as CustomEvent<number>).detail);
+      const d = readMailPinch(e);
+      applyScaleRatio(d.value, d.y);
     };
 
     const gestureOpts: AddEventListenerOptions = {

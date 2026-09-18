@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Entitlements for a build that carries a provisioning profile. Used only
+	  when src-tauri/embedded.provisionprofile exists; see KEYCHAIN.md in
+	  products/mail/crates/mail-native.
+
+	  keychain-access-groups is restricted: without the profile macOS kills
+	  the app at launch. With it, both apps read one set of tokens from the
+	  data-protection keychain, and the password dialog of the login
+	  keychain is gone.
+	-->
+	<key>com.apple.application-identifier</key>
+	<string>JD647S9RT6.org.digitalhabits.mail.internal</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>JD647S9RT6</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>JD647S9RT6.org.digitalhabits.mail</string>
+	</array>
+	<!-- Contacts, as in Entitlements.plist. -->
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+</dict>
+</plist>

@@ -28,9 +28,11 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { toast } from "sonner";
+import { Moon } from "lucide-react";
+import { toast } from "@/lib/mail/toast";
 
 import { AccountMark } from "@/components/mail/AccountMark";
+import { AutoReplyBadge } from "@/components/mail/AutoReplyMark";
 import {
   MarkMenu,
   fileToMark,
@@ -116,6 +118,18 @@ export function MailAccountTabs({
   onSelect,
   onReorder,
   onNavy = false,
+  /**
+   * A pick in a menu: the same tabs, without a drag and without the
+   * picture menu. The pause menu uses this so the row is the row, not a
+   * second place to rearrange mailboxes.
+   */
+  selectOnly = false,
+  /**
+   * Mailboxes that are not fetching. The key is the address in lower case,
+   * the value is the hover — when that mailbox wakes.
+   */
+  quietUntil,
+  autoReplyOn,
 }: {
   accounts: string[];
   labels: Map<string, AccountChipLabel>;
@@ -125,6 +139,13 @@ export function MailAccountTabs({
   /** The whole row, in its new order, after one has been dragged along it. */
   onReorder?: (accounts: string[]) => void;
   onNavy?: boolean;
+  selectOnly?: boolean;
+  quietUntil?: Map<string, string>;
+  /**
+   * Mailboxes answering on their own. The key is the address in lower case,
+   * the value is the hover — which mailbox, and until when.
+   */
+  autoReplyOn?: Map<string, string>;
 }) {
   const t = useMailT();
   const marks = useAccountMarks();
@@ -217,11 +238,130 @@ export function MailAccountTabs({
   */
   const tab = (active: boolean) =>
     cn(
-      "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] transition-colors",
+      // `relative`: the out-of-office badge sits on the tab's own corner.
+      "relative flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] transition-colors",
       active
         ? "bg-[var(--mail-segment-active)] font-semibold text-[var(--mail-segment-active-fg)] shadow-sm"
         : "text-[var(--mail-segment-fg)] hover:text-[var(--mail-segment-active-fg)]"
     );
+
+  const renderTab = (id: string, sortable: boolean) => {
+    if (id === ALL_TAB_ID) {
+      const inner = (
+        <>
+          <AccountMark provider="unknown" className="h-3.5 w-3.5" />
+          {t("tabAll")}
+        </>
+      );
+      if (!sortable) {
+        return (
+          <button
+            key={ALL_TAB_ID}
+            type="button"
+            title={t("allMailboxes")}
+            aria-pressed={allMailboxes}
+            className={tab(allMailboxes)}
+            onClick={() => onSelect([])}
+          >
+            {inner}
+          </button>
+        );
+      }
+      return (
+        <SortableAccountTab
+          key={ALL_TAB_ID}
+          email={ALL_TAB_ID}
+          title={t("allMailboxes")}
+          className={tab(allMailboxes)}
+          pressed={allMailboxes}
+          suppressClick={suppressClick}
+          onSelect={() => onSelect([])}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {inner}
+        </SortableAccountTab>
+      );
+    }
+    const email = id;
+    const label = labels.get(email);
+    const active =
+      selected.length === 1 &&
+      selected[0].toLowerCase() === email.toLowerCase();
+    const quietTip = quietUntil?.get(email.trim().toLowerCase());
+    const awayTip = autoReplyOn?.get(email.trim().toLowerCase());
+    const inner = (
+      <>
+        {quietTip ? (
+          <Moon
+            className="h-3 w-3 shrink-0 text-stone-400"
+            aria-label={quietTip}
+          />
+        ) : null}
+        <AccountMark
+          mark={marks[email.trim().toLowerCase()]}
+          provider={isOutlookAccount(email) ? "outlook" : "gmail"}
+          className={quietTip ? "opacity-60" : undefined}
+        />
+        <span
+          className={cn(
+            "max-w-[10rem] truncate",
+            quietTip && "text-stone-400"
+          )}
+        >
+          {label?.primary ?? email}
+        </span>
+        {awayTip ? <AutoReplyBadge title={awayTip} /> : null}
+      </>
+    );
+    const title = quietTip ?? email;
+    const className = cn(tab(active), quietTip && !active && "opacity-70");
+    if (!sortable) {
+      return (
+        <button
+          key={email}
+          type="button"
+          title={title}
+          aria-pressed={active}
+          className={className}
+          onClick={() => onSelect([email])}
+        >
+          {inner}
+        </button>
+      );
+    }
+    return (
+      <SortableAccountTab
+        key={email}
+        email={email}
+        title={title}
+        className={className}
+        pressed={active}
+        suppressClick={suppressClick}
+        /*
+          The first press chooses the mailbox. Pressing the one
+          already chosen is what opens its picture — the same rule
+          the filters follow, where a second press opens the list.
+          It drops from the pointer rather than sitting at it,
+          because a press is aimed at the tab and not at a spot.
+        */
+        onSelect={(event) => {
+          if (!active) {
+            onSelect([email]);
+            return;
+          }
+          const box = event.currentTarget.getBoundingClientRect();
+          setMenu({ account: email, x: box.left, y: box.bottom + 6 });
+        }}
+        /* And a right-click opens it from any tab, chosen or not. */
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ account: email, x: event.clientX, y: event.clientY });
+        }}
+      >
+        {inner}
+      </SortableAccountTab>
+    );
+  };
 
   return (
     <>
@@ -230,13 +370,23 @@ export function MailAccountTabs({
 
           The row scrolls sideways: four mailboxes do not fit a sidebar, and
           the answer is to reach the fifth rather than to squeeze all five
-          into a width that suits none of them. */}
-      <div className="-mx-0.5 overflow-x-auto px-0.5 [scrollbar-width:thin]">
-        <div
-          className={cn(
-            "flex w-max items-center gap-1 rounded-full bg-[var(--mail-segment-track)] p-1"
-          )}
-        >
+          into a width that suits none of them.
+
+          The track is the scroller, not the thing inside it. A track as wide
+          as every tab was cut off square at the column's edge whenever it
+          outran the column, so its rounded end was only ever seen after
+          scrolling to it. Now the track stops at the edge, rounded, and the
+          tabs scroll inside it. `w-fit max-w-full`: as wide as the tabs when
+          they fit, and no wider than the column when they do not. */}
+      <div
+        className={cn(
+          "w-fit max-w-full overflow-x-auto rounded-full bg-[var(--mail-segment-track)] p-1 [scrollbar-width:thin]"
+        )}
+      >
+        <div className="flex w-max items-center gap-1">
+          {selectOnly ? (
+            rowIds.map((id) => renderTab(id, false))
+          ) : (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -249,70 +399,10 @@ export function MailAccountTabs({
             items={rowIds}
             strategy={horizontalListSortingStrategy}
           >
-          {rowIds.map((id) => {
-            if (id === ALL_TAB_ID) {
-              return (
-                <SortableAccountTab
-                  key={ALL_TAB_ID}
-                  email={ALL_TAB_ID}
-                  title={t("allMailboxes")}
-                  className={tab(allMailboxes)}
-                  pressed={allMailboxes}
-                  suppressClick={suppressClick}
-                  onSelect={() => onSelect([])}
-                  onContextMenu={(event) => event.preventDefault()}
-                >
-                  <AccountMark provider="unknown" className="h-3.5 w-3.5" />
-                  {t("tabAll")}
-                </SortableAccountTab>
-              );
-            }
-            const email = id;
-            const label = labels.get(email);
-            const active =
-              selected.length === 1 &&
-              selected[0].toLowerCase() === email.toLowerCase();
-            return (
-              <SortableAccountTab
-                key={email}
-                email={email}
-                title={email}
-                className={tab(active)}
-                pressed={active}
-                suppressClick={suppressClick}
-                /*
-                  The first press chooses the mailbox. Pressing the one
-                  already chosen is what opens its picture — the same rule
-                  the filters follow, where a second press opens the list.
-                  It drops from the pointer rather than sitting at it,
-                  because a press is aimed at the tab and not at a spot.
-                */
-                onSelect={(event) => {
-                  if (!active) {
-                    onSelect([email]);
-                    return;
-                  }
-                  const box = event.currentTarget.getBoundingClientRect();
-                  setMenu({ account: email, x: box.left, y: box.bottom + 6 });
-                }}
-                /* And a right-click opens it from any tab, chosen or not. */
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setMenu({ account: email, x: event.clientX, y: event.clientY });
-                }}
-              >
-                <AccountMark
-                  mark={marks[email.trim().toLowerCase()]}
-                  provider={isOutlookAccount(email) ? "outlook" : "gmail"}
-                />
-                <span className="max-w-[10rem] truncate">
-                  {label?.primary ?? email}
-                </span>
-              </SortableAccountTab>
-            );
-          })}
+          {rowIds.map((id) => renderTab(id, true))}
           </SortableContext>
           </DndContext>
+          )}
         </div>
       </div>
 

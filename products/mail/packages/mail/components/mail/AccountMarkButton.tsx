@@ -12,9 +12,10 @@
  */
 
 import * as React from "react";
+import type { MailProvider } from "@/lib/mail/types";
 import { createPortal } from "react-dom";
 import { Image as ImageIcon, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { AccountMark } from "@/components/mail/AccountMark";
 import {
@@ -162,7 +163,7 @@ export function AccountMarkButton({
   title,
 }: {
   account: string;
-  provider: "gmail" | "outlook" | "unknown";
+  provider: MailProvider | "unknown";
   className?: string;
   markClassName?: string;
   title?: string;

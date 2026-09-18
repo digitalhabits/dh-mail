@@ -55,11 +55,13 @@ function splitFolderName(name: string): string[] {
  * this is that order — the inbox first, because it is the one the others
  * are named in relation to.
  */
+/** The order the head of the rail uses, so every account reads the same. */
 const ROLE_ORDER: MailFolderRole[] = [
   "inbox",
+  "sent",
   "archive",
   "drafts",
-  "sent",
+  "junk",
   "trash",
 ];
 

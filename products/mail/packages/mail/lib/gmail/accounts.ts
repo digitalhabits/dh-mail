@@ -9,7 +9,7 @@ import { mailStore } from "@/lib/mail/store";
 import { invalidateConnectedMailAccountsCache } from "@/lib/mail/connected-accounts-cache";
 import { PlanError } from "@/lib/plan/errors";
 
-import type { MailAccountRecord } from "@/lib/mail/store/types";
+import type { MailAccountRecord, MailStoredToken } from "@/lib/mail/store/types";
 
 export type GmailAccount = {
   email: string;
@@ -19,6 +19,8 @@ export type GmailAccount = {
   lastSyncError: string | null;
   /** Shown in the unified Mail tab; CRM sync uses the account regardless. */
   inMailTab: boolean;
+  /** What Google said it granted, space-separated. Null until recorded. */
+  grantedScopes: string | null;
 };
 
 /** Mailbox addresses are case-insensitive, and the store expects one form. */
@@ -34,6 +36,7 @@ function toAccount(record: MailAccountRecord): GmailAccount {
     lastSyncedAt: record.lastSyncedAt,
     lastSyncError: record.lastSyncError,
     inMailTab: record.inMailTab,
+    grantedScopes: record.grantedScopes ?? null,
   };
 }
 
@@ -51,6 +54,25 @@ export async function listGmailAccounts(options?: {
     ? await mailStore().accounts.listForOwner("gmail", userId)
     : await mailStore().accounts.listAll("gmail");
   return records.map(toAccount);
+}
+
+/**
+ * Which of these mailboxes this person connected themselves.
+ *
+ * The org-wide list holds one row per mailbox, chosen for its sync
+ * checkpoint rather than for who owns it — so the row a reader sees is
+ * often somebody else's even when they connected the mailbox too. Asking
+ * the rows directly is the only way to answer "may I disconnect this".
+ */
+export async function listOwnedGmailEmails(
+  clerkUserId: string,
+  emails: string[]
+): Promise<string[]> {
+  return mailStore().accounts.listOwnedEmails(
+    "gmail",
+    clerkUserId,
+    emails.map(normalize)
+  );
 }
 
 export async function assertGmailAccountOwner(
@@ -107,13 +129,32 @@ export async function upsertGmailAccount(input: {
   email: string;
   refreshToken: string;
   clerkUserId: string;
+  grantedScopes?: string | null;
 }): Promise<void> {
   await mailStore().accounts.save("gmail", {
     email: normalize(input.email),
     ownerId: input.clerkUserId,
     refreshToken: input.refreshToken,
+    grantedScopes: input.grantedScopes ?? null,
   });
   invalidateConnectedMailAccountsCache(input.clerkUserId);
+}
+
+/**
+ * Keep what Google reported on a refresh, on the row the token came from.
+ *
+ * Rows connected before the grant was recorded fill in this way, one refresh
+ * each, without anyone reconnecting. Skipped where the store does not keep
+ * it.
+ */
+export async function recordGrantedScopes(
+  email: string,
+  ownerId: string,
+  grantedScopes: string
+): Promise<void> {
+  const store = mailStore().accounts;
+  if (!store.setGrantedScopes) return;
+  await store.setGrantedScopes("gmail", normalize(email), ownerId, grantedScopes);
 }
 
 export async function deleteGmailAccount(
@@ -137,9 +178,18 @@ export async function deleteGmailAccount(
  * route layer before mailbox calls.
  */
 export async function getAccountRefreshToken(email: string): Promise<string> {
+  return (await getAccountStoredToken(email)).refreshToken;
+}
+
+/** The freshest token for a mailbox, with the owner whose row holds it. */
+export async function getAccountStoredToken(email: string): Promise<MailStoredToken> {
   const stored = await mailStore().accounts.getToken("gmail", normalize(email));
   if (!stored) throw new Error(`No Gmail account stored for ${email}`);
-  return stored.refreshToken;
+  return stored;
+}
+
+export async function hasGmailAccount(email: string): Promise<boolean> {
+  return mailStore().accounts.exists("gmail", normalize(email));
 }
 
 /**

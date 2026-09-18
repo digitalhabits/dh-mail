@@ -19,7 +19,7 @@
 
 import * as React from "react";
 import { Image as ImageIcon, Pencil, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import {
   clampCaptionSize,
@@ -40,6 +40,7 @@ import {
 } from "@/lib/mail/rest-image";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
+import { startPointerDrag } from "@/lib/pointer-drag";
 
 /** A picture narrower than this is a stamp, not a rest. */
 const REST_IMAGE_MIN_WIDTH = 320;
@@ -184,15 +185,13 @@ export function MailRestPanel() {
       event.stopPropagation();
       const startX = event.clientX;
       const startY = event.clientY;
-      const move = (e: PointerEvent) =>
-        onMove(e.clientX - startX, e.clientY - startY);
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-        onDone?.();
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        {
+          onMove: (e) => onMove(e.clientX - startX, e.clientY - startY),
+          onEnd: () => onDone?.(),
+        }
+      );
     },
     []
   );

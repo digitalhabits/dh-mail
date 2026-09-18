@@ -17,6 +17,7 @@ const { version } = require("./package.json") as { version: string };
 
 export default defineConfig(({ mode }) => {
   const nodeEnv = mode === "development" ? "development" : "production";
+  const devHost = process.env.TAURI_DEV_HOST;
 
   /**
    * The same interface also ships inside the Planner Mac app, as the mail
@@ -62,10 +63,21 @@ export default defineConfig(({ mode }) => {
     clearScreen: false,
     // The standalone app's dev server is :3473. The Planner Mac app's mail
     // pane, the internal flavor, is :3474, so the two can run at once and
-    // neither shows the other's flavor.
+    // neither shows the other's flavor. The standalone's own internal dev
+    // (app:dev:internal) carries the internal flavor but is the standalone
+    // shell, which looks at :3473 — it names its port outright.
     server: {
-      port: flavor === "internal" ? 3474 : 3473,
+      port:
+        Number(process.env.MAIL_DEV_PORT) ||
+        (flavor === "internal" ? 3474 : 3473),
       strictPort: true,
+      // A phone on the same network. `tauri ios dev --host` and
+      // `tauri android dev --host` set this to the Mac's address, and the
+      // page in the phone's webview reaches the dev server at it; the
+      // hot-reload socket has to name the same address, since the default
+      // is the page's own host, which on a phone is the phone.
+      host: devHost || false,
+      hmr: devHost ? { protocol: "ws", host: devHost, port: 3475 } : undefined,
       // Cargo's output is not the page. On Windows a watch on a DLL that
       // cargo holds open fails with EBUSY and stops the dev server.
       watch: { ignored: ["**/src-tauri/**"] },

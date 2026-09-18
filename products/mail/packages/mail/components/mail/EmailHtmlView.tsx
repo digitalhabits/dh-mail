@@ -1,15 +1,21 @@
 "use client";
 
 import * as React from "react";
+
+import {
+  MAIL_PINCH_SCALE_EVENT,
+  MAIL_PINCH_WHEEL_EVENT,
+} from "@/lib/mail/pinch";
 import { createPortal } from "react-dom";
 import { Copy, ExternalLink, Loader2, Mail } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 import { findLinksInText } from "@/lib/linkify-urls";
 import {
   MAIL_IMAGE_CSP_SOURCE,
   rewriteRemoteImagesThroughProxy,
 } from "@/lib/mail/image-proxy";
 import { openExternalUrl } from "@/lib/native-shell";
+import { afterMailPaneSlide, mailPaneSliding } from "@/lib/mail/pane-slide";
 import { requestMailComposeTo } from "@/lib/mail/compose-to";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import {
@@ -696,7 +702,45 @@ function buildSrcDoc(
     "html,body{margin:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}",
     "html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}",
     ...(bodyColor ? ["html{color-scheme:dark}"] : []),
-    `body{padding:12px 14px 20px;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:${bodyColor ?? "#292524"};word-break:break-word;background:transparent}`,
+    /*
+      `overflow-wrap`, not `word-break:break-word`.
+
+      They read as the same wish — do not let one long unbreakable string
+      run off the side — and they are not. `word-break:break-word` is the
+      deprecated spelling of `overflow-wrap:anywhere`, and `anywhere` counts
+      towards how narrow a box may be squeezed: a table column may then be
+      one letter wide. A mail from GitHub laid out as a table came through
+      with its Status heading spelled down the page, one letter per line,
+      because the column had been allowed to shrink that far.
+
+      `overflow-wrap:break-word` breaks the same long string, and leaves a
+      column's natural minimum alone. Measured on a table three columns
+      wide in a 150px box: the heading kept 53px and one line under this
+      rule, and was cut to 37px and two lines under the other.
+    */
+    `body{padding:12px 14px 20px;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:${bodyColor ?? "#292524"};overflow-wrap:break-word;background:transparent}`,
+    /*
+      Links may break anywhere, and only links.
+
+      `break-word` above breaks a long string when it is drawn but does not
+      count the break when the box is measured, so a message with a
+      tracking link three hundred characters long measured as three
+      hundred characters wide. The bubble was given that width, the pane
+      could not, and the whole message was scaled down to fit the link —
+      a body of tiny text that no zoom could enlarge, because the zoom was
+      being cancelled to fit the same link. `anywhere` counts the break,
+      so the link no longer sets the message's width. Only on links: the
+      table-column reason above still holds for everything else, and a
+      string that long in ordinary text is rare.
+
+      A link in a message is not an <a> by the time it is drawn: every one
+      is softened to a span before the parser sees it (see soften-anchors),
+      so the rule has to name the span. Written for <a> alone it matched
+      nothing, and a message from a Windows Live Mail sender with one long
+      Google link measured 1383px at its narrowest — and was scaled down to
+      fit it, at every zoom. With the span named it measures 428px.
+    */
+    `a,[${MAIL_HREF_ATTR}]{overflow-wrap:anywhere}`,
     "img{max-width:100%;height:auto}",
     // A view with a ceiling of its own — the peek at the first message —
     // asks for a ceiling on the pictures too. A screenshot pasted into an
@@ -740,6 +784,29 @@ function buildSrcDoc(
  * `body.getBoundingClientRect().height` alone drops trailing margins on
  * marketing footers (Outlook tables), which clips the last few pixels.
  */
+/**
+ * The scrolling box a frame sits in — the thread stream, usually.
+ *
+ * Measuring collapses the frame for a moment (see `measure`), and a
+ * collapsed frame is a shorter thread. The browser clamps the scroll to a
+ * shorter thread at once and does not put it back when the height returns,
+ * so the measurement has to hold the place itself.
+ */
+function scrollParentOf(el: HTMLElement): HTMLElement | null {
+  let node = el.parentElement;
+  while (node) {
+    const overflow = window.getComputedStyle(node).overflowY;
+    if (
+      (overflow === "auto" || overflow === "scroll") &&
+      node.scrollHeight > node.clientHeight
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function measureEmailFrameHeight(doc: Document): number {
   const body = doc.body;
   if (!body) return 0;
@@ -936,6 +1003,15 @@ export function recolorEmailForDark(doc: Document): void {
     doc.documentElement.style.setProperty("color-scheme", "dark");
     return;
   }
+  /**
+   * What each element's background was before this darkened it.
+   *
+   * Pictures are left alone here — a photograph recoloured is a photograph
+   * ruined — but a picture was drawn for the colour behind it, and that
+   * colour is about to stop existing. Keeping the old one is what lets a
+   * logo have it back.
+   */
+  const wasLight = new Map<HTMLElement, string>();
   const all = doc.body.querySelectorAll<HTMLElement>("*");
   for (const el of all) {
     if (RECOLOR_SKIP.has(el.tagName)) continue;
@@ -945,7 +1021,10 @@ export function recolorEmailForDark(doc: Document): void {
     const bg = parseCssColor(cs.backgroundColor);
     if (bg) {
       const next = darkBackground(bg);
-      if (next) el.style.setProperty("background-color", hslToCss(next), "important");
+      if (next) {
+        if (bg.l > 0.6) wasLight.set(el, hslToCss(bg));
+        el.style.setProperty("background-color", hslToCss(next), "important");
+      }
     }
     const fg = parseCssColor(cs.color);
     if (fg) {
@@ -959,11 +1038,158 @@ export function recolorEmailForDark(doc: Document): void {
       if (next) el.style.setProperty("border-color", hslToCss(next), "important");
     }
   }
+
+  backPicturesWithTheirOwnGround(doc, wasLight);
 }
 
-/** Window events that re-emit pinch gestures happening inside email iframes. */
-export const MAIL_PINCH_WHEEL_EVENT = "mail-pinch-wheel";
-export const MAIL_PINCH_SCALE_EVENT = "mail-pinch-scale";
+/**
+ * Give a picture back the colour it was drawn against.
+ *
+ * A wordmark at the head of a newsletter is a PNG with a transparent
+ * ground: the sender drew it dark because their mail is on white. Darken
+ * the white and the letters are still there and still dark, on almost the
+ * same dark — legible only by selecting them. Recolouring the picture
+ * itself is not the answer, because a picture is not text and the same
+ * treatment that rescues a logo ruins a photograph.
+ *
+ * So the picture keeps the ground it expected. Where a picture is opaque —
+ * every photograph — this cannot be seen at all: it is behind the pixels.
+ * It shows only through transparency, which is exactly where the sender was
+ * relying on a colour that this reader no longer has.
+ *
+ * Only small ones, which is where the fault bites and where being wrong
+ * costs least. A hero image with soft corners would show a pale edge, and
+ * it is not the thing anybody is failing to read.
+ */
+const LOGO_MAX_HEIGHT_PX = 160;
+/**
+ * Under this in either direction it is not a picture, it is a measurement.
+ *
+ * Mail is full of images that are not pictures: the 1px transparent GIF
+ * that opens a message's read receipt, and the spacer stretched across a
+ * table to hold a column open. Giving one of those the ground it was drawn
+ * against paints a white rule straight across the message — which is what
+ * it did, on the first evening it shipped.
+ */
+const LOGO_MIN_SIDE_PX = 12;
+
+/** The gutter `.mail-bubble-column` keeps beside itself — see mail.css. */
+const BUBBLE_GUTTER_PX = 14;
+
+/**
+ * How much room the bubble would have at 100%, in the bubble's own pixels.
+ *
+ * At rest, deliberately, because this decides the size a mail is *started*
+ * at and not the size it is held to. Measured at the size currently shown,
+ * the room shrinks exactly as fast as the reader zooms — every pixel asked
+ * for came back off the room — so the mail stayed pinned to the pane and
+ * the zoom control did nothing at all for it.
+ *
+ * The column's parent gives it: full-width, so it measures the pane, and
+ * the same in screen pixels whatever the stream is zoomed to.
+ *
+ * Not `getComputedStyle().maxWidth` on the column, which hands back the
+ * `min()` expression as written rather than a length — it parsed as
+ * nothing, every mail read as having room enough, and the scaling this
+ * feeds never ran at all.
+ */
+function roomAtRest(column: HTMLElement, chrome: number): number {
+  const parent = column.parentElement;
+  const width = parent?.getBoundingClientRect().width ?? 0;
+  if (!(width > 0)) return Number.POSITIVE_INFINITY;
+  return width - BUBBLE_GUTTER_PX - chrome;
+}
+
+/**
+ * What the bubble puts around the frame: borders and padding, added up.
+ *
+ * Not the difference between the column's width and the frame's, which is
+ * what this was first. That is the border only when the mail happens to
+ * fill the column; for anything narrower it is the empty space beside the
+ * message, which is hundreds of pixels, and which moves when the mail is
+ * resized. Used as the chrome it made the room look far too small, so a
+ * mail with a whole pane to spread into was scaled down anyway — and since
+ * it moved with the answer it fed, it never settled.
+ *
+ * Borders and padding do not move. They are also already in the column's
+ * own pixels, zoom or no zoom: a 1px border computes as 1px whatever it is
+ * painted at.
+ */
+function chromeAroundFrame(frame: HTMLElement, column: HTMLElement): number {
+  let total = 0;
+  let node: HTMLElement | null = frame.parentElement;
+  while (node) {
+    const styles = window.getComputedStyle(node);
+    total +=
+      (parseFloat(styles.borderLeftWidth) || 0) +
+      (parseFloat(styles.borderRightWidth) || 0) +
+      (parseFloat(styles.paddingLeft) || 0) +
+      (parseFloat(styles.paddingRight) || 0);
+    if (node === column) break;
+    node = node.parentElement;
+  }
+  return total;
+}
+
+function backPicturesWithTheirOwnGround(
+  doc: Document,
+  wasLight: Map<HTMLElement, string>
+): void {
+  if (wasLight.size === 0) return;
+  const ground = (img: HTMLElement): string | null => {
+    let node: HTMLElement | null = img.parentElement;
+    while (node) {
+      const found = wasLight.get(node);
+      if (found) return found;
+      node = node.parentElement;
+    }
+    return null;
+  };
+  const win = doc.defaultView;
+  for (const img of doc.images) {
+    const behind = ground(img);
+    if (!behind) continue;
+    const apply = () => {
+      const box = img.getBoundingClientRect();
+      const height = box.height;
+      if (height <= 0 || height > LOGO_MAX_HEIGHT_PX) return;
+      // Not a spacer, a tracking pixel, or a hairline rule.
+      if (height < LOGO_MIN_SIDE_PX || box.width < LOGO_MIN_SIDE_PX) return;
+      if (img.naturalWidth <= 2 || img.naturalHeight <= 2) return;
+      img.style.setProperty("background-color", behind, "important");
+      /*
+        A little beyond its own edges, and rounded, so it reads as a card
+        the mark is standing on rather than as the picture being cut out of
+        the page. The spread goes on a shadow rather than on padding: this
+        runs after the mail is laid out, and padding would move everything
+        under it a few pixels down.
+      */
+      img.style.setProperty("box-shadow", `0 0 0 3px ${behind}`, "important");
+      img.style.setProperty("border-radius", "3px", "important");
+    };
+    /*
+      After a layout, not before one.
+
+      This runs as the document is set up, which is before anything in it
+      has been placed, so every picture measured nought high — the test for
+      "small enough to be a logo" threw all of them away, including the one
+      it was written for. A frame later they have their sizes.
+    */
+    if (img.complete && img.naturalWidth > 0) {
+      if (win) win.requestAnimationFrame(apply);
+      else apply();
+    } else {
+      img.addEventListener(
+        "load",
+        () => {
+          if (win) win.requestAnimationFrame(apply);
+          else apply();
+        },
+        { once: true }
+      );
+    }
+  }
+}
 
 /**
  * Pinches over the sandboxed iframe never reach the thread pane's listeners,
@@ -971,7 +1197,22 @@ export const MAIL_PINCH_SCALE_EVENT = "mail-pinch-scale";
  * for the mail zoom to consume. Listeners run in the parent context — the
  * iframe itself stays script-free.
  */
-function attachPinchForwarding(doc: Document) {
+function attachPinchForwarding(doc: Document, frame: HTMLIFrameElement) {
+  /*
+    Where the fingers are, in the parent's pixels.
+
+    The zoom holds the point under the pointer still, and the pointer is in
+    here, so the point has to travel with the gesture. The frame is sized to
+    its own content, so a y down the frame's viewport is the same fraction
+    of the frame element in the parent, whatever either one is zoomed by.
+  */
+  const parentY = (frameY: number): number | null => {
+    const box = frame.getBoundingClientRect();
+    const viewport = doc.defaultView?.innerHeight || 0;
+    if (!viewport || !box.height) return null;
+    return box.top + (frameY / viewport) * box.height;
+  };
+
   const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
   doc.addEventListener(
     "wheel",
@@ -979,7 +1220,9 @@ function attachPinchForwarding(doc: Document) {
       if (!e.ctrlKey) return; // plain scrolling, not a pinch
       e.preventDefault();
       window.dispatchEvent(
-        new CustomEvent(MAIL_PINCH_WHEEL_EVENT, { detail: e.deltaY })
+        new CustomEvent(MAIL_PINCH_WHEEL_EVENT, {
+          detail: { value: e.deltaY, y: parentY(e.clientY) },
+        })
       );
     },
     wheelOpts
@@ -1002,8 +1245,14 @@ function attachPinchForwarding(doc: Document) {
       e.preventDefault();
       const scale = (e as Event & { scale?: number }).scale ?? 1;
       if (lastScale > 0) {
+        const at = (e as Event & { clientY?: number }).clientY;
         window.dispatchEvent(
-          new CustomEvent(MAIL_PINCH_SCALE_EVENT, { detail: scale / lastScale })
+          new CustomEvent(MAIL_PINCH_SCALE_EVENT, {
+            detail: {
+              value: scale / lastScale,
+              y: typeof at === "number" ? parentY(at) : null,
+            },
+          })
         );
       }
       lastScale = scale;
@@ -1333,23 +1582,33 @@ function LinkContextMenu({
 }
 
 /**
- * Double-clicks inside the sandboxed iframe never bubble to React parents.
- * WebKit/Tauri is also flaky with dblclick on srcdoc frames, so detect a
- * second click within a short window as well as the native dblclick event.
+ * A double-click on the sender's page, forwarded out of the frame.
+ *
+ * The bubble shows its details when it is double-clicked, and the body of
+ * an HTML message is a frame, so a double-click on the words, which is
+ * most of the bubble, never reaches the handler outside it. This carries
+ * it out. Double-clicks inside the sandboxed iframe never bubble to React
+ * parents, and WebKit/Tauri is also flaky with dblclick on srcdoc frames,
+ * so a second click within a short window counts as well as the native
+ * dblclick event.
+ *
+ * Not on something that does its own job: a link, a button, a field the
+ * sender put there. `instanceof Element` is no use for that test, the
+ * frame is a separate global, so `asElement` does the narrowing.
  */
 function attachDoubleClickForwarding(
   doc: Document,
   onDoubleClick: () => void
 ) {
+  const INTERACTIVE =
+    `a[href], [${MAIL_HREF_ATTR}], button, input, select, textarea, label,` +
+    ` [role='button'], [role='link'], [contenteditable='true']`;
   let lastClickAt = 0;
   let lastFireAt = 0;
-  const isLink = (event: Event) => {
-    const target = asElement(event.target);
-    const el = target?.closest(`a[href], [${MAIL_HREF_ATTR}]`) ?? null;
-    return Boolean(el);
-  };
+  const isControl = (event: Event) =>
+    Boolean(asElement(event.target)?.closest(INTERACTIVE));
   const fire = (event: Event) => {
-    if (isLink(event)) return;
+    if (isControl(event)) return;
     const now = Date.now();
     // Click-pair detector and native dblclick often both fire — only once.
     if (now - lastFireAt < 400) return;
@@ -1361,7 +1620,7 @@ function attachDoubleClickForwarding(
   doc.addEventListener(
     "click",
     (event) => {
-      if (isLink(event)) {
+      if (isControl(event)) {
         lastClickAt = 0;
         return;
       }
@@ -1415,7 +1674,7 @@ export function EmailHtmlView({
    * re-applied inside the document, where text re-lays-out crisply.
    */
   zoom?: number;
-  /** Fired for dblclick on the email body (not on links). */
+  /** A double-click on the sender's page — see attachDoubleClickForwarding. */
   onContentDoubleClick?: () => void;
   /** Re-light the sender's colours for a dark card. See recolorEmailForDark. */
   darkRecolor?: boolean;
@@ -1429,6 +1688,26 @@ export function EmailHtmlView({
   const zoomRef = React.useRef(zoom);
   zoomRef.current = zoom;
   const [height, setHeight] = React.useState(140);
+  /**
+   * The width the content would take if nothing constrained it.
+   *
+   * Null until measured, and the frame fills the bubble as it always did.
+   * Measured, it goes on the frame as its width, so a message of two words
+   * takes two words' worth of bubble instead of the whole pane — the same
+   * as a plain-text message. A newsletter's fixed 600px table answers
+   * 600px and is none the narrower. `max-width: 100%` still caps it, so a
+   * wide answer never pushes past the bubble; the document just reflows to
+   * what it is given, as it did when the frame was always full width.
+   */
+  const [naturalWidth, setNaturalWidth] = React.useState<number | null>(null);
+  /*
+    The size the mail is shown at inside the frame — the reader's zoom,
+    less whatever it was scaled by to fit. Kept beside the width so the
+    frame is sized from the two without waiting for a measurement: a
+    zoom that changed the body but not the frame left a newsletter cut
+    off at the frame's edge with its right third out of reach.
+  */
+  const [bodyZoom, setBodyZoom] = React.useState(1);
   const [linkMenu, setLinkMenu] = React.useState<{
     model: MailLinkMenuModel;
     x: number;
@@ -1485,6 +1764,8 @@ export function EmailHtmlView({
   /** Documents already wired up — a frame is set up once, however we reach it. */
   const initedDocsRef = React.useRef<WeakSet<Document>>(new WeakSet());
   const observerRef = React.useRef<ResizeObserver | null>(null);
+  /** Cancels a measurement queued for the frame — see `scheduleMeasure`. */
+  const pendingMeasureRef = React.useRef<(() => void) | null>(null);
 
   /** Returns true when this call did the setup. */
   const initDoc = React.useCallback((doc: Document): boolean => {
@@ -1497,6 +1778,15 @@ export function EmailHtmlView({
     // geometry, but the reader should never see the white version first.
     if (darkRecolorRef.current) recolorEmailForDark(doc);
     const measure = () => {
+      // Not while the pane is sliding: its width is wrong on every frame
+      // of the slide, and a ceiling read from it stuck the mail small
+      // until something else moved. One reading at the end says the
+      // same thing. The observer below already waits; the first
+      // measure, the zoom's, and the timer's did not.
+      if (mailPaneSliding()) {
+        afterMailPaneSlide(() => scheduleMeasureRef.current?.());
+        return;
+      }
       /*
         Collapsed first, then measured.
 
@@ -1519,21 +1809,211 @@ export function EmailHtmlView({
       */
       const frame = iframeRef.current;
       const held = frame?.style.height ?? "";
+      /*
+        And the reader's place is held across it.
+
+        A frame at nought is a thread that much shorter, and the browser
+        clamps the scroll to the shorter one before this line returns.
+        Putting the height back does not put the scroll back. On a thread
+        of one message the frame is the whole thread, so the clamp was the
+        whole way: every measurement — a size change, a picture arriving —
+        put the reader back at the top of the message they were reading.
+      */
+      const scroller = frame ? scrollParentOf(frame) : null;
+      const heldScroll = scroller?.scrollTop ?? 0;
       if (frame) frame.style.height = "0px";
       // Prefer content bounds (incl. trailing margins) over body.rect alone so
       // the frame keeps its height across content swaps (e.g. images toggle)
       // without clipping marketing footers.
       const next = measureEmailFrameHeight(doc);
       if (frame) frame.style.height = held;
+      if (scroller && scroller.scrollTop !== heldScroll) {
+        scroller.scrollTop = heldScroll;
+      }
       if (next > 0) setHeight(next);
+      /*
+        And how wide it wants to be, the same way.
+
+        `max-content` on the body sizes every block to its content, which
+        is the width the mail would take with nothing to fill. That answer
+        does not depend on the frame's width, so unlike the height there is
+        no frame to collapse first and nothing to feed back. The margins
+        are added by hand: the rect is the body's box, and the mail's own
+        margin stands outside it, scaled by the reader's zoom like
+        everything else in the frame.
+
+        A floor of 160px, so a one-word message still has room for the
+        time in its corner.
+      */
+      const body = doc.body;
+      if (body) {
+        const heldWidth = body.style.width;
+        body.style.width = "max-content";
+        const naturalBody = body.getBoundingClientRect().width;
+        /*
+          And the narrowest it can be, which is a different question and
+          the more useful one.
+
+          `max-content` says what it would like. `min-content` says what it
+          cannot go under — for a mail of paragraphs that is about the
+          longest word, and for a newsletter built on a fixed table it is
+          that table's width. So the two together say whether a mail can
+          reflow at all, without anybody having to guess from its markup.
+
+          The bubble's cap reads it: a mail that cannot reflow is given the
+          room it needs rather than clipped at three quarters of the pane.
+          See `.mail-bubble-column` in mail.css.
+        */
+        body.style.width = "min-content";
+        /*
+          Read with every string breakable and every line allowed to wrap,
+          so that what is measured is the width of things that have one —
+          a table told to be 600px, a picture, a fixed column — and not the
+          length of the longest word or the one paragraph a sender set to
+          nowrap. Words wrap; that is what the bubble is for.
+
+          A message was scaled down to fit a tracking link, then one from
+          Outlook to fit something nobody could point to, and both were
+          the same mistake: taking a string for a shape. Ruling strings out
+          here, rather than one kind at a time, ends the series. The sheet
+          is in the document only while the rect is read.
+        */
+        const probe = doc.createElement("style");
+        probe.textContent =
+          "*{overflow-wrap:anywhere!important;white-space:normal!important}";
+        (doc.head ?? doc.documentElement).appendChild(probe);
+        const narrowestBody = body.getBoundingClientRect().width;
+        probe.remove();
+        body.style.width = heldWidth;
+        const styles = doc.defaultView?.getComputedStyle(body);
+        const bodyZoom = parseFloat(body.style.zoom) || 1;
+        const rawMargins = styles
+          ? (parseFloat(styles.marginLeft) || 0) +
+            (parseFloat(styles.marginRight) || 0)
+          : 0;
+        // Without the zoom in it: the frame multiplies its own size back
+        // in, so a change of size needs no new measurement to size it.
+        const wanted = Math.ceil(naturalBody / bodyZoom + rawMargins);
+        if (wanted > 0) setNaturalWidth(Math.max(wanted, 160));
+        /*
+          Published without the reader's zoom in it.
+
+          The bubble lays out inside the zoomed stream, so its own pixels
+          are the unzoomed ones; the frame's are not, because the frame
+          cancels the ancestor zoom and applies it again inside. Dividing
+          it out here is what makes the two comparable, and it is the step
+          that decides whether this works at any size but 100%.
+        */
+        const narrowestCss = Math.ceil(narrowestBody / bodyZoom + rawMargins);
+        const column = frame?.closest<HTMLElement>(".mail-bubble-column");
+        /*
+          Whatever the bubble puts around the frame — see
+          `chromeAroundFrame`. Asking the column for exactly the mail's
+          width left it two pixels short, which is enough for a fixed table
+          to overflow and be clipped, and clipping is the whole thing this
+          is here to stop. Measured rather than named: it is one pixel
+          today, it is not the frame's business, and a number written here
+          would stay wrong quietly.
+        */
+        const chrome =
+          frame && column ? chromeAroundFrame(frame, column) : 0;
+        if (column && narrowestCss > 0) {
+          column.style.setProperty(
+            "--mail-bubble-fixed",
+            `${Math.ceil(narrowestCss + chrome)}px`
+          );
+        }
+        /*
+          And when even the whole pane is not enough, it is scaled to fit
+          rather than cut off.
+
+          The cap can only give what the pane has. A narrow window, or a
+          reader who has turned the size up, and a mail that cannot reflow
+          still does not fit — and the choice then is between showing all
+          of it smaller and showing part of it at the asked-for size. Every
+          mail client that handles this well picks the first: a newsletter
+          half off the right edge is not a smaller problem than a
+          newsletter a fifth too small to read comfortably.
+
+          Both sides of it are the bubble's own pixels, and neither is the
+          frame's. The frame's width is the wrong thing to measure twice
+          over: it is in screen pixels while the mail's width is in the
+          bubble's, and it moves when the size below is set — so the first
+          go at this compared the two directly, agreed with itself at 100%
+          where they happen to be equal, and at 143% shrank, re-measured,
+          grew, and flickered between the two for ever.
+
+          What is asked instead is the room the bubble would have at 100%,
+          which answers the same whatever size the mail is being shown at.
+          `narrowestCss` carries no zoom in it either. Neither side moves
+          when the size below is set, so it settles in one pass.
+
+          And because the room is the one at rest, this sets where the mail
+          starts rather than where it stops: at 100% it fills the bubble,
+          and the reader's own size multiplies on top of that. Past the
+          point where it fits, the mail is wider than its bubble and can be
+          dragged sideways — the frame keeps `overflow-x:auto` with the bar
+          hidden for exactly this, and being able to go on zooming into a
+          newsletter matters more than never seeing an edge.
+        */
+        const room = column
+          ? roomAtRest(column, chrome)
+          : Number.POSITIVE_INFINITY;
+        const base = zoomRef.current;
+        const fit =
+          room > 0 && narrowestCss > room ? room / narrowestCss : 1;
+        /*
+          And never wider than the pane, whatever the size asked for.
+
+          The size below starts the mail where it fills the bubble and
+          lets the reader's zoom multiply on top. Past the pane's edge
+          that used to be a sideways drag with the bar hidden, which read
+          as a cut-off newsletter and not as a zoomed one. The pane is
+          the ceiling now: the zoom control grows a fixed mail until it
+          fills the pane and stops there. The room is read at the size
+          shown, in screen pixels, so it is the ceiling as painted.
+        */
+        const parentReal = column?.parentElement?.getBoundingClientRect().width ?? 0;
+        const ceiling =
+          parentReal > 0 && narrowestCss > 0
+            ? (parentReal - (BUBBLE_GUTTER_PX + chrome) * base) / narrowestCss
+            : Number.POSITIVE_INFINITY;
+        const applied = Math.min(base * fit, Math.max(ceiling, 0.25));
+        setBodyZoom(applied);
+        if (Math.abs((parseFloat(body.style.zoom) || 1) - applied) > 0.002) {
+          body.style.zoom = String(applied);
+          // The height was read at the old size; the observer will answer
+          // again now the frame has laid out at this one.
+          scheduleMeasureRef.current?.();
+        }
+      }
     };
     let queued = 0;
+    let fallback = 0;
     const scheduleMeasure = () => {
       if (queued) return;
-      queued = requestAnimationFrame(() => {
+      const run = () => {
+        if (queued) cancelAnimationFrame(queued);
+        window.clearTimeout(fallback);
         queued = 0;
+        fallback = 0;
+        // Not a document that has since been swapped out or unmounted.
+        if (iframeRef.current?.contentDocument !== doc) return;
         measure();
-      });
+      };
+      queued = requestAnimationFrame(run);
+      // A frame that never comes. A webview that is not on screen — the
+      // planner's mail pane put away, a window minimised — stops its
+      // animation frames, and a measurement queued behind one waited for
+      // ever, with every later ask turned away at the door above. A
+      // timer runs it instead, and the first of the two to arrive wins.
+      fallback = window.setTimeout(run, 300);
+      pendingMeasureRef.current = () => {
+        if (queued) cancelAnimationFrame(queued);
+        window.clearTimeout(fallback);
+        queued = 0;
+        fallback = 0;
+      };
     };
     scheduleMeasureRef.current = scheduleMeasure;
 
@@ -1543,13 +2023,39 @@ export function EmailHtmlView({
     // Late layout shifts (e.g. images arriving after the reveal) resize the frame.
     observerRef.current?.disconnect();
     if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(scheduleMeasure);
+      /*
+        Not while a pane is sliding. This measurement collapses the frame
+        to nothing and reads the content back, twice over, and the reader's
+        width changes on every frame of a slide. One reading at the end
+        says the same thing.
+      */
+      const observer = new ResizeObserver(() => {
+        if (afterMailPaneSlide(scheduleMeasure)) return;
+        scheduleMeasure();
+      });
       observer.observe(doc.body);
       observer.observe(doc.documentElement);
       // Not the frame itself. Watching it from the outside was what fed
       // the width back into its own measure — see the latch in `measure`.
       // The pane not having laid out on the first pass is answered there
       // instead, by not recording an answer until there is a frame.
+      /*
+        The bubble's column is watched, though, and has to be.
+
+        How much room there is decides whether a mail that cannot reflow is
+        scaled down, and the room changes when the window or the pane does.
+        Without this a mail scaled to fit a narrow pane stayed scaled after
+        the pane was widened, because nothing inside the frame had moved
+        and so nothing asked again.
+
+        Safe to watch where the frame is not: the column is full-width
+        under a ceiling, so it measures the room and never the mail. It is
+        an input to the size below, not an answer to it.
+      */
+      const column = iframeRef.current?.closest<HTMLElement>(
+        ".mail-bubble-column"
+      );
+      if (column) observer.observe(column);
       observerRef.current = observer;
     }
     for (const img of doc.images) {
@@ -1557,7 +2063,8 @@ export function EmailHtmlView({
       img.addEventListener("load", scheduleMeasure, { once: true });
       img.addEventListener("error", scheduleMeasure, { once: true });
     }
-    attachPinchForwarding(doc);
+    const frameEl = iframeRef.current;
+    if (frameEl) attachPinchForwarding(doc, frameEl);
     attachKeyForwarding(doc);
     // In-frame bridge owns link clicks when CSP allowed it to run.
     if (doc.documentElement.getAttribute("data-dh-bridge") !== "1") {
@@ -1610,6 +2117,8 @@ export function EmailHtmlView({
     return () => {
       observerRef.current?.disconnect();
       observerRef.current = null;
+      pendingMeasureRef.current?.();
+      pendingMeasureRef.current = null;
     };
   }, []);
 
@@ -1644,6 +2153,9 @@ export function EmailHtmlView({
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) return;
     doc.body.style.zoom = String(zoom);
+    // The frame follows at once; the measurement refines it to the size
+    // that fits, which is this one unless the pane is narrower.
+    setBodyZoom(zoom);
     /*
       Measured again once the frame has laid out at the new size — reading
       the rect in the same tick as the zoom hands back the geometry from
@@ -1679,6 +2191,14 @@ export function EmailHtmlView({
         }
         style={{
           height: ready ? height : 140,
+          // Its own width once known — see `naturalWidth`. The class keeps
+          // `w-full` for the frame still measuring, and the inline value
+          // wins once there is one. Never past the bubble.
+          width:
+            ready && naturalWidth != null
+              ? Math.ceil(naturalWidth * bodyZoom)
+              : undefined,
+          maxWidth: "100%",
           /*
             The frame's own scheme, which decides two things the mail does
             not: what colour the canvas behind it is, and what colour the
@@ -1702,3 +2222,8 @@ export function EmailHtmlView({
     </div>
   );
 }
+
+export {
+  MAIL_PINCH_SCALE_EVENT,
+  MAIL_PINCH_WHEEL_EVENT,
+};

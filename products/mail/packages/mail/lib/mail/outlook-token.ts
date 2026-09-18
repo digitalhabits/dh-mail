@@ -21,6 +21,16 @@ const tokenCache = new Map<string, { token: string; expiresAt: number }>();
  * A revoked grant leaves a token here that still looks fresh for up to 45
  * minutes. Without this the reconnect appears to do nothing.
  */
+/**
+ * Hand the cache a token from outside. For a test that drives code which
+ * needs a token, on a host with no way to buy one; and for a host that
+ * has just bought one itself.
+ */
+export function rememberOutlookAccessToken(accountEmail: string, token: string, ttlMs = 45 * 60 * 1000): void {
+  tokenCache.set(accountEmail, { token, expiresAt: Date.now() + ttlMs });
+  tokenCache.set(accountEmail.trim().toLowerCase(), { token, expiresAt: Date.now() + ttlMs });
+}
+
 export function clearOutlookAccessToken(accountEmail: string): void {
   tokenCache.delete(accountEmail);
   tokenCache.delete(accountEmail.trim().toLowerCase());

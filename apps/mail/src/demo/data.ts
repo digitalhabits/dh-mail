@@ -470,6 +470,36 @@ export function demoThreads(): DemoThread[] {
       ],
     },
     {
+      // A short note with a pile of files under it: the files sit two or
+      // three abreast, and the bubble grows to hold them.
+      summary: summary({
+        threadId: "t-grant-files",
+        subject: "Application and supporting documents",
+        from: P.kanin,
+        snippet: "Hello, here is our application for support, with the other documents. Thank you in advance.",
+        at: ago(3 * HOUR + 10),
+        messageCount: 1,
+        others: [P.kanin],
+        hasAttachments: true,
+      }),
+      messages: [
+        message({
+          id: "m-grant-files-1",
+          from: P.kanin,
+          to: [ME],
+          at: ago(3 * HOUR + 10),
+          text: ["Hello,", "here is our application for support, with the other documents.", "", "Thank you in advance."].join("\n"),
+          attachments: [
+            file("a-grant-1", "Application.pdf", "application/pdf", 1_880_000),
+            file("a-grant-2", "Recommendation Midtvask.pdf", "application/pdf", 250_000),
+            file("a-grant-3", "Recommendation Embassy.pdf", "application/pdf", 734_000),
+            file("a-grant-4", "Statutes.pdf", "application/pdf", 3_000_000),
+            file("a-grant-5", "Memorandum.pdf", "application/pdf", 4_600_000),
+          ],
+        }),
+      ],
+    },
+    {
       summary: summary({
         threadId: "t-print",
         subject: "Paper stock for the catalogue",
@@ -738,11 +768,46 @@ export function demoThreads(): DemoThread[] {
           to: [ME],
           at: ago(2 * DAY + 20 * HOUR),
           text: "Our first cotton rag since the spring, in three weights.",
-          html: `<div style="font-family:Georgia,serif;max-width:520px;color:#1c1917">
-            <h1 style="font-size:22px;font-weight:600;margin:0 0 8px">Cotton rag is back</h1>
-            <p style="line-height:1.6;color:#57534e">Our first cotton rag since the spring, in three weights: 120, 150 and 300gsm. Mill-cut, deckled on two edges.</p>
-            <p style="line-height:1.6;color:#57534e">Samples are free to studio accounts.</p>
-            <p style="font-size:12px;color:#a8a29e">You are receiving this because you have a studio account.</p>
+          // Built the way a newsletter tool builds one: a fixed-width table
+          // that a media query lets go fluid on a narrow screen, a hidden
+          // preheader, and a few cells told not to wrap. Invented; the
+          // shape is what matters, since the reader has to fit it.
+          html: `<style>
+            @media (max-width: 700px) { .responsive { width: 100% !important; } }
+            .lnk { color: #b45309 !important; text-decoration: underline !important; }
+          </style>
+          <div style="display:none !important;visibility:hidden;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">Cotton rag is back — three weights, samples free to studios.</div>
+          <div style="padding: 0 10px;">
+            <table class="responsive" style="margin: 0 auto; width: 100%; max-width: 680px;" align="center" border="0" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="padding: 24px 0 8px; text-align: center; font-family: Georgia, serif; font-size: 28px; letter-spacing: 4px; color: #1c1917;">PAPIR &amp; PAP</td></tr>
+            </table>
+            <table class="responsive" style="background-color: #efefef; margin: 0 auto; width: 680px;" align="center" border="0" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="padding: 32px 40px 16px; font-family: Georgia, serif; font-size: 17px; line-height: 1.6; color: #1c1917;">
+                Welcome to the first paper letter of the season, a roundup of the sheets we think are worth your time. <em>(Thank you to the mill at Silkeborg for pressing the samples in time for this letter.)</em>
+              </td></tr>
+              <tr><td style="padding: 0 24px 24px;">
+                <table style="width: 100%; background: #ffffff; border-radius: 12px;" border="0" cellpadding="0" cellspacing="0" role="presentation">
+                  <tr><td style="padding: 24px 32px 8px;">
+                    <table border="0" cellpadding="0" cellspacing="0" role="presentation">
+                      <tr>
+                        <td valign="middle" style="padding-right: 8px; white-space: nowrap;"><span style="display:inline-block;width:36px;height:36px;border-radius:18px;background:#d6d3d1;"></span></td>
+                        <td valign="middle" style="padding-left: 10px; padding-right: 5px; white-space: nowrap;"><strong style="font-family: Helvetica, Arial, sans-serif; font-size: 15px;">Papir &amp; Pap</strong></td>
+                        <td valign="middle" style="padding-left: 2px; white-space: nowrap;"><span style="font-family: Helvetica, Arial, sans-serif; font-size: 14px; color: #78716c;">in Cotton rag · Sep 5</span></td>
+                      </tr>
+                    </table>
+                  </td></tr>
+                  <tr><td style="padding: 8px 32px 0; font-family: Helvetica, Arial, sans-serif; font-size: 24px; font-weight: 700; color: #1c1917;">Cotton rag, three weights</td></tr>
+                  <tr><td style="padding: 12px 32px 20px; font-family: Helvetica, Arial, sans-serif; font-size: 17px; line-height: 1.5; color: #44403c;">“Our first cotton rag since the spring, in three weights: 120, 150 and 300gsm. Mill-cut, deckled on two edges, and the 300 takes wash without cockling if you stretch it first.”</td></tr>
+                  <tr><td style="padding: 0 32px 28px;">
+                    <table style="width: 100%;" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
+                      <td valign="middle" style="font-family: Helvetica, Arial, sans-serif; font-size: 15px; color: #78716c; white-space: nowrap;">♡ 86 &nbsp;&nbsp; ✎ 67</td>
+                      <td valign="middle" align="right"><a class="lnk" href="https://papir.example/cotton-rag" style="display: inline-block; padding: 14px 28px; border: 2px solid #b45309; border-radius: 10px; font-family: Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 2px; color: #b45309; text-decoration: none; white-space: nowrap;">READ THE SAMPLES</a></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td></tr>
+              <tr><td style="padding: 0 40px 32px; font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #a8a29e;">You are receiving this because you have a studio account.</td></tr>
+            </table>
           </div>`,
         }),
       ],
@@ -814,7 +879,24 @@ export function demoThreadDetail(threadId: string): MailThreadDetail | null {
   } as MailThreadDetail;
 }
 
-/** Everyone the demo knows, for the typeahead and the People view. */
-export function demoContacts(): { name: string; email: string }[] {
-  return Object.values(P).map((p) => ({ name: p.name, email: p.email }));
+/**
+ * Everyone the demo knows, for the typeahead and the People view.
+ *
+ * Shaped like a real suggestion, `recordName` and `source` included: the
+ * list editor's typeahead lower-cases the record name of every contact it
+ * scores, and a row without one took the whole window down on the first
+ * keystroke.
+ */
+export function demoContacts(): {
+  name: string;
+  email: string;
+  recordName: string;
+  source: "history";
+}[] {
+  return Object.values(P).map((p) => ({
+    name: p.name,
+    email: p.email,
+    recordName: "",
+    source: "history",
+  }));
 }

@@ -17,7 +17,7 @@
  * remaining modules and the order to take them in.
  */
 
-import type { MailThreadSummary } from "@/lib/mail/types";
+import type { MailProvider, MailThreadSummary } from "@/lib/mail/types";
 
 /** One thread row of a cached provider list page. */
 export type MailListSyncRow = {
@@ -81,7 +81,7 @@ export type MailSettingsStore = {
 };
 
 /** Which mail provider a stored account belongs to. */
-export type MailStoreProvider = "gmail" | "outlook";
+export type MailStoreProvider = MailProvider;
 
 /** A connected mailbox, without its token. */
 export type MailAccountRecord = {
@@ -93,6 +93,13 @@ export type MailAccountRecord = {
   lastSyncError: string | null;
   /** Shown in the mail list. A hidden mailbox stays connected. */
   inMailTab: boolean;
+  /**
+   * The scopes the provider said it granted, space-separated. The planner
+   * host records it, because it asks for more than mail and needs to know
+   * which mailboxes hold an older grant. The local store has no use for it
+   * and reads it as absent.
+   */
+  grantedScopes?: string | null;
 };
 
 /**
@@ -141,7 +148,12 @@ export type MailAccountStore = {
   /** Add the mailbox, or replace its token and clear its sync state. */
   save(
     provider: MailStoreProvider,
-    input: { email: string; ownerId: string; refreshToken: string }
+    input: {
+      email: string;
+      ownerId: string;
+      refreshToken: string;
+      grantedScopes?: string | null;
+    }
   ): Promise<void>;
 
   /** The freshest stored token for this mailbox, or null. */
@@ -156,6 +168,20 @@ export type MailAccountStore = {
     email: string,
     ownerId: string,
     refreshToken: string
+  ): Promise<void>;
+
+  /**
+   * Keep the latest grant the provider reported for one owner's row.
+   *
+   * Optional, and the one method that is: the planner host implements it,
+   * the local store does not, and a caller skips it when it is absent. It is
+   * not an operation Rust must answer, so it stays off MAIL_STORE_OPERATIONS.
+   */
+  setGrantedScopes?(
+    provider: MailStoreProvider,
+    email: string,
+    ownerId: string,
+    grantedScopes: string
   ): Promise<void>;
 
   /** False when this owner has no such mailbox. */
@@ -251,6 +277,12 @@ export type MailSourceContact = {
   name: string;
   /** ISO timestamp of the most recent message, for history contacts. */
   lastEmailedAt: string | null;
+  /**
+   * The address book's own id for the card this address is on. Two
+   * addresses on one card are one person — see person-identity. Absent on
+   * history rows, and on rows mirrored before the book gave it.
+   */
+  card?: string | null;
 };
 
 /**
@@ -283,7 +315,7 @@ export type MailContactSourceStore = {
   replaceContacts(
     source: "google" | "outlook" | "mac",
     account: string,
-    contacts: { email: string; name: string }[]
+    contacts: { email: string; name: string; card?: string }[]
   ): Promise<void>;
 
   /**
@@ -471,6 +503,185 @@ export type MailChatStore = {
 };
 
 /** Everything mail stores. Grows as each module migrates. */
+// ---------------------------------------------------------------------------
+// The local copy of the mail — see docs/mail-local-store.md
+// ---------------------------------------------------------------------------
+
+export type MailStoredAddress = { name: string; email: string };
+
+/** A view of a mailbox, as the list asks for one. */
+export type MailStoredView =
+  | "inbox"
+  | "sent"
+  | "drafts"
+  | "starred"
+  | "trash"
+  | "junk"
+  | "archived"
+  | "all"
+  | "label";
+
+/** One message's headers, as the sync worker wrote them. Times are ms since the epoch. */
+export type MailStoredMessage = {
+  messageId: string;
+  threadId: string;
+  /** "" for All Mail, else "trash" or "spam": where its UID belongs. */
+  folder?: string;
+  uid?: number | null;
+  modseq?: number | null;
+  rfcMessageId?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
+  fromName: string;
+  fromEmail: string;
+  to: MailStoredAddress[];
+  cc: MailStoredAddress[];
+  bcc: MailStoredAddress[];
+  subject: string;
+  snippet: string;
+  sentAt: number;
+  sizeEstimate?: number | null;
+  hasAttachments: boolean;
+  unread: boolean;
+  starred: boolean;
+  isDraft: boolean;
+  labels: string[];
+};
+
+/** A fetched body. Immutable once written. */
+export type MailStoredBody = {
+  text?: string | null;
+  html?: string | null;
+  inlineImages?: Record<string, string>;
+  attachments?: unknown[];
+};
+
+/** A thread as the list draws it: its newest message and what the others add. */
+export type MailStoredThread = {
+  account: string;
+  threadId: string;
+  subject: string;
+  lastAt: number;
+  messageCount: number;
+  unread: boolean;
+  hasAttachments: boolean;
+  starred: boolean;
+  isDraft: boolean;
+  labels: string[];
+  latest: {
+    messageId: string;
+    fromName: string;
+    fromEmail: string;
+    to: MailStoredAddress[];
+    snippet: string;
+    sentAt: number;
+    unread: boolean;
+    rfcMessageId?: string | null;
+    inReplyTo?: string | null;
+    references?: string | null;
+  };
+  participants: MailStoredAddress[];
+  /** Who wrote each visible message, in order. */
+  senders: MailStoredAddress[];
+  /** From a search: the message that matched best. */
+  focusMessageId?: string;
+};
+
+export type MailSyncPhase = "none" | "full" | "live" | "expired" | "paused";
+
+/** Where a mailbox's sync has got to. One row per mailbox and folder. */
+export type MailSyncState = {
+  account: string;
+  folder: string;
+  phase: MailSyncPhase | string;
+  uidValidity?: number | null;
+  highestUid?: number | null;
+  highestModseq?: number | null;
+  deltaLink?: string | null;
+  fullSyncCursor?: number | null;
+  fullSyncTotal?: number | null;
+  fullSyncDone?: number | null;
+  lastOkAt?: number | null;
+  lastError?: string | null;
+};
+
+export type MailMessageStore = {
+  /** The threads of a view, newest first, from `before` (exclusive, ms) down. */
+  list(input: {
+    accounts: string[];
+    view: MailStoredView;
+    label?: string;
+    before?: number | null;
+    limit?: number;
+  }): Promise<{ threads: MailStoredThread[]; nextBefore: number | null }>;
+
+  /** How many threads a view holds, and how many of them are unread. */
+  counts(input: {
+    accounts: string[];
+    view: MailStoredView;
+    label?: string;
+  }): Promise<{ threads: number; unread: number }>;
+
+  /** One thread, every message, bodies where fetched. */
+  thread(
+    account: string,
+    threadId: string
+  ): Promise<(MailStoredMessage & { body: MailStoredBody | null })[]>;
+
+  /**
+   * Full-text search over the copy. Threads, newest first; inside one view
+   * when asked. Reads the words Gmail reads: `from:`, `to:`, `subject:`,
+   * `has:attachment`, `before:`, `after:`, quotes, `-word`, `OR`.
+   * `handled` is false when the query asks something only the provider
+   * can answer — `in:`, `label:`, `is:` — and the caller asks the provider.
+   */
+  search(input: {
+    accounts: string[];
+    q: string;
+    limit?: number;
+    includeDeleted?: boolean;
+    view?: MailStoredView;
+    label?: string;
+  }): Promise<{ threads: MailStoredThread[]; handled?: boolean }>;
+
+  /** Who the mailbox wrote to since `since` (ms), newest first. */
+  recipients(account: string, since: number): Promise<{ email: string; name: string; lastAt: number }[]>;
+
+  /** Threads and unread threads per user label, Trash and Junk left out. */
+  labelCounts(account: string): Promise<{ label: string; threads: number; unread: number }[]>;
+
+  /**
+   * Apply an action to the copy only — archive, trash, read, a label — for
+   * a provider whose own call has already been made.
+   */
+  applyAction(input: {
+    account: string;
+    threadId: string;
+    kind: string;
+    payload?: Record<string, unknown>;
+  }): Promise<void>;
+
+  /** Write or refresh these messages. Bodies are untouched. */
+  upsertMany(account: string, rows: MailStoredMessage[]): Promise<number>;
+
+  /** Keep a fetched body. */
+  putBody(account: string, messageId: string, body: MailStoredBody): Promise<void>;
+
+  /** Every message of a mailbox, gone. */
+  removeAccount(account: string): Promise<void>;
+
+  /** These messages, gone, with their labels and bodies. */
+  removeMessages(account: string, messageIds: string[]): Promise<void>;
+
+  /** Mark a thread read (every message) or unread (its newest). */
+  setUnread(account: string, threadId: string, unread: boolean): Promise<void>;
+};
+
+export type MailSyncStore = {
+  list(): Promise<MailSyncState[]>;
+  set(state: MailSyncState): Promise<void>;
+};
+
 export type MailStore = {
   listSync: MailListSyncStore;
   settings: MailSettingsStore;
@@ -478,4 +689,6 @@ export type MailStore = {
   snoozes: MailSnoozeStore;
   contactSources: MailContactSourceStore;
   chats: MailChatStore;
+  messages: MailMessageStore;
+  sync: MailSyncStore;
 };

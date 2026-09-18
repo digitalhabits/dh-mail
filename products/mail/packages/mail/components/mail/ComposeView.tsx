@@ -10,16 +10,23 @@
  */
 
 import * as React from "react";
-import { formatShortcut, shortcutMatchesEvent } from "@/lib/mail/shortcuts";
+import {
+  formatShortcut,
+  sendsFromHere,
+  shortcutMatchesEvent,
+} from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import {
   ChevronDown,
+  ExternalLink,
   Maximize2,
   Minimize2,
+  PictureInPicture2,
   SendHorizontal,
   Trash2,
+  X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import {
   ComposerSignature,
@@ -27,23 +34,37 @@ import {
   SignatureMetaControls,
 } from "@/components/mail/composer-preview";
 import {
-  AttachmentSizeSummary,
   AttachToolbarButton,
   ComposerDropOverlay,
   DraftAttachmentChips,
+  DraftAttachmentPreviewDialog,
   useComposerFileDrop,
   useComposerPaste,
   useDraftAttachments,
 } from "@/components/mail/MailAttachments";
 import { FromAccountMenu } from "@/components/mail/FromAccountMenu";
-import { RecipientField } from "@/components/mail/RecipientField";
+import { composeFromDefault, writeComposeFrom } from "@/lib/mail/compose-from";
+import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
-import {
-  COMPOSER_TOOLBAR_BUTTON,
-  TextStyleMenu,
-} from "@/components/mail/TextStyleMenu";
 import { sendWithUndo } from "@/components/mail/undo-send";
-import { useCanSendLater } from "@/lib/mail/use-outlook-accounts";
+import {
+  useCanSendLater,
+  useOutlookAccounts,
+} from "@/lib/mail/use-outlook-accounts";
+import { isPublicMailProduct } from "@/lib/mail/product-flavor";
+import { AiReplyMenu } from "@/components/mail/AiReplyMenu";
+import { AiReplyNotes, type AiReplyDraftResult } from "@/components/mail/AiReplyNotes";
+import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
+import {
+  bodyTravels,
+  ccBackToSelf,
+  copyMessageToClipboard,
+  saveAttachmentsForHandover,
+  withoutTrailingSignature,
+  openOutlookCompose,
+  outlookComposeUrl,
+} from "@/lib/mail/outlook-compose";
+import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import {
   fetchSignatureSettings,
@@ -55,13 +76,18 @@ import {
   usePinchZoom,
 } from "@/components/mail/use-mail-layout";
 import { ZoomControls } from "@/components/mail/ZoomControls";
-import { EmojiPickerButton } from "@/components/ui/EmojiPicker";
+import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
+import { startPointerDrag } from "@/lib/pointer-drag";
 import {
   RichTextEditor,
   type RichTextEditorHandle,
 } from "@/components/ui/RichTextEditor";
 import { Button } from "@/components/ui/button";
-import { bodyToEmailHtml, htmlToPlainText } from "@/lib/client-email-html";
+import {
+  bodyToEmailHtml,
+  htmlToPlainText,
+  plainTextToEditorHtml,
+} from "@/lib/client-email-html";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import {
   emailsOfRecipients,
@@ -73,31 +99,109 @@ import {
   COMPOSE_DRAFT_KEY,
   newComposeDraftKey,
   deleteDraft,
+  markDraftHandedOver,
   getDraft,
+  setDraft,
   readyAttachmentsForDraft,
   saveComposeDraft,
   type ComposeMailDraft,
+  type MailDraft,
 } from "@/lib/mail/local-drafts";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
+import { mailUsesCrmPeople } from "@/lib/mail/product-flavor";
 import { cn } from "@/lib/utils";
+
+
+/**
+ * How large a pasted picture may be, written into the message.
+ *
+ * A screenshot from a modern display is several megabytes, and base64 adds a
+ * third on top. Written into the body, that is what the recipient downloads
+ * before they can read the first line — and nobody wants an email that
+ * arrives at eight megabytes because a window was photographed.
+ *
+ * Above this it goes as a file instead, which is what an attachment is for.
+ */
+const MAX_INLINE_PASTE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * How many lines the subject can take.
+ *
+ * The subject is the heading of the card. Two lines hold a long one. More
+ * than two makes the heading the card, and pushes the message off it.
+ */
+const SUBJECT_MAX_LINES = 2;
+
+/**
+ * The type size of the subject, in pre-zoom pixels.
+ *
+ * A subject too long for two lines is set smaller until it fits, down to
+ * the minimum. The maximum is the size the class gives it, repeated here
+ * because the measurement writes the size on the element and then cannot
+ * read the class value back.
+ *
+ * The ratio is the line height over the type size, which is `leading-8`
+ * over `text-2xl`.
+ */
+const SUBJECT_MAX_PX = 24;
+const SUBJECT_MIN_PX = 16;
+const SUBJECT_LINE_RATIO = 4 / 3;
+
+/** The same, measured on a data: URI — base64 is four bytes for every three. */
+function dataUrlTooBig(dataUrl: string): boolean {
+  const comma = dataUrl.indexOf(",");
+  const base64 = comma < 0 ? dataUrl : dataUrl.slice(comma + 1);
+  return Math.floor((base64.length * 3) / 4) > MAX_INLINE_PASTE_BYTES;
+}
+
+/** What to call a draft in the toast that says it has gone. */
+function discardedDraftName(draft: MailDraft): string {
+  const subject = draft.kind === "compose" ? draft.subject.trim() : "";
+  if (subject) return subject.length > 60 ? `${subject.slice(0, 60)}…` : subject;
+  const to = draft.toList.find((r) => r.kind === "email");
+  if (to) return to.name || to.email;
+  const list = draft.toList[0];
+  return list && list.kind === "list" ? list.name : "";
+}
 
 export function ComposeView({
   accounts,
+  scope,
   zoom,
   onZoomAdjust,
   focusMode,
   onToggleFocus,
   onClose,
+  onFloat,
+  floating,
+  onUnfloat,
   onSent,
   onUndoSend,
   seed,
 }: {
   accounts: string[];
+  /**
+   * The account tabs in force, so a new message starts from the mailbox
+   * being worked in. One tab is a scope; none or several is "All".
+   */
+  scope?: string[];
   zoom: number;
   onZoomAdjust: (delta: number) => void;
   focusMode: boolean;
-  onToggleFocus: () => void;
+  /** Absent on a phone, where there is no list beside this to put away. */
+  onToggleFocus?: () => void;
   onClose: () => void;
+  /**
+   * Send this message into a floating card, so the reader can look at
+   * other mail while they write it. The draft is written first and this is
+   * handed its key: the card opens on the same draft, so nothing travels
+   * but the name of it.
+   */
+  onFloat?: (draftKey: string) => void;
+  /** This composer IS the floating card — see `floating` in ThreadPane. */
+  floating?: boolean;
+  /** Put the card away and open the message in the pane again. */
+  onUnfloat?: () => void;
   /** Refresh Sent for the From mailbox after a successful send. */
   onSent?: (accountEmail: string) => void;
   /**
@@ -116,8 +220,192 @@ export function ComposeView({
   } | null;
 }) {
   const t = useMailT();
-  const [from, setFrom] = React.useState(accounts[0] ?? "");
+  /**
+   * The address this composer opens on, settled before the first paint.
+   *
+   * Read while the state is made, not in an effect afterwards: an effect
+   * runs after the paint, so the composer showed the first mailbox for a
+   * frame and then swapped it for the remembered one, which reads as a
+   * flicker on the line the eye is already on. Nothing here is
+   * server-rendered to mismatch — the planner's mail route hosts a webview
+   * rather than drawing the composer, so this only ever runs in the app,
+   * where `localStorage` is there to be read.
+   */
+  const [from, setFrom] = React.useState(() =>
+    composeFromDefault(accounts, scope)
+  );
+  /** Ticked, the next address picked becomes the one new messages open on. */
+  const [rememberFrom, setRememberFrom] = React.useState(false);
+  /**
+   * Whether that address is settled — by the line above, by the remembered
+   * choice arriving late, or by a draft that carries its own. Whichever
+   * lands first, the others must not overwrite it.
+   */
+  const fromSettledRef = React.useRef(accounts.length > 0);
+
+  // Only for a composer opened before its mailboxes are known: there was
+  // nothing to resolve against above, so it is resolved when they arrive.
+  React.useEffect(() => {
+    if (fromSettledRef.current || !accounts.length) return;
+    fromSettledRef.current = true;
+    setFrom(composeFromDefault(accounts, scope));
+  }, [accounts, scope]);
   const canSendLater = useCanSendLater(from);
+  /*
+    Where a hand-over to Outlook would put this message — see the reply
+    box, which explains the choice. This one is simpler: a new message
+    belongs to no conversation, so there is nothing to thread it into
+    either way, and the only difference the other mailbox makes is the
+    address it will leave from.
+  */
+  const outlookAccounts = useOutlookAccounts();
+  const outlookTarget = React.useMemo(
+    () => outlookDraftAccount(outlookAccounts, from),
+    [outlookAccounts, from]
+  );
+  /*
+    The button no longer waits for a mailbox. The route that needs one is
+    the better of the two — a real draft, in the conversation — but the one
+    that needs nothing is the one that reaches the mailbox this app cannot
+    sign in to, which is usually the mailbox the reader is reaching for.
+  */
+  const canOpenInOutlook = !isPublicMailProduct();
+  const outlookElsewhere = Boolean(outlookTarget) && outlookTarget !== from;
+  const [handingOver, setHandingOver] = React.useState(false);
+
+  /** Finish this one in Outlook: the draft is made in the mailbox, not sent. */
+  const openInOutlook = async () => {
+    if (!canOpenInOutlook || handingOver) return;
+    if (!attachmentsReady) {
+      toast.error(mailSay("stillPreparingAttachments"));
+      return;
+    }
+    const attachments = attachmentPayload();
+    const bcc = [...flatBcc, ...flatTo.bccEmails, ...flatCc.bccEmails];
+    setHandingOver(true);
+    try {
+      // No mailbox of ours to write into — see the reply box, which explains
+      // why that is the ordinary case rather than the odd one.
+      if (!outlookTarget) {
+        const html = bodyText.trim() ? bodyToEmailHtml(body) : "";
+        // Outlook puts its own signature on what it opens, so ours does not
+        // go over with the words — see withoutTrailingSignature.
+        const carrying = withoutTrailingSignature(
+          { html: html || bodyText, text: bodyText },
+          htmlToPlainText(sigSettings?.signature ?? "")
+        );
+        const carried = bodyTravels(carrying.html, carrying.text);
+        if (!carried) {
+          await copyMessageToClipboard(carrying);
+        }
+        await openOutlookCompose(
+          outlookComposeUrl({
+            to: flatTo.emails,
+            // A copy back to the mailbox it was written from, so what goes
+            // out from Outlook lands in this app's mail too.
+            cc: ccBackToSelf({
+              from: from,
+              to: flatTo.emails,
+              cc: flatCc.emails,
+            }),
+            subject: subject.trim(),
+            body: carried ? carrying.text : undefined,
+          })
+        );
+        /*
+          The files, which a mailto: cannot carry.
+
+          They were dropped without a word before this: the message opened
+          in Outlook and the attachments simply were not on it. Now they go
+          to the downloads folder with the file manager pointed at them, and
+          the toast says where they are — or says they did not travel, when
+          there is nowhere to put them.
+        */
+        const savedFiles = await saveAttachmentsForHandover(attachments);
+        toast.success(
+          carried ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
+          attachments.length
+            ? {
+                description: savedFiles
+                  ? mailSay("outlookFilesInDownloads", {
+                      count: `${savedFiles} file${savedFiles === 1 ? "" : "s"}`,
+                    })
+                  : mailSay("outlookFilesLeftBehind", {
+                      count: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
+                    }),
+                duration: 12_000,
+              }
+            : undefined
+        );
+        return;
+      }
+      await apiJson("/api/mail/outlook-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account: outlookTarget,
+          to: flatTo.emails,
+          cc: flatCc.emails.length ? flatCc.emails : undefined,
+          bcc: bcc.length ? [...new Set(bcc)] : undefined,
+          subject: subject.trim(),
+          body: bodyText,
+          html: bodyText.trim() ? bodyToEmailHtml(body) : undefined,
+          // The signature belongs to the mailbox it is sent from, and that
+          // mailbox will add its own.
+          includeSignature: outlookElsewhere ? false : includeSignature,
+          attachments: attachments.length ? attachments : undefined,
+        }),
+      });
+      const invoke = tauriInvoke();
+      const refused = invoke
+        ? await invoke("activate_outlook").then(
+            () => "",
+            (err: unknown) => {
+              console.warn("[mail] couldn't bring Outlook forward:", err);
+              // What Rust said, which is what `open` said. A reason on the
+              // screen is the difference between a bug report and a shrug.
+              return err instanceof Error
+                ? err.message
+                : String(err) || mailSay("outlookDidNotOpen");
+            }
+          )
+        : mailSay("outlookDidNotOpen");
+      const landed = outlookElsewhere
+        ? mailSay("draftIsInOutlookFrom", { account: outlookTarget })
+        : mailSay("draftIsInOutlook");
+      void markDraftHandedOver(draftKeyRef.current, from);
+      /* The same offer the reply box makes: a handover is not a send, so
+         the copy here would sit in Drafts for ever otherwise. */
+      toast.success(landed, {
+        ...(refused ? { description: refused } : null),
+        duration: 12_000,
+        action: {
+          label: mailSay("discardTheCopyHere"),
+          onClick: () => discardCompose(),
+        },
+      });
+    } catch (err) {
+      const fallback = outlookTarget
+        ? mailSay("couldNotDraftInOutlook")
+        : mailSay("couldNotOpenOutlook");
+      /*
+        Tauri refuses with a string, not an Error.
+
+        Reading `.message` off it and falling back to a sentence of our own
+        threw away the only line that said what was wrong — "command not
+        found", when the window is older than the command it is calling.
+      */
+      const said =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "";
+      toast.error(said.trim() || fallback);
+    } finally {
+      setHandingOver(false);
+    }
+  };
   const [toList, setToList] = React.useState<MailRecipient[]>(() =>
     seed?.to?.length ? recipientsFromEmails(seed.to) : []
   );
@@ -131,6 +419,13 @@ export function ComposeView({
   const [includeSignature, setIncludeSignature] = React.useState(true);
   const [showPreview, setShowPreview] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [draftingReply, setDraftingReply] = React.useState(false);
+  const [aiReplyNotes, setAiReplyNotes] =
+    React.useState<AiReplyDraftResult | null>(null);
+  const [aiReplyWorking, setAiReplyWorking] = React.useState<
+    "reading" | "writing" | null
+  >(null);
+  const aiReplyRun = React.useRef<AbortController | null>(null);
   const [sigSettings, setSigSettings] = React.useState<SignatureSettings | null>(
     null
   );
@@ -149,17 +444,35 @@ export function ComposeView({
   const composeRef = React.useRef<HTMLDivElement>(null);
   const {
     items: attachItems,
-    totalBytes: attachTotalBytes,
     ready: attachmentsReady,
     addFiles: addAttachFiles,
     remove: removeAttach,
     replaceAll: replaceAttachments,
     payload: attachmentPayload,
   } = useDraftAttachments();
+  /** The draft attachment open in the preview, by strip id. */
+  const [draftPreviewId, setDraftPreviewId] = React.useState<string | null>(
+    null
+  );
+  /**
+   * A picture into the message itself, at the caret.
+   *
+   * The same for a paste and for a drop on the words, so both land the
+   * same way. Too big to write in, or no editor to write into: it is a
+   * file, and the caller attaches it instead.
+   */
+  const insertInlineImage = React.useCallback((dataUrl: string) => {
+    if (dataUrlTooBig(dataUrl) || !editorHandle.current) return false;
+    editorHandle.current.insertImage(dataUrl);
+  }, []);
   const { dragging: attachDragging, dropHandlers: attachDropHandlers } =
-    useComposerFileDrop(addAttachFiles);
+    useComposerFileDrop(addAttachFiles, {
+      caretToPoint: (x, y) =>
+        editorHandle.current?.caretToPoint(x, y) ?? false,
+      insert: insertInlineImage,
+    });
   const { pasteHandlers: attachPasteHandlers } =
-    useComposerPaste(addAttachFiles);
+    useComposerPaste(addAttachFiles, insertInlineImage);
   usePinchZoom(composeRef, onZoomAdjust, true);
 
   // Follow the sending account's "include on new messages" preference until
@@ -168,6 +481,8 @@ export function ComposeView({
 
   const draftReadyRef = React.useRef(false);
   const draftDiscardedRef = React.useRef(false);
+  /** The draft key already thrown away, so it is not thrown away twice. */
+  const discardedKeyRef = React.useRef<string | null>(null);
   const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -219,13 +534,66 @@ export function ComposeView({
     []
   );
 
+  /**
+   * Hand the message to the floating card.
+   *
+   * Written now and closed without deleting, which is the whole difference
+   * from closing: the words survive the handover, and the card opens on the
+   * same draft key.
+   */
+  const floatCompose = React.useCallback(() => {
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    persistComposeDraft();
+    // No saves after the handover: the card owns the draft now.
+    draftDiscardedRef.current = true;
+    onFloat?.(draftKeyRef.current);
+  }, [persistComposeDraft, onFloat]);
+
+  /**
+   * Throw the message away, with a way back.
+   *
+   * The draft as it stands is read before it goes, so Undo can put the
+   * same one back — the bin is a key as well as a button now, and a key
+   * is easy to press by mistake. Nothing here waits for the read: the
+   * composer closes at once, and the offer stands for the toast's life.
+   */
   const discardCompose = React.useCallback(() => {
+    const key = draftKeyRef.current;
+    // Once for one draft — the bin and the delete key both come here, and
+    // the read below is asynchronous, so two runs would both find a draft
+    // to save and both say it had gone.
+    if (discardedKeyRef.current === key) return;
+    discardedKeyRef.current = key;
     draftDiscardedRef.current = true;
     if (draftSaveTimerRef.current) {
       clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
     }
-    void deleteDraft(draftKeyRef.current);
+    void (async () => {
+      const saved = await getDraft(key).catch(() => null);
+      await deleteDraft(key);
+      if (!saved) return;
+      // Named, so a bin pressed by mistake says which message it took: the
+      // subject, or whom it was to when it had none yet.
+      const name = discardedDraftName(saved);
+      toast(
+        name
+          ? mailSay("draftDiscardedNamed", { name })
+          : mailSay("draftDiscarded"),
+        {
+        action: {
+          label: mailSay("undo"),
+          onClick: () => {
+            discardedKeyRef.current = null;
+            void setDraft(saved);
+          },
+        },
+        }
+      );
+    })();
     onClose();
   }, [onClose]);
 
@@ -266,7 +634,10 @@ export function ComposeView({
         // Write back to where it came from. Saving a loaded draft under a
         // fresh key would leave the original behind and make two of it.
         draftKeyRef.current = loadKey;
-        setFrom(raw.from || accounts[0] || "");
+        // The draft's own address wins: it was chosen for this message.
+        // Only a draft that never recorded one falls back to the default.
+        fromSettledRef.current = true;
+        setFrom(raw.from || composeFromDefault(accounts));
         setToList(raw.toList);
         setCcList(raw.ccList);
         setBccList(raw.bccList);
@@ -350,15 +721,135 @@ export function ComposeView({
    * nothing under it — "Running ten minutes late", "Approved" — and refusing
    * to send one means retyping it into the body to satisfy us.
    */
+  /**
+   * Somebody to send it to, anywhere on the envelope.
+   *
+   * A course mail goes to two dozen people in Bcc and to nobody in To,
+   * which is what Bcc is for. Counting only To greyed out Send and Open in
+   * Outlook on exactly the message Bcc exists for — and the app's own
+   * Facilitators page hands the addresses over saying "paste into Bcc".
+   */
+  const hasRecipient = Boolean(
+    flatTo.emails.length || flatCc.emails.length || flatBcc.length
+  );
   const canSend =
     Boolean(
       from &&
-        flatTo.emails.length &&
+        hasRecipient &&
         (bodyText.trim() || subject.trim() || attachItems.length) &&
         attachmentsReady
     ) && !sending;
 
   const shortcuts = useMailShortcuts();
+
+  const stopAiReply = React.useCallback(() => {
+    aiReplyRun.current?.abort();
+    aiReplyRun.current = null;
+    setDraftingReply(false);
+    setAiReplyWorking(null);
+    setAiReplyNotes(null);
+  }, []);
+
+  /**
+   * Draft this new message with the AI.
+   *
+   * Same path as a reply: the planner matches the people in To and Cc to
+   * CRM records, reads past mail with them, and answers a draft. There is
+   * no thread. The box is the brief when it already holds notes.
+   */
+  const draftComposeWithAi = React.useCallback(
+    async (hint: string) => {
+      if (draftingReply || !from) return;
+      const notes = bodyText.trim();
+      const run = new AbortController();
+      aiReplyRun.current?.abort();
+      aiReplyRun.current = run;
+      setDraftingReply(true);
+      setAiReplyNotes(null);
+      setAiReplyWorking("reading");
+      const compose = {
+        to: flattenRecipientsForSend(toList).emails,
+        cc: flattenRecipientsForSend(ccList).emails,
+        subject: subject.trim(),
+      };
+      try {
+        try {
+          const matched = await apiJson<Partial<AiReplyDraftResult>>(
+            "/api/mail/reply-draft",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                account: from,
+                compose,
+                phase: "match",
+              }),
+              signal: run.signal,
+            }
+          );
+          if (run.signal.aborted) return;
+          if (matched.scenario) {
+            setAiReplyNotes({
+              body: "",
+              scenario: matched.scenario,
+              usedRecords: matched.usedRecords ?? [],
+              gaps: [],
+            });
+          }
+        } catch {
+          // Keep the plain "reading" line and go on to the draft.
+        }
+        if (run.signal.aborted) return;
+        setAiReplyWorking("writing");
+        const result = await apiJson<Partial<AiReplyDraftResult>>(
+          "/api/mail/reply-draft",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              account: from,
+              compose,
+              hint: hint || undefined,
+              notes: notes || undefined,
+            }),
+            signal: run.signal,
+          }
+        );
+        if (run.signal.aborted) return;
+        if (typeof result.body !== "string" || !result.body.trim()) {
+          throw new Error(t("aiReplyEmpty"));
+        }
+        setBody(plainTextToEditorHtml(result.body));
+        setEditorKey((k) => k + 1);
+        if (result.subject?.trim() && !subject.trim()) {
+          setSubject(result.subject.trim());
+        }
+        setAiReplyNotes({
+          body: result.body,
+          ...(result.subject ? { subject: result.subject } : {}),
+          scenario: result.scenario ?? "cold",
+          usedRecords: result.usedRecords ?? [],
+          gaps: result.gaps ?? [],
+          ...(notes ? { brief: notes } : {}),
+        });
+      } catch (err) {
+        if (run.signal.aborted) return;
+        setAiReplyNotes(null);
+        toast.error(
+          `${t("aiComposeFailed")}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      } finally {
+        if (aiReplyRun.current === run) {
+          aiReplyRun.current = null;
+          setDraftingReply(false);
+          setAiReplyWorking(null);
+        }
+      }
+    },
+    [bodyText, ccList, draftingReply, from, subject, t, toList]
+  );
 
   const send = async (sendAt?: string) => {
     if (!canSend) return;
@@ -462,24 +953,96 @@ export function ComposeView({
   };
 
   /**
-   * Send from inside the message being written.
+   * Send, focus-message, and float-message from inside the message being written.
    *
    * The thread's other shortcuts stand down whenever the focus is in a field,
-   * so a reply can contain the letter R. This one has to work from exactly
-   * there, so the composer listens for it itself. `send` guards its own
-   * preconditions, so a press with nothing to send does nothing.
+   * so a reply can contain the letter R. These have to work from exactly
+   * there, so the composer listens for them itself. `send` guards its own
+   * preconditions, so a press with nothing to send does nothing. Focus uses
+   * the same toggle the button calls. Float uses the same toggle the card
+   * button calls.
    */
   const sendShortcutRef = React.useRef(send);
   sendShortcutRef.current = send;
+  const focusMessageShortcutRef = React.useRef(onToggleFocus);
+  focusMessageShortcutRef.current = onToggleFocus;
+  const floatMessageShortcutRef = React.useRef<() => void>(() => {});
+  floatMessageShortcutRef.current = () => {
+    if (floating) {
+      onUnfloat?.();
+      return;
+    }
+    if (!onFloat) return;
+    floatCompose();
+  };
+  const discardShortcutRef = React.useRef(discardCompose);
+  discardShortcutRef.current = discardCompose;
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!shortcutMatchesEvent(event, shortcuts.send)) return;
+      const sendHit = shortcutMatchesEvent(event, shortcuts.send);
+      const focusHit = shortcutMatchesEvent(event, shortcuts.focusMessage);
+      const floatHit = shortcutMatchesEvent(event, shortcuts.floatMessage);
+      /*
+        The delete key means this message, because this message is what
+        is on screen. It reached nothing before: the reader pane holds
+        that shortcut and the reader pane is not mounted while a message
+        is being written, so a draft opened from the list answered the
+        key with silence.
+
+        Only from outside a field. Backspace inside the words is a
+        backspace, which is the whole reason this one is guarded and the
+        send key is not.
+      */
+      if (shortcutMatchesEvent(event, shortcuts.delete)) {
+        const active = document.activeElement as HTMLElement | null;
+        if (active?.closest('input, textarea, [contenteditable="true"]')) {
+          return;
+        }
+        if (
+          !sendsFromHere({
+            caretHere: Boolean(composeRef.current?.contains(active)),
+            caretNowhere: !active || active === document.body,
+            floating: Boolean(floating),
+          })
+        ) {
+          return;
+        }
+        event.preventDefault();
+        if (event.repeat) return;
+        discardShortcutRef.current();
+        return;
+      }
+      if (!sendHit && !focusHit && !floatHit) return;
+      if (floatHit) {
+        if (
+          !sendsFromHere({
+            caretHere: Boolean(
+              composeRef.current?.contains(document.activeElement)
+            ),
+            caretNowhere:
+              !document.activeElement ||
+              document.activeElement === document.body,
+            floating: Boolean(floating),
+          })
+        ) {
+          return;
+        }
+        event.preventDefault();
+        if (event.repeat) return;
+        floatMessageShortcutRef.current();
+        return;
+      }
       event.preventDefault();
+      if (focusHit) {
+        if (event.repeat) return;
+        focusMessageShortcutRef.current?.();
+        return;
+      }
       void sendShortcutRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shortcuts]);
+  }, [shortcuts, floating]);
 
   /* px-4 and a narrower label column: "From" and "To" are four letters and
      two, and sixty-four pixels of nothing after them pushed every address
@@ -489,7 +1052,7 @@ export function ComposeView({
   const labelClass = "w-10 shrink-0 pt-0.5 text-[15px] text-stone-500";
   /** Where Tab goes from To: the next thing to fill in, not the Cc button. */
   const ccInputRef = React.useRef<HTMLInputElement | null>(null);
-  const subjectInputRef = React.useRef<HTMLInputElement | null>(null);
+  const subjectInputRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   /**
    * Tab out of the last recipient field lands in the message.
@@ -542,6 +1105,13 @@ export function ComposeView({
    * from and no From to land on.
    */
   const onSubjectKeyDown = (event: React.KeyboardEvent) => {
+    // The subject wraps, but it is still one line of text. Enter would put
+    // a real break in it, so it goes to the message instead.
+    if (event.key === "Enter") {
+      event.preventDefault();
+      focusBody();
+      return;
+    }
     if (event.key !== "Tab" || event.shiftKey) return;
     const next = fromSelectRef.current ?? toInputRef.current;
     if (!next) return;
@@ -631,29 +1201,124 @@ export function ComposeView({
           );
         }
       };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      startPointerDrag(
+        { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+        { onMove }
+      );
     },
     [zoom, cardW, cardH]
   );
 
+  /**
+   * The subject grows to a second line, and stops there.
+   *
+   * A long subject used to scroll sideways out of its own box, which hid
+   * the end of the line the other person triages by. The box is a textarea
+   * now, so the words wrap. Two lines is the limit, because more than two
+   * pushes the message itself down the card.
+   *
+   * A subject too long for two lines is set smaller until it fits. The
+   * whole line stays in sight that way. Below the minimum size the words
+   * stop shrinking and the box scrolls, which only a very long subject
+   * reaches.
+   *
+   * Re-measured on the card width, because a narrower card wraps earlier.
+   */
+  React.useLayoutEffect(() => {
+    const el = subjectInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    let size = SUBJECT_MAX_PX;
+    let line = 0;
+    let full = 0;
+    for (;;) {
+      line = Math.round(size * SUBJECT_LINE_RATIO);
+      el.style.fontSize = `${size}px`;
+      el.style.lineHeight = `${line}px`;
+      full = el.scrollHeight;
+      if (full <= line * SUBJECT_MAX_LINES || size <= SUBJECT_MIN_PX) break;
+      size -= 1;
+    }
+    const max = line * SUBJECT_MAX_LINES;
+    el.style.height = `${Math.min(full, max)}px`;
+    el.style.overflowY = full > max ? "auto" : "hidden";
+  }, [subject, cardW]);
+
   return (
     <div
       ref={composeRef}
-      className="mail-thread-surface relative min-h-0 flex-1 overflow-y-auto bg-[var(--mail-thread)]"
+      className={cn(
+        "mail-thread-surface relative bg-[var(--mail-thread)]",
+        floating
+          ? // The card, at the size the reply's card uses, so the two are
+            // the same thing in the same corner. A height of its own, not
+            // one the message grows: the message scrolls inside it.
+            "mail-floating-reply fixed bottom-4 right-6 z-40 flex h-[32rem] max-h-[calc(100vh-2rem)] w-[34rem] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
+          : "min-h-0 flex-1 overflow-y-auto"
+      )}
     >
-      <div className="absolute right-6 top-5 z-10">
-        <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
-      </div>
-      <div className="px-8 py-8">
+      {/* Half the padding above, full below. The zoom pill used to float
+          over the card and the space above it was the card's own margin.
+          With the pill in the flow that space sat above the pill instead,
+          which pushed the card down the pane. */}
+      <div
+        className={
+          floating
+            ? "flex min-h-0 flex-1 flex-col p-0"
+            : "px-8 pb-8 pt-4"
+        }
+      >
+        {/* The zoom sits above the card, not on its top right corner.
+            Floated over the corner it covered the end of the subject, and
+            the subject is now two lines deep. Here it lines up with the
+            card's right edge, ten pixels clear of it.
+
+            Outside the card, so the preview keeps it: the preview is
+            drawn at the same zoom and replaces the card below.
+
+            `cardW * zoom` for the width, the same as the signature row
+            under the card — the card is drawn at the composer's text size
+            and this row is not. */}
+        {floating ? null : (
+          /* The band above the card, from the pane's top edge to the card,
+             answers a double click the way the reader's toolbar strip
+             does: the composer takes the whole pane, or gives the list
+             back. The subject row does the same, but the subject is a box
+             that takes the click itself, so its margins were all that was
+             left of it; this band is the open ground. Not on the zoom
+             buttons: two presses of one of those is already an answer. */
+          <div
+            className="-mx-8 -mt-4 mb-2.5 select-none px-8 pt-4"
+            /* The second press of a double click starts the browser's own
+               word selection, and on open ground with no word under it
+               the selection reached the nearest text: the subject came
+               up selected. Refusing the press's default stops that and
+               leaves the click itself alone. */
+            onMouseDown={(e) => {
+              if (e.detail > 1 && !isInteractiveDoubleClickTarget(e.target)) {
+                e.preventDefault();
+              }
+            }}
+            onDoubleClick={(e) => {
+              if (isInteractiveDoubleClickTarget(e.target)) return;
+              onToggleFocus?.();
+            }}
+          >
+            <div
+              className="mx-auto flex justify-end"
+              style={{ width: cardW * zoom, maxWidth: "100%" }}
+            >
+              <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
+            </div>
+          </div>
+        )}
         {/* Hidden (not unmounted) during preview so the draft is kept. */}
-        <div className={showPreview ? "hidden" : undefined}>
+        <div
+          className={cn(
+            showPreview ? "hidden" : undefined,
+            floating && "flex min-h-0 flex-1 flex-col"
+          )}
+        >
           <div
             ref={cardShellRef}
             className={cn(
@@ -663,14 +1328,22 @@ export function ComposeView({
               // on the dark theme put a white page the size of the window
               // in front of somebody who had asked for no white pages.
               "mail-composer-card relative mx-auto flex min-h-0 flex-col rounded-xl border border-stone-200 bg-white shadow-sm",
-              cardH != null && "overflow-hidden"
+              (floating || cardH != null) && "overflow-hidden",
+              // In the corner the card is the card: it takes the room it is
+              // given and the message scrolls inside it, which is the same
+              // arrangement a dragged height already uses.
+              floating && "flex-1 rounded-none border-0 shadow-none"
             )}
-            style={{
-              width: cardW,
-              height: cardH ?? undefined,
-              maxWidth: "100%",
-              zoom,
-            }}
+            style={
+              floating
+                ? { width: "100%", maxWidth: "100%", zoom }
+                : {
+                    width: cardW,
+                    height: cardH ?? undefined,
+                    maxWidth: "100%",
+                    zoom,
+                  }
+            }
             {...attachDropHandlers}
             {...attachPasteHandlers}
           >
@@ -679,7 +1352,7 @@ export function ComposeView({
               className="flex shrink-0 items-center gap-3 border-b border-stone-200 px-5 py-3.5"
               onDoubleClick={(e) => {
                 if (isInteractiveDoubleClickTarget(e.target)) return;
-                onToggleFocus();
+                onToggleFocus?.();
               }}
             >
               {/* The heading is the subject. Not a heading *and* a Subject
@@ -688,16 +1361,20 @@ export function ComposeView({
                   echo was the part that looked like the real thing.
                   The subject is the one line the other person triages by,
                   so it gets the size — and typing it is typing here. */}
-              <input
+              <textarea
                 ref={subjectInputRef}
-                type="text"
+                rows={1}
                 value={subject}
-                onChange={(e) => setSubject(e.target.value)}
+                // Pasted mail headers carry line breaks. The subject is one
+                // line, so a break becomes a space.
+                onChange={(e) =>
+                  setSubject(e.target.value.replace(/[\r\n]+/g, " "))
+                }
                 placeholder={t("subject")}
                 aria-label={t("subject")}
                 onKeyDown={onSubjectKeyDown}
                 className={cn(
-                  "min-w-0 flex-1 bg-transparent font-serif text-2xl font-bold text-stone-900 outline-none",
+                  "min-w-0 flex-1 resize-none bg-transparent font-serif text-2xl font-bold leading-8 text-stone-900 outline-none",
                   // Grey until there are words, which is the placeholder
                   // saying what the line is for rather than a title saying
                   // the message has one.
@@ -708,20 +1385,66 @@ export function ComposeView({
                   "border-b border-dashed border-transparent hover:border-stone-300 focus:border-stone-300"
                 )}
               />
-              <button
-                type="button"
-                title={focusMode ? t("showMailList") : t("focusMode")}
-                aria-label={focusMode ? t("showMailList") : t("focusMode")}
-                aria-pressed={focusMode}
-                className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                onClick={onToggleFocus}
-              >
-                {focusMode ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </button>
+              {onFloat && !floating ? (
+                <button
+                  type="button"
+                  title={`${t("writeWhileYouBrowse")} (${formatShortcut(
+                    shortcuts.floatMessage
+                  )})`}
+                  aria-label={`${t("writeWhileYouBrowse")} (${formatShortcut(
+                    shortcuts.floatMessage
+                  )})`}
+                  className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                  onClick={floatCompose}
+                >
+                  <PictureInPicture2 className="h-4 w-4" />
+                </button>
+              ) : null}
+              {floating ? (
+                <>
+                  <button
+                    type="button"
+                    title={`${t("backToTheMessage")} (${formatShortcut(
+                      shortcuts.floatMessage
+                    )})`}
+                    aria-label={`${t("backToTheMessage")} (${formatShortcut(
+                      shortcuts.floatMessage
+                    )})`}
+                    className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                    onClick={onUnfloat}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title={t("close")}
+                    aria-label={t("close")}
+                    className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                    onClick={onClose}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              ) : onToggleFocus ? (
+                <button
+                  type="button"
+                  title={`${focusMode ? t("showMailList") : t("focusMode")} (${formatShortcut(
+                    shortcuts.focusMessage
+                  )})`}
+                  aria-label={`${focusMode ? t("showMailList") : t("focusMode")} (${formatShortcut(
+                    shortcuts.focusMessage
+                  )})`}
+                  aria-pressed={focusMode}
+                  className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                  onClick={onToggleFocus}
+                >
+                  {focusMode ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </button>
+              ) : null}
             </div>
 
             <div className={rowClass}>
@@ -732,96 +1455,123 @@ export function ComposeView({
                   variant="row"
                   value={from}
                   accounts={accounts}
-                  onChange={setFrom}
+                  onChange={(account) => {
+                    setFrom(account);
+                    fromSettledRef.current = true;
+                    if (rememberFrom) writeComposeFrom(account);
+                  }}
                   label={t("fieldFrom")}
+                  remember={{
+                    checked: rememberFrom,
+                    onChange: setRememberFrom,
+                    label: t("rememberFromForNewMessages"),
+                  }}
                 />
               ) : (
                 <span className="text-stone-800">{from}</span>
               )}
             </div>
 
-            <div className={rowClass}>
-              <span className={labelClass}>{t("fieldTo")}</span>
-              <RecipientField
-                inputRef={toInputRef}
-                label={t("fieldTo")}
-                variant="inline"
-                values={toList}
-                onChange={setToList}
-                allowSaveList
-                // A long list folds down to this while nobody is editing it,
-                // so the message keeps the window rather than the addresses.
-                collapseAfter={6}
-                ownAccounts={accounts}
-                placeholder={t("startTypingName")}
-                onTabOut={() =>
-                  showCc ? ccInputRef.current?.focus() : focusBody()
-                }
-                actions={
-                  <span className="flex items-center gap-2.5 text-[15px] text-stone-500">
-                    {!showCc ? (
-                      <button
-                        type="button"
-                        className="underline-offset-2 hover:text-stone-800 hover:underline"
-                        onClick={() => setShowCc(true)}
-                      >
-                        Cc
-                      </button>
-                    ) : null}
-                    {!showBcc ? (
-                      <button
-                        type="button"
-                        className="underline-offset-2 hover:text-stone-800 hover:underline"
-                        onClick={() => setShowBcc(true)}
-                      >
-                        {t("fieldBcc")}
-                      </button>
-                    ) : null}
-                  </span>
-                }
-              />
-            </div>
-            {showCc ? (
+            <RecipientCarryProvider>
               <div className={rowClass}>
-                <span className={labelClass}>{t("fieldCc")}</span>
+                <span className={labelClass}>{t("fieldTo")}</span>
                 <RecipientField
-                  inputRef={ccInputRef}
-                  label={t("fieldCc")}
+                  inputRef={toInputRef}
+                  label={t("fieldTo")}
                   variant="inline"
-                  values={ccList}
-                  onChange={setCcList}
+                  values={toList}
+                  onChange={setToList}
+                  allowSaveList
+                  // A long list folds down to this while nobody is editing it,
+                  // so the message keeps the window rather than the addresses.
                   collapseAfter={6}
                   ownAccounts={accounts}
-                  placeholder={t("optional")}
+                  placeholder={t("startTypingName")}
+                  onTabOut={() =>
+                    showCc ? ccInputRef.current?.focus() : focusBody()
+                  }
+                  actions={
+                    <span className="flex items-center gap-2.5 text-[15px] text-stone-500">
+                      {!showCc ? (
+                        <button
+                          type="button"
+                          className="underline-offset-2 hover:text-stone-800 hover:underline"
+                          onClick={() => setShowCc(true)}
+                        >
+                          Cc
+                        </button>
+                      ) : null}
+                      {!showBcc ? (
+                        <button
+                          type="button"
+                          className="underline-offset-2 hover:text-stone-800 hover:underline"
+                          onClick={() => setShowBcc(true)}
+                        >
+                          {t("fieldBcc")}
+                        </button>
+                      ) : null}
+                    </span>
+                  }
                 />
               </div>
-            ) : null}
-            {showBcc ? (
-              <div className={rowClass}>
-                <span className={labelClass}>{t("fieldBcc")}</span>
-                <RecipientField
-                  label={t("fieldBcc")}
-                  variant="inline"
-                  values={bccList}
-                  onChange={setBccList}
-                  collapseAfter={6}
-                  ownAccounts={accounts}
-                  placeholder={t("optional")}
-                />
-              </div>
-            ) : null}
+              {showCc ? (
+                <div className={rowClass}>
+                  <span className={labelClass}>{t("fieldCc")}</span>
+                  <RecipientField
+                    inputRef={ccInputRef}
+                    label={t("fieldCc")}
+                    variant="inline"
+                    values={ccList}
+                    onChange={setCcList}
+                    collapseAfter={6}
+                    ownAccounts={accounts}
+                    placeholder={t("optional")}
+                  />
+                </div>
+              ) : null}
+              {showBcc ? (
+                <div className={rowClass}>
+                  <span className={labelClass}>{t("fieldBcc")}</span>
+                  <RecipientField
+                    label={t("fieldBcc")}
+                    variant="inline"
+                    values={bccList}
+                    onChange={setBccList}
+                    collapseAfter={6}
+                    ownAccounts={accounts}
+                    placeholder={t("optional")}
+                  />
+                </div>
+              ) : null}
+            </RecipientCarryProvider>
             {/* Where the words go. No light island: a message is shown in
                 the thread on a dark bubble now, so writing it on a white one
                 would be the odd half of the pair. */}
             <div
               className={cn(
                 "min-h-0",
-                cardH != null ? "flex flex-1 flex-col overflow-y-auto" : undefined
+                floating || cardH != null
+                  ? "flex flex-1 flex-col overflow-y-auto"
+                  : undefined
               )}
             >
+              {aiReplyNotes || aiReplyWorking ? (
+                <AiReplyNotes
+                  purpose="compose"
+                  result={aiReplyNotes}
+                  working={aiReplyWorking}
+                  onStop={stopAiReply}
+                  onRestoreBrief={(brief) => {
+                    setBody(plainTextToEditorHtml(brief));
+                    setEditorKey((k) => k + 1);
+                    setAiReplyNotes(null);
+                  }}
+                  onDismiss={() => setAiReplyNotes(null)}
+                />
+              ) : null}
               <RichTextEditor
                 key={editorKey}
-                className="mail-compose-editor"
+                className="mail-message-editor"
                 toolbarId="mail-compose-toolbar"
                 handleRef={editorHandle}
                 defaultValue={body}
@@ -835,26 +1585,23 @@ export function ComposeView({
               {includeSignature && sigSettings?.signature ? (
                 <ComposerSignature signature={sigSettings.signature} />
               ) : null}
-              <DraftAttachmentChips
-                items={attachItems}
-                onRemove={removeAttach}
-              />
             </div>
 
             <div className="flex shrink-0 flex-col gap-1.5 border-t border-stone-200 px-4 py-3">
+              {/* The files, docked here above Send, as in the reply box. */}
+              <DraftAttachmentChips
+                docked
+                className="pb-1"
+                items={attachItems}
+                onRemove={removeAttach}
+                onPreview={setDraftPreviewId}
+              />
               <div className="flex flex-wrap items-center gap-3">
                 {/* One control: Send, and a section that says when. */}
                 <div className="inline-flex items-stretch overflow-hidden rounded-lg">
                   <Button
                     type="button"
-                    className={cn(
-                      "h-9 rounded-none bg-teal-600 text-[15px] font-semibold text-white hover:bg-teal-700",
-                      // The chevron beside it is already a right-hand edge,
-                      // so the word does not need its full margin to one.
-                      // Tighter on the left for the arrow, which ends
-                      // nearer its own edge than a letter would.
-                      canSendLater ? "pl-4 pr-3.5" : "pl-4 pr-5"
-                    )}
+                    className="h-9 rounded-none bg-teal-600 pl-3 pr-2 text-[15px] font-semibold text-white hover:bg-teal-700"
                     /* Named with its key, the way the thread's own actions
                        are. The button says Send; the tooltip says there is
                        a way to do it without reaching for the button. */
@@ -868,66 +1615,56 @@ export function ComposeView({
                     <SendHorizontal aria-hidden className="!size-3.5" />
                     {sending ? t("sending") : t("send")}
                   </Button>
-                  {canSendLater ? (
-                    <SendLaterMenu
-                      onPick={(iso) => void send(iso)}
-                      trigger={
-                        <button
-                          type="button"
-                          aria-label={t("sendLater")}
-                          title={t("sendLater")}
-                          disabled={!canSend}
-                          className="flex h-9 items-center border-l border-white/25 bg-teal-600 px-2.5 text-white hover:bg-teal-700 disabled:opacity-50"
-                        >
-                          <ChevronDown className="h-4 w-4" aria-hidden />
-                        </button>
-                      }
-                    />
-                  ) : null}
+                  <SendLaterMenu
+                    schedule={canSendLater}
+                    onPick={(iso) => void send(iso)}
+                    extras={[
+                      {
+                        id: "preview",
+                        label: t("previewFirst"),
+                        onSelect: () => setShowPreview(true),
+                      },
+                      ...(canOpenInOutlook
+                        ? [
+                            {
+                              id: "outlook",
+                              label: t("openInOutlookInstead"),
+                              icon: <ExternalLink aria-hidden />,
+                              title: outlookElsewhere
+                                ? t("openInOutlookFrom", {
+                                    account: outlookTarget,
+                                  })
+                                : undefined,
+                              disabled:
+                                sending ||
+                                handingOver ||
+                                !hasRecipient ||
+                                !bodyText.trim(),
+                              onSelect: () => void openInOutlook(),
+                            },
+                          ]
+                        : []),
+                    ]}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={t("sendOptions")}
+                        title={t("sendOptions")}
+                        className="flex h-9 items-center border-l border-white/25 bg-teal-600 pl-1.5 pr-2 text-white hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        <ChevronDown className="h-4 w-4" aria-hidden />
+                      </button>
+                    }
+                  />
                 </div>
-                <div id="mail-compose-toolbar">
-                  <span className="ql-formats">
-                    {/* Neither this nor the Aa carries a ql- class, so Quill
-                        passes over both: they are in the row for the look of
-                        it, and reach the editor through the handle. */}
-                    <EmojiPickerButton
-                      className={COMPOSER_TOOLBAR_BUTTON}
-                      onPick={(emoji) =>
-                        editorHandle.current?.insertText(emoji)
-                      }
-                    />
-                    <button className="ql-bold" aria-label={t("bold")} />
-                    <button className="ql-italic" aria-label={t("italic")} />
-                    <button className="ql-underline" aria-label={t("underline")} />
-                    <button
-                      className="ql-list"
-                      value="bullet"
-                      aria-label={t("bulletList")}
-                    />
-                    <button
-                      className="ql-list"
-                      value="ordered"
-                      aria-label={t("numberedList")}
-                    />
-                    <button className="ql-link" aria-label={t("link")} />
-                    <TextStyleMenu
-                      editorHandle={editorHandle}
-                      className={COMPOSER_TOOLBAR_BUTTON}
-                    />
-                  </span>
-                </div>
+                <ComposerToolbar id="mail-compose-toolbar" editorHandle={editorHandle} />
                 <AttachToolbarButton
                   onPick={addAttachFiles}
                   disabled={sending}
                 />
-                <AttachmentSizeSummary
-                  count={attachItems.length}
-                  totalBytes={attachTotalBytes}
-                />
-                {/* One row, so the bin sits level with Send rather than on
-                    a line of its own under it — the reply box has looked
-                    like this since its second row emptied, and these two
-                    are the same thing twice. */}
+                {/* No size line here: the chips above the row already name
+                    every file, and the row said the same thing twice. The
+                    bin ends the row, level with the formatting buttons. */}
                 <span className="ml-auto flex items-center gap-3">
                   <button
                     type="button"
@@ -941,7 +1678,11 @@ export function ComposeView({
                 </span>
               </div>
             </div>
-          {/* Edge / corner handles for resizing the card. */}
+          {/* Edge / corner handles for resizing the card. None in the
+              corner: the card is the size of the card, and a handle that
+              cannot move reads as broken. */}
+          {floating ? null : (
+          <>
           <div
             role="separator"
             aria-orientation="vertical"
@@ -965,15 +1706,14 @@ export function ComposeView({
             onPointerDown={startCardResize("se")}
             className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize touch-none"
           />
+          </>
+          )}
           </div>
           {/* Under the box, outside the card — where a reply keeps them.
-              A signature to write and the mail as it will land both open
-              something over the whole pane, and neither is part of writing
-              the message; the chat-style question is about what the mail
-              is, not about typing it. In the footer they sat among the
-              buttons that are, on a row already full. */}
+              A signature to write is about the message, not about typing
+              it. Preview and Outlook sit on the Send chevron. */}
           <div
-            className="mx-auto mt-1.5 flex flex-wrap items-center gap-3"
+            className="mx-auto mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5"
             /*
               The same width as the card, so the row starts where the card
               starts. The card is centred and resizable, and the row was
@@ -1002,13 +1742,16 @@ export function ComposeView({
                   setIncludeSignature(false);
                 }}
             />
-            <button
-              type="button"
-              className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
-              onClick={() => setShowPreview(true)}
-            >
-              {t("preview")}
-            </button>
+            {mailUsesCrmPeople() ? (
+              <AiReplyMenu
+                className="ml-auto"
+                purpose="compose"
+                drafting={draftingReply}
+                disabled={sending}
+                onDraft={(hint) => void draftComposeWithAi(hint)}
+                onStop={stopAiReply}
+              />
+            ) : null}
             {/*
               No chat-style box here.
 
@@ -1047,6 +1790,13 @@ export function ComposeView({
             onBack={() => setShowPreview(false)}
           />
         ) : null}
+
+        <DraftAttachmentPreviewDialog
+          items={attachItems}
+          previewId={draftPreviewId}
+          onSelect={setDraftPreviewId}
+          onClose={() => setDraftPreviewId(null)}
+        />
 
         <SignatureDialog
           open={sigDialogOpen}

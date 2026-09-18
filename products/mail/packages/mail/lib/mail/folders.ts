@@ -1,3 +1,5 @@
+import { localStoreServes, queueLocalAction } from "@/lib/mail/local-store";
+import { mailStore } from "@/lib/mail/store";
 import "server-only";
 
 import {
@@ -9,6 +11,7 @@ import {
   modifyThreadLabels,
   renameGmailLabel,
   type GmailLabel,
+  isGmailRateLimit,
 } from "@/lib/gmail/api";
 import {
   filterAccountsForScope,
@@ -92,6 +95,12 @@ async function mapWithConcurrency<T, R>(
 
 function translateGmailError(err: unknown, accountEmail: string): never {
   const status = (err as Error & { status?: number }).status;
+  if (status === 403 && isGmailRateLimit(err)) {
+    throw new PlanError(
+      `Gmail is over its request limit for ${accountEmail}. Try again in a minute.`,
+      429
+    );
+  }
   if (status === 403) {
     throw new PlanError(
       `The Gmail connection for ${accountEmail} is read-only — reconnect the account to enable folders.`,
@@ -161,6 +170,14 @@ async function userLabelsForAccount(
   const listed = await listGmailLabels(token);
   const userLabels = listed.filter(isUserFolderLabel);
   if (!includeCounts) return userLabels;
+  // The copy counts its own labels in one query, where the API needed a
+  // search per label.
+  if (await localStoreServes(accountEmail)) {
+    const counts = new Map(
+      (await mailStore().messages.labelCounts(accountEmail)).map((c) => [c.label, c.threads])
+    );
+    return userLabels.map((label) => ({ ...label, threadsTotal: counts.get(label.name) ?? 0 }));
+  }
   // Counted by searching the label, not by reading `threadsTotal` off it.
   // The label's own total counts threads in Spam and Trash, which no list
   // here shows — so a folder said 225 and opened on 1.
@@ -240,9 +257,19 @@ const GMAIL_VIEW_ROWS: {
   virtual: true;
 }[] = [
   { name: "Inbox", count: 0, role: "inbox", virtual: true },
-  { name: "Archived", count: 0, role: "archive", virtual: true },
   { name: "Sent", count: 0, role: "sent", virtual: true },
-  { name: "Bin", count: 0, role: "trash", virtual: true },
+  { name: "Archived", count: 0, role: "archive", virtual: true },
+  // Gmail keeps drafts as a label nobody can list by name, so this row is
+  // the drafts view narrowed to this account — the same rows the Drafts
+  // view at the head of the rail shows, from one mailbox. Outlook has a
+  // real Drafts folder and has always shown one; this is the other half of
+  // being able to say "the same six under every account".
+  { name: "Drafts", count: 0, role: "drafts", virtual: true },
+  { name: "Junk", count: 0, role: "junk", virtual: true },
+  // "Trash", not Gmail's own word for it. The rail says Trash at its head
+  // and the move menu says Trash, and one list calling it a bin was the
+  // app saying two things about one place.
+  { name: "Trash", count: 0, role: "trash", virtual: true },
 ];
 
 async function listMailFoldersUncached(options: {
@@ -528,6 +555,16 @@ export async function moveMailThreadToFolder(input: {
   const name = normalizeFolderName(input.folderName);
   if (!name) throw new PlanError("Folder name is required", 400);
 
+  if (
+    await queueLocalAction(input.account, input.threadId, "move", {
+      label: name,
+      create: Boolean(input.create),
+    })
+  ) {
+    invalidateInboxCache();
+    return { folderName: name, movedOut: false };
+  }
+
   if ((await resolveMailProvider(input.account)) === "outlook") {
     let folder = await findOutlookFolder(input.account, name);
     if (!folder) {
@@ -569,6 +606,11 @@ export async function unmoveMailThreadFromFolder(input: {
   folderName: string;
 }): Promise<void> {
   const name = normalizeFolderName(input.folderName);
+
+  if (await queueLocalAction(input.account, input.threadId, "unmove", { label: name })) {
+    invalidateInboxCache();
+    return;
+  }
 
   if ((await resolveMailProvider(input.account)) === "outlook") {
     try {

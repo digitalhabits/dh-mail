@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_CLIENT_SECRET?: string;
   /** The planner the internal flavor signs in to. Default: the live site. */
   readonly VITE_PLANNER_ORIGIN?: string;
+  /** "1" draws the phone layout in a browser. See `host-form.ts`. */
+  readonly VITE_MAIL_MOBILE?: string;
 }
 
 interface ImportMeta {

@@ -138,6 +138,19 @@ pub async fn fetch(url: &str) -> Result<(Vec<u8>, String), String> {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
        (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
     )
+    // The rest of what a browser sends with an image request.
+    //
+    // British Airways answers a request without them with a 200 and an
+    // "Information Page" in HTML, so every picture in an e-ticket was a
+    // broken frame. Measured 2026-09-17: the language, an encoding and
+    // Sec-Fetch-Dest together get the GIF, and any one of them missing gets
+    // the page. `identity` is enough for the encoding, so the bytes arrive
+    // as they are and nothing here has to unpack them.
+    .header("Accept-Language", "en-GB,en;q=0.9")
+    .header("Accept-Encoding", "identity")
+    .header("Sec-Fetch-Dest", "image")
+    .header("Sec-Fetch-Mode", "no-cors")
+    .header("Sec-Fetch-Site", "cross-site")
     .send()
     .await
     .map_err(|e| e.to_string())?;
@@ -246,5 +259,15 @@ mod tests {
   fn it_refuses_an_empty_or_broken_path() {
     assert!(address_from_path("/").is_err());
     assert!(address_from_path("/not base64!").is_err());
+  }
+
+  /// Asks the real servers. Run by hand: `cargo test -- --ignored live`.
+  #[test]
+  #[ignore]
+  fn live_it_fetches_a_british_airways_image() {
+    let url = "https://www.britishairways.com/cms/global/assets/images/email_images/vsg/headerfooter/baBrandingLogo620.gif";
+    let (bytes, kind) = tauri::async_runtime::block_on(fetch(url)).expect("the image");
+    assert_eq!(kind, "image/gif");
+    assert!(bytes.starts_with(b"GIF8"));
   }
 }

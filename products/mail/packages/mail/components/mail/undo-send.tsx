@@ -21,7 +21,7 @@
 
 import * as React from "react";
 import { useMailT } from "@/lib/mail/i18n";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 /** Long enough to notice the mistake, short enough not to feel held up. */
 export const UNDO_SEND_SECONDS = 5;

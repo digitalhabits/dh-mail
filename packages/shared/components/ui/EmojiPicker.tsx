@@ -268,6 +268,9 @@ export function EmojiReactionButton({
         {expanded ? (
           <>
             <input
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}

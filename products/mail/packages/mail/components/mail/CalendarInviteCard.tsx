@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Calendar, ChevronDown } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";

@@ -61,7 +61,7 @@ export function cleanDisplayName(name: string | undefined): string {
  * Non-ASCII names travel as an encoded word, which a quotation mark would
  * break — a client reading `"=?UTF-8?B?...?="` shows the raw letters instead
  * of the name. ASCII names are quoted, which is safe whatever is in them and
- * is what a comma in "Lyngs, Ulrik" needs.
+ * is what a comma in "Holm, Vera" needs.
  */
 export function formatFromHeader(address: string, name?: string): string {
   const mailbox = cleanDisplayName(address);

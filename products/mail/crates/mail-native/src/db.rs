@@ -11,8 +11,8 @@
 //!
 //! Refresh tokens do not belong in this file. The contract passes them in
 //! plaintext so each host protects them its own way, and this host's way is the
-//! macOS keychain. `accounts.getToken` and `accounts.save` therefore stay
-//! unimplemented here until the keychain module lands.
+//! OS keychain — see `secrets.rs`. `accounts.getToken` and `accounts.save` go
+//! through `KeychainVault` below.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,6 +20,8 @@ use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Value};
+
+use crate::secrets::Secrets;
 
 #[derive(Debug)]
 pub enum DbError {
@@ -64,6 +66,34 @@ pub fn database_path(app_data_dir: PathBuf) -> PathBuf {
   app_data_dir.join("mail.sqlite3")
 }
 
+/// The mail databases of the other Digital Habits apps beside this one.
+///
+/// Each app's data directory is named for its bundle identifier, and all of
+/// them sit in one parent: Mail, Mail (Internal) and the Planner, and any
+/// flavor added later under `org.digitalhabits.`. A folder left behind by
+/// an app that no longer exists is read too; it lists no mailboxes, so it
+/// keeps no token.
+pub fn sibling_databases(own: &std::path::Path) -> Vec<PathBuf> {
+  let (Some(own_dir), Some(parent)) = (own.parent(), own.parent().and_then(|d| d.parent()))
+  else {
+    return Vec::new();
+  };
+  let Ok(entries) = std::fs::read_dir(parent) else {
+    return Vec::new();
+  };
+  let file = own.file_name().unwrap_or_default();
+  let mut out: Vec<PathBuf> = entries
+    .filter_map(Result::ok)
+    .filter(|e| e.file_name().to_string_lossy().starts_with("org.digitalhabits."))
+    .map(|e| e.path())
+    .filter(|dir| dir != own_dir)
+    .map(|dir| dir.join(file))
+    .filter(|path| path.is_file())
+    .collect();
+  out.sort();
+  out
+}
+
 /// Where refresh tokens are kept.
 ///
 /// Not in the SQLite file. The contract hands tokens over in plaintext exactly
@@ -76,43 +106,31 @@ pub trait TokenVault: Send + Sync {
   fn remove(&self, provider: &str, email: &str) -> DbResult<()>;
 }
 
-/// The macOS keychain. One item per mailbox.
+/// The OS keychain, through `Secrets`. One item per mailbox.
 pub struct KeychainVault {
-  service: String,
+  secrets: Secrets,
 }
 
 impl KeychainVault {
-  pub fn new(service: impl Into<String>) -> Self {
-    KeychainVault { service: service.into() }
-  }
-
-  fn entry(&self, provider: &str, email: &str) -> DbResult<keyring::Entry> {
-    keyring::Entry::new(&self.service, &format!("{provider}:{email}"))
-      .map_err(|e| DbError::Vault(e.to_string()))
+  pub fn new(secrets: Secrets) -> Self {
+    KeychainVault { secrets }
   }
 }
 
 impl TokenVault for KeychainVault {
   fn store(&self, provider: &str, email: &str, token: &str) -> DbResult<()> {
     self
-      .entry(provider, email)?
-      .set_password(token)
-      .map_err(|e| DbError::Vault(e.to_string()))
+      .secrets
+      .set(&vault_key(provider, email), token)
+      .map_err(DbError::Vault)
   }
 
   fn read(&self, provider: &str, email: &str) -> DbResult<Option<String>> {
-    match self.entry(provider, email)?.get_password() {
-      Ok(token) => Ok(Some(token)),
-      Err(keyring::Error::NoEntry) => Ok(None),
-      Err(e) => Err(DbError::Vault(e.to_string())),
-    }
+    self.secrets.get(&vault_key(provider, email)).map_err(DbError::Vault)
   }
 
   fn remove(&self, provider: &str, email: &str) -> DbResult<()> {
-    match self.entry(provider, email)?.delete_credential() {
-      Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-      Err(e) => Err(DbError::Vault(e.to_string())),
-    }
+    self.secrets.delete(&vault_key(provider, email)).map_err(DbError::Vault)
   }
 }
 
@@ -128,8 +146,10 @@ impl TokenVault for KeychainVault {
 /// whenever it is used; this only widens that to the session, on a
 /// single-user desktop app whose whole database sits in the same process.
 ///
-/// Writes go straight through and update what is held, so a rotated Microsoft
-/// token is never served stale.
+/// A write of a new value goes straight through and updates what is held, so a
+/// rotated Microsoft token is never served stale. A write of the value already
+/// held is skipped. The keychain asks the operating system, and the operating
+/// system asks the reader, so the cheapest prompt is the one never requested.
 pub struct CachedVault {
   inner: Box<dyn TokenVault>,
   seen: Mutex<HashMap<String, Option<String>>>,
@@ -147,12 +167,16 @@ fn vault_key(provider: &str, email: &str) -> String {
 
 impl TokenVault for CachedVault {
   fn store(&self, provider: &str, email: &str, token: &str) -> DbResult<()> {
+    let key = vault_key(provider, email);
+    // Compare what is held. A read of the keychain to decide this would put
+    // the prompt back on screen, which is the thing this skip removes.
+    if let Some(Some(held)) = self.seen.lock().unwrap().get(&key) {
+      if held == token {
+        return Ok(());
+      }
+    }
     self.inner.store(provider, email, token)?;
-    self
-      .seen
-      .lock()
-      .unwrap()
-      .insert(vault_key(provider, email), Some(token.to_string()));
+    self.seen.lock().unwrap().insert(key, Some(token.to_string()));
     Ok(())
   }
 
@@ -178,24 +202,34 @@ impl TokenVault for CachedVault {
 pub struct MailDb {
   conn: Mutex<Connection>,
   vault: Box<dyn TokenVault>,
+  /// The other Digital Habits apps' mail databases on this computer. See
+  /// `listed_elsewhere`.
+  siblings: Vec<PathBuf>,
 }
 
 impl MailDb {
   /// The connection, for the import module. Not for operations: those go
   /// through `call`, so the contract stays the one door.
+  /// The refresh token for a mailbox, from the vault. For the sync worker.
+  pub fn refresh_token(&self, provider: &str, email: &str) -> DbResult<Option<String>> {
+    self.vault.read(provider, email)
+  }
+
   pub(crate) fn conn_mut(&self) -> std::sync::MutexGuard<'_, Connection> {
     self.conn.lock().unwrap()
   }
 
-  pub fn open(path: &PathBuf, service: &str) -> DbResult<Self> {
+  pub fn open(path: &PathBuf, secrets: Secrets) -> DbResult<Self> {
     if let Some(parent) = path.parent() {
       let _ = std::fs::create_dir_all(parent);
     }
     let conn = Connection::open(path)?;
-    Self::from_connection(
+    let mut db = Self::from_connection(
       conn,
-      Box::new(CachedVault::new(Box::new(KeychainVault::new(service)))),
-    )
+      Box::new(CachedVault::new(Box::new(KeychainVault::new(secrets)))),
+    )?;
+    db.siblings = sibling_databases(path);
+    Ok(db)
   }
 
   #[cfg(test)]
@@ -213,6 +247,7 @@ impl MailDb {
     let db = MailDb {
       conn: Mutex::new(conn),
       vault,
+      siblings: Vec::new(),
     };
     db.migrate()?;
     Ok(db)
@@ -283,6 +318,9 @@ impl MailDb {
         last_emailed_at TEXT,
         hidden          INTEGER NOT NULL DEFAULT 0,
         synced_at       TEXT,
+        -- The address book's own id for the card this address is on, so two
+        -- addresses on one card are one person. NULL for history rows.
+        card            TEXT,
         PRIMARY KEY (source, account, email)
       );
 
@@ -335,6 +373,14 @@ impl MailDb {
 
       "#,
     )?;
+    // Books made before the card column existed. SQLite has no "add if
+    // missing", so the duplicate-column error is the one to swallow.
+    let _ = conn.execute("ALTER TABLE source_contacts ADD COLUMN card TEXT", []);
+    crate::outbox::migrate(&conn)?;
+    // The local copy of the mail lives in its own module.
+    crate::messages::migrate(&conn)?;
+    conn.execute_batch(crate::actions::SCHEMA)?;
+    conn.execute_batch(crate::outbox::SCHEMA)?;
     Ok(())
   }
 }
@@ -343,7 +389,7 @@ impl MailDb {
 // Argument helpers
 // ---------------------------------------------------------------------------
 
-fn str_arg(args: &Value, name: &str) -> DbResult<String> {
+pub(crate) fn str_arg(args: &Value, name: &str) -> DbResult<String> {
   args
     .get(name)
     .and_then(Value::as_str)
@@ -351,11 +397,11 @@ fn str_arg(args: &Value, name: &str) -> DbResult<String> {
     .ok_or_else(|| DbError::BadArgument(name.to_string()))
 }
 
-fn opt_str_arg(args: &Value, name: &str) -> Option<String> {
+pub(crate) fn opt_str_arg(args: &Value, name: &str) -> Option<String> {
   args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn str_list_arg(args: &Value, name: &str) -> DbResult<Vec<String>> {
+pub(crate) fn str_list_arg(args: &Value, name: &str) -> DbResult<Vec<String>> {
   let list = args
     .get(name)
     .and_then(Value::as_array)
@@ -428,6 +474,20 @@ pub const IMPLEMENTED: &[&str] = &[
   "accounts.save",
   "accounts.getToken",
   "accounts.replaceToken",
+  "messages.list",
+  "messages.counts",
+  "messages.thread",
+  "messages.search",
+  "messages.upsertMany",
+  "messages.putBody",
+  "messages.removeAccount",
+  "messages.setUnread",
+  "messages.recipients",
+  "messages.labelCounts",
+  "messages.applyAction",
+  "messages.removeMessages",
+  "sync.list",
+  "sync.set",
 ];
 
 /// Nothing is pending. Every operation the contract states is answered here.
@@ -442,6 +502,21 @@ impl MailDb {
     match op {
       "settings.get" => self.settings_get(args),
       "settings.set" => self.settings_set(args),
+
+      "messages.list" => self.messages_list(args),
+      "messages.counts" => self.messages_counts(args),
+      "messages.thread" => self.messages_thread(args),
+      "messages.search" => self.messages_search(args),
+      "messages.upsertMany" => self.messages_upsert_many(args),
+      "messages.putBody" => self.messages_put_body(args),
+      "messages.removeAccount" => self.messages_remove_account(args),
+      "messages.setUnread" => self.messages_set_unread(args),
+      "messages.recipients" => self.messages_recipients(args),
+      "messages.labelCounts" => self.messages_label_counts(args),
+      "messages.applyAction" => self.actions_apply_local(args),
+      "messages.removeMessages" => self.messages_remove_messages(args),
+      "sync.list" => self.sync_list(),
+      "sync.set" => self.sync_set(args),
       "listSync.load" => self.list_sync_load(args),
       "listSync.save" => self.list_sync_save(args),
       "listSync.clear" => self.list_sync_clear(),
@@ -625,11 +700,48 @@ impl MailDb {
         |r| r.get(0),
       )?;
       drop(conn);
-      if left == 0 {
+      if left == 0 && !self.listed_elsewhere(&provider, &email) {
         self.vault.remove(&provider, &email)?;
       }
     }
     Ok(json!(n > 0))
+  }
+
+  /// Whether another Digital Habits app on this computer still lists the
+  /// mailbox.
+  ///
+  /// The apps keep separate account lists but share one keychain entry per
+  /// mailbox, so a mailbox connected in one works in the others. Removing it
+  /// from one app must not delete the token the others still use: they
+  /// would show the mailbox and fail to read it.
+  ///
+  /// Read-only, and a database that cannot be read counts as a yes. A
+  /// token left behind is less harm than a mailbox broken in another app.
+  fn listed_elsewhere(&self, provider: &str, email: &str) -> bool {
+    self.siblings.iter().any(|path| {
+      let found = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+      )
+      .and_then(|conn| {
+        conn.busy_timeout(std::time::Duration::from_millis(500))?;
+        conn.query_row(
+          "SELECT COUNT(*) FROM accounts WHERE provider = ?1 AND email = ?2",
+          params![provider, email],
+          |r| r.get::<_, i64>(0),
+        )
+      });
+      match found {
+        Ok(n) => n > 0,
+        Err(err) => {
+          log::warn!(
+            "[mail] couldn't read {}; keeping the shared token: {err}",
+            path.display()
+          );
+          true
+        }
+      }
+    })
   }
 
   /// The checkpoint is mailbox state, not owner state, so every row for the
@@ -807,11 +919,13 @@ impl MailDb {
         continue;
       }
       let name = contact.get("name").and_then(Value::as_str).unwrap_or("");
+      let card = contact.get("card").and_then(Value::as_str).filter(|c| !c.is_empty());
       tx.execute(
-        "INSERT INTO source_contacts (source, account, email, name, synced_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(source, account, email) DO UPDATE SET name = ?4, synced_at = ?5",
-        params![source, account, email, name, now],
+        "INSERT INTO source_contacts (source, account, email, name, synced_at, card)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(source, account, email)
+         DO UPDATE SET name = ?4, synced_at = ?5, card = ?6",
+        params![source, account, email, name, now, card],
       )?;
     }
     tx.commit()?;
@@ -877,7 +991,7 @@ impl MailDb {
     // 'mac' sorts first: the book the reader keeps by hand, so its spelling of
     // a name wins over one a provider saved automatically.
     let mut stmt = conn.prepare(
-      "SELECT source, account, email, name, last_emailed_at
+      "SELECT source, account, email, name, last_emailed_at, card
          FROM source_contacts WHERE hidden = 0
         ORDER BY CASE source WHEN 'mac' THEN 0 WHEN 'google' THEN 1
                              WHEN 'outlook' THEN 2 ELSE 3 END",
@@ -889,11 +1003,12 @@ impl MailDb {
         r.get::<_, String>(2)?,
         r.get::<_, String>(3)?,
         r.get::<_, Option<String>>(4)?,
+        r.get::<_, Option<String>>(5)?,
       ))
     })?;
     let mut out = Vec::new();
     for row in rows {
-      let (source, account, email, name, last) = row?;
+      let (source, account, email, name, last, card) = row?;
       // The Mac book belongs to the machine and carries no account, so the
       // mailbox filter would drop every row of it.
       if source != "mac" && !accounts.iter().any(|a| a.eq_ignore_ascii_case(&account)) {
@@ -901,9 +1016,71 @@ impl MailDb {
       }
       out.push(json!({
         "source": source, "account": account, "email": email,
-        "name": name, "lastEmailedAt": last,
+        "name": name, "lastEmailedAt": last, "card": card,
       }));
     }
+    Ok(Value::Array(out))
+  }
+
+  /// The contacts Mail knows, for the planner's own pickers: a name and an
+  /// address each, once per address.
+  ///
+  /// Not a store operation. The planner window may not call `mail_store_call`,
+  /// which reaches the whole mailbox; it gets this one read instead, through
+  /// its own command. The rows are those the compose field suggests: the Mac
+  /// book, and the address books and sent history of the mailboxes still
+  /// connected. Hidden history rows stay hidden. An address met twice keeps
+  /// the first name found (Mac, Google, Outlook, history, as in
+  /// `sources_list_visible`) and its latest send time.
+  pub fn planner_contacts(&self) -> DbResult<Value> {
+    let conn = self.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+      "SELECT sc.email, sc.name, sc.last_emailed_at
+         FROM source_contacts sc
+        WHERE sc.hidden = 0
+          AND (sc.source = 'mac'
+               OR EXISTS (SELECT 1 FROM accounts a WHERE lower(a.email) = lower(sc.account)))
+        ORDER BY CASE sc.source WHEN 'mac' THEN 0 WHEN 'google' THEN 1
+                                WHEN 'outlook' THEN 2 ELSE 3 END",
+    )?;
+    let rows = stmt.query_map([], |r| {
+      Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, String>(1)?,
+        r.get::<_, Option<String>>(2)?,
+      ))
+    })?;
+    let mut order: Vec<String> = Vec::new();
+    let mut by_email: std::collections::HashMap<String, (String, String, Option<String>)> =
+      std::collections::HashMap::new();
+    for row in rows {
+      let (email, name, last) = row?;
+      let key = email.trim().to_lowercase();
+      if key.is_empty() {
+        continue;
+      }
+      match by_email.get_mut(&key) {
+        Some(entry) => {
+          if entry.1.trim().is_empty() && !name.trim().is_empty() {
+            entry.1 = name;
+          }
+          if last.is_some() && (entry.2.is_none() || last > entry.2) {
+            entry.2 = last;
+          }
+        }
+        None => {
+          order.push(key.clone());
+          by_email.insert(key, (email.trim().to_string(), name, last));
+        }
+      }
+    }
+    let out = order
+      .into_iter()
+      .filter_map(|key| by_email.remove(&key))
+      .map(|(email, name, last)| {
+        json!({ "email": email, "name": name.trim(), "lastEmailedAt": last })
+      })
+      .collect();
     Ok(Value::Array(out))
   }
 
@@ -1370,8 +1547,12 @@ impl MailDb {
       if !accounts.contains(&account) {
         continue;
       }
-      let parsed: Value = serde_json::from_str(&rows_json).unwrap_or(json!([]));
-      if parsed.as_array().map(|a| a.is_empty()).unwrap_or(true) {
+      // Stored as empty means empty, not missing — see `list_sync_save`.
+      // Only rows we cannot read at all are passed over.
+      let Ok(parsed) = serde_json::from_str::<Value>(&rows_json) else {
+        continue;
+      };
+      if !parsed.is_array() {
         continue;
       }
       out.insert(
@@ -1393,10 +1574,24 @@ impl MailDb {
     let entry = args
       .get("entry")
       .ok_or_else(|| DbError::BadArgument("entry".into()))?;
-    let rows = entry.get("rows").cloned().unwrap_or(json!([]));
-    if rows.as_array().map(|a| a.is_empty()).unwrap_or(true) {
-      return Ok(Value::Null);
-    }
+    /*
+      An empty page is a page, and inbox zero is how it looks.
+
+      This returned early on an empty list, so the last row of a mailbox
+      could never be taken out of the stored page: deleting the one mail
+      in an inbox filtered the rows to none, the save did nothing, and
+      the page still held the mail that had just been trashed. Quitting
+      and reopening served that stored page, and the mail was back —
+      with the provider having deleted it perfectly well.
+
+      A call carrying no rows at all is still refused. That is a
+      malformed call, not an empty mailbox.
+    */
+    let rows = entry
+      .get("rows")
+      .filter(|value| value.is_array())
+      .cloned()
+      .ok_or_else(|| DbError::BadArgument("entry.rows".into()))?;
     let history_id = entry.get("historyId").and_then(Value::as_str);
     let next_page_token = entry.get("nextPageToken").and_then(Value::as_str);
     let conn = self.conn.lock().unwrap();
@@ -1529,6 +1724,139 @@ fn current_iso(args: &Value) -> DbResult<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// The store as the first shipped build made it, on 2026-09-08: no
+  /// `folder` on messages, a UID unique on the account alone, no
+  /// `failed_at` or draft on the outbox. Kept here so an upgrade from it
+  /// is tried on every run, since Mikkel's Mac holds one.
+  const FIRST_SHIPPED_SCHEMA: &str = r#"
+    CREATE TABLE messages (
+      account_email TEXT NOT NULL, message_id TEXT NOT NULL, thread_id TEXT NOT NULL,
+      uid INTEGER, modseq INTEGER, rfc_message_id TEXT, in_reply_to TEXT, ref_headers TEXT,
+      from_name TEXT NOT NULL DEFAULT '', from_email TEXT NOT NULL DEFAULT '',
+      to_json TEXT NOT NULL DEFAULT '[]', cc_json TEXT NOT NULL DEFAULT '[]', bcc_json TEXT NOT NULL DEFAULT '[]',
+      subject TEXT NOT NULL DEFAULT '', snippet TEXT NOT NULL DEFAULT '', sent_at INTEGER NOT NULL,
+      size_estimate INTEGER, has_attachments INTEGER NOT NULL DEFAULT 0, unread INTEGER NOT NULL DEFAULT 0,
+      starred INTEGER NOT NULL DEFAULT 0, is_draft INTEGER NOT NULL DEFAULT 0,
+      body_state TEXT NOT NULL DEFAULT 'none', updated_at INTEGER NOT NULL,
+      PRIMARY KEY (account_email, message_id)
+    );
+    CREATE UNIQUE INDEX messages_uid_idx ON messages (account_email, uid);
+    CREATE TABLE message_labels (
+      account_email TEXT NOT NULL, message_id TEXT NOT NULL, label TEXT NOT NULL,
+      PRIMARY KEY (account_email, message_id, label)
+    );
+    CREATE TABLE sync_state (
+      account_email TEXT NOT NULL, folder TEXT NOT NULL DEFAULT '', phase TEXT NOT NULL,
+      uid_validity INTEGER, highest_uid INTEGER, highest_modseq INTEGER, delta_link TEXT,
+      full_sync_cursor INTEGER, full_sync_total INTEGER, full_sync_done INTEGER,
+      last_ok_at INTEGER, last_error TEXT, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (account_email, folder)
+    );
+    CREATE TABLE outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, account_email TEXT NOT NULL, thread_id TEXT,
+      recipients_json TEXT NOT NULL, raw TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '',
+      to_json TEXT NOT NULL DEFAULT '[]', send_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, created_at INTEGER NOT NULL
+    );
+    INSERT INTO messages (account_email, message_id, thread_id, uid, subject, sent_at, updated_at)
+      VALUES ('vera@example.com', 'm1', 't1', 5, 'Kept across the upgrade', 1000, 1);
+    INSERT INTO message_labels VALUES ('vera@example.com', 'm1', 'INBOX');
+    INSERT INTO sync_state (account_email, folder, phase, uid_validity, highest_uid, updated_at)
+      VALUES ('vera@example.com', '', 'live', 7, 5, 1);
+    INSERT INTO outbox (account_email, recipients_json, raw, subject, send_at, created_at)
+      VALUES ('vera@example.com', '["ann@x.test"]', 'raw', 'Waiting', 9999999999999, 1);
+  "#;
+
+  #[test]
+  fn a_store_from_the_first_shipped_build_opens_and_keeps_its_rows() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(FIRST_SHIPPED_SCHEMA).unwrap();
+    let db = MailDb::from_connection(conn, Box::new(MemoryVault::default())).expect("the upgrade runs");
+
+    let column = |table: &str, name: &str| -> bool {
+      let conn = db.conn_mut();
+      let n: i64 = conn
+        .query_row(
+          &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+          [name],
+          |r| r.get(0),
+        )
+        .unwrap();
+      n == 1
+    };
+    assert!(column("messages", "folder"), "the folder column was added");
+    assert!(column("outbox", "failed_at") && column("outbox", "draft_message_id"), "the outbox took its columns");
+
+    // The rows survived and read as the interface reads them.
+    let listed = db
+      .call("messages.list", &serde_json::json!({ "accounts": ["vera@example.com"], "view": "inbox", "limit": 5 }))
+      .unwrap();
+    let threads = listed["threads"].as_array().unwrap();
+    assert_eq!(threads.len(), 1);
+    assert_eq!(threads[0]["subject"], "Kept across the upgrade");
+    let states = db.call("sync.list", &serde_json::json!({})).unwrap();
+    assert_eq!(states[0]["phase"], "live");
+    let held = db.outbox_list("vera@example.com").unwrap();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].status(now_ms()), "waiting");
+
+    // A row with the same UID in another folder is allowed now: the old
+    // index was on the account and UID alone.
+    let conn = db.conn_mut();
+    conn
+      .execute(
+        "INSERT INTO messages (account_email, message_id, thread_id, folder, uid, sent_at, updated_at)
+         VALUES ('vera@example.com', 'm2', 't2', 'trash', 5, 2000, 2)",
+        [],
+      )
+      .expect("the UID index is per folder");
+  }
+
+  /// The JSON door answers in the shape the interface's gates and rows
+  /// read. The key names here are the ones `lib/mail/local-store.ts` and
+  /// `summaryFromStored` take; the test beside it in apps/mail/tests
+  /// (local-store-gates) feeds this shape to those gates.
+  #[test]
+  fn the_json_door_answers_in_the_shape_the_interface_reads() {
+    let db = MailDb::open_in_memory().unwrap();
+    db.call(
+      "sync.set",
+      &serde_json::json!({ "state": { "account": "vera@example.com", "folder": "", "phase": "full", "fullSyncDone": 600, "fullSyncTotal": 1000 } }),
+    )
+    .unwrap();
+    let states = db.call("sync.list", &serde_json::json!({})).unwrap();
+    let state = &states.as_array().unwrap()[0];
+    for key in ["account", "folder", "phase", "fullSyncDone", "fullSyncTotal"] {
+      assert!(state.get(key).is_some(), "sync.list rows carry {key}");
+    }
+    assert_eq!(state["fullSyncDone"], 600);
+
+    db.call(
+      "messages.upsertMany",
+      &serde_json::json!({ "account": "vera@example.com", "rows": [{
+        "messageId": "m1", "threadId": "t1", "fromName": "Ann", "fromEmail": "ann@sender.test",
+        "to": [{ "name": "Vera", "email": "vera@example.com" }], "cc": [], "bcc": [],
+        "subject": "Shape", "snippet": "words", "sentAt": 1000, "hasAttachments": false,
+        "unread": true, "starred": false, "isDraft": false, "labels": ["INBOX"]
+      }] }),
+    )
+    .unwrap();
+    let listed = db
+      .call("messages.list", &serde_json::json!({ "accounts": ["vera@example.com"], "view": "inbox", "limit": 5 }))
+      .unwrap();
+    let row = &listed["threads"].as_array().unwrap()[0];
+    for key in ["account", "threadId", "subject", "unread", "lastAt", "messageCount", "hasAttachments", "latest", "participants", "senders"] {
+      assert!(row.get(key).is_some(), "messages.list rows carry {key}");
+    }
+    assert_eq!(row["latest"]["fromEmail"], "ann@sender.test");
+    assert_eq!(row["unread"], true);
+    let counts = db
+      .call("messages.counts", &serde_json::json!({ "accounts": ["vera@example.com"], "view": "inbox" }))
+      .unwrap();
+    assert_eq!(counts["threads"], 1);
+    assert_eq!(counts["unread"], 1);
+  }
   use std::collections::HashMap;
 
   /// Stands in for the keychain. The real one needs a signed app and a user
@@ -1611,6 +1939,84 @@ mod tests {
       .call("listSync.load", &json!({"ownerId": "o", "folder": "inbox", "accounts": ["a@b"]}))
       .unwrap();
     assert_eq!(after, json!({}));
+  }
+
+  /// One thread taken out of a page that still holds others. This always
+  /// worked — a page with rows left in it was stored like any other — and
+  /// the test says so, because the empty case above reads as if removal
+  /// itself were the fragile part. It is not: emptiness was.
+  #[test]
+  fn list_sync_stores_a_page_with_one_row_removed() {
+    let db = db();
+    let row = |id: &str| {
+      json!({"threadId": id, "listSnippet": "hi", "latestRfcId": "<a>", "summary": {}})
+    };
+    db.call(
+      "listSync.save",
+      &json!({"ownerId": "o", "folder": "inbox", "account": "a@b",
+              "entry": {"rows": [row("t1"), row("t2"), row("t3")],
+                        "historyId": "100", "nextPageToken": null}}),
+    )
+    .unwrap();
+
+    // t2 is deleted; the other two stay.
+    db.call(
+      "listSync.save",
+      &json!({"ownerId": "o", "folder": "inbox", "account": "a@b",
+              "entry": {"rows": [row("t1"), row("t3")],
+                        "historyId": "101", "nextPageToken": null}}),
+    )
+    .unwrap();
+
+    let loaded = db
+      .call("listSync.load", &json!({"ownerId": "o", "folder": "inbox", "accounts": ["a@b"]}))
+      .unwrap();
+    let ids: Vec<String> = loaded["a@b"]["rows"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|r| r["threadId"].as_str().unwrap().to_string())
+      .collect();
+    assert_eq!(ids, vec!["t1", "t3"], "the deleted thread came back");
+  }
+
+  /// Deleting the only mail in an inbox leaves a page with no rows in it.
+  /// That page has to be stored, and read back: while an empty save was a
+  /// no-op, the stored page kept the mail that had just been trashed, and
+  /// the next launch served it back.
+  #[test]
+  fn list_sync_stores_an_emptied_page() {
+    let db = db();
+    let rows = json!([{"threadId": "t1", "listSnippet": "hi", "latestRfcId": "<a>", "summary": {}}]);
+    db.call(
+      "listSync.save",
+      &json!({"ownerId": "o", "folder": "inbox", "account": "a@b",
+              "entry": {"rows": rows, "historyId": "100", "nextPageToken": null}}),
+    )
+    .unwrap();
+
+    // The one thread is deleted, so the page it leaves behind is empty.
+    db.call(
+      "listSync.save",
+      &json!({"ownerId": "o", "folder": "inbox", "account": "a@b",
+              "entry": {"rows": [], "historyId": "101", "nextPageToken": null}}),
+    )
+    .unwrap();
+
+    let loaded = db
+      .call("listSync.load", &json!({"ownerId": "o", "folder": "inbox", "accounts": ["a@b"]}))
+      .unwrap();
+    assert_eq!(loaded["a@b"]["rows"], json!([]), "the deleted row came back");
+    assert_eq!(loaded["a@b"]["historyId"], json!("101"));
+
+    // A call with no rows at all is malformed, and is still refused.
+    assert!(db
+      .call(
+        "listSync.save",
+        &json!({"ownerId": "o", "folder": "inbox", "account": "a@b",
+                "entry": {"historyId": "102"}}),
+      )
+      .is_err());
   }
 
   #[test]
@@ -1784,6 +2190,45 @@ mod tests {
       json!(true),
       "the other owner still has it"
     );
+  }
+
+  #[test]
+  fn planner_contacts_come_from_connected_mailboxes_once_per_address() {
+    let db = db();
+    {
+      let conn = db.conn.lock().unwrap();
+      conn
+        .execute(
+          "INSERT INTO accounts (provider, email, owner_id, in_mail_tab, sort_order, updated_at)
+           VALUES ('gmail', 'me@example.com', 'owner', 1, 0, 0)",
+          [],
+        )
+        .unwrap();
+    }
+    db.call("contactSources.replaceContacts",
+            &json!({"source": "google", "account": "me@example.com",
+                    "contacts": [{"email": "Ida@Example.org", "name": ""}]}))
+      .unwrap();
+    db.call("contactSources.replaceContacts",
+            &json!({"source": "mac", "account": "",
+                    "contacts": [{"email": "ida@example.org", "name": "Ida Brook"}]}))
+      .unwrap();
+    db.call("contactSources.mergeHistoryContacts",
+            &json!({"account": "me@example.com",
+                    "contacts": [{"email": "ida@example.org", "name": "",
+                                  "lastEmailedAt": "2026-02-02T00:00:00Z"}]}))
+      .unwrap();
+    // A mailbox that is no longer connected contributes nothing.
+    db.call("contactSources.replaceContacts",
+            &json!({"source": "google", "account": "gone@example.com",
+                    "contacts": [{"email": "ghost@example.net", "name": "Ghost"}]}))
+      .unwrap();
+
+    let contacts = db.planner_contacts().unwrap();
+    let list = contacts.as_array().unwrap();
+    assert_eq!(list.len(), 1, "one row per address, and none from a removed mailbox");
+    assert_eq!(list[0]["name"], json!("Ida Brook"), "the Mac book's name wins");
+    assert_eq!(list[0]["lastEmailedAt"], json!("2026-02-02T00:00:00Z"));
   }
 
   #[test]
@@ -2056,15 +2501,17 @@ mod tests {
     db.call("chats.touch", &json!({"chatId": "c1"})).unwrap();
   }
 
-  /// Counts what actually reached the keychain. The counter is shared, so the
-  /// test can read it after the vault has been boxed behind the trait.
+  /// Counts what actually reached the keychain. The counters are shared, so the
+  /// test can read them after the vault has been boxed behind the trait.
   struct CountingVault {
     inner: MemoryVault,
     reads: std::sync::Arc<Mutex<usize>>,
+    stores: std::sync::Arc<Mutex<usize>>,
   }
 
   impl TokenVault for CountingVault {
     fn store(&self, p: &str, e: &str, t: &str) -> DbResult<()> {
+      *self.stores.lock().unwrap() += 1;
       self.inner.store(p, e, t)
     }
     fn read(&self, p: &str, e: &str) -> DbResult<Option<String>> {
@@ -2084,6 +2531,7 @@ mod tests {
     let vault = CachedVault::new(Box::new(CountingVault {
       inner: MemoryVault::default(),
       reads: std::sync::Arc::clone(&reads),
+      stores: std::sync::Arc::new(Mutex::new(0)),
     }));
     vault.store("gmail", "a@x", "rt-1").unwrap();
 
@@ -2098,6 +2546,33 @@ mod tests {
       assert_eq!(vault.read("gmail", "nobody@x").unwrap(), None);
     }
     assert_eq!(*reads.lock().unwrap(), 1);
+  }
+
+  #[test]
+  fn a_token_already_held_is_not_written_again() {
+    // The keychain asks the operating system, and the operating system asks
+    // the reader, so the cheapest prompt is the one never requested.
+    let stores = std::sync::Arc::new(Mutex::new(0));
+    let vault = CachedVault::new(Box::new(CountingVault {
+      inner: MemoryVault::default(),
+      reads: std::sync::Arc::new(Mutex::new(0)),
+      stores: std::sync::Arc::clone(&stores),
+    }));
+
+    vault.store("gmail", "a@x", "rt-1").unwrap();
+    vault.store("gmail", "a@x", "rt-1").unwrap();
+    assert_eq!(*stores.lock().unwrap(), 1, "the same token is not written twice");
+
+    vault.store("gmail", "a@x", "rt-2").unwrap();
+    assert_eq!(*stores.lock().unwrap(), 2, "a different token still goes through");
+
+    vault.remove("gmail", "a@x").unwrap();
+    vault.store("gmail", "a@x", "rt-2").unwrap();
+    assert_eq!(
+      *stores.lock().unwrap(),
+      3,
+      "remove clears what was held, so the next store writes"
+    );
   }
 
   #[test]
@@ -2201,6 +2676,59 @@ mod tests {
             &json!({"provider": "gmail", "ownerId": "second", "email": "a@x"}))
       .unwrap();
     assert_eq!(db.vault.read("gmail", "a@x").unwrap(), None);
+  }
+
+  #[test]
+  fn token_stays_while_another_app_lists_the_mailbox() {
+    let root = std::env::temp_dir().join(format!("dh-mail-siblings-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mine = root.join("org.digitalhabits.mail.internal").join("mail.sqlite3");
+    let theirs = root.join("org.digitalhabits.mail").join("mail.sqlite3");
+    for path in [&mine, &theirs] {
+      std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    }
+    // Not a sibling: another maker's app in the same parent.
+    std::fs::create_dir_all(root.join("com.example.mail")).unwrap();
+    std::fs::write(root.join("com.example.mail").join("mail.sqlite3"), b"").unwrap();
+
+    let open = |path: &PathBuf| {
+      let mut db = MailDb::from_connection(
+        Connection::open(path).unwrap(),
+        Box::new(MemoryVault::default()),
+      )
+      .unwrap();
+      db.siblings = sibling_databases(path);
+      db
+    };
+    let other = open(&theirs);
+    let db = open(&mine);
+    assert_eq!(db.siblings, vec![theirs.clone()]);
+
+    let save = |db: &MailDb| {
+      db.call("accounts.save",
+              &json!({"provider": "gmail",
+                      "input": {"email": "a@x", "ownerId": "owner", "refreshToken": "t"}}))
+        .unwrap();
+    };
+    save(&db);
+    save(&other);
+
+    db.call("accounts.remove", &json!({"provider": "gmail", "ownerId": "owner", "email": "a@x"}))
+      .unwrap();
+    assert_eq!(
+      db.vault.read("gmail", "a@x").unwrap().as_deref(),
+      Some("t"),
+      "the other app still lists it"
+    );
+
+    other.call("accounts.remove", &json!({"provider": "gmail", "ownerId": "owner", "email": "a@x"}))
+      .unwrap();
+    save(&db);
+    db.call("accounts.remove", &json!({"provider": "gmail", "ownerId": "owner", "email": "a@x"}))
+      .unwrap();
+    assert_eq!(db.vault.read("gmail", "a@x").unwrap(), None, "no app lists it now");
+
+    let _ = std::fs::remove_dir_all(&root);
   }
 
   #[test]

@@ -17,14 +17,18 @@ import {
   Info,
   MoreHorizontal,
   Printer,
+  Code,
+  SquarePen,
+  Users,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import {
   Popover,
-  PopoverContent,
+  
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { EmojiReactionButton } from "@/components/ui/EmojiPicker";
 
 import { LinkifiedText } from "@/components/LinkifiedText";
@@ -43,6 +47,8 @@ import {
   NO_MESSAGE_META,
   type MessageMeta,
 } from "@/lib/mail/message-meta";
+import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
+import { afterMailPaneSlide } from "@/lib/mail/pane-slide";
 import { requestMailComposeTo } from "@/lib/mail/compose-to";
 import { formatEmailBody, stripQuotedReplies } from "@/lib/email-mime";
 import { decodeHtmlEntities } from "@/lib/html-entities";
@@ -108,29 +114,40 @@ export function messageSnippet(message: {
 function MessageHoverActions({
   own,
   bodyText,
+  recipients,
   onReact,
   onReplyTo,
   onForward,
+  onEditAsNew,
   onPrint,
+  onShowOriginal,
   onToggleDetails,
   detailsOpen,
 }: {
   own: boolean;
   bodyText: string;
+  /** The message's To and Cc addresses, for the clipboard. */
+  recipients: string[];
   onReact?: (emoji: string) => void;
   onReplyTo?: () => void;
   onForward?: () => void;
+  onEditAsNew?: () => void;
   onPrint?: () => void;
+  onShowOriginal?: () => void;
   onToggleDetails?: () => void;
   detailsOpen?: boolean;
 }) {
   const t = useMailT();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const canCopy = Boolean(bodyText.trim());
+  const canCopyRecipients = recipients.length > 0;
   const hasMenu =
     Boolean(onForward) ||
+    Boolean(onEditAsNew) ||
     canCopy ||
+    canCopyRecipients ||
     Boolean(onPrint) ||
+    Boolean(onShowOriginal) ||
     Boolean(onToggleDetails);
   if (!onReact && !onReplyTo && !hasMenu) return null;
 
@@ -138,12 +155,38 @@ function MessageHoverActions({
     "inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-stone-800";
 
   return (
+    /*
+      A track the height of the bubble, with the rail sticky inside it.
+
+      The rail used to sit at the bubble's middle, and on a message three
+      screens tall the middle is off the screen: nothing to react with,
+      reply to or open until the reader had scrolled to it. The track runs
+      the bubble's full height in the gutter; the rail is centred in it on
+      a short bubble, and on a tall one sticks within the part of the
+      bubble that is on screen, a hand's breadth from either edge.
+    */
+    <div
+      className="pointer-events-none absolute inset-y-0 z-20 flex w-8 flex-col justify-center"
+      /*
+        Beside the bubble when there is room, over its edge when there is
+        not. The pane clips what crosses its edge, and no z-index paints
+        past a clip — so on a message that fills the pane, the rail used to
+        lose its outer side. The row measures the room between the bubble
+        and the pane's edge as the pointer arrives (see the row's
+        onPointerEnter) and the rail comes in by the shortfall, sitting on
+        the bubble with its z-index rather than under the pane's edge.
+      */
+      style={{
+        [own ? "left" : "right"]:
+          `max(-${RAIL_OUTSIDE_PX}px, calc(-1 * var(--mail-rail-room, ${RAIL_OUTSIDE_PX}px)))`,
+      }}
+    >
     <div
       className={cn(
         // Stacked rather than in a row, so the whole thing is one button
         // wide. A row of three needed ninety pixels and the gutter beside a
         // message is forty — in the chat window it ran off the edge.
-        "absolute top-1/2 z-20 flex w-8 -translate-y-1/2 flex-col items-center gap-0.5 rounded-full border border-stone-200 bg-white p-0.5 opacity-0 shadow-sm transition-opacity",
+        "sticky top-24 bottom-24 flex w-8 flex-col items-center gap-0.5 rounded-full border border-stone-200 bg-white p-0.5 opacity-0 shadow-sm transition-opacity",
         // Invisible and out of the way, not merely invisible. Faded out it
         // still took the clicks meant for whatever was underneath it —
         // which, at the bottom of a thread, is the button that goes back
@@ -153,10 +196,7 @@ function MessageHoverActions({
         "group-hover/bubble:pointer-events-auto group-hover/bubble:opacity-100",
         "focus-within:pointer-events-auto focus-within:opacity-100",
         // Held open while its menu is, or picking from it would dismiss it.
-        menuOpen && "pointer-events-auto opacity-100",
-        own
-          ? "left-0 -translate-x-[calc(100%+1px)]"
-          : "right-0 translate-x-[calc(100%+1px)]"
+        menuOpen && "pointer-events-auto opacity-100"
       )}
     >
       {onReact ? (
@@ -185,15 +225,23 @@ function MessageHoverActions({
               <MoreHorizontal className="h-4 w-4" />
             </button>
           </PopoverTrigger>
-          <PopoverContent
+          <MailPopoverContent
             side={own ? "left" : "right"}
             align="center"
             className="w-44 p-1"
+            // Opened with a click, the menu used to hand focus to its first
+            // item, which drew the keyboard ring round "Forward" as if it
+            // had been chosen. Focus goes to the menu itself instead: no
+            // item is marked, and Tab still walks the items from the top.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              (e.currentTarget as HTMLElement | null)?.focus();
+            }}
           >
             {onForward ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-50"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
                 onClick={() => {
                   setMenuOpen(false);
                   onForward();
@@ -203,10 +251,23 @@ function MessageHoverActions({
                 {t("actionForward")}
               </button>
             ) : null}
+            {onEditAsNew ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEditAsNew();
+                }}
+              >
+                <SquarePen className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                {t("editAsNew")}
+              </button>
+            ) : null}
             {canCopy ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-50"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
                 onClick={() => {
                   setMenuOpen(false);
                   void navigator.clipboard
@@ -219,10 +280,26 @@ function MessageHoverActions({
                 {t("copyText")}
               </button>
             ) : null}
+            {canCopyRecipients ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void navigator.clipboard
+                    .writeText(recipients.join("; "))
+                    .then(() => toast.success(mailSay("copied")))
+                    .catch(() => toast.error(mailSay("couldNotCopyThat")));
+                }}
+              >
+                <Users className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                {t("copyRecipients")}
+              </button>
+            ) : null}
             {onToggleDetails ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-50"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
                 onClick={() => {
                   setMenuOpen(false);
                   onToggleDetails();
@@ -232,10 +309,16 @@ function MessageHoverActions({
                 {detailsOpen ? t("hideDetails") : t("details")}
               </button>
             ) : null}
+            {/* The message as a document — printed, or as it came — stands
+                apart from what is done with its words. */}
+            {(onPrint || onShowOriginal) &&
+            (onForward || onEditAsNew || canCopy || canCopyRecipients || onToggleDetails) ? (
+              <div aria-hidden className="my-1 h-px bg-stone-200" />
+            ) : null}
             {onPrint ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-50"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
                 onClick={() => {
                   setMenuOpen(false);
                   onPrint();
@@ -245,9 +328,23 @@ function MessageHoverActions({
                 {t("print")}
               </button>
             ) : null}
-          </PopoverContent>
+            {onShowOriginal ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onShowOriginal();
+                }}
+              >
+                <Code className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                {t("showOriginal")}
+              </button>
+            ) : null}
+          </MailPopoverContent>
         </Popover>
       ) : null}
+    </div>
     </div>
   );
 }
@@ -269,6 +366,8 @@ export function MailBubble({
   onReact,
   onReplyTo,
   onForward,
+  onEditAsNew,
+  onShowOriginal,
   showPrint = true,
 }: {
   message: {
@@ -309,6 +408,13 @@ export function MailBubble({
   onReplyTo?: () => void;
   onForward?: () => void;
   /**
+   * Copy this message into a new compose, out of the thread.
+   *
+   * The list row does the same for the first own mail. This is how a
+   * later one is picked.
+   */
+  onEditAsNew?: () => void;
+  /**
    * The line above the bubble: who sent it, when, and the controls.
    *
    * Off in a chat window, where the window is one conversation with one
@@ -338,6 +444,8 @@ export function MailBubble({
    * a printer, and the room beside the sender is better spent.
    */
   showPrint?: boolean;
+  /** Open the message's source over the thread — Gmail's "Show original". */
+  onShowOriginal?: () => void;
 }) {
   const t = useMailT();
   const [showQuoted, setShowQuoted] = React.useState(false);
@@ -367,6 +475,8 @@ export function MailBubble({
   }, [senderKey, defaultAllowImages]);
 
   const bubbleRef = React.useRef<HTMLDivElement>(null);
+  /** The bubble the hover rail hangs off; the row measures from it. */
+  const railAnchorRef = React.useRef<HTMLDivElement>(null);
   const bodyMeasureRef = React.useRef<HTMLDivElement>(null);
   /** Thread-pane scrollTop captured when expanding the quote. */
   const scrollBeforeExpand = React.useRef<number | null>(null);
@@ -454,7 +564,11 @@ export function MailBubble({
       setIsTall(el.scrollHeight > MESSAGE_BODY_CLAMP_PX + 8);
     };
     measure();
-    const ro = new ResizeObserver(measure);
+    // Not on every frame of a slide — see lib/mail/pane-slide.
+    const ro = new ResizeObserver(() => {
+      if (afterMailPaneSlide(measure)) return;
+      measure();
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [isLatest, showHtml, showQuoted, message.bodyHtml, stripped]);
@@ -619,6 +733,29 @@ export function MailBubble({
   const showMetaRow =
     showMeta && (detailsOpen ? true : Boolean(metaHeadline) || canLoadImages);
 
+  /**
+   * Double-clicking the message is the same answer as the menu's "Details".
+   *
+   * Only where there is something to tell: `showMeta` is what decides
+   * whether the menu offers the item at all, and a bubble that cannot
+   * answer must not swallow the double click either.
+   *
+   * Two clicks, not one. A single click lands on a message all the time:
+   * to bring the pane forward, to put the cursor somewhere, to start a
+   * drag across the words. When one click was the toggle, the line above
+   * the message came and went with every one of them. A double click is
+   * asked for on purpose. Anything that is its own control keeps its.
+   */
+  const toggleDetailsFromBody = React.useCallback(() => {
+    if (!showMeta) return;
+    setDetailsOpen((open) => !open);
+  }, [showMeta]);
+
+  const onBubbleDoubleClick = (event: React.MouseEvent) => {
+    if (isInteractiveDoubleClickTarget(event.target)) return;
+    toggleDetailsFromBody();
+  };
+
   const clamped = isTall && !bodyFullyExpanded;
   const fadeFrom =
     sendingOut || failedOut
@@ -629,21 +766,41 @@ export function MailBubble({
         ? "from-[var(--mail-bubble-own)]"
         : "from-[var(--mail-bubble-other)]";
 
+  /** To and Cc as written, each address once, for "Copy recipients". */
+  const messageRecipients = React.useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of [...(message.toEmails ?? []), ...(message.ccEmails ?? [])]) {
+      const email = raw.trim();
+      const key = email.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(email);
+    }
+    return out;
+  }, [message.toEmails, message.ccEmails]);
+
   return (
     // The row the message sits in, and what the pointer has to be on for
     // the actions beside it to show. It used to be the bubble itself, which
     // ends at the edge of the words: the gutter the actions stand in was
     // outside it, and so was the hair of space between the two, so crossing
     // to them dismissed them.
-    <div className="group/bubble flex w-full min-w-0">
+    <div
+      className="group/bubble flex w-full min-w-0"
+      onPointerEnter={(e) =>
+        measureRailRoom(e.currentTarget, railAnchorRef.current, message.own, zoom)
+      }
+      onFocusCapture={(e) =>
+        measureRailRoom(e.currentTarget, railAnchorRef.current, message.own, zoom)
+      }
+    >
     <div
       ref={bubbleRef}
       className={cn(
-        // Fixed 40px gutter on the opposite side (a % gutter gets huge on
-        // wide panes and still eats too much of the narrow popout). A pane
-        // too narrow to spare it says so with `.mail-thread-narrow`, which
-        // takes the gutter down to a hair — see mail.css.
-        "mail-bubble-column flex w-full min-w-0 max-w-[calc(100%-40px)] flex-col",
+        // How wide the column may get, and the gutter that leaves beside
+        // it, are one rule on `.mail-bubble-column` — see mail.css.
+        "mail-bubble-column flex w-full min-w-0 flex-col",
         // Auto margins, not `self-end`. `self-*` needs a flex parent, and a
         // bubble is not always given one — in the chat window each sits in a
         // plain block, so an open message ignored it and hugged the left
@@ -688,22 +845,26 @@ export function MailBubble({
           with the middle of the words and not with the middle of the line of
           meta above them as well. */}
       <div
+        ref={railAnchorRef}
         className={cn(
           "relative min-w-0",
-          // Plain text sizes to its words, the way a messaging app does — a
-          // three-word reply in a full-width bubble looks like a form. HTML
-          // stays full width: it renders in a frame, and a frame has no
-          // width of its own to shrink to.
-          showHtml ? "w-full" : "w-fit max-w-full"
+          // A message sizes to its words, the way a messaging app does — a
+          // three-word reply in a full-width bubble looks like a form. An
+          // HTML message does it through its frame, which measures how
+          // wide its content wants to be and says so — see EmailHtmlView.
+          "w-fit max-w-full"
         )}
       >
       <MessageHoverActions
         own={message.own}
         bodyText={message.bodyText}
+        recipients={messageRecipients}
         onReact={sendingOut || failedOut ? undefined : onReact}
         onReplyTo={sendingOut || failedOut ? undefined : onReplyTo}
         onForward={sendingOut || failedOut ? undefined : onForward}
+        onEditAsNew={sendingOut || failedOut ? undefined : onEditAsNew}
         onPrint={showPrint ? printThisMessage : undefined}
+        onShowOriginal={sendingOut || failedOut ? undefined : onShowOriginal}
         // Who it was from and who it went to, for the message where the line
         // above says nothing because nothing about it changed.
         onToggleDetails={
@@ -712,6 +873,7 @@ export function MailBubble({
         detailsOpen={detailsOpen}
       />
       <div
+        onDoubleClick={onBubbleDoubleClick}
         className={cn(
           "rounded-2xl transition-[background-color,border-color,color] duration-200",
           // One corner tighter, on the speaker's own side. It is barely a
@@ -719,7 +881,7 @@ export function MailBubble({
           // tail or a name over every message.
           message.own ? "rounded-br-md" : "rounded-bl-md",
           "relative",
-          showHtml ? "w-full" : "w-fit max-w-full",
+          "w-fit max-w-full",
           showHtml ? undefined : "px-3 py-2",
           sendingOut &&
             "border border-dashed border-stone-300 bg-white text-stone-500",
@@ -792,6 +954,7 @@ export function MailBubble({
                   </span>
                 ) : null}
                 <EmailHtmlView
+                  onContentDoubleClick={toggleDetailsFromBody}
                   html={shownHtml}
                   inlineImages={message.inlineImages}
                   allowImages={allowImages}
@@ -904,6 +1067,52 @@ export function MailBubble({
     </div>
   );
 }
+/**
+ * How far outside the bubble the hover rail stands when nothing is in the
+ * way: its own width (w-8, border included) and one pixel of air.
+ */
+const RAIL_OUTSIDE_PX = 33;
+
+/** Closest ancestor that clips what crosses its edge, scrolling or not. */
+function nearestClipParent(el: HTMLElement): HTMLElement | null {
+  let node = el.parentElement;
+  while (node) {
+    const { overflowX, overflowY } = getComputedStyle(node);
+    if (overflowX !== "visible" || overflowY !== "visible") return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Tell the row how much room the rail has on its side of the bubble, as a
+ * CSS variable the rail positions itself from. Measured when the pointer
+ * arrives rather than watched, because that is the only time it shows.
+ * Rects come back in zoomed pixels and the variable is read inside the
+ * zoom, so it is divided back out.
+ */
+function measureRailRoom(
+  row: HTMLElement,
+  anchor: HTMLElement | null,
+  own: boolean,
+  zoom: number
+): void {
+  const clip = anchor ? nearestClipParent(row) : null;
+  if (!anchor || !clip) {
+    row.style.removeProperty("--mail-rail-room");
+    return;
+  }
+  const a = anchor.getBoundingClientRect();
+  const c = clip.getBoundingClientRect();
+  const room = own
+    ? a.left - (c.left + clip.clientLeft)
+    : c.right - clip.clientLeft - a.right;
+  row.style.setProperty(
+    "--mail-rail-room",
+    `${Math.max(0, Math.floor(room / (zoom || 1)))}px`
+  );
+}
+
 /** Closest ancestor that actually scrolls (the thread pane). */
 export function nearestScrollParent(el: HTMLElement | null): HTMLElement | null {
   let node = el?.parentElement ?? null;

@@ -18,11 +18,18 @@ import {
   resolveMailProvider,
 } from "@/lib/mail/providers";
 import { PlanError } from "@/lib/plan/errors";
+import type { MailProvider } from "@/lib/mail/types";
 
 export type MailAutoReply = {
   account: string;
   /** Which provider's settings these are. They do not offer the same things. */
-  provider: "gmail" | "outlook";
+  provider: MailProvider;
+  /**
+   * Whether the reply can carry a subject of its own. Outlook's cannot: the
+   * reply carries the subject of whatever it answers. The dialog reads this,
+   * not the provider name, to decide whether to show the box.
+   */
+  subjectSupported: boolean;
   enabled: boolean;
   subject: string;
   bodyHtml: string;
@@ -60,6 +67,7 @@ function toMailAutoReply(
   return {
     account,
     provider: "gmail",
+    subjectSupported: true,
     enabled: s.enableAutoReply ?? false,
     subject: s.responseSubject ?? "",
     bodyHtml: s.responseBodyHtml || s.responseBodyPlainText || "",
@@ -109,7 +117,8 @@ export async function listMailAutoReplies(
     /** An empty entry for this account, labelled with its own provider. */
     const blank = (): MailAutoReply => ({
       ...toMailAutoReply(a.email, {}),
-      provider: a.provider === "outlook" ? "outlook" : "gmail",
+      provider: a.provider,
+      subjectSupported: a.provider !== "outlook",
     });
     try {
       if (a.provider === "outlook") {
@@ -117,8 +126,7 @@ export async function listMailAutoReplies(
         results.push({
           account: a.email,
           provider: "outlook",
-          // Outlook has no subject on an automatic reply: the reply carries
-          // the subject of whatever it answers.
+          subjectSupported: false,
           subject: "",
           ...reply,
           needsReconnect: false,
@@ -177,6 +185,7 @@ export async function setMailAutoReply(input: {
     return {
       account: input.account,
       provider: "outlook",
+      subjectSupported: false,
       subject: "",
       ...updated,
       needsReconnect: false,

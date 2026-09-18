@@ -29,11 +29,14 @@ use objc2_contacts::{
 use objc2_foundation::{NSArray, NSError};
 use serde::Serialize;
 
-/// One address, in the shape every contact source stores.
+/// One address, in the shape every contact source stores. `card` is the
+/// book's own id for the contact the address is on, so two addresses on one
+/// card can be read as one person.
 #[derive(Serialize)]
 pub struct MacContact {
   pub email: String,
   pub name: String,
+  pub card: String,
 }
 
 /// The reader's standing answer, in the words the panel uses.
@@ -175,6 +178,7 @@ fn read_all() -> Result<Vec<MacContact>, String> {
       // Safety: the contact is alive for the length of this call.
       let contact = contact.as_ref();
       let name = display_name(contact);
+      let card = contact.identifier().to_string();
       for labeled in contact.emailAddresses().iter() {
         let email = labeled.value().to_string().trim().to_lowercase();
         // The book holds addresses people typed. Some are not addresses.
@@ -184,6 +188,7 @@ fn read_all() -> Result<Vec<MacContact>, String> {
         sink.borrow_mut().push(MacContact {
           email,
           name: name.clone(),
+          card: card.clone(),
         });
       }
     });

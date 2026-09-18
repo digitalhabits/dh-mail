@@ -46,10 +46,24 @@ suite(async () => {
     ).includes(PLAIN) === false
   );
   check(
-    "a link with a class is left alone",
+    "a link with a class the sender styles is left alone",
+    softenAnchorsForParse(
+      '<style>.btn{color:#fff;background:#0a0}</style><a href="https://x.example" class="btn">Go</a>'
+    ).includes(PLAIN) === false
+  );
+  // Ryanair names every link with a class and styles none of them; the
+  // class is a name, not a dress, and the link must still look like one.
+  check(
+    "a link with a class nothing styles is painted",
+    softenAnchorsForParse(
+      '<style>.other{color:red}</style><a href="https://x.example" class="ry-link-49">here</a>'
+    ).includes(PLAIN)
+  );
+  check(
+    "and so is one with a class and no stylesheet at all",
     softenAnchorsForParse('<a href="https://x.example" class="btn">Go</a>').includes(
       PLAIN
-    ) === false
+    )
   );
 
   // `data-style` is not `style` — a stray prefix must not count as dressing.

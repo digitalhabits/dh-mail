@@ -1,6 +1,7 @@
 import "server-only";
 
 import { decodeHtmlEntities } from "@/lib/html-entities";
+import { bodyTextFromParts } from "@/lib/mail/html-to-text";
 import { base64UrlToUtf8, utf8ToBase64Url } from "@/lib/base64";
 import type { GmailSendAs } from "@/lib/mail/sender-name";
 
@@ -28,28 +29,226 @@ export type GmailMessage = {
   payload?: GmailMessagePart;
 };
 
+/**
+ * Gmail says "too many requests" with a 403, not a 429.
+ *
+ * Every account has a quota per second, and one message read costs several
+ * units of it. A mailbox refresh reads many messages at once, and two
+ * mailboxes refresh together, so a burst can go over the line — and the
+ * answer comes back 403 with a reason inside it. Read as a plain refusal
+ * that failed the whole refresh, which is the "couldn't refresh" the reader
+ * saw now and then, with nothing on screen to say why.
+ *
+ * The remedy Google asks for is to wait and try again, a little longer each
+ * time, with some jitter so a burst that failed together does not return
+ * together.
+ *
+ * Two budgets, two waits. The per-second one is a moving average and comes
+ * back in under a second, so three short waits are enough. The per-minute
+ * one, named in the refusal as "Units per minute per user", comes back as
+ * the minute turns: a mailbox rebuild spends it in one go, and the next
+ * read of a thread met it, waited three seconds, and failed. That read now
+ * waits most of a minute before it gives up.
+ */
+const RATE_LIMIT_REASON =
+  /rateLimitExceeded|userRateLimitExceeded|quotaExceeded|backendError|Too Many Requests/i;
+const PER_MINUTE_LIMIT = /per minute/i;
+
+const RETRY_WAITS_MS = [400, 900, 2000];
+
+/*
+  A mailbox over its minute is left alone for the minute.
+
+  The per-minute budget used to be met with retries: each refused request
+  waited and asked again, three times over. A refresh asks for a hundred
+  threads, eight at a time, and Live polls add more — so a mailbox that
+  had gone over the line was asked a few hundred more times inside the
+  same minute, and the budget never had a quiet minute to come back in.
+  The reader saw every mailbox call fail for an hour, opening a message
+  included, with the console full of 403s.
+
+  Now the first per-minute refusal mutes the mailbox: every request for it
+  in the next minute is refused here, at once, without going to Google,
+  with the same error the callers already know. The list says which
+  mailbox is over its limit and that it clears within a minute, the next
+  poll after the mute asks again, and the budget is spent on nothing in
+  between. Keyed by token, which is what a mailbox is here.
+*/
+const MUTE_MS = 60_000;
+const mutedUntilByToken = new Map<string, number>();
+
+/*
+  And before that: the minute's budget is kept here, so the line is not
+  crossed in the first place.
+
+  Google charges each call in units and allows so many per mailbox per
+  minute — 6,000 on this project since Google lowered it from 15,000.
+  A refresh of a hundred threads is a thousand, a search another, the
+  sent-mail scan for contacts two and a half thousand on its own. Spent
+  without looking, the minute ran out and everything after it was refused.
+
+  Every call now declares what it costs, and a call that would take the
+  mailbox past this minute's allowance waits for the next minute instead
+  of being sent. The allowance sits under Google's so that a unit counted
+  differently on their side does not tip it over. A caller sees a slower
+  answer rather than a refusal, and the slow part is never the whole
+  list — the list is incremental, and the big spenders pace themselves.
+*/
+const MINUTE_BUDGET_UNITS = 5_000;
+type MinuteSpend = { windowStart: number; units: number; warned: boolean };
+const spendByToken = new Map<string, MinuteSpend>();
+
+/**
+ * What Google charges for a call, from the published unit table. Unknown
+ * calls are taken as a message read, the commonest and a middling cost.
+ */
+export function estimateGmailUnits(method: string, path: string): number {
+  const p = path.split("?")[0];
+  const verb = method.toUpperCase();
+  if (p.includes("/history")) return 2;
+  if (p.endsWith("/profile")) return 1;
+  if (p.includes("/watch")) return 100;
+  if (p.endsWith("/stop")) return 50;
+  if (p.includes("/labels")) return verb === "GET" ? 1 : 5;
+  if (p.includes("/settings")) return verb === "GET" ? 1 : 50;
+  if (p.includes("/attachments/")) return 5;
+  if (p.includes("/drafts")) {
+    if (p.endsWith("/drafts/send")) return 100;
+    if (verb === "GET") return 5;
+    if (verb === "PUT" || verb === "PATCH") return 15;
+    return 10;
+  }
+  if (p.includes("/messages")) {
+    if (p.endsWith("/send")) return 100;
+    if (p.endsWith("/import") || (verb === "POST" && p.endsWith("/messages"))) return 25;
+    if (p.endsWith("/batchModify") || p.endsWith("/batchDelete")) return 50;
+    if (verb === "DELETE") return 10;
+    return 5;
+  }
+  if (p.includes("/threads")) {
+    if (verb === "DELETE") return 20;
+    return 10;
+  }
+  return 5;
+}
+
+/** Take `cost` out of this minute's allowance, waiting for the next minute when it is spent. */
+async function spendFromBudget(accessToken: string, cost: number, path: string): Promise<void> {
+  for (;;) {
+    const now = Date.now();
+    let spend = spendByToken.get(accessToken);
+    if (!spend || now - spend.windowStart >= 60_000) {
+      spend = { windowStart: now, units: 0, warned: false };
+      spendByToken.set(accessToken, spend);
+    }
+    if (spend.units + cost <= MINUTE_BUDGET_UNITS) {
+      spend.units += cost;
+      return;
+    }
+    const wait = spend.windowStart + 60_000 - now + 50;
+    if (!spend.warned) {
+      spend.warned = true;
+      console.warn(
+        `[gmail] ${path.split("?")[0]} would pass this minute's allowance (${spend.units} of ${MINUTE_BUDGET_UNITS} units spent) — waiting ${wait}ms for the next minute`
+      );
+    }
+    await waitFor(wait);
+  }
+}
+
+function refusedWhileMuted(path: string): Error {
+  const err = new Error(
+    `Gmail API ${path.split("?")[0]} failed (403, rateLimitExceeded): the mailbox is over its request limit for this minute`
+  ) as Error & { status?: number; reason?: string };
+  err.status = 403;
+  err.reason = "rateLimitExceeded";
+  return err;
+}
+
+/** A refusal that means "later", not "never". */
+export function isGmailRateLimit(err: unknown): boolean {
+  const reason = (err as Error & { reason?: string }).reason ?? "";
+  const message = err instanceof Error ? err.message : String(err);
+  return /rateLimitExceeded|userRateLimitExceeded|quota exceeded|too many requests|over its request limit/i.test(
+    `${reason} ${message}`
+  );
+}
+
+function gmailReason(detail: string): string {
+  const match = detail.match(/"reason"\s*:\s*"([^"]+)"/);
+  return match?.[1] ?? "";
+}
+
+function worthAnotherTry(
+  status: number,
+  detail: string,
+  method: string
+): boolean {
+  if (status === 429) return true;
+  if (status === 403) return RATE_LIMIT_REASON.test(detail);
+  // A read that failed inside Google can be asked again; a write might have
+  // landed already, and asking twice could send or delete twice.
+  return status >= 500 && method === "GET";
+}
+
+function waitFor(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function gmailFetch<T>(
   accessToken: string,
   path: string,
   init?: { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown }
 ): Promise<T> {
-  const res = await fetch(`${GMAIL_BASE}${path}`, {
-    method: init?.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(init?.body !== undefined
-        ? { "Content-Type": "application/json" }
-        : null),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    cache: "no-store",
-  });
-  if (!res.ok) {
+  const method = init?.method ?? "GET";
+  const mutedUntil = mutedUntilByToken.get(accessToken) ?? 0;
+  if (mutedUntil > Date.now()) throw refusedWhileMuted(path);
+  await spendFromBudget(accessToken, estimateGmailUnits(method, path), path);
+  let res: Response;
+  for (let attempt = 0; ; attempt += 1) {
+    res = await fetch(`${GMAIL_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(init?.body !== undefined
+          ? { "Content-Type": "application/json" }
+          : null),
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: "no-store",
+    });
+    if (res.ok || res.status === 204) break;
+
     const detail = await res.text();
-    const err = new Error(`Gmail API ${path.split("?")[0]} failed (${res.status}): ${detail.slice(0, 300)}`) as Error & {
-      status?: number;
-    };
+    if (
+      (res.status === 403 || res.status === 429) &&
+      RATE_LIMIT_REASON.test(detail) &&
+      PER_MINUTE_LIMIT.test(detail)
+    ) {
+      mutedUntilByToken.set(accessToken, Date.now() + MUTE_MS);
+      console.warn(
+        `[gmail] ${path.split("?")[0]} 403 ${gmailReason(detail) || "rate limited"} — over the minute's budget, leaving this mailbox alone for a minute`
+      );
+      throw refusedWhileMuted(path);
+    }
+    const wait = RETRY_WAITS_MS[attempt];
+    if (wait !== undefined && worthAnotherTry(res.status, detail, method)) {
+      console.warn(
+        `[gmail] ${path.split("?")[0]} ${res.status} ${
+          gmailReason(detail) || "rate limited"
+        } — waiting ${wait}ms and asking again`
+      );
+      await waitFor(wait + Math.floor(Math.random() * 250));
+      continue;
+    }
+    const reason = gmailReason(detail);
+    const err = new Error(
+      `Gmail API ${path.split("?")[0]} failed (${res.status}${
+        reason ? `, ${reason}` : ""
+      }): ${detail.slice(0, 300)}`
+    ) as Error & { status?: number; reason?: string };
     err.status = res.status;
+    if (reason) err.reason = reason;
     throw err;
   }
   if (res.status === 204) return undefined as T;
@@ -145,6 +344,22 @@ export async function getMessageFull(
   messageId: string
 ): Promise<GmailMessage> {
   return gmailFetch<GmailMessage>(accessToken, `/messages/${messageId}?format=full`);
+}
+
+/**
+ * The message as it arrived, headers and all: the RFC 5322 source, as
+ * Gmail hands it over — base64url. The caller decodes it.
+ */
+export async function getMessageRaw(
+  accessToken: string,
+  messageId: string
+): Promise<string> {
+  const data = await gmailFetch<{ raw?: string }>(
+    accessToken,
+    `/messages/${messageId}?format=raw`
+  );
+  if (!data.raw) throw new Error("Gmail sent the message without its source");
+  return data.raw;
 }
 
 /** True when Gmail still classifies the message as a draft (never sent). */
@@ -704,15 +919,17 @@ export function parseAddressList(raw: string): { email: string; name: string }[]
   for (const part of parts) {
     const angled = part.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/);
     if (angled) {
-      const email = angled[2].trim().toLowerCase();
+      // Outlook and Exchange write <'ann@x.org'>; the quotes are not part of
+      // the address, and a reply that keeps them is refused.
+      const email = angled[2].trim().replace(/^'(.*)'$/, "$1").trim().toLowerCase();
       if (email.includes("@")) {
         results.push({ email, name: angled[1].trim() });
       }
       continue;
     }
-    const bare = part.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    const bare = part.match(/[\w.+'-]+@[\w-]+\.[\w.-]+/);
     if (bare) {
-      results.push({ email: bare[0].toLowerCase(), name: "" });
+      results.push({ email: bare[0].replace(/^'/, "").toLowerCase(), name: "" });
     }
   }
   return results;
@@ -722,15 +939,6 @@ function decodeBase64Url(data: string): string {
   return base64UrlToUtf8(data);
 }
 
-function stripHtml(html: string): string {
-  const text = html
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "");
-  return decodeHtmlEntities(text).replace(/\n{3,}/g, "\n\n").trim();
-}
 
 /** Gmail snippets arrive HTML-escaped (e.g. &#39; for apostrophes). */
 export function decodeSnippet(snippet: string): string {
@@ -755,7 +963,7 @@ export function extractBodyText(message: GmailMessage): string {
   };
   walk(message.payload);
 
-  const text = plain.trim() || stripHtml(html);
+  const text = bodyTextFromParts(plain, html);
   // Cap stored bodies; long threads repeat quoted history anyway.
   return text.length > 20_000 ? `${text.slice(0, 20_000)}\n[truncated]` : text;
 }

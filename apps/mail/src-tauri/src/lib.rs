@@ -6,12 +6,16 @@ mod menu;
 
 // The native side of mail lives in the shared crate; see products/mail/crates.
 #[cfg(target_os = "macos")]
-use mail_native::{contacts, magnify, printing};
+use mail_native::{contacts, dragout, magnify, printing};
 use mail_native::{downloads, oauth};
 
 /// Write an .ics invite to a temp file and open it with the OS calendar app.
 #[tauri::command]
-fn open_calendar_invite(filename: String, content: String) -> Result<(), String> {
+fn open_calendar_invite(
+  app: tauri::AppHandle,
+  filename: String,
+  content: String,
+) -> Result<(), String> {
   let mut safe = filename
     .trim()
     .chars()
@@ -33,76 +37,43 @@ fn open_calendar_invite(filename: String, content: String) -> Result<(), String>
   std::fs::write(&path, content.as_bytes())
     .map_err(|e| format!("Couldn't write invite: {e}"))?;
 
-  let status = {
-    #[cfg(target_os = "macos")]
-    {
-      std::process::Command::new("open").arg(&path).status()
-    }
-    #[cfg(target_os = "windows")]
-    {
-      std::process::Command::new("cmd")
-        .args(["/C", "start", "", &path.to_string_lossy()])
-        .status()
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-      std::process::Command::new("xdg-open").arg(&path).status()
-    }
-  };
-  match status {
-    Ok(s) if s.success() => Ok(()),
-    Ok(s) => Err(format!("open exited with {s}")),
-    Err(e) => Err(format!("Couldn't open invite: {e}")),
-  }
-}
-
-/**
- * Bring the main window back when the dock icon is clicked.
- *
- * Closing it does not end the app while a chat popout is still open, and a
- * popout has no way of opening it — so the app was running with no way back
- * into it. macOS asks about this through applicationShouldHandleReopen, which
- * Tauri reports as `RunEvent::Reopen`.
- *
- * Closing a window destroys it rather than hiding it, so most of the time
- * there is nothing to show and it has to be built again. It is built from the
- * same configuration the app starts with, so the window that comes back is
- * the window that went.
- */
-#[cfg(target_os = "macos")]
-fn show_main_window(app: &tauri::AppHandle) {
-  use tauri::{Manager, WebviewWindowBuilder};
-
-  if let Some(main) = app.get_webview_window("main") {
-    let _ = main.unminimize();
-    let _ = main.show();
-    let _ = main.set_focus();
-    return;
-  }
-
-  let Some(config) = app
-    .config()
-    .app
-    .windows
-    .iter()
-    .find(|w| w.label == "main")
-    .or_else(|| app.config().app.windows.first())
-    .cloned()
-  else {
-    log::warn!("reopen: no window configuration to rebuild the main window from");
-    return;
-  };
-
-  match WebviewWindowBuilder::from_config(app, &config)
-    .and_then(|builder| builder.build())
+  // A phone has no shell to hand the file to. The opener plugin asks the
+  // system for whatever opens an .ics there — Calendar, or a picker.
+  #[cfg(any(target_os = "ios", target_os = "android"))]
   {
-    Ok(window) => {
-      let _ = window.show();
-      let _ = window.set_focus();
+    use tauri_plugin_opener::OpenerExt;
+    return app
+      .opener()
+      .open_path(path.to_string_lossy(), None::<&str>)
+      .map_err(|e| format!("Couldn't open invite: {e}"));
+  }
+  #[cfg(not(any(target_os = "ios", target_os = "android")))]
+  {
+    let _ = &app;
+    let status = {
+      #[cfg(target_os = "macos")]
+      {
+        std::process::Command::new("open").arg(&path).status()
+      }
+      #[cfg(target_os = "windows")]
+      {
+        std::process::Command::new("cmd")
+          .args(["/C", "start", "", &path.to_string_lossy()])
+          .status()
+      }
+      #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+      {
+        std::process::Command::new("xdg-open").arg(&path).status()
+      }
+    };
+    match status {
+      Ok(s) if s.success() => Ok(()),
+      Ok(s) => Err(format!("open exited with {s}")),
+      Err(e) => Err(format!("Couldn't open invite: {e}")),
     }
-    Err(err) => log::warn!("reopen: could not rebuild the main window: {err}"),
   }
 }
+
 
 fn splash_overlay_js() -> String {
   let logo = include_str!("../splash/logo.b64");
@@ -215,12 +186,31 @@ macro_rules! mail_commands {
       mail_native::popout::chat_popout_open,
       mail_native::popout::focus_chat_popout,
       mail_native::popout::hand_back_chat_popout,
+      mail_native::popout::open_mail_reader_window,
+      mail_native::popout::close_mail_reader_window,
       mail_native::popout::notify_mail_sent,
+      mail_native::popout::notify_mail_changed,
       mail_native::popout::notify_mail_forward,
+      mail_native::popout::notify_mail_edit_as_new,
       mail_native::commands::mail_store_call,
+      mail_native::pending::set_pending_mail_writes,
       mail_native::commands::mail_import_snapshot,
       mail_native::commands::oauth_bind,
       mail_native::commands::oauth_await_redirect,
+      mail_native::commands::oauth_cancel,
+      mail_native::sync::mail_sync_configure,
+      mail_native::sync::mail_sync_start,
+      mail_native::sync::mail_sync_stop,
+      mail_native::sync::mail_sync_wake,
+      mail_native::sync::mail_sync_running,
+      mail_native::sync::mail_sync_fetch_bodies,
+      mail_native::sync::mail_sync_fetch_part,
+      mail_native::sync::mail_sync_fetch_source,
+      mail_native::sync::mail_sync_action,
+      mail_native::sync::mail_sync_send,
+      mail_native::sync::mail_sync_outbox,
+      mail_native::sync::mail_sync_outbox_cancel,
+      mail_native::sync::mail_sync_outbox_send_now,
       // The team layer, over the planner API. Internal flavor only; the
       // public interface never calls these.
       mail_native::planner::planner_session_set,
@@ -231,15 +221,29 @@ macro_rules! mail_commands {
       mail_native::planner::planner_show_record,
       open_external_url,
       downloads::save_attachment,
+      mail_native::handover::activate_outlook,
+      mail_native::handover::open_outlook_compose,
+      mail_native::handover::arrange_outlook_handover,
       oauth::oauth_token_request,
       $($platform),*
     ]
   };
 }
 
+/// The longest a closing window or a quitting app waits for its writes.
+const WRITE_DRAIN_CAP_MS: u64 = 8000;
+/// Set by the drain thread, so its own exit is not prevented again.
+static EXIT_AFTER_DRAIN: std::sync::atomic::AtomicBool =
+  std::sync::atomic::AtomicBool::new(false);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+  // The chat popout is a non-activating panel, so clicking it does not take
+  // the front from a slideshow behind it. mail-native reclasses the window;
+  // this is the plugin that lets it.
+  #[cfg(target_os = "macos")]
+  let builder = builder.plugin(tauri_nspanel::init());
   // Remote images (dhmail://) and, on macOS, the print document (dhprint://).
   // See the mail-native crate.
   let builder = mail_native::register_schemes(builder);
@@ -247,6 +251,9 @@ pub fn run() {
   #[cfg(target_os = "macos")]
   let builder = builder.invoke_handler(mail_commands![
     printing::print_document,
+    mail_native::clipboard::read_clipboard_text,
+    dragout::stage_attachment_for_drag,
+    dragout::drag_files,
     contacts::mac_contacts_authorization,
     contacts::mac_contacts_request_access,
     contacts::mac_contacts_list,
@@ -256,6 +263,49 @@ pub fn run() {
   let builder = builder.invoke_handler(mail_commands![]);
 
   builder
+    /*
+      A window that owes the mailbox writes is not closed on the first ask.
+
+      The trash and archive requests run in the webview, so the red button
+      pressed right after a delete killed the request mid-flight: the app
+      had said "moved to Trash" and the mailbox was never told. The page
+      counts its in-flight writes (see pending.rs); a close with any still
+      out is prevented, and the window is destroyed as soon as they drain —
+      or after eight seconds, so a dead network cannot hold the window
+      hostage.
+    */
+    .on_window_event(|window, event| match event {
+      tauri::WindowEvent::CloseRequested { api, .. } => {
+        // The main window is the app: closing it quits, as on Windows.
+        // The exit drains the writes first, below. Left to itself the
+        // window went and a chat popout kept the app running with nothing
+        // on screen. A popout closing drains its own writes and no more.
+        if window.label() == "main" {
+          use tauri::Manager as _;
+          api.prevent_close();
+          window.app_handle().exit(0);
+          return;
+        }
+        if mail_native::pending::pending_for(window.label()) > 0 {
+          api.prevent_close();
+          let window = window.clone();
+          std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            while mail_native::pending::pending_for(window.label()) > 0
+              && start.elapsed() < std::time::Duration::from_millis(WRITE_DRAIN_CAP_MS)
+            {
+              std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            mail_native::pending::forget_window(window.label());
+            let _ = window.destroy();
+          });
+        }
+      }
+      tauri::WindowEvent::Destroyed => {
+        mail_native::pending::forget_window(window.label());
+      }
+      _ => {}
+    })
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -343,12 +393,27 @@ pub fn run() {
     })
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
-    // Underscored because the only thing that reads either is the macOS arm
-    // below, and a plain name is an unused-variable warning everywhere else.
     .run(|_app, _event| {
-      #[cfg(target_os = "macos")]
-      if let tauri::RunEvent::Reopen { .. } = _event {
-        show_main_window(_app);
+      // Quit (⌘Q) skips the windows' own close events, so the same wait
+      // happens here: the exit is prevented once, the writes drain, and
+      // the drain thread asks again with the flag set.
+      if let tauri::RunEvent::ExitRequested { api, .. } = &_event {
+        if !EXIT_AFTER_DRAIN.load(std::sync::atomic::Ordering::SeqCst)
+          && mail_native::pending::pending_total() > 0
+        {
+          api.prevent_exit();
+          let app = _app.clone();
+          std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            while mail_native::pending::pending_total() > 0
+              && start.elapsed() < std::time::Duration::from_millis(WRITE_DRAIN_CAP_MS)
+            {
+              std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            EXIT_AFTER_DRAIN.store(true, std::sync::atomic::Ordering::SeqCst);
+            app.exit(0);
+          });
+        }
       }
     });
 }

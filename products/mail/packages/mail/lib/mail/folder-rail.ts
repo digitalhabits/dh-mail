@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import { startPointerDrag } from "@/lib/pointer-drag";
 
 const OPEN_KEY = "redd-plan-mail-folder-rail-open-v1";
 const COLLAPSED_KEY = "redd-plan-mail-folder-rail-collapsed-v1";
@@ -184,9 +185,6 @@ export function useFolderRailWidth(): {
       );
     };
     const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
       setResizing(false);
       // Written at the end rather than on every frame: a drag is one
       // decision, not sixty.
@@ -197,9 +195,10 @@ export function useFolderRailWidth(): {
       }
     };
 
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    startPointerDrag(
+      { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
+      { cursor: "col-resize", onMove, onEnd: onUp }
+    );
   }, []);
 
   return { width, resizing, startResize };

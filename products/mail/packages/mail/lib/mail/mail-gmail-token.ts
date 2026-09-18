@@ -1,9 +1,20 @@
 import "server-only";
 
-import { getAccountRefreshToken } from "@/lib/gmail/accounts";
-import { refreshAccessToken } from "@/lib/gmail/oauth";
+import { getAccountStoredToken, recordGrantedScopes } from "@/lib/gmail/accounts";
+import {
+  missingGoogleFeatures,
+  refreshAccessToken,
+  type GoogleFeature,
+} from "@/lib/gmail/oauth";
 
-const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+type CachedToken = {
+  token: string;
+  expiresAt: number;
+  /** What Google said the token covers. Null when it did not say. */
+  grantedScopes: string | null;
+};
+
+const tokenCache = new Map<string, CachedToken>();
 
 /** After invalid_grant, skip Google for a while so polls do not spam logs. */
 const authFailureCache = new Map<string, { detail: string; until: number }>();
@@ -43,17 +54,31 @@ export async function accessTokenFor(accountEmail: string): Promise<string> {
   const cached = tokenCache.get(accountEmail) ?? tokenCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.token;
 
-  const refreshToken = await getAccountRefreshToken(accountEmail);
+  const stored = await getAccountStoredToken(accountEmail);
   try {
-    const token = await refreshAccessToken(refreshToken);
+    const { accessToken, grantedScopes } = await refreshAccessToken(
+      stored.refreshToken
+    );
     authFailureCache.delete(key);
-    const entry = {
-      token,
+    const entry: CachedToken = {
+      token: accessToken,
       expiresAt: Date.now() + 50 * 60 * 1000,
+      grantedScopes,
     };
     tokenCache.set(accountEmail, entry);
     tokenCache.set(key, entry);
-    return token;
+    if (grantedScopes) {
+      // The token works whether or not the row remembers its grant.
+      try {
+        await recordGrantedScopes(key, stored.ownerId, grantedScopes);
+      } catch (recordErr) {
+        console.warn(
+          `[mail] ${accountEmail}: could not record the Google grant:`,
+          recordErr
+        );
+      }
+    }
+    return accessToken;
   } catch (err) {
     if (isInvalidGrant(err)) {
       const detail = "Google token expired or revoked";
@@ -68,4 +93,20 @@ export async function accessTokenFor(accountEmail: string): Promise<string> {
     }
     throw err;
   }
+}
+
+/**
+ * The planner features this account's token does not cover.
+ *
+ * Asked before a Calendar or Docs call, so the answer is "reconnect" in
+ * plain words rather than a 403 that could mean three things. Empty when
+ * Google did not say what it granted, and the call finds out the old way.
+ */
+export async function missingGoogleFeaturesFor(
+  accountEmail: string
+): Promise<GoogleFeature[]> {
+  await accessTokenFor(accountEmail);
+  const key = accountEmail.trim().toLowerCase();
+  const cached = tokenCache.get(accountEmail) ?? tokenCache.get(key);
+  return missingGoogleFeatures(cached?.grantedScopes);
 }

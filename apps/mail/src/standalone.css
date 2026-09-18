@@ -53,11 +53,11 @@ html[data-dh-os="windows"] .mail-titlebar-search {
   order: -1;
 }
 
-/* And it stands in the same column as New email, rather than out over the
-   folders: the search box and the button under it are the two things the
-   reader reaches for first, and a column is easier to come back to than a
-   corner. MailPage publishes where that column begins, so the search box
-   moves in and out with the folder rail. */
+/* And the row stands in the same column as New email, rather than out over
+   the folders: the search box and the button under it are the two things
+   the reader reaches for first, and a column is easier to come back to than
+   a corner. MailPage stands the row there itself now; what this says is
+   only that there are no traffic lights here to keep out from under. */
 html[data-dh-os="windows"] .mail-shell {
   --mail-titlebar-left: var(--mail-list-controls-left, 12px);
 }
@@ -150,4 +150,38 @@ html.dh-popout,
 html.dh-popout body,
 html.dh-popout #root {
   background: transparent;
+}
+
+/* Banners above the mail interface sit in the window's own top row, where
+   the traffic lights (mac, left) or the window buttons (Windows, right)
+   float over the page. Their content keeps clear of both — a Reconnect
+   button the window's close button sits on cannot be pressed. */
+.dh-top-banner {
+  padding-left: calc(1rem + var(--dh-banner-inset-left, 0px));
+  padding-right: calc(1rem + var(--dh-banner-inset-right, 0px));
+}
+
+html:not([data-dh-os="windows"]) {
+  --dh-banner-inset-left: 64px;
+}
+
+html[data-dh-os="windows"] {
+  --dh-banner-inset-right: 150px;
+}
+
+/* A phone. There is no title strip to drag a window by and no traffic
+   lights to keep clear of; what the top of the page keeps clear of is the
+   notch, which the safe-area inset measures. `main.tsx` sets the attribute
+   — see `lib/mail/host-form.ts`. */
+html[data-dh-form="phone"] .dh-titlebar {
+  height: env(safe-area-inset-top, 0px);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+html[data-dh-form="phone"] {
+  --dh-banner-inset-left: 0px;
+  --dh-banner-inset-right: 0px;
+}
+html[data-dh-form="phone"] .dh-top-banner {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
 }

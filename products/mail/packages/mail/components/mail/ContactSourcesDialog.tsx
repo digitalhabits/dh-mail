@@ -1,14 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Loader2, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowUpRight, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "@/lib/mail/toast";
 
-import {
-  SettingsDialog,
-  SettingsGroup,
-  SettingsRow,
-} from "@/components/mail/settings-ui";
+import { SettingsDialog, SettingsPane } from "@/components/mail/settings-ui";
+import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { Button } from "@/components/ui/button";
 import { useMailT, type MailT } from "@/lib/mail/i18n";
 import { mailUsesCrmPeople } from "@/lib/mail/product-flavor";
@@ -27,9 +24,14 @@ import { stopAskingForMacContacts } from "@/lib/mail/mac-contacts-ask";
 export const OPEN_CONTACT_SOURCES_EVENT = "redd-mail-open-contact-sources";
 export const CONTACTS_CHANGED_EVENT = "redd-mail-contacts-changed";
 
-export function openContactSourcesDialog(): void {
+export function openContactSourcesDialog(detail?: {
+  /** Opened from Settings: closing Back returns to that panel. */
+  returnTo?: "settings";
+}): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(OPEN_CONTACT_SOURCES_EVENT));
+  window.dispatchEvent(
+    new CustomEvent(OPEN_CONTACT_SOURCES_EVENT, { detail: detail ?? {} })
+  );
 }
 
 function notifyContactsChanged(): void {
@@ -107,7 +109,7 @@ function editLink(
 }
 
 /**
- * Which mailbox this source needs signing in to again, or null.
+ * Which mailbox this source needs signing in again, or null.
  *
  * A contact source is a mailbox seen from another angle, so reconnecting it is
  * the same act as reconnecting the mailbox. It goes through the same seam, and
@@ -125,61 +127,48 @@ function reconnectTarget(
   return null;
 }
 
+/** The switch alone: the row's status word already says what it is doing. */
 function SourceToggle({
+  label,
   enabled,
   disabled,
   onChange,
 }: {
+  label: string;
   enabled: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
-  const t = useMailT();
   return (
     <button
       type="button"
       role="switch"
       aria-checked={enabled}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!enabled)}
       className={cn(
-        "inline-flex shrink-0 items-center gap-2 text-sm font-medium",
-        enabled ? "text-teal-700" : "text-stone-400",
+        "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+        enabled ? "bg-teal-700" : "bg-stone-300",
         disabled && "opacity-60"
       )}
     >
       <span
         className={cn(
-          "relative h-5 w-9 rounded-full transition-colors",
-          enabled ? "bg-teal-700" : "bg-stone-300"
+          "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left]",
+          enabled ? "left-4" : "left-0.5"
         )}
-      >
-        <span
-          className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
-            enabled ? "left-4" : "left-0.5"
-          )}
-        />
-      </span>
-      {enabled ? t("on") : t("off")}
+      />
     </button>
   );
 }
 
-/**
- * Lists every compose contact source with toggle, count, sync time, and the
- * one place to edit that source (CRM in-app; Gmail/Outlook at the provider).
- */
-export function ContactSourcesDialog({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+function useContactSources(active: boolean) {
   const t = useMailT();
   const [sources, setSources] = React.useState<SourceStatus[] | null>(null);
   const [syncing, setSyncing] = React.useState(false);
+  /** When Sync now was pressed, so a source's time says whether it is done. */
+  const [syncStartedAt, setSyncStartedAt] = React.useState<number | null>(null);
   const [toggling, setToggling] = React.useState<string | null>(null);
   const { connecting, connect } = useMailConnect();
 
@@ -197,11 +186,49 @@ export function ContactSourcesDialog({
   }, [t]);
 
   React.useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+    if (active) void load();
+  }, [active, load]);
+
+  /*
+    Said as it goes.
+
+    A sync is a row of address books and then the sent mail of every
+    mailbox, and the last part is slow — hundreds of requests per mailbox.
+    The button spun for a minute with nothing said, so it looked stuck.
+    Each source records its own time as it finishes, so while the sync
+    runs the list is re-read every second or two: a finished source reads
+    "synced just now", the one being read shows a spinner, and the footer
+    counts them off.
+  */
+  React.useEffect(() => {
+    if (!syncing) return;
+    const id = window.setInterval(() => void load(), 1500);
+    return () => window.clearInterval(id);
+  }, [syncing, load]);
+
+  const progress = React.useMemo(() => {
+    if (!syncing || syncStartedAt == null || !sources) return null;
+    // The order the sync runs in: the address books, the Mac book, then
+    // the mail history of each mailbox.
+    const rank = (kind: SourceStatus["kind"]) =>
+      kind === "google" || kind === "outlook" ? 0 : kind === "mac" ? 1 : 2;
+    const run = sources
+      .filter((source) => source.enabled && source.kind !== "crm")
+      .map((source, index) => ({ source, index }))
+      .sort((a, b) => rank(a.source.kind) - rank(b.source.kind) || a.index - b.index)
+      .map((entry) => entry.source);
+    const isDone = (source: SourceStatus) => {
+      const at = source.syncedAt ? Date.parse(source.syncedAt) : NaN;
+      return Number.isFinite(at) && at >= syncStartedAt - 1000;
+    };
+    const done = run.filter(isDone).length;
+    const current = run.find((source) => !isDone(source)) ?? null;
+    return { done, total: run.length, current };
+  }, [syncing, syncStartedAt, sources]);
 
   const sync = async () => {
     setSyncing(true);
+    setSyncStartedAt(Date.now());
     try {
       const json = await apiJson<{
         results: {
@@ -280,197 +307,384 @@ export function ContactSourcesDialog({
     }
   };
 
-  if (!open) return null;
+  return {
+    t,
+    sources,
+    syncing,
+    progress,
+    toggling,
+    connecting,
+    connect,
+    sync,
+    toggle,
+  };
+}
 
+/**
+ * The footer sentence, or where the sync has got to while one runs. The
+ * mail history pass is the slow one, and says so while it is the one running.
+ */
+function ContactSourcesFooterLine({
+  book,
+}: {
+  book: ReturnType<typeof useContactSources>;
+}) {
+  const t = useMailT();
+  const progress = book.progress;
+  if (!progress) {
+    // The most recent read across the sources that are on.
+    const latest = (book.sources ?? [])
+      .filter((source) => source.enabled && source.syncedAt)
+      .map((source) => source.syncedAt as string)
+      .sort()
+      .pop();
+    const synced = relativeSyncedAt(latest ?? null, t);
+    return (
+      <>
+        {t("contactSourcesFooter")}
+        {synced ? ` · ${synced}` : ""}
+      </>
+    );
+  }
+  const counting = t("syncingProgress", {
+    done: Math.min(progress.done + 1, progress.total),
+    total: progress.total,
+  });
+  return (
+    <>
+      {counting}
+      {progress.current?.kind === "history" ? ` ${t("syncHistorySlow")}` : ""}
+    </>
+  );
+}
+
+function ContactSourcesSyncButton({
+  syncing,
+  onSync,
+}: {
+  syncing: boolean;
+  onSync: () => void;
+}) {
+  const t = useMailT();
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="shrink-0 rounded-full"
+      disabled={syncing}
+      onClick={onSync}
+    >
+      {syncing ? (
+        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+      )}
+      {t("syncNow")}
+    </Button>
+  );
+}
+
+/**
+ * One word for where a source stands, for the row's right-hand side.
+ *
+ * The rows used to say everything at once, five times over. Now each says
+ * its name and one word, and the rest waits behind the chevron.
+ */
+function sourceStatus(
+  source: SourceStatus,
+  t: MailT,
+  needsReconnect: boolean,
+  readingNow: boolean
+): { text: string; tone: "muted" | "warn" } | null {
+  if (readingNow) return { text: t("syncingSource"), tone: "muted" };
+  if (needsReconnect) return { text: t("reconnect").toLowerCase(), tone: "warn" };
+  if (source.needsAccess) return { text: t("needsPermission"), tone: "warn" };
+  if (source.kind === "history") return null;
+  if (source.syncedAt == null) return { text: t("statusNotSynced"), tone: "muted" };
+  if (source.count === 0) return { text: t("statusEmpty"), tone: "muted" };
+  return {
+    text:
+      source.count === 1
+        ? t("contactsCountOne")
+        : t("contactsCountMany", { count: formatCount(source.count) }),
+    tone: "muted",
+  };
+}
+
+/**
+ * A phrase written for the middle of a line ("· synced 5 min ago"), made
+ * to start one: a capital, and a full stop unless it has its own.
+ */
+function sentence(phrase: string): string {
+  const capped = phrase.charAt(0).toLocaleUpperCase() + phrase.slice(1);
+  return /[.!?…]$/.test(capped) ? capped : `${capped}.`;
+}
+
+/** The address for a mailbox source; the book's name for the rest. */
+function sourceName(source: SourceStatus, t: MailT): string {
+  if ((source.kind === "google" || source.kind === "outlook") && source.account) {
+    return source.account;
+  }
+  return sourceTitle(source, t);
+}
+
+function ContactSourcesList({
+  sources,
+  progress,
+  toggling,
+  connecting,
+  connect,
+  toggle,
+}: ReturnType<typeof useContactSources>) {
+  const t = useMailT();
+  const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
+  const flip = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  if (sources == null) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {t("loading")}
+      </div>
+    );
+  }
+  return (
+    <ul className="flex flex-col gap-2">
+      {sources.map((source) => {
+        const link = editLink(source, t);
+        const reconnect = reconnectTarget(source);
+        const needsReconnect = Boolean(
+          source.lastError?.toLowerCase().includes("reconnect")
+        );
+        const readingNow = progress?.current?.key === source.key;
+        const status = sourceStatus(source, t, needsReconnect, readingNow);
+        const open = expanded.has(source.key);
+        const name = sourceName(source, t);
+        const detailId = `contact-source-${source.key}`;
+
+        // The one sentence behind the chevron: what the source holds, or
+        // why it holds nothing.
+        let explanation: React.ReactNode = null;
+        if (source.kind === "crm") {
+          explanation = t("yourCrm");
+        } else if (source.kind === "history") {
+          explanation = t("mailHistoryHint");
+        } else if (source.kind === "mac" && source.needsAccess) {
+          explanation =
+            source.needsAccess === "ask"
+              ? source.enabled
+                ? t("macContactsWaiting")
+                : t("macContactsAsk")
+              : t("macContactsBlocked");
+        } else if (source.syncedAt == null) {
+          explanation = sentence(t("contactsNotSyncedYet"));
+        } else if (source.count === 0) {
+          explanation = t("contactsNoneSaved");
+        }
+        // The footer says when the books were last read; a source with
+        // contacts in it has nothing to add but its edit link.
+        const canOpenSettings =
+          source.kind === "mac" && source.needsAccess === "settings";
+        const hasDetail = Boolean(
+          explanation || link || source.lastError || canOpenSettings
+        );
+
+        return (
+          <li
+            key={source.key}
+            className={cn(
+              "rounded-2xl bg-[var(--mail-chrome)]",
+              !source.enabled && "opacity-55"
+            )}
+          >
+            <div className="flex items-center gap-3 px-4 py-3">
+              <button
+                type="button"
+                aria-expanded={hasDetail ? open : undefined}
+                aria-controls={hasDetail ? detailId : undefined}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                onClick={() => hasDetail && flip(source.key)}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
+                  {name}
+                </span>
+                {status ? (
+                  <span
+                    className={cn(
+                      "shrink-0 text-sm tabular-nums",
+                      status.tone === "warn" ? "text-amber-700" : "text-stone-500"
+                    )}
+                  >
+                    {status.text}
+                  </span>
+                ) : null}
+              </button>
+              <SourceToggle
+                label={name}
+                enabled={source.enabled}
+                disabled={toggling === source.key}
+                onChange={(next) => void toggle(source.key, next)}
+              />
+              {hasDetail ? (
+                <button
+                  type="button"
+                  aria-label={open ? t("hideDetails") : t("details")}
+                  aria-expanded={open}
+                  aria-controls={detailId}
+                  className="-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-stone-200/60 hover:text-stone-700"
+                  onClick={() => flip(source.key)}
+                >
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 transition-transform",
+                      open && "rotate-90"
+                    )}
+                    aria-hidden
+                  />
+                </button>
+              ) : (
+                // Keeps the switches in one column when a row has no chevron.
+                <span aria-hidden className="-mr-1.5 h-7 w-7 shrink-0" />
+              )}
+            </div>
+
+            {open && hasDetail ? (
+              <div
+                id={detailId}
+                className="mx-4 border-t border-stone-200 pb-3.5 pt-3 text-sm leading-relaxed text-stone-500"
+              >
+                <p>
+                  {explanation}
+                  {link ? (
+                    <>
+                      {" "}
+                      <a
+                        href={link.href}
+                        target={link.href.startsWith("http") ? "_blank" : undefined}
+                        rel={link.href.startsWith("http") ? "noreferrer" : undefined}
+                        className="inline-flex items-center gap-0.5 font-semibold text-teal-700 hover:underline"
+                      >
+                        {link.label}
+                        <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                      </a>
+                    </>
+                  ) : null}
+                  {canOpenSettings ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="font-semibold text-teal-700 hover:underline"
+                        onClick={() => void openContactsPrivacySettings()}
+                      >
+                        {t("openSystemSettings")}
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+                {source.lastError ? (
+                  <p className="mt-1 text-amber-700">
+                    {source.lastError}
+                    {needsReconnect && reconnect ? (
+                      <>
+                        {" · "}
+                        <a
+                          href={mailConnectHref(reconnect.provider, reconnect.email)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            connect(reconnect.provider, reconnect.email);
+                          }}
+                          className="font-semibold underline"
+                        >
+                          {connecting ? t("opening") : t("reconnect")}
+                        </a>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Contact sources, as the Contacts category in Settings.
+ *
+ * A second dialog in the middle of the window made the same surface jump.
+ * This one is a page of the settings popover, under the Settings button.
+ */
+export function ContactSourcesPanel({ onDone }: { onDone: () => void }) {
+  const book = useContactSources(true);
+  const t = book.t;
+  return (
+    <SettingsPane
+      title={t("contactSources")}
+      description={t("settingsContactsHint")}
+      onDone={onDone}
+      footerStart={
+        <>
+          <p className="min-w-0 text-xs leading-relaxed text-stone-400">
+            <ContactSourcesFooterLine book={book} />
+          </p>
+          <ContactSourcesSyncButton
+            syncing={book.syncing}
+            onSync={() => void book.sync()}
+          />
+        </>
+      }
+    >
+      <ContactSourcesList {...book} />
+    </SettingsPane>
+  );
+}
+
+/**
+ * The standalone dialog. The recipient field still opens this, and it
+ * closes to nothing.
+ */
+export function ContactSourcesDialog({
+  open,
+  onClose,
+  onBack,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onBack?: () => void;
+}) {
+  const book = useContactSources(open);
+  const t = book.t;
+  if (!open) return null;
   return (
     <SettingsDialog
       title={t("contactSources")}
-      subtitle={
-        <>
-          {t("contactSourcesSubtitleBefore")}
-          <span className="font-medium text-stone-700">
-            {t("contactSourcesSubtitleBold")}
-          </span>
-          {t("contactSourcesSubtitleAfter")}
-        </>
-      }
+      onBack={onBack}
+      backLabel={t("settings")}
       onClose={onClose}
       width="w-[480px]"
       footer={
         <>
-          <p className="mr-auto text-[11px] leading-relaxed text-stone-400">
-            {t("contactSourcesFooter")}
+          <p className="mr-auto pl-4 text-xs leading-relaxed text-stone-400">
+            <ContactSourcesFooterLine book={book} />
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 rounded-full"
-            disabled={syncing}
-            onClick={() => void sync()}
-          >
-            {syncing ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            {t("syncNow")}
-          </Button>
+          <ContactSourcesSyncButton
+            syncing={book.syncing}
+            onSync={() => void book.sync()}
+          />
         </>
       }
     >
-      {sources == null ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-400">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t("loading")}
-        </div>
-      ) : (
-        <SettingsGroup>
-          <ul className="divide-y divide-stone-200">
-              {sources.map((source) => {
-                const link = editLink(source, t);
-                const reconnect = reconnectTarget(source);
-                const needsReconnect = Boolean(
-                  source.lastError?.toLowerCase().includes("reconnect")
-                );
-                const synced = relativeSyncedAt(source.syncedAt, t);
-                const showCount = source.kind !== "history";
-                return (
-                  <li
-                    key={source.key}
-                    className={cn(
-                      "flex items-start gap-3 px-4 py-3.5",
-                      !source.enabled && "opacity-55"
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-stone-900">
-                          {sourceTitle(source, t)}
-                        </p>
-                        {showCount ? (
-                          <span
-                            className={cn(
-                              "rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-                              source.kind === "crm"
-                                ? "bg-teal-700/10 text-teal-800"
-                                : "bg-stone-100 text-stone-600"
-                            )}
-                          >
-                            {formatCount(source.count)}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {source.kind === "crm" ? (
-                        <p className="mt-0.5 text-xs text-stone-500">
-                          {t("yourCrm")}
-                          {link ? (
-                            <>
-                              {" · "}
-                              <a
-                                href={link.href}
-                                className="font-medium text-teal-700 hover:underline"
-                              >
-                                {link.label}
-                              </a>
-                            </>
-                          ) : null}
-                        </p>
-                      ) : null}
-
-                      {source.kind === "google" || source.kind === "outlook" ? (
-                        <>
-                          <p className="mt-0.5 truncate text-xs text-stone-500">
-                            {source.account}
-                            {synced ? ` · ${synced}` : null}
-                          </p>
-                          {link ? (
-                            <p className="mt-0.5 text-xs">
-                              <a
-                                href={link.href}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-medium text-teal-700 hover:underline"
-                              >
-                                {link.label}
-                              </a>
-                            </p>
-                          ) : null}
-                        </>
-                      ) : null}
-
-                      {source.kind === "history" ? (
-                        <p className="mt-0.5 text-xs text-stone-500">
-                          {t("mailHistoryHint")}
-                        </p>
-                      ) : null}
-
-                      {/*
-                        Wanted, but not allowed yet. This is not an error, so
-                        it does not read as one — the source is on and waiting
-                        for macOS, and this is the way through.
-                      */}
-                      {source.needsAccess ? (
-                        <p className="mt-0.5 text-xs text-stone-500">
-                          {source.needsAccess === "ask" ? (
-                            t("macContactsAsk")
-                          ) : (
-                            <>
-                              {t("macContactsBlocked")} ·{" "}
-                              <button
-                                type="button"
-                                className="font-medium text-teal-700 hover:underline"
-                                onClick={() =>
-                                  void openContactsPrivacySettings()
-                                }
-                              >
-                                {t("openSystemSettings")}
-                              </button>
-                            </>
-                          )}
-                        </p>
-                      ) : null}
-
-                      {source.lastError ? (
-                        <p className="mt-1 text-xs text-amber-800">
-                          {source.lastError}
-                          {needsReconnect && reconnect ? (
-                            <>
-                              {" · "}
-                              <a
-                                href={mailConnectHref(
-                                  reconnect.provider,
-                                  reconnect.email
-                                )}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  connect(
-                                    reconnect.provider,
-                                    reconnect.email
-                                  );
-                                }}
-                                className="font-medium underline"
-                              >
-                                {connecting ? t("opening") : t("reconnect")}
-                              </a>
-                            </>
-                          ) : null}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <SourceToggle
-                      enabled={source.enabled}
-                      disabled={toggling === source.key}
-                      onChange={(next) => void toggle(source.key, next)}
-                    />
-                  </li>
-                );
-              })}
-          </ul>
-        </SettingsGroup>
-      )}
+      <ContactSourcesList {...book} />
     </SettingsDialog>
   );
 }
@@ -478,88 +692,37 @@ export function ContactSourcesDialog({
 /** Mount once; opens when typeahead footer or accounts menu asks. */
 export function ContactSourcesDialogHost() {
   const [open, setOpen] = React.useState(false);
+  const [returnTo, setReturnTo] = React.useState<"settings" | null>(null);
 
   React.useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as { returnTo?: string } | undefined)
+          : undefined;
+      setReturnTo(detail?.returnTo === "settings" ? "settings" : null);
+      setOpen(true);
+    };
     window.addEventListener(OPEN_CONTACT_SOURCES_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_CONTACT_SOURCES_EVENT, onOpen);
   }, []);
 
-  return <ContactSourcesDialog open={open} onClose={() => setOpen(false)} />;
-}
-
-/**
- * Composing → Autocomplete entry in the Display menu (opens Contact sources).
- */
-/**
- * Contact sources, as one row in General.
- *
- * It says what the sources add up to — how many are on, and how many
- * addresses they hold between them — because that is the question somebody
- * opens this with. The count follows a sync, so a source turned on here is
- * reflected without reopening the panel.
- */
-export function ContactSourcesSettingsRow({ onOpen }: { onOpen?: () => void }) {
-  const t = useMailT();
-  // The counts, not the sentence. The sentence is built at render, so a
-  // change of language rewrites it without asking the sources again.
-  const [counts, setCounts] = React.useState<{
-    sources: number;
-    contacts: number;
-  } | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const json = await apiJson<{ sources: SourceStatus[] }>(
-          "/api/mail/contact-sources"
-        );
-        if (cancelled) return;
-        const on = json.sources.filter((s) => s.enabled);
-        setCounts({
-          sources: on.length,
-          contacts: on.reduce((n, s) => n + s.count, 0),
-        });
-      } catch {
-        // The row still opens the panel, which is the part that matters.
-      }
-    };
-    void load();
-    const onChanged = () => void load();
-    window.addEventListener(CONTACTS_CHANGED_EVENT, onChanged);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(CONTACTS_CHANGED_EVENT, onChanged);
-    };
-  }, []);
-
-  const summary = counts
-    ? [
-        counts.sources === 1
-          ? t("sourcesOnOne")
-          : t("sourcesOnMany", { count: counts.sources }),
-        counts.contacts === 1
-          ? t("contactsCountOne")
-          : t("contactsCountMany", {
-              count: counts.contacts.toLocaleString(),
-            }),
-      ].join(" \u00b7 ")
-    : undefined;
+  const close = () => {
+    setOpen(false);
+    setReturnTo(null);
+  };
 
   return (
-    <SettingsRow
-      label={t("contactSources")}
-      hint={summary}
-      onClick={() => {
-        onOpen?.();
-        openContactSourcesDialog();
-      }}
-      control={
-        <ChevronRight
-          className="h-4 w-4 shrink-0 text-stone-400"
-          aria-hidden
-        />
+    <ContactSourcesDialog
+      open={open}
+      onClose={close}
+      onBack={
+        returnTo === "settings"
+          ? () => {
+              close();
+              openMailAccountsMenu({ category: "contacts" });
+            }
+          : undefined
       }
     />
   );

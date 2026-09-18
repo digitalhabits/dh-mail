@@ -41,4 +41,8 @@ export type GmailAccountDto = {
   lastSyncError: string | null;
   /** Shown in the unified Mail tab; CRM sync uses the account regardless. */
   inMailTab: boolean;
+  /** What Google said it granted. Null until recorded; absent off the planner. */
+  grantedScopes?: string | null;
+  /** Planner features the grant does not cover. Filled by the planner's route. */
+  missingFeatures?: string[];
 };

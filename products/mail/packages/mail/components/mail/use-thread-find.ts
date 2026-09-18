@@ -23,7 +23,13 @@ import * as React from "react";
 const ALL = "mail-find";
 const ACTIVE = "mail-find-active";
 
-/** Painted into each email frame. The page itself styles these in mail.css. */
+/**
+ * Painted into every document that gets a highlight, the page included.
+ *
+ * Not in mail.css: Turbopack's CSS parser does not know `::highlight()` and
+ * drops the rule with a warning at every launch, so the page's matches had
+ * no colour. A style element put in by hand is read by the browser alone.
+ */
 const HIGHLIGHT_CSS = `
 ::highlight(${ALL}) { background-color: #fde68a; color: #1c1917; }
 ::highlight(${ACTIVE}) { background-color: #f59e0b; color: #1c1917; }
@@ -141,9 +147,8 @@ function findInRoot(node: Node, doc: Document, needle: string): Hit[] {
   return hits;
 }
 
-/** Put the highlight colours into an email frame, once per document. */
+/** Put the highlight colours into a document, once. */
 function ensureHighlightCss(doc: Document): void {
-  if (doc === document) return; // the page has them in mail.css
   if (doc.querySelector("style[data-dh-find]")) return;
   const style = doc.createElement("style");
   style.setAttribute("data-dh-find", "1");

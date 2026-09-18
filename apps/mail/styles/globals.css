@@ -245,8 +245,18 @@ body.roadmap-focus-mode [data-app-header] {
 /*
  * Sonner defaults description to #3f3f3f (light-theme grey). That is illegible
  * on our navy toast cards — e.g. CRM “Updated Notes…” after send.
+ * The rule is injected after this sheet, so this selector is one step
+ * tighter than theirs.
+ *
+ * Navy cards only. The mail's Toaster colours its cards by kind and follows
+ * the mail's theme, and on the pale green of a light success card this cream
+ * was nearly the card itself — the line saying where the attachments went
+ * could not be read. A coloured card's second line takes the card's own ink,
+ * which is what Sonner gives it when nothing here says otherwise.
  */
-[data-sonner-toast][data-styled="true"] [data-description] {
+[data-sonner-toaster]
+  [data-sonner-toast][data-styled="true"]:not([data-rich-colors="true"])
+  [data-description] {
   color: hsl(36 25% 88%);
 }
 

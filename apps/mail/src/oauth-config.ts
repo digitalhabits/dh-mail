@@ -31,6 +31,8 @@
  * refresh tokens after seven days. Both change when the app is verified.
  */
 
+import type { MailProvider } from "@/lib/mail/types";
+
 /**
  * From the environment, like the Microsoft one, and for the same reason: each
  * person who builds this app registers their own.
@@ -53,16 +55,25 @@ export const GOOGLE_AUTH_ENDPOINT =
 export const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
 /**
- * What the app asks for. `gmail.modify` covers reading, archiving, and marking
- * read. `settings.basic` is the signature. `contacts.readonly` feeds the
- * address book contact sources.
+ * What the app asks for. The full-mail scope covers every Gmail call the app
+ * makes, over IMAP and SMTP and through the API. `settings.basic` is the
+ * out-of-office reply, whose write accepts no other scope. `contacts.readonly`
+ * feeds the address book contact sources.
  *
- * Every one is restricted or sensitive, which is why this stays in Testing
- * until the app is verified.
+ * `gmail.modify` and `gmail.send` are not asked for: the full-mail scope
+ * already grants both, and Google's verification review asks why a narrower
+ * scope is requested beside one that contains it. Nothing in this app looks
+ * for either in the grant — see `fullMailScopeMissing` in connect-mailbox.ts.
+ *
+ * Every one is restricted or sensitive, which is why the consent screen is
+ * verified with Google.
  */
 export const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/gmail.send",
+  // The full-mail scope: what IMAP needs. The local copy of the mail is
+  // read over IMAP, which has no request budget — see docs/mail-local-store.md.
+  // A mailbox connected before this scope was asked for must be connected
+  // again once; the sync worker says so when it is refused.
+  "https://mail.google.com/",
   "https://www.googleapis.com/auth/gmail.settings.basic",
   "https://www.googleapis.com/auth/contacts.readonly",
 ];
@@ -140,7 +151,7 @@ export const MICROSOFT_AUTH_EXTRA = {
  * letting someone sign in and fail at the exchange.
  */
 export function connectConfigError(
-  provider: "gmail" | "outlook"
+  provider: MailProvider
 ): string | null {
   if (provider === "gmail") {
     if (!GOOGLE_CLIENT_ID) {

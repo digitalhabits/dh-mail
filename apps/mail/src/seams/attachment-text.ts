@@ -111,6 +111,81 @@ export async function readAttachmentText(
  */
 export const canRenderPdf = true;
 
+/**
+ * The first page of a PDF, drawn small, as a data URL.
+ *
+ * The tile beside a message shows a picture when the file is one; a PDF
+ * showed a red badge saying PDF, which the file name had already said. The
+ * library that draws the preview draws this too, at the width the tile is,
+ * and the picture is what the reader recognises the document by.
+ *
+ * Null rather than a throw on anything that goes wrong: a tile that cannot
+ * draw its page is a tile with a badge on it, which is where it started.
+ */
+/** Long enough for a big page, short enough not to hold a file for ever. */
+const PDF_THUMBNAIL_TIMEOUT_MS = 10_000;
+
+export async function renderPdfThumbnail(
+  bytes: Uint8Array,
+  widthPx: number
+): Promise<string | null> {
+  /*
+    Bounded end to end, because any step of this can fail to answer.
+
+    Opening a document goes through pdf.js's worker and drawing a page
+    goes back through it, and a worker that does not come up leaves the
+    promise pending for ever — with the whole file held behind it, for a
+    picture the size of a stamp. Given up on, the tile wears its badge,
+    which is what it did before there were pictures at all.
+  */
+  return Promise.race([
+    drawFirstPage(bytes, widthPx),
+    new Promise<null>((resolve) =>
+      setTimeout(() => {
+        console.warn("mail: gave up drawing the first page of a PDF");
+        resolve(null);
+      }, PDF_THUMBNAIL_TIMEOUT_MS)
+    ),
+  ]);
+}
+
+async function drawFirstPage(
+  bytes: Uint8Array,
+  widthPx: number
+): Promise<string | null> {
+  try {
+    const lib = await pdfjs();
+    const doc = await lib.getDocument({ data: bytes }).promise;
+    try {
+      const page = await doc.getPage(1);
+      const unscaled = page.getViewport({ scale: 1 });
+      // Drawn at the device's own pixels, so it is not soft on a retina
+      // screen — and capped, because this is a thumbnail and a poster-sized
+      // page would otherwise be rendered at poster size to be shrunk.
+      const ratio = Math.min(globalThis.devicePixelRatio || 1, 2);
+      const scale = Math.min((widthPx * ratio) / unscaled.width, 4);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const context = canvas.getContext("2d");
+      if (!context) return null;
+      // A PDF page is transparent where nothing is drawn, and a thumbnail
+      // of white paper is what the reader expects to see.
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
+      return canvas.toDataURL("image/png");
+    } finally {
+      // The worker holds the whole document until this runs.
+      void doc.destroy();
+    }
+  } catch (err) {
+    console.warn("mail: could not draw the first page of a PDF", err);
+    return null;
+  }
+}
+
 export async function mountPdfViewer(
   container: HTMLElement,
   bytes: Uint8Array

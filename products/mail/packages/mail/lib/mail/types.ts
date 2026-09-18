@@ -5,6 +5,14 @@ import type { MailChatRef } from "@/lib/mail/chat-types";
 export type MailTab = "people" | "other";
 
 /**
+ * The providers a mailbox can come from.
+ *
+ * One name, here, for every file that names them. There used to be a copy
+ * per file, and a third provider meant finding each one by hand.
+ */
+export type MailProvider = "gmail" | "outlook";
+
+/**
  * Something to do to a conversation that only the reader can do.
  *
  * The right-click menu on a list row offers every action the reader's own
@@ -18,7 +26,9 @@ export type MailThreadAction =
   | "replyAll"
   | "forward"
   | "print"
-  | "popOut";
+  | "popOut"
+  /** A copy of the message, in a new one, to send again to somebody else. */
+  | "editAsNew";
 
 export type { MailChatRef };
 
@@ -138,7 +148,7 @@ export type MailDraftRow = {
   /** Stable across a refresh: the provider's message id, or our draft key. */
   id: string;
   /** Where it lives, and what the badge says. */
-  origin: "here" | "gmail" | "outlook";
+  origin: "here" | MailProvider;
   /** The mailbox it belongs to. Empty for one of ours that has no From yet. */
   account: string;
   /** The thread to open, when it is a reply to something. */
@@ -147,6 +157,14 @@ export type MailDraftRow = {
   snippet: string;
   to: string[];
   updatedAt: string | null;
+  /**
+   * One of ours that was handed to Outlook, and when.
+   *
+   * Not "sent" — see `handedOver` on the stored draft. The list says so, so
+   * a copy left behind by a message that went out through Outlook does not
+   * read as a letter nobody finished.
+   */
+  handedOverAt?: string;
 };
 
 /** A draft held by Gmail or Outlook, not by us. */
@@ -186,6 +204,12 @@ export type MailScheduledMessage = {
   bodyHtml?: string;
   to: string[];
   cc: string[];
+  /**
+   * Where it is on its way: waiting for its time, being sent, or given
+   * up — with the server's words. A provider-held message is "waiting".
+   */
+  status?: "waiting" | "sending" | "failed";
+  error?: string;
 };
 
 export type MailThreadDetail = {

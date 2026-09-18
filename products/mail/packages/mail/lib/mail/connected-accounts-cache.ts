@@ -1,6 +1,6 @@
 export type ConnectedMailAccount = {
   email: string;
-  provider: "gmail" | "outlook";
+  provider: MailProvider;
   inMailTab: boolean;
   clerkUserId: string;
 };
@@ -32,9 +32,43 @@ export function setCachedConnectedMailAccounts(
   cacheByUser.set(clerkUserId, { at: Date.now(), value });
 }
 
+/**
+ * Which provider a mailbox belongs to, by lowercase email.
+ *
+ * Keyed by mailbox and not by owner: the answer is the same whoever asks.
+ * Cleared with the account list, because the same events change both.
+ */
+
+import type { MailProvider } from "@/lib/mail/types";
+
+const providerByEmail = new Map<
+  string,
+  { at: number; value: ConnectedMailAccount["provider"] }
+>();
+
+export function getCachedMailProvider(
+  email: string
+): ConnectedMailAccount["provider"] | null {
+  const cache = providerByEmail.get(email);
+  if (!cache) return null;
+  if (Date.now() - cache.at >= TTL_MS) {
+    providerByEmail.delete(email);
+    return null;
+  }
+  return cache.value;
+}
+
+export function setCachedMailProvider(
+  email: string,
+  value: ConnectedMailAccount["provider"]
+): void {
+  providerByEmail.set(email, { at: Date.now(), value });
+}
+
 export function invalidateConnectedMailAccountsCache(
   clerkUserId?: string
 ): void {
+  providerByEmail.clear();
   if (clerkUserId) {
     cacheByUser.delete(clerkUserId);
     return;

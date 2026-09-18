@@ -12,7 +12,7 @@
 
 import * as React from "react";
 import { mailSay } from "@/lib/mail/i18n";
-import { toast } from "sonner";
+import { toast } from "@/lib/mail/toast";
 
 import { MailPage } from "@/components/mail/MailPage";
 import { CONTACTS_CHANGED_EVENT } from "@/components/mail/ContactSourcesDialog";
@@ -36,6 +36,7 @@ import { DEMO_MAILBOXES } from "./demo/data";
 import { isDemoMode } from "./demo/mode";
 import { importPlannerStateOnce } from "./import-planner-state";
 import { connectConfigError } from "./oauth-config";
+import { startLocalStoreSync } from "./local-store";
 import { plannerSessionReady, signInToPlanner } from "./planner-login";
 import {
   findMailboxProblems,
@@ -104,6 +105,11 @@ export function App() {
       );
       const all = perProvider.flat();
       setMailboxes(all);
+      // The local copy's workers. Off the critical path: the list draws
+      // from the provider as before until the copy fills.
+      void startLocalStoreSync(all).catch((err: unknown) => {
+        console.warn("[mail] local store sync did not start:", err);
+      });
       // One token refresh per mailbox, which the first request would do anyway.
       setProblems(await findMailboxProblems(all));
     } catch (err) {
@@ -190,10 +196,26 @@ export function App() {
         );
         const json = (await res.json()) as {
           skipped?: boolean;
-          results?: { ok: boolean; error?: string }[];
+          results?: { ok: boolean; error?: string; account?: string; source?: string }[];
         };
         const failed = json.results?.find((r) => !r.ok);
-        if (failed?.error) toast.error(failed.error);
+        if (failed?.error) {
+          // Named, and with the remedy on the toast: "reconnect this
+          // account" left the reader asking which one, and where.
+          const account = failed.account ?? "";
+          const box = (mailboxes ?? []).find(
+            (m) => m.email.toLowerCase() === account.toLowerCase()
+          );
+          const wantsReconnect = /reconnect/i.test(failed.error) && box;
+          toast.error(account ? `${account}: ${failed.error}` : failed.error, {
+            action: wantsReconnect
+              ? {
+                  label: "Reconnect",
+                  onClick: () => void connect(box.provider, box.email),
+                }
+              : undefined,
+          });
+        }
         // The inbox loaded before this sync ended, so its rows were split
         // against an empty address book. Tell the list to load again.
         if (!json.skipped) {
@@ -204,6 +226,9 @@ export function App() {
         console.warn("[mail] contact sync failed:", err);
       }
     })();
+    // `connect` is declared below and is not memoized; the effect runs once
+    // per mailbox list, so it is read when it runs rather than listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mailboxes, syncedContacts]);
 
   const connect = async (provider: MailStoreProvider, email?: string) => {
@@ -253,7 +278,7 @@ export function App() {
   }
 
   /**
-   * Mailboxes that need signing in to again.
+   * Mailboxes that need signing in again.
    *
    * Google expires a refresh token after seven days while an app is in testing,
    * so this is not an edge case yet. Without it every request fails and nothing
@@ -278,7 +303,7 @@ export function App() {
       {/* The warning keeps its amber in both themes — it is meant to stand out
           against the chrome, not to blend into it. */}
       {teamLayer && !isPane && plannerReady === false ? (
-        <div className="flex items-center justify-between gap-4 border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900">
+        <div className="dh-top-banner flex items-center justify-between gap-4 border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900">
           <span>{mailSay("signInForCrm")}</span>
           <button
             type="button"
@@ -291,11 +316,11 @@ export function App() {
         </div>
       ) : null}
       {stale.length ? (
-        <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+        <div className="dh-top-banner flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           <span>
             {stale.length === 1
-              ? `${stale[0].email} needs signing in to again.`
-              : `${stale.length} mailboxes need signing in to again.`}
+              ? `${stale[0].email} needs you to sign in again.`
+              : `${stale.length} mailboxes need you to sign in again.`}
           </span>
           <button
             type="button"

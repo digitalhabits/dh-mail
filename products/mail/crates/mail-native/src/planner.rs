@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-use crate::KEYCHAIN_SERVICE;
+use crate::secrets::Secrets;
 
 #[derive(Default)]
 pub struct PlannerSession(Mutex<Option<Session>>);
@@ -35,14 +35,11 @@ struct Session {
 /// The keychain item that keeps the session across launches.
 const KEYCHAIN_ACCOUNT: &str = "planner-session";
 
-fn keychain() -> Option<keyring::Entry> {
-  keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()
-}
-
-/// Bring back the session the keychain holds, if any. Call from setup.
+/// Bring back the session the keychain holds, if any. Call from setup, after
+/// `Secrets` is in state.
 pub fn restore(app: &tauri::AppHandle) {
-  let Some(entry) = keychain() else { return };
-  let Ok(raw) = entry.get_password() else { return };
+  let Some(secrets) = app.try_state::<Secrets>() else { return };
+  let Ok(Some(raw)) = secrets.get(KEYCHAIN_ACCOUNT) else { return };
   if let Ok(session) = serde_json::from_str::<Session>(&raw) {
     if allowed_origin(&session.origin) && !session.token.is_empty() {
       if let Some(state) = app.try_state::<PlannerSession>() {
@@ -66,6 +63,7 @@ fn allowed_origin(origin: &str) -> bool {
 pub fn planner_session_set(
   webview: tauri::Webview,
   state: tauri::State<'_, PlannerSession>,
+  secrets: tauri::State<'_, Secrets>,
   origin: String,
   token: String,
   persist: Option<bool>,
@@ -87,11 +85,9 @@ pub fn planner_session_set(
     token: token.trim().to_string(),
   };
   if persist.unwrap_or(false) {
-    if let Some(entry) = keychain() {
-      if let Ok(raw) = serde_json::to_string(&session) {
-        if let Err(err) = entry.set_password(&raw) {
-          log::warn!("planner session not kept in the keychain: {err}");
-        }
+    if let Ok(raw) = serde_json::to_string(&session) {
+      if let Err(err) = secrets.set(KEYCHAIN_ACCOUNT, &raw) {
+        log::warn!("planner session not kept in the keychain: {err}");
       }
     }
   }
@@ -105,14 +101,13 @@ pub fn planner_session_set(
 pub fn planner_session_clear(
   webview: tauri::Webview,
   state: tauri::State<'_, PlannerSession>,
+  secrets: tauri::State<'_, Secrets>,
 ) -> Result<(), String> {
   if webview.label() != "main" {
     return Ok(());
   }
   *state.0.lock().map_err(|e| e.to_string())? = None;
-  if let Some(entry) = keychain() {
-    let _ = entry.delete_credential();
-  }
+  let _ = secrets.delete(KEYCHAIN_ACCOUNT);
   Ok(())
 }
 

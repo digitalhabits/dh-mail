@@ -36,6 +36,9 @@ function localDraftRow(draft: Awaited<ReturnType<typeof listMailDrafts>>[number]
       snippet: body,
       to: emailsOfRecipients(draft.toList),
       updatedAt: new Date(draft.updatedAt).toISOString(),
+      ...(draft.handedOver
+        ? { handedOverAt: new Date(draft.handedOver.at).toISOString() }
+        : null),
     };
   }
   return {
@@ -49,6 +52,9 @@ function localDraftRow(draft: Awaited<ReturnType<typeof listMailDrafts>>[number]
     snippet: body,
     to: emailsOfRecipients(draft.toList),
     updatedAt: new Date(draft.updatedAt).toISOString(),
+    ...(draft.handedOver
+      ? { handedOverAt: new Date(draft.handedOver.at).toISOString() }
+      : null),
   };
 }
 
@@ -57,33 +63,62 @@ export function useMailDrafts(): {
   loading: boolean;
   refresh: () => void;
 } {
-  const [drafts, setDrafts] = React.useState<MailDraftRow[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const runRef = React.useRef(0);
+  /*
+    Two lists, kept apart until they are shown.
 
-  const refresh = React.useCallback(() => {
-    const run = ++runRef.current;
-    setLoading(true);
-    void (async () => {
-      const [local, remote] = await Promise.all([
-        listMailDrafts().catch(() => []),
-        apiJson<{ drafts?: MailDraftRow[] }>("/api/mail/drafts")
-          .then((json) => json.drafts ?? [])
-          // A mailbox we cannot reach leaves our own drafts listed rather
-          // than emptying the view.
-          .catch(() => [] as MailDraftRow[]),
-      ]);
-      if (run !== runRef.current) return;
-      const rows = [...local.map(localDraftRow), ...remote].sort((a, b) =>
-        (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")
-      );
-      setDrafts(rows);
-      setLoading(false);
-    })();
+    Ours are read from this browser and answer at once; the provider's are
+    a round trip to Gmail or Outlook. Read together and shown together, a
+    draft discarded here stayed on the list until the provider had
+    answered about drafts it never held — seconds after the composer had
+    closed on it. So a change to ours re-reads ours alone, and the
+    provider's stand as last fetched until they are asked for again.
+  */
+  const [local, setLocal] = React.useState<MailDraftRow[]>([]);
+  const [remote, setRemote] = React.useState<MailDraftRow[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const localRunRef = React.useRef(0);
+  const remoteRunRef = React.useRef(0);
+
+  const refreshLocal = React.useCallback(() => {
+    const run = ++localRunRef.current;
+    void listMailDrafts()
+      .catch(() => [])
+      .then((rows) => {
+        if (run !== localRunRef.current) return;
+        setLocal(rows.map(localDraftRow));
+      });
   }, []);
 
+  const refreshRemote = React.useCallback(() => {
+    const run = ++remoteRunRef.current;
+    setLoading(true);
+    void apiJson<{ drafts?: MailDraftRow[] }>("/api/mail/drafts")
+      .then((json) => json.drafts ?? [])
+      // A mailbox we cannot reach leaves our own drafts listed rather
+      // than emptying the view.
+      .catch(() => [] as MailDraftRow[])
+      .then((rows) => {
+        if (run !== remoteRunRef.current) return;
+        setRemote(rows);
+        setLoading(false);
+      });
+  }, []);
+
+  const refresh = React.useCallback(() => {
+    refreshLocal();
+    refreshRemote();
+  }, [refreshLocal, refreshRemote]);
+
   // Ours change as they are typed; the provider's only change when refetched.
-  React.useEffect(() => subscribeMailDrafts(refresh), [refresh]);
+  React.useEffect(() => subscribeMailDrafts(refreshLocal), [refreshLocal]);
+
+  const drafts = React.useMemo(
+    () =>
+      [...local, ...remote].sort((a, b) =>
+        (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")
+      ),
+    [local, remote]
+  );
 
   return { drafts, loading, refresh };
 }

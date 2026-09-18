@@ -52,9 +52,38 @@ type TokenResponse = {
   refresh_token?: string;
   access_token?: string;
   id_token?: string;
+  /** What was actually granted, space-separated. Google always says. */
+  scope?: string;
   error?: string;
   error_description?: string;
 };
+
+/** The one scope the local copy cannot do without — see GOOGLE_SCOPES. */
+const FULL_MAIL_SCOPE = "https://mail.google.com/";
+
+/**
+ * Did Google grant less than the mailbox needs?
+ *
+ * Google's sign-in page lists each permission with its own tick box, and
+ * a reader who unticks "read, compose, send and permanently delete all
+ * your email" still comes back with a token — one good for the Gmail API
+ * and refused by IMAP. Stored, that mailbox never syncs: the copy stays
+ * empty, the reader falls back to the API for everything, and a large
+ * mailbox trips the API's request limit within the first minute. Better
+ * to say so here, before anything is stored.
+ *
+ * Only when Google said what it granted. A reply with no scope field is
+ * not known to be short.
+ */
+export function fullMailScopeMissing(scope: string | undefined): boolean {
+  if (!scope) return false;
+  return !scope.split(/\s+/).includes(FULL_MAIL_SCOPE);
+}
+
+const FULL_MAIL_SCOPE_HELP =
+  "Google did not allow full access to this mailbox, so Mail could not " +
+  "keep a copy of it. Connect again and tick every permission on Google's " +
+  "sign-in page, including reading, sending and deleting mail.";
 
 type ProviderConfig = {
   label: string;
@@ -144,6 +173,27 @@ function emailFromIdToken(idToken: string, claims: string[]): string | null {
 }
 
 /**
+ * Call off a sign-in the browser is not going to answer.
+ *
+ * The wait for the redirect ends when a redirect arrives and at no other
+ * time, so a reader who closed the browser tab, or thought better of it,
+ * left a thread waiting for the life of the app — and `connectMailbox`
+ * never came back to let them try again. This ends the wait; the wait then
+ * throws, and the caller puts its own state away.
+ *
+ * Quiet when nothing is waiting: giving up twice is not an error.
+ */
+export async function cancelMailConnect(): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) return;
+  try {
+    await invoke("oauth_cancel");
+  } catch {
+    /* Nothing was bound, or the redirect beat the cancel to it. */
+  }
+}
+
+/**
  * Run the whole flow, and answer which mailbox connected.
  *
  * Pass `email` to reconnect one mailbox: it becomes a login hint, so the
@@ -213,6 +263,9 @@ export async function connectMailbox(
     // Without one the browser would open on every launch, so this is a failure
     // and not a warning.
     throw new Error(config.noRefreshTokenHelp);
+  }
+  if (provider === "gmail" && fullMailScopeMissing(tokens.scope)) {
+    throw new Error(FULL_MAIL_SCOPE_HELP);
   }
 
   const connected = tokens.id_token
