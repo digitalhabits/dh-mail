@@ -14,6 +14,11 @@
 #   release  a DRAFT release "v<version>" with the files above and their
 #            checksums. A person reads it and publishes it. Nothing here
 #            publishes.
+#   store    optional: one .msix for each architecture, for the Microsoft
+#            Store. `pnpm --dir apps/mail app:build:win-store`. It is not
+#            signed, because Partner Center signs it again on upload. It stays
+#            an artifact of the run and does not go into the release: a person
+#            uploads it in Partner Center, and nobody installs it from here.
 #
 # Each file also gets a build provenance attestation. Anybody can then check
 # that a download was built here, from this commit:
@@ -61,6 +66,10 @@ on:
         description: "Put the files in a draft release"
         type: boolean
         default: true
+      store_package:
+        description: "Also build the Microsoft Store package (.msix)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -329,6 +338,121 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The Store package. It is a different build, not the installer in another
+  # wrapper: nothing is signed, no WebView2 bootstrapper is carried, and the
+  # package holds the identity that Partner Center gave this product. That
+  # identity is in build-win-store.ps1. It is not a secret: each package that
+  # ships shows it.
+  store:
+    if: inputs.store_package
+    runs-on: windows-latest
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+      VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+      VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.14.4 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      # The same key as the windows job: the two compile the same crates.
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/mail/src-tauri/target
+          key: cargo-windows-${{ hashFiles('apps/mail/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-windows-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The package is not signed here, but it must be able to sign in to a
+      # mailbox.
+      - name: Check the secrets
+        shell: bash
+        run: |
+          missing=""
+          for name in VITE_GOOGLE_CLIENT_ID VITE_GOOGLE_CLIENT_SECRET VITE_MICROSOFT_CLIENT_ID; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These secrets are missing from the environment \"release\":$missing"
+            exit 1
+          fi
+
+      # See the same step in the mac job.
+      - name: Write the OAuth clients
+        shell: bash
+        run: |
+          {
+            echo "VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID"
+            echo "VITE_GOOGLE_CLIENT_SECRET=$VITE_GOOGLE_CLIENT_SECRET"
+            echo "VITE_MICROSOFT_CLIENT_ID=$VITE_MICROSOFT_CLIENT_ID"
+          } >> apps/mail/.env.production.local
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: node -p "'version=' + require('./apps/mail/package.json').version" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        working-directory: apps/mail
+        shell: pwsh
+        run: |
+          switch ('${{ inputs.windows_architecture }}') {
+            'x64'   { pnpm app:build:win-store -x64Only }
+            'arm64' { pnpm app:build:win-store -arm64Only }
+            default { pnpm app:build:win-store }
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Say what was packaged
+        shell: pwsh
+        run: |
+          $lines = @("## Digital Habits Mail ${{ steps.version.outputs.version }} — Microsoft Store package", '')
+          foreach ($file in Get-ChildItem 'apps/mail/for-distribution/*.msix') {
+            $mb = [math]::Round($file.Length / 1MB, 1)
+            $lines += "- ``$($file.Name)`` — $mb MB"
+          }
+          $lines | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Attest where the packages came from
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: apps/mail/for-distribution/*.msix
+
+      # The name does not start with "mail-", so the release job leaves it out.
+      - name: Keep the packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: store-msix-${{ steps.version.outputs.version }}
+          path: apps/mail/for-distribution/*.msix
+          if-no-files-found: error
+          retention-days: 30
+
   # A draft, and only a draft. It has no public page until a person publishes
   # it. A run for the same version puts the new files over the old ones.
   release:
@@ -344,6 +468,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          # Not the Store package: see the head of this file.
+          pattern: mail-*
           path: files
           merge-multiple: true
 
