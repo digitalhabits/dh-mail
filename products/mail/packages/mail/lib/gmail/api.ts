@@ -885,6 +885,40 @@ export async function untrashThread(
   });
 }
 
+/**
+ * Delete messages for good. They do not go to Trash and cannot be restored.
+ *
+ * This is the one call in this file that needs the `https://mail.google.com/`
+ * scope: Gmail refuses it with `gmail.modify`. It takes message ids and not a
+ * thread id on purpose. `DELETE /threads/{id}` removes every message of the
+ * thread, and a thread can have one message in Trash and the others in the
+ * inbox.
+ */
+export async function deleteMessagesForever(
+  accessToken: string,
+  messageIds: string[]
+): Promise<void> {
+  // batchDelete takes 1000 ids a call.
+  for (let i = 0; i < messageIds.length; i += 1000) {
+    await gmailFetch(accessToken, "/messages/batchDelete", {
+      method: "POST",
+      body: { ids: messageIds.slice(i, i + 1000) },
+    });
+  }
+}
+
+/** The messages of a thread that are in Trash ("TRASH") or Junk ("SPAM"). */
+export async function threadMessageIdsWithLabel(
+  accessToken: string,
+  threadId: string,
+  label: "TRASH" | "SPAM"
+): Promise<string[]> {
+  const thread = await getThreadMinimal(accessToken, threadId);
+  return (thread.messages ?? [])
+    .filter((m) => (m.labelIds ?? []).includes(label))
+    .map((m) => m.id);
+}
+
 /** Send a raw RFC 2822 message; threadId keeps replies in their conversation. */
 export async function sendRawMessage(
   accessToken: string,

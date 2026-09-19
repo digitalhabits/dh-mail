@@ -12,6 +12,7 @@ import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import { usePinchZoom } from "@/components/mail/use-mail-layout";
 import { ZoomControls } from "@/components/mail/ZoomControls";
 import { Archive, Trash2 } from "lucide-react";
+import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 import { threadDraftKey } from "@/lib/mail/local-drafts";
 import { threadKey } from "@/lib/mail/thread-copies";
 import { SettingsDialog, settingsSecondaryButton } from "@/components/mail/settings-ui";
@@ -33,6 +34,9 @@ export function PersonPane({
   onToggleRead,
   onArchiveThread,
   onTrashThread,
+  onDeleteForever,
+  inTrash = false,
+  place,
 }: {
   row: PersonRow;
   onOpenThread: (t: MailThreadSummary) => void;
@@ -52,6 +56,24 @@ export function PersonPane({
   onToggleRead: (rows: MailThreadSummary[], label: string) => void;
   onArchiveThread: (t: MailThreadSummary) => void;
   onTrashThread: (t: MailThreadSummary) => void;
+  /**
+   * In Trash and Junk only: ask the page's "Delete forever" question about
+   * these conversations. It deletes nothing itself.
+   */
+  onDeleteForever?: (threads: MailThreadSummary[]) => void;
+  /**
+   * In Trash, Archive and Delete have nothing to do: the mail is deleted
+   * already. They are not shown, and "Delete all" with its "They move to
+   * Trash, where you can still get them back" must never be the question
+   * there. It once was, above mail that was already in Trash.
+   */
+  inTrash?: boolean;
+  /**
+   * The name of the view on screen when it is not the inbox: "Trash", "Sent",
+   * "Archived", or a folder's own name. The count under the heading names it.
+   * See `meta` below.
+   */
+  place?: string;
 }) {
   // `t` is the thread in the map below, so the dictionary is `say` here.
   const say = useMailT();
@@ -77,6 +99,8 @@ export function PersonPane({
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      // A key pressed inside the page's modal dialog belongs to the dialog.
+      if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
       if (event.key === "Escape" && confirmDelete) {
         event.preventDefault();
         setConfirmDelete(false);
@@ -90,12 +114,18 @@ export function PersonPane({
       event.preventDefault();
       // A held key is not a second wish — the rule the reader keeps.
       if (event.repeat) return;
+      // In Trash there is nothing to archive, and the delete key asks the
+      // "Delete forever" question, as it does over one open conversation.
+      if (inTrash) {
+        if (action === "delete") onDeleteForever?.(row.threads);
+        return;
+      }
       if (action === "archive") onArchiveAll();
       else setConfirmDelete(true);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shortcuts, confirmDelete, onArchiveAll]);
+  }, [shortcuts, confirmDelete, onArchiveAll, onDeleteForever, inTrash, row.threads]);
 
   React.useEffect(() => {
     setPeopleExpanded(false);
@@ -135,9 +165,20 @@ export function PersonPane({
     name.trim().toLowerCase() === row.name.trim().toLowerCase();
   const meta = [
     row.crmName && !sameAsHeading(row.crmName) ? row.crmName : null,
-    row.threads.length === 1
-      ? say("openThreadOne")
-      : say("openThreadMany", { count: row.threads.length }),
+    /*
+      "Open" is the inbox's word: a thread that is not archived yet. Mail in
+      Trash, in Sent, in Archived or in a folder is not "open", and "5 open
+      threads" above deleted mail said the opposite of where it was. Outside
+      the inbox the line names the place.
+    */
+    place
+      ? say(row.threads.length === 1 ? "conversationsInOne" : "conversationsInMany", {
+          count: row.threads.length,
+          place,
+        })
+      : say(row.threads.length === 1 ? "openThreadOne" : "openThreadMany", {
+          count: row.threads.length,
+        }),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -249,32 +290,55 @@ export function PersonPane({
                 ? say("markAllAsRead", { count })
                 : say("markAsUnread")}
             </button>
-            <button
-              type="button"
-              className={cn(THREAD_ACTION_CLASS, PERSON_ACTION_CLASS)}
-              title={`${say("archiveAllWith", { count, name: row.name })} (${formatShortcut(
-                shortcuts.archive
-              )})`}
-              onClick={onArchiveAll}
-            >
-              <Archive aria-hidden />
-              {say("archiveAll")}
-            </button>
-            <button
-              type="button"
-              className={cn(
-                THREAD_ACTION_CLASS,
-                PERSON_ACTION_CLASS,
-                "hover:bg-red-50 hover:text-red-600"
-              )}
-              title={`${say("deleteAllWith", { count, name: row.name })} (${formatShortcut(
-                shortcuts.delete
-              )})`}
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 aria-hidden />
-              {say("deleteAll")}
-            </button>
+            {inTrash ? null : (
+              <>
+                <button
+                  type="button"
+                  className={cn(THREAD_ACTION_CLASS, PERSON_ACTION_CLASS)}
+                  title={`${say("archiveAllWith", { count, name: row.name })} (${formatShortcut(
+                    shortcuts.archive
+                  )})`}
+                  onClick={onArchiveAll}
+                >
+                  <Archive aria-hidden />
+                  {say("archiveAll")}
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    THREAD_ACTION_CLASS,
+                    PERSON_ACTION_CLASS,
+                    "hover:bg-red-50 hover:text-red-600"
+                  )}
+                  title={`${say("deleteAllWith", { count, name: row.name })} (${formatShortcut(
+                    shortcuts.delete
+                  )})`}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 aria-hidden />
+                  {say("deleteAll")}
+                </button>
+              </>
+            )}
+            {onDeleteForever ? (
+              <button
+                type="button"
+                className={cn(
+                  THREAD_ACTION_CLASS,
+                  PERSON_ACTION_CLASS,
+                  "hover:bg-red-50 hover:text-red-600"
+                )}
+                title={
+                  inTrash
+                    ? `${say("deleteForeverCount", { count })} (${formatShortcut(shortcuts.delete)})`
+                    : say("deleteForeverCount", { count })
+                }
+                onClick={() => onDeleteForever(row.threads)}
+              >
+                <TrashForeverIcon aria-hidden />
+                {count === 1 ? say("deleteForever") : say("deleteForeverCount", { count })}
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-6 flex flex-col gap-2.5">
@@ -334,27 +398,45 @@ export function PersonPane({
                       >
                         <MailDotIcon className="h-4 w-4" aria-hidden />
                       </button>
-                      <button
-                        type="button"
-                        title={say("actionArchive")}
-                        aria-label={say("actionArchive")}
-                        className={CARD_ACTION_CLASS}
-                        onClick={() => onArchiveThread(t)}
-                      >
-                        <Archive className="h-4 w-4" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        title={say("actionDelete")}
-                        aria-label={say("actionDelete")}
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          "hover:bg-red-50 hover:text-red-600"
-                        )}
-                        onClick={() => onTrashThread(t)}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                      </button>
+                      {inTrash ? null : (
+                        <>
+                          <button
+                            type="button"
+                            title={say("actionArchive")}
+                            aria-label={say("actionArchive")}
+                            className={CARD_ACTION_CLASS}
+                            onClick={() => onArchiveThread(t)}
+                          >
+                            <Archive className="h-4 w-4" aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            title={say("actionDelete")}
+                            aria-label={say("actionDelete")}
+                            className={cn(
+                              CARD_ACTION_CLASS,
+                              "hover:bg-red-50 hover:text-red-600"
+                            )}
+                            onClick={() => onTrashThread(t)}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          </button>
+                        </>
+                      )}
+                      {onDeleteForever ? (
+                        <button
+                          type="button"
+                          title={say("deleteForever")}
+                          aria-label={say("deleteForever")}
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            "hover:bg-red-50 hover:text-red-600"
+                          )}
+                          onClick={() => onDeleteForever([t])}
+                        >
+                          <TrashForeverIcon className="h-4 w-4" />
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                   {/* Two lines, not one. A card here has the width of the

@@ -1,4 +1,5 @@
 import "server-only";
+import { noteOutlookMove } from "@/lib/mail/outlook-moves";
 import { base64ToBytes } from "@/lib/base64";
 import { mailSay } from "@/lib/mail/i18n-strings";
 
@@ -582,6 +583,67 @@ export async function deleteOutlookMessage(
   });
 }
 
+/**
+ * Delete a message for good. `DELETE` on a message only moves it to the
+ * mailbox's recoverable items; `permanentDelete` removes it.
+ */
+export async function permanentlyDeleteOutlookMessage(
+  accessToken: string,
+  messageId: string
+): Promise<void> {
+  await graphFetch(accessToken, `/me/messages/${messageId}/permanentDelete`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Delete for good the messages of one conversation that are in one folder.
+ * The folder is asked for by name, so a message of the same conversation
+ * that is in another folder is never touched. Returns how many went. A
+ * message already gone (404) is not a failure.
+ *
+ * The conversation is required. Without the filter this would list the whole
+ * folder, and there is no "empty the folder" in this app on purpose.
+ */
+export async function purgeOutlookConversation(
+  accessToken: string,
+  folder: "deleteditems" | "junkemail",
+  conversationId: string
+): Promise<number> {
+  if (!conversationId.trim()) throw new Error("A conversation is required");
+  let removed = 0;
+  const tried = new Set<string>();
+  for (;;) {
+    const params = new URLSearchParams({
+      $select: "id",
+      $top: "50",
+      $filter: `conversationId eq '${conversationId.replace(/'/g, "''")}'`,
+    });
+    // Always the first page: what was deleted is no longer in it.
+    const page = await graphFetch<{ value?: { id: string }[] }>(
+      accessToken,
+      `/me/mailFolders/${folder}/messages?${params.toString()}`
+    );
+    // A listing can lag behind a delete. An id that was tried once is not
+    // tried again, so a slow listing ends the loop and cannot spin it.
+    const ids = (page.value ?? []).map((m) => m.id).filter((id) => !tried.has(id));
+    if (!ids.length) return removed;
+    for (const id of ids) tried.add(id);
+    const results = await Promise.allSettled(
+      ids.map((id) => permanentlyDeleteOutlookMessage(accessToken, id))
+    );
+    const failed = results.filter(
+      (r) =>
+        r.status === "rejected" &&
+        (r.reason as { status?: number } | null)?.status !== 404
+    ).length;
+    if (failed) {
+      throw new Error(`Could not delete ${failed} of ${ids.length} messages`);
+    }
+    removed += ids.length;
+  }
+}
+
 /** Single message with body (for centering a search hit). */
 export async function getOutlookMessageFull(
   accessToken: string,
@@ -665,15 +727,27 @@ export async function markOutlookMessageRead(
   });
 }
 
+/**
+ * Move one message. Graph gives it a new id in the folder it goes to, and
+ * answers with the moved message, so the new id comes back from here. The
+ * move is noted for the sync: see `lib/mail/outlook-moves.ts`.
+ */
 export async function moveOutlookMessage(
   accessToken: string,
   messageId: string,
   destinationId: string
-): Promise<void> {
-  await graphFetch(accessToken, `/me/messages/${messageId}/move`, {
-    method: "POST",
-    body: JSON.stringify({ destinationId }),
-  });
+): Promise<string | null> {
+  const moved = await graphFetch<{ id?: string } | undefined>(
+    accessToken,
+    `/me/messages/${messageId}/move`,
+    {
+      method: "POST",
+      body: JSON.stringify({ destinationId }),
+    }
+  );
+  const newId = moved?.id ?? null;
+  noteOutlookMove(messageId, newId);
+  return newId;
 }
 
 export type GraphMailFolder = {

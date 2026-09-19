@@ -25,7 +25,8 @@ export function PersonRowActions({
   pinned: boolean;
   onNavy: boolean;
   onTogglePin: () => void;
-  onArchive: () => void;
+  /** Not given in Trash: the mail is deleted already. */
+  onArchive?: () => void;
   /** Read when anything is unread; otherwise the newest back to unread. */
   onToggleRead: () => void;
 }) {
@@ -83,25 +84,27 @@ export function PersonRowActions({
           )}
         />
       </button>
-      <button
-        type="button"
-        // Archiving one thread and archiving eleven are different acts, and the
-        // label is the only warning there is.
-        title={
-          count === 1
-            ? say("archiveConversation")
-            : say("archiveAllCount", { count })
-        }
-        aria-label={
-          count === 1
-            ? say("archiveConversationWith", { name: row.name })
-            : say("archiveAllWith", { count, name: row.name })
-        }
-        className={plain}
-        onClick={onArchive}
-      >
-        <Archive className="h-3.5 w-3.5" />
-      </button>
+      {onArchive ? (
+        <button
+          type="button"
+          // Archiving one thread and archiving eleven are different acts, and the
+          // label is the only warning there is.
+          title={
+            count === 1
+              ? say("archiveConversation")
+              : say("archiveAllCount", { count })
+          }
+          aria-label={
+            count === 1
+              ? say("archiveConversationWith", { name: row.name })
+              : say("archiveAllWith", { count, name: row.name })
+          }
+          className={plain}
+          onClick={onArchive}
+        >
+          <Archive className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </span>
   );
 }

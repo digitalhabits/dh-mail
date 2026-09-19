@@ -671,7 +671,13 @@ export type MailMessageStore = {
   removeAccount(account: string): Promise<void>;
 
   /** These messages, gone, with their labels and bodies. */
-  removeMessages(account: string, messageIds: string[]): Promise<void>;
+  /**
+   * Rows by message id, gone. With `leftFolder`, only the rows the copy still
+   * has in that folder: the label the folder gives its rows, or "" for a
+   * folder whose rows wear none. For a "left this folder" report, which can
+   * arrive after the message has been delivered to the folder it went to.
+   */
+  removeMessages(account: string, messageIds: string[], options?: { leftFolder?: string }): Promise<void>;
 
   /** Mark a thread read (every message) or unread (its newest). */
   setUnread(account: string, threadId: string, unread: boolean): Promise<void>;

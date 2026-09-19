@@ -9,6 +9,12 @@
  * thread honest; what comes back is the list and the levers.
  */
 
+import {
+  newHiddenRows,
+  pruneHiddenRows,
+  rowIsHidden,
+  type HiddenRows,
+} from "@/lib/mail/hidden-rows";
 import { SYNC_CHANGED_WINDOW_EVENT } from "@/lib/mail/local-store";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
@@ -233,7 +239,14 @@ export function useThreadListData(input: {
    * archive, trash, junk and move hide for a minute, which outlives any
    * response built before the change.
    */
-  const hideRowUntilRef = React.useRef<Map<string, number>>(new Map());
+  const hiddenRowsRef = React.useRef<HiddenRows>(newHiddenRows());
+  /**
+   * The view on screen, as a hide remembers it: the open folder, or the tab.
+   * A hide made here hides the row here and nowhere else. See hidden-rows.ts.
+   */
+  const listViewId = activeFolder ? `label:${folderViewToken(activeFolder)}` : `view:${folder}`;
+  const listViewIdRef = React.useRef(listViewId);
+  listViewIdRef.current = listViewId;
   const loadingListRef = React.useRef(loadingList);
   loadingListRef.current = loadingList;
   const refreshingRef = React.useRef(refreshing);
@@ -464,17 +477,13 @@ export function useThreadListData(input: {
         ) {
           const hideFiltered = (rows: MailThreadSummary[]) => {
             const now = Date.now();
-            const hide = hideRowUntilRef.current;
-            for (const [hideKey, until] of hide) {
-              if (until <= now) hide.delete(hideKey);
-            }
+            pruneHiddenRows(hiddenRowsRef.current, now);
             const visibleAccounts = new Set(
               accountEmails.map((email) => email.toLowerCase())
             );
             return rows.filter((t) => {
               if (!visibleAccounts.has(t.account.toLowerCase())) return false;
-              const until = hide.get(threadKey(t));
-              return until == null || until <= now;
+              return !rowIsHidden(hiddenRowsRef.current, threadKey(t), listViewIdRef.current, now);
             });
           };
 
@@ -655,10 +664,7 @@ export function useThreadListData(input: {
           return false;
         }
         const now = Date.now();
-        const hide = hideRowUntilRef.current;
-        for (const [hideKey, until] of hide) {
-          if (until <= now) hide.delete(hideKey);
-        }
+        pruneHiddenRows(hiddenRowsRef.current, now);
         // Drop rows for mailboxes hidden from Mail (server should already
         // omit them; this covers optimistic hide + any stale cache).
         const visibleAccounts = new Set(
@@ -668,8 +674,7 @@ export function useThreadListData(input: {
           ? rawThreads
           : rawThreads.filter((t) => {
               if (!visibleAccounts.has(t.account.toLowerCase())) return false;
-              const until = hide.get(threadKey(t));
-              return until == null || until <= now;
+              return !rowIsHidden(hiddenRowsRef.current, threadKey(t), listViewIdRef.current, now);
             });
         setThreads(threads);
         setResultsQuery(debouncedSearch);
@@ -1142,7 +1147,8 @@ export function useThreadListData(input: {
     setThreads,
     threadsRef,
     threadsKeyRef,
-    hideRowUntilRef,
+    hiddenRowsRef,
+    listViewIdRef,
     listCursor,
     setListCursor,
     loadingList,

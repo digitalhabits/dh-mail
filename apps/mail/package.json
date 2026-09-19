@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-mail",
-  "version": "0.9.11",
+  "version": "0.9.12",
   "private": true,
   "packageManager": "pnpm@9.14.4",
   "description": "Digital Habits: Mail — desktop and phone mail app (Tauri + Vite).",

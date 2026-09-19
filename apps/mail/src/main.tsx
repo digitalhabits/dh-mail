@@ -40,6 +40,29 @@ import "../styles/globals.css";
 import "@/mail.css";
 import "./standalone.css";
 
+/*
+  Dev only: this file never runs twice in one page.
+
+  A hot update that cannot be applied in place is passed up the import chain
+  until it reaches this file, and Vite then runs this file again. It has no
+  way to take the first run back: the first React root stays mounted with all
+  its listeners, timers and sync subscriptions, and `createRoot` below mounts
+  a second whole app in the same element. After a morning of edits there were
+  nine apps in one window, the web view sat at 100 % of a core and held 6 GB,
+  and the Mac was slow for everything. One reload brought it back to idle.
+
+  So the second run reloads the page and stops here. `hot.data` is what Vite
+  keeps between two runs of one module. A release build has no `hot`, and
+  none of this is in it.
+*/
+if (import.meta.hot) {
+  if (import.meta.hot.data.ran) {
+    window.location.reload();
+    await new Promise<never>(() => {});
+  }
+  import.meta.hot.data.ran = true;
+}
+
 const params = new URLSearchParams(window.location.search);
 
 /**

@@ -167,3 +167,31 @@ export function everyCopy(
   }
   return out;
 }
+
+/**
+ * `everyCopy`, for several rows at once: what an action on a selection, or on
+ * a person's whole pile, acts on. No copy is named twice, however the rows
+ * overlap, so nothing is asked of a provider twice.
+ *
+ * "Delete forever" needs this more than any other action. It took only the
+ * row's own copy at first. In Trash, a mail that had arrived in two mailboxes
+ * was then deleted from one of them, and the other copy took the row's place:
+ * the same subject in the same spot, above a dialog that had just said the
+ * conversation was gone everywhere.
+ */
+export function everyCopyOfEach(
+  asked: { account: string; threadId: string }[],
+  rows: MailThreadSummary[]
+): { account: string; threadId: string }[] {
+  const seen = new Set<string>();
+  const out: { account: string; threadId: string }[] = [];
+  for (const t of asked) {
+    for (const copy of everyCopy(t, rows)) {
+      const key = threadKey(copy);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(copy);
+    }
+  }
+  return out;
+}

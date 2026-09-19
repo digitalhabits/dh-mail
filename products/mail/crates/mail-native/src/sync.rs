@@ -761,12 +761,23 @@ fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -
     // the pass that follows reads the server as it now is.
     let sent = flush_outbox(app, &db, email);
     let report = flush_actions(&db, &mut client, email, &folders)?;
+    let mut reread = false;
     for (action, error) in report.given_up {
       log::warn!("[mail-sync] {email}: gave up on {} for {}: {error}", action.kind, action.thread_id);
       let _ = app.emit(
         ACTION_FAILED_EVENT,
         json!({ "account": email, "threadId": action.thread_id, "kind": action.kind, "error": error }),
       );
+      // A refused "delete forever" took rows from the copy that the server
+      // still has. The folder is read again, by a session that starts over.
+      if let Some(folder) = crate::actions::purged_folder(&action) {
+        db.messages_restart_folder(email, folder)?;
+        reread = true;
+      }
+    }
+    if reread {
+      let _ = app.emit(CHANGED_EVENT, json!({ "account": email }));
+      return Ok(());
     }
     let mut changed = live_pass(&db, &mut client, &targets[0], &mut states[0], email, &mut last_sweep, sweep_now)?
       || report.delivered > 0

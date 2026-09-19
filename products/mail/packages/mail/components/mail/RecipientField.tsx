@@ -2026,7 +2026,18 @@ export function RecipientField({
              beside the box, which cost more room than the addresses. */
           variant === "boxed"
             ? "rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 focus-within:border-stone-300"
-            : "flex flex-wrap items-center gap-1.5"
+            : "flex flex-wrap items-center gap-1.5",
+          /*
+            While the suggestions are open, the box and the list are one
+            shape: the side where they meet goes square on both, and the
+            list starts on the box's own border. A list that floated a few
+            pixels off, under round corners, read as a second thing on the
+            page and not as what the box is offering.
+          */
+          variant === "boxed" &&
+            showMenu &&
+            !editingList &&
+            (menuBox.above ? "rounded-t-none" : "rounded-b-none")
         )}
         onMouseDown={(e) => {
           // Clicking empty padding in the field should keep/restore input focus
@@ -2375,8 +2386,26 @@ export function RecipientField({
             // The reply band clips what hangs out of it; see mail.css.
             data-recipient-menu=""
             className={cn(
-              "absolute left-0 right-0 z-30 overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg",
-              menuBox.above ? "bottom-full mb-1" : "top-full mt-1"
+              "absolute z-30 overflow-y-auto border border-stone-200 bg-white py-1 shadow-lg",
+              /*
+                Joined to a boxed field: see the field's own classes. `-px`
+                each side puts the list's border over the box's, since
+                `left-0` is the inside of that border. With no margin the
+                list's first line lies on the box's last one, so there is
+                one line between them and not two. The inline field has no
+                box to join, and keeps its small gap.
+              */
+              variant === "boxed"
+                ? cn(
+                    "-left-px -right-px border-stone-300",
+                    menuBox.above
+                      ? "bottom-full rounded-t-xl"
+                      : "top-full rounded-b-xl"
+                  )
+                : cn(
+                    "left-0 right-0 rounded-lg",
+                    menuBox.above ? "bottom-full mb-1" : "top-full mt-1"
+                  )
             )}
             style={{ maxHeight: menuBox.maxHeight }}
           >

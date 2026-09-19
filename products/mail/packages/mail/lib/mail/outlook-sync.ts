@@ -11,6 +11,7 @@
  * 6.
  */
 
+import { removalsToApplyNow, settledOutlookMoves } from "@/lib/mail/outlook-moves";
 import "server-only";
 
 import {
@@ -153,6 +154,44 @@ async function pass(email: string): Promise<void> {
   }
 }
 
+/**
+ * A repair that runs once for each mailbox: Deleted Items and Junk Email are
+ * read again from the start.
+ *
+ * Until 2026-09-19 a "left the inbox" report deleted the row whatever folder
+ * the copy had it in, so a mail the reader sent to Trash could be lost from
+ * the copy for good: it was on the server, in Deleted Items, and in no row
+ * here. Nobody saw it while Trash was listed from Graph. The rule is mended
+ * (`removeMessages` with `leftFolder`), and the mail already lost comes back
+ * only when its folder is read again. These two folders are small, and are
+ * where mail goes by the reader's own hand. The mark is kept in the page's
+ * storage, for each mailbox and folder, so it runs once and not at each start.
+ */
+const REPAIR_KEY = "dh-mail-outlook-reread-1";
+
+function repairMarks(): Record<string, true> {
+  try {
+    return JSON.parse(window.localStorage?.getItem(REPAIR_KEY) ?? "{}") as Record<string, true>;
+  } catch {
+    return {};
+  }
+}
+
+function repairDue(email: string, folderId: string): boolean {
+  if (typeof window === "undefined" || !window.localStorage) return false;
+  return repairMarks()[`${email}|${folderId}`] !== true;
+}
+
+function repairDone(email: string, folderId: string): void {
+  try {
+    const marks = repairMarks();
+    marks[`${email}|${folderId}`] = true;
+    window.localStorage?.setItem(REPAIR_KEY, JSON.stringify(marks));
+  } catch {
+    // No storage: the repair runs again next time, which costs a read.
+  }
+}
+
 /** Graph's folder roles as the store's labels. */
 function labelFor(role: string | undefined, path: string): string | null {
   switch (role) {
@@ -209,6 +248,10 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
     const label = labelFor(folder.role, folder.path);
     const state = states.find((s) => s.account === email && s.folder === folder.id);
     let link = state?.deltaLink ?? null;
+    // Once: see `repairOnce`. Read from the start, which writes every row of
+    // the folder over and brings back the ones the copy had lost.
+    const repairing = link != null && (folder.role === "trash" || folder.role === "junk") && repairDue(email, folder.id);
+    if (repairing) link = null;
     let deltaLink: string | undefined;
     for (;;) {
       if (worker.stop) return;
@@ -274,11 +317,26 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
           await publish({ account: email, folder: "", phase: "full", fullSyncTotal: Math.max(total, done), fullSyncDone: done });
         }
       }
+      // A message this app moved arrives here under its new id. The row it
+      // had before the move, kept until now, goes in the same step, so the
+      // list never shows the mail twice and never shows it in no folder.
+      const replaced = settledOutlookMoves(rows.map((r) => r.messageId));
+      if (replaced.length) {
+        await store.messages.removeMessages(email, replaced);
+        changed = true;
+      }
       if (removed.length) {
         // Gone from this folder: moved elsewhere (the other folder's delta
-        // brings it back under its new label) or deleted for good.
-        await store.messages.removeMessages(email, removed);
-        changed = true;
+        // brings it back under its new label) or deleted for good. A message
+        // that this app moved keeps its row until then: outlook-moves.ts.
+        const now = removalsToApplyNow(removed);
+        if (now.length) {
+          // Believed about this folder only. The report can come after the
+          // folder the message went to has delivered it, and must not take
+          // the row that stands there now.
+          await store.messages.removeMessages(email, now, { leftFolder: label ?? "" });
+          changed = true;
+        }
       }
       if (page.nextLink) {
         link = page.nextLink;
@@ -289,6 +347,7 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
     }
     if (worker.stop) return;
     await publish({ account: email, folder: folder.id, phase: "live", deltaLink: deltaLink ?? link, lastOkAt: Date.now() });
+    if (repairing) repairDone(email, folder.id);
   }
   if (worker.stop) return;
   // An inbox-only pass says nothing about the whole: the first read may

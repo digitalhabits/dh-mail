@@ -31,6 +31,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 import { toast } from "@/lib/mail/toast";
 import { promisesAnAttachment } from "@/lib/mail/attachment-hint";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
@@ -361,6 +362,7 @@ export function ThreadPane({
   onArchive,
   onTrash,
   onRestore,
+  onDeleteForever,
   inTrash = false,
   fromDrafts = false,
   onJunk,
@@ -424,6 +426,8 @@ export function ThreadPane({
   onTrash: (thread: { account: string; threadId: string }) => void;
   /** Put a deleted thread back. Only reachable from the Trash view. */
   onRestore?: () => void;
+  /** In Trash or Junk only. Not undoable: the page asks first. */
+  onDeleteForever?: () => void;
   /** True when this thread was opened from Trash — it is already deleted. */
   inTrash?: boolean;
   /**
@@ -2934,6 +2938,8 @@ export function ThreadPane({
       const action = actionForEvent(event, shortcuts);
       if (!action) return;
       const target = event.target as HTMLElement | null;
+      // A key pressed inside a modal dialog belongs to the dialog.
+      if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
       const typing = Boolean(
         target?.closest('input, textarea, [contenteditable="true"]')
       );
@@ -2984,12 +2990,21 @@ export function ThreadPane({
           setMoveMenuSignal((n) => n + 1);
           break;
         case "archive":
+          // The button is not there in Trash, so the key does nothing there.
+          if (inTrash) break;
           onArchive();
           break;
         case "delete":
-          // Nothing to delete when it is already deleted, and the key must
-          // not quietly mean something else in this one view.
-          if (inTrash) break;
+          /*
+            In Trash the key asks the "Delete forever" question, as it does
+            in Outlook and Apple Mail. It only opens the dialog. The focus
+            there starts on Cancel and Return cancels, so the key alone, held
+            or pressed twice, never deletes anything.
+          */
+          if (inTrash) {
+            onDeleteForever?.();
+            break;
+          }
           /*
             In the Drafts view the key means the draft. It meant the
             conversation: deleting a draft sent its whole thread to the
@@ -5326,16 +5341,21 @@ export function ThreadPane({
               )})`}
             />
           )}
-          <ThreadAction
-            label={`${t("actionArchive")} (${formatShortcut(
-              shortcuts.archive
-            )})`}
-            icon={Archive}
-            onClick={onArchive}
-          />
+          {/* Not in Trash: the mail is deleted, and the list rows there do
+              not offer Archive either. Restore is the way out of Trash. */}
+          {inTrash ? null : (
+            <ThreadAction
+              label={`${t("actionArchive")} (${formatShortcut(
+                shortcuts.archive
+              )})`}
+              icon={Archive}
+              onClick={onArchive}
+            />
+          )}
           {/* Already in the bin: the useful action is getting it out again.
-              There is no permanent delete here on purpose — it is the one
-              action with nothing behind it. */}
+              "Delete forever" stands beside it, in Trash and in Junk only.
+              It is the one action with nothing behind it, so the page asks
+              before it does it. */}
           {/* Junk itself is in the move menu — filing something is a move.
               Getting it back out is not, so that keeps its own action. */}
           {inJunk && onNotJunk ? (
@@ -5365,6 +5385,18 @@ export function ThreadPane({
               }
             />
           )}
+          {(inTrash || inJunk) && onDeleteForever ? (
+            <ThreadAction
+              // In Trash the delete key opens the same question.
+              label={
+                inTrash
+                  ? `${t("deleteForever")} (${formatShortcut(shortcuts.delete)})`
+                  : t("deleteForever")
+              }
+              icon={TrashForeverIcon}
+              onClick={onDeleteForever}
+            />
+          ) : null}
           {hidden.has("print") &&
           hidden.has("popOut") &&
           (!mailUsesCrmPeople() || hidden.has("crm")) ? null : (

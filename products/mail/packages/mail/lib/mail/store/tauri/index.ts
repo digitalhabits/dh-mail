@@ -309,8 +309,12 @@ export function createTauriMailStore(): MailStore {
       putBody: (account, messageId, body) =>
         call("messages.putBody", { account, messageId, body }),
       removeAccount: (account) => call("messages.removeAccount", { account }),
-      removeMessages: (account, messageIds) =>
-        call("messages.removeMessages", { account, messageIds }),
+      removeMessages: (account, messageIds, options) =>
+        call("messages.removeMessages", {
+          account,
+          messageIds,
+          ...(options?.leftFolder != null ? { leftFolder: options.leftFolder } : null),
+        }),
       setUnread: (account, threadId, unread) =>
         call("messages.setUnread", { account, threadId, unread }),
     },

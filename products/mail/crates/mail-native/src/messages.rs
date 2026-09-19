@@ -453,6 +453,23 @@ impl MailDb {
     Ok(())
   }
 
+  /// One folder of a mailbox, to be read again from nothing: its rows go and
+  /// its sync state forgets how far it had read. For a folder the copy no
+  /// longer agrees with, such as Trash after a refused "delete forever".
+  pub fn messages_restart_folder(&self, account: &str, folder: &str) -> DbResult<()> {
+    self.messages_clear_folder(account, folder)?;
+    if let Some(mut state) = self.sync_state_get(account, folder)? {
+      state.phase = "expired".into();
+      state.highest_uid = None;
+      state.highest_modseq = None;
+      state.full_sync_cursor = None;
+      state.full_sync_done = None;
+      state.full_sync_total = None;
+      self.sync_state_set(&state)?;
+    }
+    Ok(())
+  }
+
   /// Every message of a mailbox, gone. Bodies stay only when asked, matched
   /// back by RFC id after a resync.
   pub fn messages_clear_account(&self, account: &str, keep_bodies: bool) -> DbResult<()> {
@@ -755,7 +772,7 @@ fn address_text(json_list: &str) -> String {
     .join(" ")
 }
 
-fn delete_one(tx: &Connection, account: &str, rowid: i64, message_id: &str) -> DbResult<()> {
+pub(crate) fn delete_one(tx: &Connection, account: &str, rowid: i64, message_id: &str) -> DbResult<()> {
   tx.execute("DELETE FROM messages_fts WHERE rowid = ?1", params![rowid])?;
   tx.execute(
     "DELETE FROM message_labels WHERE account_email = ?1 AND message_id = ?2",
@@ -1577,9 +1594,28 @@ impl MailDb {
 
   /// These messages, gone, with their labels and bodies. For a provider
   /// whose delta says a message left.
+  /// Rows by message id, gone. With `leftFolder`, only the rows the copy still
+  /// has in that folder.
+  ///
+  /// `leftFolder` is for a provider that reports a move in two halves, as
+  /// Graph does: the folder a message left says "gone", and the folder it
+  /// went to says "here". The halves come in no fixed order, and the first
+  /// can come long after the second. Applied as it stood, a late "gone" from
+  /// the inbox deleted the row that Deleted Items had already delivered, or
+  /// that the reader's own action had already relabelled, and the mail was
+  /// then in no folder of the copy until the mailbox was read again.
+  ///
+  /// So the report is believed only about its own folder. `leftFolder` is the
+  /// label that folder gives its rows: a row that wears it goes, and a row
+  /// that wears another folder's label has moved on and stays. `""` is a
+  /// folder whose rows wear no label, which is Outlook's Archive: there a row
+  /// goes only if it wears no folder label. `STARRED` and `DRAFT` are marks
+  /// on a message and not folders, so they do not count either way, except
+  /// when `DRAFT` is the folder asked about.
   pub fn messages_remove_messages(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "account")?;
     let ids = str_list_arg(args, "messageIds")?;
+    let left_folder = args.get("leftFolder").and_then(Value::as_str).map(str::to_string);
     let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     let mut removed = 0;
@@ -1591,10 +1627,24 @@ impl MailDb {
           |r| r.get(0),
         )
         .optional()?;
-      if let Some(rowid) = found {
-        delete_one(&tx, &account, rowid, &id)?;
-        removed += 1;
+      let Some(rowid) = found else { continue };
+      if let Some(left) = &left_folder {
+        let labels: Vec<String> = {
+          let mut stmt = tx.prepare("SELECT label FROM message_labels WHERE account_email = ?1 AND message_id = ?2")?;
+          let rows = stmt.query_map(params![account, id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+          rows
+        };
+        let still_there = if left.is_empty() {
+          !labels.iter().any(|l| l != STARRED && l != DRAFT)
+        } else {
+          labels.iter().any(|l| l == left)
+        };
+        if !still_there {
+          continue;
+        }
       }
+      delete_one(&tx, &account, rowid, &id)?;
+      removed += 1;
     }
     tx.commit()?;
     Ok(json!(removed))
@@ -2054,6 +2104,54 @@ mod tests {
 
   fn db() -> MailDb {
     MailDb::open_in_memory().expect("open")
+  }
+
+  /// A mail the reader sent to Trash in an Outlook mailbox. Graph reports
+  /// the move in two halves that come in no fixed order.
+  #[test]
+  fn a_late_left_the_inbox_does_not_take_a_row_that_is_in_trash_now() {
+    let db = db();
+    let left = |ids: &[&str], folder: &str| {
+      db.messages_remove_messages(&json!({ "account": "vera@example.com", "messageIds": ids, "leftFolder": folder }))
+        .unwrap()
+    };
+    let ids = |db: &MailDb| -> Vec<String> {
+      let conn = db.conn_mut();
+      let mut stmt = conn.prepare("SELECT message_id FROM messages ORDER BY message_id").unwrap();
+      stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().collect::<Result<_, _>>().unwrap()
+    };
+    db.messages_upsert(
+      "vera@example.com",
+      &[
+        // Delivered by Deleted Items already, or relabelled when the reader acted.
+        msg("moved", "t1", 1, 1_000, &[TRASH]),
+        // Still in the inbox as far as the copy knows: deleted from another device.
+        msg("gone", "t2", 2, 2_000, &[INBOX]),
+        // In Outlook's Archive, whose rows wear no label. One is starred.
+        msg("archived", "t3", 3, 3_000, &[]),
+        msg("archived-star", "t4", 4, 4_000, &[STARRED]),
+        // In a named folder.
+        msg("filed", "t5", 5, 5_000, &["Receipts"]),
+      ],
+    )
+    .unwrap();
+
+    assert_eq!(left(&["moved", "gone"], INBOX), json!(1), "only the row that is still in the inbox goes");
+    assert_eq!(ids(&db), vec!["archived", "archived-star", "filed", "moved"]);
+
+    // Archive reports three gone. Only the rows with no folder label are its own.
+    assert_eq!(left(&["archived", "archived-star", "filed"], ""), json!(2));
+    assert_eq!(ids(&db), vec!["filed", "moved"]);
+
+    // The folder the row is in is believed about it.
+    assert_eq!(left(&["moved"], TRASH), json!(1));
+    assert_eq!(left(&["filed"], "Receipts"), json!(1));
+    assert!(ids(&db).is_empty());
+
+    // With no folder named, a removal is a removal, as before.
+    db.messages_upsert("vera@example.com", &[msg("any", "t6", 6, 6_000, &[TRASH])]).unwrap();
+    let plain = db.messages_remove_messages(&json!({ "account": "vera@example.com", "messageIds": ["any"] })).unwrap();
+    assert_eq!(plain, json!(1));
   }
 
   fn msg(id: &str, thread: &str, uid: i64, at: i64, labels: &[&str]) -> MessageRow {

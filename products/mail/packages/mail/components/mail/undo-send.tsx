@@ -47,11 +47,17 @@ function bindFlush(): void {
   window.addEventListener("pagehide", flushPendingSends);
 }
 
-function UndoSendPill({
+/**
+ * The navy pill that counts down, with Undo. `label` is given the seconds
+ * that are left. Send uses it, and so does "Delete forever" (`undo-purge.tsx`).
+ */
+export function CountdownPill({
   seconds,
+  label,
   onUndo,
 }: {
   seconds: number;
+  label: (left: number) => string;
   onUndo: () => void;
 }) {
   const t = useMailT();
@@ -65,7 +71,7 @@ function UndoSendPill({
   return (
     <div className="flex items-center gap-4 rounded-full bg-[#1b2432] py-3 pl-5 pr-4 shadow-lg">
       <span className="text-sm font-medium text-white">
-        Sending in {left}…
+        {label(left)}
       </span>
       <button
         type="button"
@@ -111,7 +117,13 @@ export function sendWithUndo(options: {
   pending.add(item);
 
   const toastId = toast.custom(
-    () => <UndoSendPill seconds={seconds} onUndo={() => finish("undo")} />,
+    () => (
+      <CountdownPill
+        seconds={seconds}
+        label={(left) => `Sending in ${left}…`}
+        onUndo={() => finish("undo")}
+      />
+    ),
     { duration: seconds * 1000 }
   );
 }

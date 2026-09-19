@@ -26,6 +26,7 @@ import {
   demoPdf,
   demoThreadDetail,
   demoThreads,
+  demoSideThreads,
 } from "./data";
 
 function json(body: unknown): Response {
@@ -124,6 +125,15 @@ function demoAutoReply(account: string, enabled = true) {
   };
 }
 
+/**
+ * What the reader deleted for good in this session. The demo stores nothing,
+ * so a reload brings it all back, which is what a demo should do.
+ */
+const purged = new Set<string>();
+
+/** What the reader sent to Trash in this session: out of the inbox, into Trash. */
+const trashed = new Set<string>();
+
 export async function handleDemoMailApi(
   path: string,
   init?: RequestInit
@@ -133,8 +143,39 @@ export async function handleDemoMailApi(
   const threads = demoThreads();
 
   switch (url.pathname) {
+    case "/api/mail/delete-forever": {
+      const input = JSON.parse(String(init?.body ?? "{}")) as { threadId?: string };
+      if (input.threadId) purged.add(input.threadId);
+      return json({ success: true });
+    }
+
+    case "/api/mail/trash":
+    case "/api/mail/untrash": {
+      const input = JSON.parse(String(init?.body ?? "{}")) as { threadId?: string };
+      if (input.threadId) {
+        if (url.pathname.endsWith("/trash")) trashed.add(input.threadId);
+        else trashed.delete(input.threadId);
+      }
+      return json({ success: true });
+    }
+
     case "/api/mail/threads": {
-      const rows = threads.map((t) => t.summary);
+      // The Trash and Junk tabs ask by view. The account's own Trash and Junk
+      // in the rail ask by the folder's name, as a provider's folder does.
+      const folder = q.get("folder") ?? { Trash: "trash", Junk: "junk" }[q.get("label") ?? ""];
+      const side = folder === "trash" || folder === "junk" ? folder : null;
+      // A conversation keeps its id when it goes to Trash, as it does with
+      // both providers. That is what the list's one-minute hide has to cope
+      // with: see lib/mail/hidden-rows.ts.
+      const pool =
+        side === "trash"
+          ? [...threads.filter((t) => trashed.has(t.summary.threadId)), ...demoSideThreads("trash")]
+          : side
+            ? demoSideThreads(side)
+            : threads.filter((t) => !trashed.has(t.summary.threadId));
+      const rows = pool
+        .map((t) => t.summary)
+        .filter((r) => !purged.has(r.threadId));
       const search = (q.get("q") ?? "").trim().toLowerCase();
       const found = search
         ? rows.filter((r) =>

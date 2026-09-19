@@ -21,6 +21,7 @@ import {
   unarchiveMailThread,
   unsnoozeMailThread,
   untrashMailThread,
+  deleteMailThreadForever,
 } from "@/lib/mail/inbox";
 import { discardProviderDraft, markMailThreadRead } from "@/lib/mail/inbox";
 import {
@@ -414,6 +415,19 @@ async function routeStandaloneMailApi(
         // The owner is passed so the ones that take a thread out of the inbox
         // can drop it from the stored list page too. The others ignore it.
         await act(input.account, input.threadId, OWNER_ID);
+        return ok({ success: true });
+      }
+
+      // Not undoable. The page asks the reader before it calls this.
+      case "/api/mail/delete-forever": {
+        const input = await body<{ account: string; threadId: string; from: string }>();
+        if (!input.account || !input.threadId) {
+          return failed("account and threadId are required", 400);
+        }
+        if (input.from !== "trash" && input.from !== "junk") {
+          return failed("from must be trash or junk", 400);
+        }
+        await deleteMailThreadForever(input.account, input.threadId, input.from);
         return ok({ success: true });
       }
 
@@ -1205,6 +1219,7 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/unarchive",
   "/api/mail/trash",
   "/api/mail/untrash",
+  "/api/mail/delete-forever",
   "/api/mail/unread",
   "/api/mail/read",
   "/api/mail/drafts/discard",

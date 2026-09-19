@@ -844,8 +844,88 @@ export function demoThreads(): DemoThread[] {
 }
 
 /** A thread as the reader opens it. */
+/**
+ * Trash and Junk, so that "Delete forever" has something to act on. Kept out of `demoThreads`: that list is the inbox, and the
+ * pictures in the README are taken from it.
+ */
+export function demoSideThreads(folder: "trash" | "junk"): DemoThread[] {
+  const one = (input: {
+    threadId: string;
+    subject: string;
+    from: Person;
+    text: string;
+    at: string;
+  }): DemoThread => ({
+    summary: summary({
+      threadId: input.threadId,
+      subject: input.subject,
+      from: input.from,
+      snippet: input.text,
+      at: input.at,
+      messageCount: 1,
+      others: [input.from],
+      tab: "other",
+    }),
+    messages: [
+      message({ id: `m-${input.threadId}`, from: input.from, to: [ME], at: input.at, text: input.text }),
+    ],
+  });
+  if (folder === "junk") {
+    return [
+      one({
+        threadId: "t-junk-prize",
+        subject: "You have won a studio makeover",
+        from: { name: "Prize Office", email: "win@prize.example" },
+        text: "Congratulations. Reply with your address to claim your prize today.",
+        at: ago(5 * HOUR),
+      }),
+      one({
+        threadId: "t-junk-parcel",
+        subject: "Your parcel is waiting",
+        from: { name: "Parcel Desk", email: "desk@parcel.example" },
+        text: "We could not deliver your parcel. Confirm your details to see it.",
+        at: ago(1 * DAY + 2 * HOUR),
+      }),
+    ];
+  }
+  return [
+    one({
+      threadId: "t-trash-parking",
+      subject: "Parking at the quay on Saturday",
+      from: P.gustav,
+      text: "The yard is closed on Saturday, so park on the street side. It is free after twelve.",
+      at: ago(1 * DAY + 4 * HOUR),
+    }),
+    // A second one from the same sender, so the by-person view has a person
+    // with more than one conversation in Trash.
+    one({
+      threadId: "t-trash-keys",
+      subject: "Keys for the side room",
+      from: P.gustav,
+      text: "The spare keys are with the caretaker. Ask for the blue ring.",
+      at: ago(2 * DAY + 1 * HOUR),
+    }),
+    one({
+      threadId: "t-trash-offer",
+      subject: "Ten per cent off card stock this week",
+      from: P.papir,
+      text: "All card stock over 300gsm is ten per cent off until Sunday.",
+      at: ago(3 * DAY),
+    }),
+    one({
+      threadId: "t-trash-frames",
+      subject: "Frames — the first quote",
+      from: P.egon,
+      text: "Here is the first quote. The oak is dearer than I thought, so I will send a second one.",
+      at: ago(6 * DAY),
+    }),
+  ];
+}
+
 export function demoThreadDetail(threadId: string): MailThreadDetail | null {
-  const found = demoThreads().find((t) => t.summary.threadId === threadId);
+  const found = [...demoThreads(), ...demoSideThreads("trash"), ...demoSideThreads("junk")].find(
+    (t) => t.summary.threadId === threadId
+  );
   if (!found) return null;
   const messages = found.messages;
   const last = messages[messages.length - 1];

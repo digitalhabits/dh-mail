@@ -60,7 +60,9 @@ export type MailLocalActionKind =
   | "unstar"
   | "move"
   | "unmove"
-  | "discardDraft";
+  | "discardDraft"
+  /** Not undoable. Payload `{ from: "trash" | "junk" }`. */
+  | "deleteForever";
 
 /**
  * Queue an action on a thread when the copy serves its mailbox: applied to
@@ -121,6 +123,21 @@ export function notifySyncChanged(account: string): void {
  * them, so a view of them asks separately.
  */
 export async function localStoreServesFolder(account: string, folder: "trash" | "spam"): Promise<boolean> {
+  /*
+    An Outlook mailbox has no side folders. Its sync walks every folder,
+    Deleted Items and Junk Email with the rest, and keeps each one's state
+    under its Graph id, so no state is ever named "trash". The copy holds
+    both folders once the first read of the whole mailbox is done.
+
+    Without this, Trash and Junk of an Outlook mailbox were listed from
+    Graph. A mail the reader had just sent there was missing when the list
+    was opened before the move had finished on the server, and the list did
+    not ask again for a while. The copy is changed the moment the reader
+    acts, as it is for every other view.
+  */
+  if ((await resolveMailProvider(account).catch(() => null)) === "outlook") {
+    return localStoreComplete(account);
+  }
   const states = await syncStates();
   const state = states.find(
     (s) => s.account.toLowerCase() === account.toLowerCase() && s.folder === folder

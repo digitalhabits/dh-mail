@@ -1,4 +1,5 @@
-import { localStoreServes, queueLocalAction } from "@/lib/mail/local-store";
+import { applyLocalAction, localStoreServes, queueLocalAction } from "@/lib/mail/local-store";
+import { wakeOutlookSync } from "@/lib/mail/outlook-sync";
 import { mailStore } from "@/lib/mail/store";
 import "server-only";
 
@@ -576,6 +577,14 @@ export async function moveMailThreadToFolder(input: {
     } catch (err) {
       translateOutlookError(err, input.account);
     }
+    /*
+      The copy is told now, as it is for archive, junk and trash. The folder's
+      own view reads the copy, and without this the mail was in that view only
+      after the next walk of every folder, up to a minute later. The label of
+      an Outlook folder in the copy is its path.
+    */
+    await applyLocalAction(input.account, input.threadId, "move", { label: folder.path });
+    wakeOutlookSync(input.account);
     invalidateInboxCache();
     return { folderName: folder.path, movedOut: true };
   }
@@ -618,6 +627,10 @@ export async function unmoveMailThreadFromFolder(input: {
     } catch (err) {
       translateOutlookError(err, input.account);
     }
+    // Back in the inbox of the copy at once, for the same reason as above.
+    const folder = name ? await findOutlookFolder(input.account, name).catch(() => null) : null;
+    await applyLocalAction(input.account, input.threadId, "unmove", { label: folder?.path ?? name });
+    wakeOutlookSync(input.account);
     invalidateInboxCache();
     return;
   }

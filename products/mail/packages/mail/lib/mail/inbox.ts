@@ -34,6 +34,8 @@ import {
   sendRawMessage,
   trashThread,
   untrashThread,
+  deleteMessagesForever,
+  threadMessageIdsWithLabel,
   type GmailMessage,
   type GmailThread,
 } from "@/lib/gmail/api";
@@ -87,6 +89,7 @@ import {
   listConversationMessages,
   listOutlookDraftMessages,
   moveOutlookConversation,
+  purgeOutlookConversation,
 } from "@/lib/outlook/api";
 import {
   listConnectedMailAccounts,
@@ -3176,6 +3179,51 @@ export async function untrashMailThread(
     // Untrash alone doesn't re-add INBOX, so the thread would end up
     // archived rather than back where the user deleted it from.
     await modifyThreadLabels(token, threadId, { addLabelIds: ["INBOX"] });
+  } catch (err) {
+    translateGmailError(err, account);
+  }
+  invalidateInboxCache();
+}
+
+/** The two folders that mail can be deleted from for good. */
+export type MailPurgeFolder = "trash" | "junk";
+
+/**
+ * Delete for good the messages of a thread that are in Trash or in Junk.
+ *
+ * This cannot be undone: the caller asks the reader first. Only the messages
+ * in that folder go. A thread can have one message in Trash and the others in
+ * the inbox, and those stay.
+ */
+export async function deleteMailThreadForever(
+  account: string,
+  threadId: string,
+  from: MailPurgeFolder
+): Promise<void> {
+  if (await queueLocalAction(account, threadId, "deleteForever", { from })) {
+    invalidateInboxCache();
+    return;
+  }
+  if ((await resolveMailProvider(account)) === "outlook") {
+    const token = await outlookAccessTokenFor(account);
+    await purgeOutlookConversation(
+      token,
+      from === "trash" ? "deleteditems" : "junkemail",
+      threadId
+    );
+    await applyLocalAction(account, threadId, "deleteForever", { from });
+    wakeOutlookSync(account);
+    invalidateInboxCache();
+    return;
+  }
+  const token = await accessTokenFor(account);
+  try {
+    const ids = await threadMessageIdsWithLabel(
+      token,
+      threadId,
+      from === "trash" ? "TRASH" : "SPAM"
+    );
+    if (ids.length) await deleteMessagesForever(token, ids);
   } catch (err) {
     translateGmailError(err, account);
   }

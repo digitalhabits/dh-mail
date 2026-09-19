@@ -13,6 +13,7 @@ import {
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { MessageSquare, Archive, ArchiveRestore, Trash2, Calendar, Clock, FolderInput, Forward, Paperclip, MessagesSquare, Pin, Printer, Reply, ReplyAll, RotateCwFadingClock, ShieldCheck, SquarePen } from "lucide-react";
+import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 import { clearMailThreadDrag, MoveToFolderMenu, setMailThreadDragData } from "@/components/mail/MailFolders";
 import type { MailFolder } from "@/lib/mail/folder-types";
 import { getThreadDraftKeysSnapshot, subscribeMailDrafts, threadDraftKey } from "@/lib/mail/local-drafts";
@@ -123,6 +124,7 @@ export function ThreadRowMenu({
   onJunk,
   onNotJunk,
   onRestore,
+  onDeleteForever,
   onArchive,
   onTrash,
   onMoveToInbox,
@@ -148,6 +150,8 @@ export function ThreadRowMenu({
   onJunk?: () => void;
   onNotJunk?: () => void;
   onRestore?: () => void;
+  /** In Trash or Junk only. Not undoable: the caller asks first. */
+  onDeleteForever?: () => void;
   onArchive?: () => void;
   onTrash?: () => void;
   /** Back to the inbox, and where this conversation is now — for the move menu. */
@@ -278,6 +282,12 @@ export function ThreadRowMenu({
           {t("restore")}
         </button>
       ) : null}
+      {onDeleteForever ? (
+        <button type="button" role="menuitem" className={item} onClick={run(onDeleteForever)}>
+          <TrashForeverIcon className={icon} />
+          {t("deleteForever")}
+        </button>
+      ) : null}
       {/* Printing and a second window are the desktop's. A phone has
           neither, so the menu does not offer them there. */}
       {touch ? null : (
@@ -353,6 +363,7 @@ export function PersonRowMenu({
   onPopOut,
   onArchiveAll,
   onDeleteAll,
+  onDeleteForever,
   onDismiss,
 }: {
   x: number;
@@ -369,8 +380,11 @@ export function PersonRowMenu({
   onCancelSnooze?: () => void;
   onTogglePin: () => void;
   onPopOut: () => void;
-  onArchiveAll: () => void;
-  onDeleteAll: () => void;
+  /** Not given in Trash: the mail is deleted already. */
+  onArchiveAll?: () => void;
+  onDeleteAll?: () => void;
+  /** In Trash and Junk only. It asks the page's question and deletes nothing itself. */
+  onDeleteForever?: () => void;
   onDismiss: () => void;
 }) {
   const t = useMailT();
@@ -410,19 +424,29 @@ export function PersonRowMenu({
 
       {/* Both say how many they take. A pile is not a row, and the number is
           the whole difference between this and archiving one thing. */}
-      <button type="button" role="menuitem" className={item} onClick={run(onArchiveAll)}>
-        <Archive className={icon} aria-hidden />
-        {t("archiveAllCount", { count })}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-        onClick={run(onDeleteAll)}
-      >
-        <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-500" aria-hidden />
-        {t("deleteAllCount", { count })}
-      </button>
+      {onArchiveAll ? (
+        <button type="button" role="menuitem" className={item} onClick={run(onArchiveAll)}>
+          <Archive className={icon} aria-hidden />
+          {t("archiveAllCount", { count })}
+        </button>
+      ) : null}
+      {onDeleteAll ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
+          onClick={run(onDeleteAll)}
+        >
+          <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-500" aria-hidden />
+          {t("deleteAllCount", { count })}
+        </button>
+      ) : null}
+      {onDeleteForever ? (
+        <button type="button" role="menuitem" className={item} onClick={run(onDeleteForever)}>
+          <TrashForeverIcon className={icon} />
+          {t("deleteForeverCount", { count })}
+        </button>
+      ) : null}
     </RowMenuShell>
   );
 }
@@ -480,6 +504,7 @@ export function ThreadListRow({
   onJunk,
   onNotJunk,
   onRestore,
+  onDeleteForever,
   dragKind,
   highlight,
   touch = false,
@@ -531,6 +556,8 @@ export function ThreadListRow({
   onJunk?: () => void;
   onNotJunk?: () => void;
   onRestore?: () => void;
+  /** In Trash or Junk only. Not undoable: the caller asks first. */
+  onDeleteForever?: () => void;
   dragKind: "pin" | "folder";
   /**
    * On a phone. No drag — a finger has nowhere to carry a row to — and a
@@ -1235,6 +1262,7 @@ export function ThreadListRow({
           onJunk={onJunk}
           onNotJunk={onNotJunk}
           onRestore={onRestore}
+          onDeleteForever={onDeleteForever}
           onArchive={onArchive}
           onTrash={onTrash}
           onDismiss={() => setMenuAt(null)}

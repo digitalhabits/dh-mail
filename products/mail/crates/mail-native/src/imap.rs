@@ -710,6 +710,13 @@ impl Client {
     Ok(())
   }
 
+  /// UID EXPUNGE (RFC 4315): these messages only, of those flagged \Deleted.
+  /// Gmail has UIDPLUS.
+  pub fn uid_expunge(&mut self, set: &str) -> ImapResult<()> {
+    self.run(&format!("UID EXPUNGE {set}"))?;
+    Ok(())
+  }
+
   /// CREATE a mailbox — on Gmail, a label.
   pub fn create(&mut self, mailbox_raw: &str) -> ImapResult<()> {
     self.run(&format!("CREATE {}", quote(mailbox_raw)))?;

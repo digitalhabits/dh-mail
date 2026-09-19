@@ -13,6 +13,7 @@ import {
   dedupeMessagesByRfcId,
   dedupeThreadsByTip,
   everyCopy,
+  everyCopyOfEach,
   rowStandsFor,
   threadKey,
 } from "@/lib/mail/thread-copies";
@@ -207,4 +208,48 @@ assert.deepEqual(
     rows
   ).map(threadKey);
   assert.deepEqual(copies, ["other@a.example|t-z"]);
+}
+
+/**
+ * Several rows at once, for "Delete forever" over a selection or over a
+ * person's whole pile. A person can have written to a Gmail mailbox and to an
+ * Outlook one, and one of those mails can have reached both.
+ */
+{
+  const rows = dedupeThreadsByTip([
+    // One mail, in a Gmail mailbox and in an Outlook one: one row.
+    row("vera@gmail.example", "g-1", "<both@x>", "2026-08-16T10:00:00Z"),
+    row("vera@outlook.example", "o-1", "<both@x>", "2026-08-16T10:00:00Z"),
+    // One that came to Gmail only, and one that came to Outlook only.
+    row("vera@gmail.example", "g-2", "<gmail-only@x>", "2026-08-15T10:00:00Z"),
+    row("vera@outlook.example", "o-2", "<outlook-only@x>", "2026-08-14T10:00:00Z"),
+  ]);
+  assert.equal(rows.length, 3, "three rows on screen");
+
+  const targets = everyCopyOfEach(rows, rows);
+  assert.deepEqual(
+    targets.map(threadKey).sort(),
+    [
+      threadKey({ account: "vera@gmail.example", threadId: "g-1" }),
+      threadKey({ account: "vera@gmail.example", threadId: "g-2" }),
+      threadKey({ account: "vera@outlook.example", threadId: "o-1" }),
+      threadKey({ account: "vera@outlook.example", threadId: "o-2" }),
+    ].sort(),
+    "three rows are four conversations on two servers, and every one is named"
+  );
+  assert.ok(
+    targets.every((t) => t.threadId.startsWith(t.account.includes("gmail") ? "g-" : "o-")),
+    "each conversation keeps its own mailbox: a Gmail id is never sent to Outlook"
+  );
+
+  // Asked for by the copy the row is not standing on, and asked for twice.
+  const folded = rows[0].alsoIn[0];
+  const again = everyCopyOfEach([folded, rows[0], folded], rows);
+  assert.equal(again.length, 2, "both copies, and neither of them twice");
+
+  // A row with no copy is itself and nothing more.
+  assert.deepEqual(everyCopyOfEach([rows[1]], rows), [
+    { account: rows[1].account, threadId: rows[1].threadId },
+  ]);
+  assert.deepEqual(everyCopyOfEach([], rows), []);
 }

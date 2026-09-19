@@ -64,7 +64,8 @@ import {
   openMailPersonWindow,
   openMailThreadWindow,
 } from "@/lib/mail/reader-window";
-import { everyCopy, rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
+import { hideRow, unhideRow } from "@/lib/mail/hidden-rows";
+import { everyCopy, everyCopyOfEach, rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
 import { MailPauseMenu } from "@/components/mail/MailPauseMenu";
 import { useMailPause } from "@/components/mail/use-mail-pause";
 import { fetchingAccounts, mailPauseChip, mailPauseVerdictForAccount } from "@/lib/mail/quiet-hours";
@@ -97,6 +98,8 @@ import { PersonAvatar } from "@/components/mail/PersonAvatar";
 import { PersonRowActions } from "@/components/mail/PersonRowActions";
 import { Highlighted } from "@/components/mail/Highlighted";
 import { searchHighlightTerms } from "@/lib/mail/search-highlight";
+import { ConfirmPurgeDialog } from "@/components/mail/ConfirmPurgeDialog";
+import { deleteForeverWithUndo, sayDeletedForever } from "@/components/mail/undo-purge";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, ThreadMessageCount, DraftBadge, useThreadDraftKeys } from "@/components/mail/ThreadListRow";
 import { ListDensityToggle, MailViewModeTabs, MailLayoutMenu, SyncIcon } from "@/components/mail/MailListControls";
 import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
@@ -412,6 +415,22 @@ export function MailPage({
             : tab === "snoozed"
               ? "snoozed"
               : "inbox";
+  /**
+   * Whether the list on screen is Trash, or Junk.
+   *
+   * Two ways lead there: the Trash and Junk tabs, which show every mailbox,
+   * and one mailbox's own folder in the rail, such as Outlook's "Deleted
+   * Items". Only the tab used to count. Opened from the rail, Deleted Items
+   * was treated as an ordinary folder: it offered Archive and Delete, no
+   * Restore and no "Delete forever", and Delete then asked Outlook to move
+   * mail from Deleted Items into Deleted Items, which it refuses.
+   *
+   * With a folder open the tab says nothing: it still holds whatever was
+   * last pressed. So the open folder's role decides, and the tab only when
+   * no folder is open.
+   */
+  const inTrashView = activeFolder ? activeFolder.role === "trash" : tab === "trash";
+  const inJunkView = activeFolder ? activeFolder.role === "junk" : tab === "junk";
   const searchScopeKey = mailboxScopeKey(mailboxScopeEmails, accountEmails);
   /**
    * How many mailboxes the running search is asking.
@@ -519,7 +538,8 @@ export function MailPage({
     threads,
     setThreads,
     threadsRef,
-    hideRowUntilRef,
+    hiddenRowsRef,
+    listViewIdRef,
     listCursor,
     loadingList,
     loadingMore,
@@ -1083,7 +1103,7 @@ export function MailPage({
       }
       // The row is coming back; nothing may keep hiding it. Every kind set
       // a hide when it removed the row, so every kind clears one here.
-      hideRowUntilRef.current.delete(threadKey(undo.summary));
+      unhideRow(hiddenRowsRef.current, threadKey(undo.summary));
       if (undo.leftFolderName)
         bumpMailFolderCount(undo.summary.account, undo.leftFolderName, 1);
       setThreads((current) => {
@@ -1275,11 +1295,15 @@ export function MailPage({
   const REMOVED_ROW_HIDE_MS = 60_000;
   const hideRemovedRows = React.useCallback((keys: string[]) => {
     const until = Date.now() + REMOVED_ROW_HIDE_MS;
-    for (const rowKey of keys) hideRowUntilRef.current.set(rowKey, until);
+    // In this view only: the row is shown in the view it went to. It was
+    // hidden in every view, and a mail sent to Trash was not in Trash.
+    for (const rowKey of keys) {
+      hideRow(hiddenRowsRef.current, rowKey, listViewIdRef.current, until);
+    }
     loadAbortRef.current?.abort();
   }, []);
   const unhideRows = React.useCallback((keys: string[]) => {
-    for (const rowKey of keys) hideRowUntilRef.current.delete(rowKey);
+    for (const rowKey of keys) unhideRow(hiddenRowsRef.current, rowKey);
   }, []);
 
   const moveToFolder = React.useCallback(
@@ -1804,7 +1828,6 @@ export function MailPage({
       }));
       if (!targets.length) return;
       const before = threads;
-      const count = multiSelectedCount;
       const people = viewMode === "people";
       const successor = people ? null : successorAfterSelection();
       const targetKeys = targets.map((t) => threadKey(t));
@@ -1845,11 +1868,12 @@ export function MailPage({
         )
       );
       const failed = results.filter((r) => r.status === "rejected").length;
-      const noun = people
-        ? mailSay(count === 1 ? "personOne" : "peopleMany", { count })
-        : mailSay(count === 1 ? "conversationOne" : "conversationsMany", {
-            count,
-          });
+      // The conversations, in the by-person view too: "3 people deleted"
+      // said something that did not happen.
+      const noun = mailSay(
+        targets.length === 1 ? "conversationOne" : "conversationsMany",
+        { count: targets.length }
+      );
       if (failed === targets.length) {
         unhideRows(targetKeys);
         setThreads(before);
@@ -1899,7 +1923,6 @@ export function MailPage({
     },
     [
       selectedThreadsNow,
-      multiSelectedCount,
       viewMode,
       threads,
       successorAfterSelection,
@@ -2150,8 +2173,7 @@ export function MailPage({
    * Put a deleted conversation back where it came from.
    *
    * Only offered from the Trash view, which is the only place a thread is
-   * known to be deleted. There is no permanent delete to go with it: that is
-   * the one action nothing can undo, and the provider offers it already.
+   * known to be deleted. "Delete forever" stands beside it: see `purgeAsk`.
    */
   const restoreFromTrash = React.useCallback(
     async (t: { account: string; threadId: string }) => {
@@ -2176,6 +2198,124 @@ export function MailPage({
     },
     [threads, removeThread]
   );
+
+  /**
+   * Mail deleted for good, from Trash or from Junk.
+   *
+   * This is the one action in the list that nothing can undo once it is
+   * done, so it never runs from its button. The button sets `purgeAsk`, the
+   * dialog asks, and only its red button calls `runPurge`. Even then the
+   * provider is not told for a few seconds: a navy pill counts down with
+   * Undo, as it does for Send. Undo there means "it was not done yet". See
+   * `undo-purge.tsx`.
+   *
+   * It acts only on conversations that the reader has picked: the open one,
+   * a row's own menu, or a selection of rows. There is no "empty the folder"
+   * and there will not be one. A reader who wants Trash empty selects what
+   * is in it, and so sees what goes.
+   *
+   * `purgeFrom` is the folder on screen when it is Trash or Junk, and null
+   * everywhere else. No other view offers the action.
+   */
+  const purgeFrom: "trash" | "junk" | null = inTrashView ? "trash" : inJunkView ? "junk" : null;
+  const [purgeAsk, setPurgeAsk] = React.useState<{
+    from: "trash" | "junk";
+    /** How many rows the reader picked. The question counts these. */
+    count: number;
+    /**
+     * What goes: those rows and every copy folded into them. A mail that
+     * arrived in two of the reader's mailboxes is one row in the list, and
+     * can be one in Gmail and one in Outlook.
+     */
+    targets: { account: string; threadId: string }[];
+  } | null>(null);
+
+  /** Ask the question about these conversations. Null outside Trash and Junk. */
+  const askDeleteForever = React.useMemo(
+    () =>
+      purgeFrom
+        ? (rows: { account: string; threadId: string }[]) => {
+            if (!rows.length) return;
+            setPurgeAsk({
+              from: purgeFrom,
+              count: rows.length,
+              // The list as it is now, read at the moment of asking.
+              targets: everyCopyOfEach(rows, threadsRef.current),
+            });
+          }
+        : undefined,
+    [purgeFrom]
+  );
+
+  const runPurge = React.useCallback(() => {
+    const ask = purgeAsk;
+    if (!ask || !ask.targets.length) return;
+    setPurgeAsk(null);
+    const before = threads;
+    const keys = ask.targets.map((t) => threadKey(t));
+    // The rows go now. `hideRemovedRows` keeps them out of a list that is
+    // read again during the count, while the mail is still on the server.
+    for (const key of keys) removeThread(key);
+    hideRemovedRows(keys);
+    clearMultiSelection();
+    setSelected(null);
+    // The by-person page too: its conversations are the ones that just went.
+    setSelectedPersonKey(null);
+
+    const putBack = () => {
+      unhideRows(keys);
+      setThreads(before);
+    };
+
+    deleteForeverWithUndo({
+      onUndo: putBack,
+      onRun: async () => {
+        for (const target of ask.targets) {
+          invalidateCachedMailThread(target.account, target.threadId);
+        }
+        const results = await Promise.allSettled(
+          ask.targets.map((target) =>
+            apiJson("/api/mail/delete-forever", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...target, from: ask.from }),
+            })
+          )
+        );
+        const failed = results.filter((r) => r.status === "rejected");
+        if (!failed.length) {
+          sayDeletedForever();
+          return;
+        }
+        // What failed is still on the server, so it is shown again. What
+        // went is gone, and the list is read again to say so.
+        unhideRows(keys);
+        if (failed.length === ask.targets.length) {
+          setThreads(before);
+          const first = (failed[0] as PromiseRejectedResult).reason;
+          toast.error(
+            first instanceof Error ? first.message : mailSay("couldNotDeleteForever")
+          );
+          return;
+        }
+        toast.error(
+          mailSay("someCouldNotBeDeletedForever", {
+            failed: failed.length,
+            count: ask.targets.length,
+          })
+        );
+        void loadThreads({ fresh: true });
+      },
+    });
+  }, [
+    purgeAsk,
+    threads,
+    removeThread,
+    hideRemovedRows,
+    unhideRows,
+    clearMultiSelection,
+    loadThreads,
+  ]);
 
   /**
    * File a conversation as junk, or take it back out.
@@ -2664,8 +2804,10 @@ export function MailPage({
         // The server's filter owns the hiding after that — and it can end
         // a snooze early when a reply arrives, which a row vetoed here
         // until the original wake time would never show.
-        hideRowUntilRef.current.set(
+        hideRow(
+          hiddenRowsRef.current,
           key,
+          listViewIdRef.current,
           Math.min(untilMs, Date.now() + REMOVED_ROW_HIDE_MS)
         );
         // Drop any in-flight list response built before this snooze.
@@ -2709,7 +2851,7 @@ export function MailPage({
           toast(`Snoozed until ${when}`);
         }
       } catch (err) {
-        hideRowUntilRef.current.delete(key);
+        unhideRow(hiddenRowsRef.current, key);
         setThreads(before);
         toast.error(err instanceof Error ? err.message : "Couldn't snooze");
       }
@@ -2728,7 +2870,7 @@ export function MailPage({
     async (t: { account: string; threadId: string }) => {
       const key = threadKey(t);
       const before = threads;
-      hideRowUntilRef.current.delete(key);
+      unhideRow(hiddenRowsRef.current, key);
       removeThread(key);
       try {
         await apiJson("/api/mail/unsnooze", {
@@ -3175,11 +3317,14 @@ export function MailPage({
       // round at a time: out of junk from inside it, into junk from
       // anywhere else.
       onJunk:
-        tab === "junk" ? undefined : () => void setThreadJunk(t, true),
+        inJunkView ? undefined : () => void setThreadJunk(t, true),
       onNotJunk:
-        tab === "junk" ? () => void setThreadJunk(t, false) : undefined,
+        inJunkView ? () => void setThreadJunk(t, false) : undefined,
       onRestore:
-        tab === "trash" ? () => void restoreFromTrash(t) : undefined,
+        inTrashView ? () => void restoreFromTrash(t) : undefined,
+      onDeleteForever: askDeleteForever
+        ? () => askDeleteForever([{ account: t.account, threadId: t.threadId }])
+        : undefined,
       // The rail's four in the move menu, and where this row is now.
       onMoveToInbox: () => void moveToInbox(t),
       here: hereNow,
@@ -3191,7 +3336,9 @@ export function MailPage({
       openThread,
       restoreFromTrash,
       setThreadJunk,
-      tab,
+      inTrashView,
+      inJunkView,
+      askDeleteForever,
     ]
   );
 
@@ -4902,6 +5049,43 @@ export function MailPage({
               ))}
             </div>
           ) : null}
+          {/*
+            Trash and Junk only, and only with something in them. Not while a
+            search is on: the button empties the folder, not the results, and
+            beside a list of results it would read as the second.
+          */}
+          {purgeAsk ? (
+            <ConfirmPurgeDialog
+              title={t("deleteForeverTitle", {
+                what: t(purgeAsk.count === 1 ? "conversationOne" : "conversationsMany", {
+                  count: purgeAsk.count,
+                }),
+              })}
+              /*
+                Says where the mail goes from, by name. "Deleted" in a mail
+                app on a computer can read as "removed from this computer",
+                and this is the one delete where that mistake costs the mail.
+              */
+              body={t(
+                purgeAsk.targets.length === 1 ? "deleteForeverBodyOne" : "deleteForeverBodyMany",
+                {
+                  provider: (() => {
+                    const outlook = purgeAsk.targets.filter((x) => isOutlookAccount(x.account)).length;
+                    if (outlook === 0) return "Gmail";
+                    if (outlook === purgeAsk.targets.length) return "Outlook";
+                    return t("providerGmailAndOutlook");
+                  })(),
+                }
+              )}
+              note={
+                purgeAsk.targets.length > purgeAsk.count ? t("deleteForeverCopies") : undefined
+              }
+              confirmLabel={t("deleteForever")}
+              cancelLabel={t("cancel")}
+              onConfirm={runPurge}
+              onCancel={() => setPurgeAsk(null)}
+            />
+          ) : null}
           {debouncedSearch &&
           (loadingList || refreshing) &&
           !listNarrow &&
@@ -5380,7 +5564,9 @@ export function MailPage({
                         pinned={isMailPersonPinned(row.key)}
                         onNavy={chromeDark}
                         onTogglePin={() => togglePersonPin(row)}
-                        onArchive={() => void archivePerson(row)}
+                        onArchive={
+                          purgeFrom === "trash" ? undefined : () => void archivePerson(row)
+                        }
                         onToggleRead={() =>
                           void toggleRead(row.threads, row.name)
                         }
@@ -5426,8 +5612,8 @@ export function MailPage({
                       }
                       onToggleRead={() => void toggleRead([newest], "it")}
                       onTogglePin={() => togglePin(newest)}
-                      onArchive={tab === "trash" ? undefined : () => void archive(newest)}
-                      onTrash={tab === "trash" ? undefined : () => void trash(newest)}
+                      onArchive={inTrashView ? undefined : () => void archive(newest)}
+                      onTrash={inTrashView ? undefined : () => void trash(newest)}
                       {...rowMenuActions(newest)}
                       onDismiss={close}
                     />
@@ -5453,8 +5639,16 @@ export function MailPage({
                     }
                     onTogglePin={() => togglePersonPin(row)}
                     onPopOut={() => rowMenuActions(newest).onAction("popOut")}
-                    onArchiveAll={() => void archivePerson(row)}
-                    onDeleteAll={() => void trashPerson(row)}
+                    // In Trash the mail is deleted already: only "forever" is left.
+                    onArchiveAll={
+                      purgeFrom === "trash" ? undefined : () => void archivePerson(row)
+                    }
+                    onDeleteAll={
+                      purgeFrom === "trash" ? undefined : () => void trashPerson(row)
+                    }
+                    onDeleteForever={
+                      askDeleteForever ? () => askDeleteForever(row.threads) : undefined
+                    }
                     onDismiss={close}
                   />
                 );
@@ -5565,10 +5759,10 @@ export function MailPage({
                           // Not in Trash: there is nothing to archive out of
                           // it and nothing left to delete.
                           onArchive={
-                            tab === "trash" ? undefined : () => void archive(t)
+                            inTrashView ? undefined : () => void archive(t)
                           }
                           onTrash={
-                            tab === "trash" ? undefined : () => void trash(t)
+                            inTrashView ? undefined : () => void trash(t)
                           }
                           {...rowMenuActions(t)}
                           dragKind="pin"
@@ -5763,10 +5957,10 @@ export function MailPage({
                             t.snoozedUntil ? () => void unsnooze(t) : undefined
                           }
                           onArchive={
-                            tab === "trash" ? undefined : () => void archive(t)
+                            inTrashView ? undefined : () => void archive(t)
                           }
                           onTrash={
-                            tab === "trash" ? undefined : () => void trash(t)
+                            inTrashView ? undefined : () => void trash(t)
                           }
                           {...rowMenuActions(t)}
                           dragKind="folder"
@@ -5880,9 +6074,14 @@ export function MailPage({
         ) : multiSelectedCount ? (
           <SelectionPane
             count={multiSelectedCount}
+            conversations={selectedThreadsNow().length}
             people={viewMode === "people"}
             onArchive={() => void actOnSelection("archive")}
             onDelete={() => void actOnSelection("trash")}
+            onDeleteForever={
+              askDeleteForever ? () => askDeleteForever(selectedThreadsNow()) : undefined
+            }
+            inTrash={purgeFrom === "trash"}
             onClear={clearMultiSelection}
           />
         ) : selected ? (
@@ -5940,7 +6139,7 @@ export function MailPage({
                 }
                 void trash(shown, "reader");
               }}
-              inTrash={tab === "trash"}
+              inTrash={inTrashView}
               fromDrafts={draftsView}
               /*
                 In the Drafts view the draft was the reason this pane was
@@ -5957,7 +6156,15 @@ export function MailPage({
                   : undefined
               }
               onRestore={() => void restoreFromTrash(selected)}
-              inJunk={tab === "junk"}
+              onDeleteForever={
+                askDeleteForever
+                  ? () =>
+                      askDeleteForever([
+                        { account: selected.account, threadId: selected.threadId },
+                      ])
+                  : undefined
+              }
+              inJunk={inJunkView}
               onJunk={() => void setThreadJunk(selected, true)}
               onNotJunk={() => void setThreadJunk(selected, false)}
               onMoveToFolder={(folderName, create) =>
@@ -6098,6 +6305,23 @@ export function MailPage({
             onToggleRead={(rows, label) => void toggleRead(rows, label)}
             onArchiveThread={(t) => void archive(t)}
             onTrashThread={(t) => void trash(t)}
+            onDeleteForever={askDeleteForever}
+            inTrash={purgeFrom === "trash"}
+            place={
+              activeFolder
+                ? activeFolder.name
+                : tab === "trash"
+                  ? t("viewTrash")
+                  : tab === "junk"
+                    ? t("viewJunk")
+                    : tab === "archived"
+                      ? t("viewArchived")
+                      : tab === "sent"
+                        ? t("viewSent")
+                        : tab === "snoozed"
+                          ? t("viewSnoozed")
+                          : undefined
+            }
           />
         ) : !accountEmails.length ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">

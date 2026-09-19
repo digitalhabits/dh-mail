@@ -6,6 +6,15 @@
 //! word to the reader if the server refuses it for good. Nothing here
 //! waits on the network at the moment the reader acts. See
 //! docs/mail-local-store.md, section 7.
+//!
+//! One action cannot be undone: "deleteForever", on a thread in Trash or in
+//! Junk. The rows leave the copy at once, and the worker marks the messages
+//! `\Deleted` in that folder and expunges them. Gmail deletes for good what
+//! is expunged from Trash or Junk. If the server refuses for good, the folder
+//! is read again from nothing, so what is still on the server is shown again.
+//!
+//! There is no "empty the folder" action, on purpose. Mail is deleted for
+//! good one chosen thread at a time, and never by the folder.
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -49,8 +58,27 @@ pub struct PendingAction {
 /// The actions the interface can queue. The string is what TypeScript sends.
 pub const KINDS: &[&str] = &[
   "archive", "unarchive", "trash", "untrash", "junk", "notjunk", "read", "unread", "star", "unstar",
-  "move", "unmove", "discardDraft",
+  "move", "unmove", "discardDraft", "deleteForever",
 ];
+
+/// The folders mail can be deleted from for good, as the payload names them:
+/// the label their rows carry, and the store's key for the folder.
+fn purge_target(payload: &Value) -> Option<(&'static str, &'static str)> {
+  match payload.get("from").and_then(Value::as_str) {
+    Some("trash") => Some((TRASH, "trash")),
+    Some("junk") | Some("spam") => Some((SPAM, "spam")),
+    _ => None,
+  }
+}
+
+/// The store's folder that a delete-for-good action emptied, if it is one.
+/// The worker reads that folder again when the server refuses the action.
+pub fn purged_folder(action: &PendingAction) -> Option<&'static str> {
+  if action.kind != "deleteForever" {
+    return None;
+  }
+  purge_target(&action.payload).map(|(_, folder)| folder)
+}
 
 impl MailDb {
   /// Apply the action to the copy and remember it for the worker.
@@ -192,6 +220,30 @@ impl MailDb {
       }
       // A provider draft thrown away: its row is hidden the same way,
       // and goes when the sweep finds the server's copy gone.
+      // Gone for good. Only the rows that wear the folder's label go: a
+      // thread can have one message in Trash and the others in the inbox.
+      "deleteForever" => {
+        let Some((label, _)) = purge_target(payload) else {
+          return Err(crate::db::DbError::BadArgument(format!("{kind} needs from: trash or junk")));
+        };
+        if thread_id.is_empty() {
+          return Err(crate::db::DbError::BadArgument("deleteForever needs a thread".into()));
+        }
+        let rows: Vec<(i64, String)> = {
+          let mut stmt = tx.prepare(
+            "SELECT m.rowid, m.message_id FROM messages m
+             JOIN message_labels l ON l.account_email = m.account_email AND l.message_id = m.message_id
+             WHERE m.account_email = ?1 AND l.label = ?2 AND m.thread_id = ?3",
+          )?;
+          let rows = stmt
+            .query_map(params![account, label, thread_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+          rows
+        };
+        for (rowid, message_id) in rows {
+          crate::messages::delete_one(&tx, account, rowid, &message_id)?;
+        }
+      }
       "discardDraft" => {
         let Some(message_id) = payload.get("messageId").and_then(Value::as_str) else {
           return Err(crate::db::DbError::BadArgument("discardDraft needs a messageId".into()));
@@ -421,6 +473,39 @@ fn deliver(client: &mut Client, action: &PendingAction, folders: &Folders) -> Re
     client.select(&folders.all_mail)?;
     return done;
   }
+  if action.kind == "deleteForever" {
+    // Gmail deletes for good what is expunged from Trash or Junk. From any
+    // other folder an expunge only takes the label off, so this never
+    // selects another one.
+    let refused = |text: &str| imap::ImapError::Refused { command: action.kind.clone(), text: text.into() };
+    let source = match purge_target(&action.payload) {
+      Some((_, "trash")) => &folders.trash,
+      Some((_, _)) => &folders.junk,
+      None => return Err(refused("no folder named")),
+    };
+    let Some(source) = source else {
+      return Err(refused("no such folder on this mailbox"));
+    };
+    // Always one thread. There is no search for "ALL" here, so no reply
+    // from the server can make this empty the folder.
+    let query = match thrid(&action.thread_id) {
+      Some(id) => format!("X-GM-THRID {id}"),
+      None => return Err(refused(&format!("{} is not a Gmail thread id", action.thread_id))),
+    };
+    client.select(source)?;
+    let done = match client.uid_search(&query) {
+      Ok(uids) if !uids.is_empty() => {
+        let set = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        // UID EXPUNGE takes these messages only. A plain EXPUNGE would
+        // also take any message that another client had marked.
+        client.uid_store(&set, "+FLAGS.SILENT", "(\\Deleted)").and_then(|_| client.uid_expunge(&set))
+      }
+      Ok(_) => Ok(()),
+      Err(e) => Err(e),
+    };
+    client.select(&folders.all_mail)?;
+    return done;
+  }
   let Some(thrid) = thrid(&action.thread_id) else {
     return Err(imap::ImapError::Refused {
       command: action.kind.clone(),
@@ -630,6 +715,128 @@ mod tests {
     assert_eq!(left[0].kind, "move");
     assert_eq!(left[0].attempts, 1);
     assert_eq!(left[0].last_error.as_deref(), Some("[CANNOT] no such label"));
+  }
+
+  /// Two threads in Trash, one of them with a message still in the inbox,
+  /// and one thread in Junk.
+  fn seed_trash(db: &MailDb) {
+    let row = |id: &str, thread: &str, folder: &str, uid: i64, labels: &[&str]| MessageRow {
+      message_id: id.into(),
+      thread_id: thread.into(),
+      folder: folder.into(),
+      uid: Some(uid),
+      sent_at: uid * 1000,
+      labels: labels.iter().map(|l| l.to_string()).collect(),
+      ..Default::default()
+    };
+    db.messages_upsert(
+      "vera@example.com",
+      &[
+        row("t1", "2b", "trash", 1, &[TRASH]),
+        row("t2", "2b", "trash", 2, &[TRASH]),
+        row("k1", "2b", "", 9, &[INBOX]),
+        row("t3", "3c", "trash", 3, &[TRASH]),
+        row("j1", "4d", "spam", 1, &[SPAM]),
+      ],
+    )
+    .unwrap();
+  }
+
+  fn ids_left(db: &MailDb) -> Vec<String> {
+    let conn = db.conn_mut();
+    let mut stmt = conn.prepare("SELECT message_id FROM messages ORDER BY message_id").unwrap();
+    stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().collect::<Result<_, _>>().unwrap()
+  }
+
+  #[test]
+  fn delete_forever_takes_only_the_trashed_messages_of_the_thread() {
+    let db = db();
+    seed_trash(&db);
+    db.actions_apply_and_enqueue("vera@example.com", "2b", "deleteForever", &json!({ "from": "trash" })).unwrap();
+    // The inbox message of the same thread stays, and so does the rest of Trash.
+    assert_eq!(ids_left(&db), vec!["j1", "k1", "t3"]);
+    // No folder named, or no thread: nothing is touched.
+    assert!(db.actions_apply_and_enqueue("vera@example.com", "3c", "deleteForever", &json!({})).is_err());
+    assert!(db.actions_apply_and_enqueue("vera@example.com", "", "deleteForever", &json!({ "from": "trash" })).is_err());
+    assert!(db.actions_apply_and_enqueue("vera@example.com", "3c", "deleteForever", &json!({ "from": "inbox" })).is_err());
+    assert_eq!(ids_left(&db), vec!["j1", "k1", "t3"]);
+  }
+
+  #[test]
+  fn there_is_no_action_that_empties_a_folder() {
+    let db = db();
+    seed_trash(&db);
+    assert!(db.actions_apply_and_enqueue("vera@example.com", "", "emptyFolder", &json!({ "from": "trash" })).is_err());
+    assert_eq!(ids_left(&db), vec!["j1", "k1", "t1", "t2", "t3"]);
+  }
+
+  #[test]
+  fn the_worker_expunges_from_trash_and_junk_and_from_nowhere_else() {
+    let db = db();
+    seed_trash(&db);
+    db.actions_apply_and_enqueue("vera@example.com", "2b", "deleteForever", &json!({ "from": "trash" })).unwrap();
+    db.actions_apply_and_enqueue("vera@example.com", "4d", "deleteForever", &json!({ "from": "junk" })).unwrap();
+    let selected = "* 2 EXISTS\r\n{tag} OK [READ-WRITE] selected\r\n";
+    let stream = crate::imap::fake_server(vec![
+      ("SELECT \"[Gmail]/Papirkurv\" (CONDSTORE)", selected),
+      ("UID SEARCH X-GM-THRID 43", "* SEARCH 1 2\r\n{tag} OK\r\n"),
+      ("UID STORE 1,2 +FLAGS.SILENT (\\Deleted)", "{tag} OK\r\n"),
+      ("UID EXPUNGE 1,2", "{tag} OK\r\n"),
+      ("SELECT \"[Gmail]/Alle mails\" (CONDSTORE)", selected),
+      ("SELECT \"[Gmail]/Spam\" (CONDSTORE)", selected),
+      ("UID SEARCH X-GM-THRID 77", "* SEARCH 1\r\n{tag} OK\r\n"),
+      ("UID STORE 1 +FLAGS.SILENT (\\Deleted)", "{tag} OK\r\n"),
+      ("UID EXPUNGE 1", "{tag} OK\r\n"),
+      ("SELECT \"[Gmail]/Alle mails\" (CONDSTORE)", selected),
+    ]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    let folders = Folders {
+      all_mail: "[Gmail]/Alle mails".into(),
+      trash: Some("[Gmail]/Papirkurv".into()),
+      junk: Some("[Gmail]/Spam".into()),
+      drafts: None,
+    };
+    let report = flush_actions(&db, &mut client, "vera@example.com", &folders).unwrap();
+    assert_eq!(report.delivered, 2);
+    assert!(db.actions_pending("vera@example.com").unwrap().is_empty());
+  }
+
+  #[test]
+  fn a_mailbox_with_no_trash_folder_refuses_and_names_the_folder_to_read_again() {
+    let db = db();
+    seed_trash(&db);
+    db.actions_apply_and_enqueue("vera@example.com", "3c", "deleteForever", &json!({ "from": "trash" })).unwrap();
+    let action = db.actions_pending("vera@example.com").unwrap().remove(0);
+    assert_eq!(purged_folder(&action), Some("trash"));
+    let stream = crate::imap::fake_server(vec![]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    let folders = Folders { all_mail: "[Gmail]/Alle mails".into(), trash: None, junk: None, drafts: None };
+    let report = flush_actions(&db, &mut client, "vera@example.com", &folders).unwrap();
+    assert_eq!(report.delivered, 0);
+    assert_eq!(db.actions_pending("vera@example.com").unwrap()[0].attempts, 1);
+    // An ordinary action names none.
+    db.actions_apply_and_enqueue("vera@example.com", "2b", "read", &json!({})).unwrap();
+    let read = db.actions_pending("vera@example.com").unwrap().into_iter().find(|a| a.kind == "read").unwrap();
+    assert_eq!(purged_folder(&read), None);
+  }
+
+  #[test]
+  fn a_restarted_folder_loses_its_rows_and_how_far_it_had_read() {
+    let db = db();
+    seed_trash(&db);
+    db.sync_state_set(&crate::messages::SyncState {
+      account: "vera@example.com".into(),
+      folder: "trash".into(),
+      phase: "live".into(),
+      highest_uid: Some(3),
+      highest_modseq: Some(77),
+      ..Default::default()
+    })
+    .unwrap();
+    db.messages_restart_folder("vera@example.com", "trash").unwrap();
+    assert_eq!(ids_left(&db), vec!["j1", "k1"]);
+    let state = db.sync_state_get("vera@example.com", "trash").unwrap().unwrap();
+    assert_eq!((state.phase.as_str(), state.highest_uid, state.highest_modseq), ("expired", None, None));
   }
 
   #[test]
