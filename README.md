@@ -79,10 +79,15 @@ the machine it runs on. No server of ours sits in between.
 
 - **Gmail** is read over IMAP and sent over SMTP, with an OAuth token
   (SASL XOAUTH2). See `products/mail/crates/mail-native/src/imap.rs` and
-  `smtp.rs`. This is why the app asks Google for the full-mailbox scope: it
-  is the only scope Gmail's IMAP and SMTP servers accept. The Gmail REST API
-  is used for the out-of-office reply and the send-as name, and for a mailbox
-  whose local copy is not yet complete.
+  `smtp.rs`. The Gmail REST API is used for the out-of-office reply and the
+  send-as name, and for a mailbox whose local copy is not yet complete.
+- The app asks Google for the full-mailbox scope, `https://mail.google.com/`,
+  for two reasons. It is the only scope Gmail's IMAP and SMTP servers accept.
+  And the app has "Delete forever": in Trash and in Junk you can delete for
+  good the conversations that you pick, which no narrower scope allows. The
+  app asks first, and then waits eight seconds with an Undo before it tells
+  the server. It has no "Empty Trash": it never deletes a folder, only what
+  you picked. See `actions.rs` in the same crate.
 - **Outlook** is read and sent through Microsoft Graph.
 - The app keeps a local copy of each mailbox in a SQLite file on your machine.
 - Refresh tokens are kept in the operating system's store: the keychain on
