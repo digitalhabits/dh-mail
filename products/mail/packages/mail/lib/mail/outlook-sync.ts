@@ -139,7 +139,17 @@ async function pass(email: string): Promise<void> {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[mail-sync] ${email}: ${reason}`);
+    /*
+      The row as it stands, with the phase and the reason changed. The store
+      writes every column of a state it is given, so a state that named only
+      the phase wiped the count of the first read: the read that resumed
+      started its bar again from nought, over mail it already had.
+    */
+    const prior = (await mailStore().sync.list().catch(() => [])).find(
+      (s) => s.account === email && s.folder === ""
+    );
     await publish({
+      ...prior,
       account: email,
       folder: "",
       phase: "paused",
@@ -213,7 +223,6 @@ function labelFor(role: string | undefined, path: string): string | null {
 }
 
 async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker): Promise<void> {
-  const token = await outlookAccessTokenFor(email);
   const known = scope === "all" || !worker.folders ? await listOutlookFolders(email) : worker.folders;
   worker.folders = known;
   // The inbox first, whatever order Graph lists them in: the list reads
@@ -252,9 +261,20 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
     // the folder over and brings back the ones the copy had lost.
     const repairing = link != null && (folder.role === "trash" || folder.role === "junk") && repairDue(email, folder.id);
     if (repairing) link = null;
+    // The folder was partway through its first read when the last pass ended.
+    let resumed = link != null && state?.phase === "reading";
     let deltaLink: string | undefined;
     for (;;) {
       if (worker.stop) return;
+      /*
+        A token for each page, and not one for the whole pass. The first read
+        of a big mailbox takes hours and an access token lives about one. With
+        one token taken at the start, the read of fifty thousand messages ran
+        until the token ran out, failed with a 401, and was put down as "needs
+        reconnect" on a mailbox whose sign-in was fine. The helper keeps a
+        token for 45 minutes, so this costs nothing until a new one is due.
+      */
+      const token = await outlookAccessTokenFor(email);
       let page: Awaited<ReturnType<typeof listOutlookFolderDelta>>;
       try {
         page = await listOutlookFolderDelta(token, folder.id, link);
@@ -264,16 +284,26 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
         // every row over; without this the pass failed for ever on the
         // same link. A row the folder no longer holds is corrected when
         // it turns up in another folder's delta.
-        if (link && (err as { status?: number }).status === 410) {
+        const status = (err as { status?: number }).status;
+        if (link && status === 410) {
           console.warn(`[mail-sync] ${email}: delta for ${folder.path} expired; reading the folder again`);
           link = null;
+          continue;
+        }
+        // A place kept from a read that was cut short, which Graph no longer
+        // takes: the folder is read from the start, once.
+        if (link && resumed && (status === 400 || status === 404)) {
+          console.warn(`[mail-sync] ${email}: the kept place in ${folder.path} is no longer good; reading the folder again`);
+          link = null;
+          resumed = false;
           continue;
         }
         throw err;
       }
       const rows: MailStoredMessage[] = [];
-      const bodies: { id: string; text: string; html: string | null; inline: Record<string, string>; attachments: unknown[] }[] = [];
       const removed: string[] = [];
+      type Body = { id: string; text: string; html: string | null; inline: Record<string, string>; attachments: unknown[] };
+      const pending: Promise<Body>[] = [];
       for (const entry of page.entries) {
         if (entry.kind === "removed") {
           removed.push(entry.id);
@@ -283,24 +313,37 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
         rows.push(rowFrom(m, label));
         const html = m.body?.contentType?.toLowerCase() === "html" ? (m.body.content ?? "") : null;
         const text = html ? "" : (m.body?.content ?? m.bodyPreview ?? "");
-        let inline: Record<string, string> = {};
-        let attachments: unknown[] = [];
-        if (m.hasAttachments || bodyHasInlineImage(html ?? undefined)) {
-          const meta = await listOutlookAttachmentMeta(token, m.id).catch(() => []);
-          attachments = meta
-            .filter((a) => !a.isInline)
-            .map((a) => ({
-              section: a.id,
-              filename: a.name || "attachment",
-              mimeType: a.contentType || "application/octet-stream",
-              size: a.size ?? 0,
-            }));
-          if (html && bodyHasInlineImage(html)) {
-            inline = await resolveOutlookInlineImages(token, m.id, html, meta).catch(() => ({}));
-          }
-        }
-        bodies.push({ id: m.id, text, html, inline, attachments });
+        /*
+          The attachments of a page's messages are asked for side by side.
+          They were asked for one after another: a page of a hundred messages
+          with thirty attachments was thirty requests in a row, each waiting
+          on the one before, and that was most of the hours a big mailbox
+          took. The Graph client lets three requests for a mailbox run at
+          once and queues the rest, so this cannot ask faster than it may.
+        */
+        pending.push(
+          (async (): Promise<Body> => {
+            let inline: Record<string, string> = {};
+            let attachments: unknown[] = [];
+            if (m.hasAttachments || bodyHasInlineImage(html ?? undefined)) {
+              const meta = await listOutlookAttachmentMeta(token, m.id).catch(() => []);
+              attachments = meta
+                .filter((a) => !a.isInline)
+                .map((a) => ({
+                  section: a.id,
+                  filename: a.name || "attachment",
+                  mimeType: a.contentType || "application/octet-stream",
+                  size: a.size ?? 0,
+                }));
+              if (html && bodyHasInlineImage(html)) {
+                inline = await resolveOutlookInlineImages(token, m.id, html, meta).catch(() => ({}));
+              }
+            }
+            return { id: m.id, text, html, inline, attachments };
+          })()
+        );
       }
+      const bodies = await Promise.all(pending);
       if (rows.length) {
         await store.messages.upsertMany(email, rows);
         for (const b of bodies) {
@@ -340,6 +383,16 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
       }
       if (page.nextLink) {
         link = page.nextLink;
+        /*
+          The place is kept after every page, under a phase of its own. It
+          was kept only in memory, and a folder's state was written when the
+          folder was finished. So a read that was cut short, by an error or
+          by the app being closed, began that folder again from its first
+          message. A folder that takes longer to read than the app stays
+          open was never finished at all: an inbox of forty thousand on a
+          computer that is shut down each evening.
+        */
+        await publish({ account: email, folder: folder.id, phase: "reading", deltaLink: link, lastOkAt: Date.now() });
         continue;
       }
       deltaLink = page.deltaLink;

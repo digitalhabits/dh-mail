@@ -2,7 +2,7 @@
 name = "digital-habits-mail"
 # Not the version the app shows: Tauri takes that from tauri.conf.json, which
 # reads ../package.json. Kept in step by scripts/check-version.sh.
-version = "0.9.12"
+version = "0.9.13"
 description = "Digital Habits: Mail — Mac desktop app"
 authors = ["Digital Habits"]
 license = ""

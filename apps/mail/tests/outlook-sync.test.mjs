@@ -47,7 +47,11 @@ setMailStore({
       }
       const i = states.findIndex((s) => s.account === state.account && s.folder === (state.folder ?? ""));
       const next = { ...state, folder: state.folder ?? "" };
-      if (i >= 0) states[i] = { ...states[i], ...next };
+      // The row is replaced, not merged: the real store writes every column
+      // of the state it is given, and a field left out is a field emptied.
+      // This fake merged once, and so passed a worker whose "paused" state
+      // wiped the first read's count in the real app.
+      if (i >= 0) states[i] = next;
       else states.push(next);
     },
   },
@@ -87,6 +91,8 @@ const message = (id, folder) => ({
 
 /** Graph as the worker sees it: the delta calls, in order, and their answers. */
 const deltaCalls = [];
+/** A folder of two pages, whose second page fails once: a read cut short mid-folder. */
+let failSecondPageOnce = false;
 let expireInboxOnce = false;
 /** Graph fails the archive's delta once: a first read cut short partway. */
 let failArchiveOnce = false;
@@ -98,7 +104,25 @@ globalThis.fetch = async (url, init) => {
   if (delta) {
     const folder = decodeURIComponent(delta[1]);
     const token = url.match(/deltatoken=([^&]+)/)?.[1] ?? null;
-    deltaCalls.push({ folder, token });
+    const skip = url.match(/skiptoken=([^&]+)/)?.[1] ?? null;
+    deltaCalls.push({ folder, token, skip, auth: init?.headers?.Authorization ?? null });
+    if (folder === "big") {
+      if (token) return json({ value: [], "@odata.deltaLink": `https://graph.microsoft.com/v1.0/me/mailFolders/big/messages/delta?$deltatoken=big-t${deltaCalls.length}` });
+      if (!skip) {
+        return json({
+          value: [message("big-1", "big")],
+          "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/big/messages/delta?$skiptoken=big-p2",
+        });
+      }
+      if (failSecondPageOnce) {
+        failSecondPageOnce = false;
+        return json({ error: { code: "InternalServerError", message: "broke" } }, 500);
+      }
+      return json({
+        value: [message("big-2", "big")],
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/big/messages/delta?$deltatoken=big-done",
+      });
+    }
     if (folder === "arch" && failArchiveOnce) {
       failArchiveOnce = false;
       // A 500, which the Graph client does not retry, so the pass fails at once.
@@ -128,7 +152,7 @@ globalThis.fetch = async (url, init) => {
 const until = async (ok, what) => {
   const deadline = Date.now() + 5_000;
   while (!ok()) {
-    if (Date.now() > deadline) throw new Error(`waited in vain for ${what}`);
+    if (Date.now() > deadline) throw new Error(`waited in vain for ${what}\nstates: ${JSON.stringify(states.map((s) => [s.folder, s.phase, s.fullSyncDone, s.lastError?.slice(0, 80)]))}\ncalls: ${JSON.stringify(deltaCalls.slice(-8))}`);
     await new Promise((r) => setTimeout(r, 20));
   }
 };
@@ -201,4 +225,72 @@ suite(async () => {
   await until(() => overall()?.phase === "live", "the resumed first read");
   check("the resumed read announced itself again and ended live", fullAnnouncements === fullsAtStart + 2 && overall().fullSyncTotal === 3, { fullAnnouncements, overall: overall() });
   await stopOutlookSync(me);
+
+  /*
+    A big folder, cut short in the middle. What a computer did with a
+    mailbox of fifty thousand messages: the read ran until something ended it, and
+    the next one began the same folder again from its first message, with
+    the bar back at nought. A folder that takes longer than the app stays
+    open was never finished.
+  */
+  {
+  states.length = 0;
+  lastOverallPhase = null;
+  deltaCalls.length = 0;
+  upserts.length = 0;
+  // A second mailbox: the folder list of the first is kept for half a
+  // minute, and would not show a folder added now.
+  const big = "big@outlook.example";
+  rememberOutlookAccessToken(big, "tok");
+  const overall = () => states.find((s) => s.account === big && s.folder === "");
+  FOLDERS.push({ id: "big", displayName: "Big", wellKnownName: undefined, count: 2 });
+  failSecondPageOnce = true;
+  check("a worker starts on the mailbox with the big folder", startOutlookSync(big) === true);
+  await until(() => overall()?.phase === "paused", "the pause in the middle of the big folder");
+  const kept = states.find((s) => s.folder === "big");
+  check(
+    "the place in the folder is kept when the read is cut short",
+    kept?.phase === "reading" && /skiptoken=big-p2/.test(kept?.deltaLink ?? ""),
+    kept
+  );
+  check(
+    "and the pause keeps the count of what was read, though the store replaces the row",
+    overall().phase === "paused" && (overall().fullSyncDone ?? 0) >= 1 && (overall().fullSyncTotal ?? 0) >= 1,
+    overall()
+  );
+  const doneAtPause = overall().fullSyncDone;
+  // A new sign-in token arrives while the read is paused, as it does every
+  // hour of a read that takes several.
+  rememberOutlookAccessToken(big, "tok-2");
+  const callsAtPause = deltaCalls.length;
+  wakeOutlookSync(big);
+  await until(() => overall()?.phase === "live", "the read taken up again");
+  const bigAfter = deltaCalls.slice(callsAtPause).filter((c) => c.folder === "big");
+  check(
+    "the read is taken up at the kept place, and the folder's first page is not asked for again",
+    bigAfter.length >= 1 && bigAfter[0].skip === "big-p2" && !bigAfter.some((c) => !c.skip && !c.token),
+    bigAfter
+  );
+  check(
+    "each page is asked for with the token of that moment, not the one the pass began with",
+    bigAfter.every((c) => c.auth === "Bearer tok-2"),
+    bigAfter.map((c) => c.auth)
+  );
+  check(
+    "both messages of the folder are in the copy, each read once",
+    upserts.filter((r) => r.messageId === "big-1").length === 1 && upserts.filter((r) => r.messageId === "big-2").length === 1,
+    upserts.map((r) => r.messageId)
+  );
+  check(
+    "the count goes on from where it was, and does not start again",
+    (overall().fullSyncDone ?? 0) > doneAtPause,
+    { atPause: doneAtPause, atEnd: overall().fullSyncDone }
+  );
+  check(
+    "the finished folder holds its delta link, and is no longer marked as being read",
+    states.find((s) => s.folder === "big")?.phase === "live" && /deltatoken=big-done/.test(states.find((s) => s.folder === "big")?.deltaLink ?? "")
+  );
+  FOLDERS.pop();
+  await stopOutlookSync(big);
+  }
 });
