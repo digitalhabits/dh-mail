@@ -24,7 +24,8 @@ import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, subscribeMailPopouts } from "@/lib/mail/popout";
 import { cn } from "@/lib/utils";
 import { rowTime } from "@/lib/mail/date-format";
-import { SenderAvatar } from "@/components/mail/SenderAvatar";
+import { PeopleAvatar } from "@/components/mail/PersonAvatar";
+import { threadPeople } from "@/lib/mail/person-participants";
 
 /** A finger that has moved this far has said which way it is going. */
 const SWIPE_DECIDE_PX = 8;
@@ -635,6 +636,11 @@ export function ThreadListRow({
   const padX = inCard ? "px-4" : "px-5";
   const draftKeys = useThreadDraftKeys();
   const hasDraft = draftKeys.has(threadDraftKey(t.account, t.threadId));
+  // A one-to-one keeps the face it always had. Only a group is a pile.
+  const group = threadPeople(t);
+  const people = group.isGroup
+    ? group.named
+    : [{ name: t.fromName, email: t.fromEmail }];
   /*
     Answered in a window of its own.
 
@@ -829,9 +835,13 @@ export function ThreadListRow({
           the hover is a grey, so a row you are pointing at is never read as
           a row you have opened.
         */
+        // The ring between the discs of a group's avatar is the row's own
+        // fill, so the discs look cut out of it. The open row's fill in dark
+        // is a tint you can see through, and a ring has to be solid — see
+        // --mail-row-selected-solid.
         selected
-          ? "bg-[var(--mail-row-selected)]"
-          : "hover:bg-[var(--mail-row-hover)]",
+          ? "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)]"
+          : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]",
         selected &&
           "before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
       )}
@@ -856,15 +866,15 @@ export function ThreadListRow({
           <Clock className={cn("h-5 w-5", -swipeX >= SWIPE_COMMIT_PX ? "opacity-100" : "opacity-50")} />
         </span>
       ) : null}
-      <SenderAvatar
-        name={t.fromName}
-        email={t.fromEmail}
+      {/* Everybody on the thread, as the person view draws them: one face
+          for a one-to-one, a pile for a group. */}
+      <PeopleAvatar
+        people={people}
+        logoEmail={t.fromEmail}
         logoUrl={t.crmLogoUrl}
         unread={t.unread}
         onNavy={onNavy}
-        className={
-          narrow ? "h-9 w-9" : wide ? undefined : compact ? "h-7 w-7" : undefined
-        }
+        size={!narrow && !wide && compact ? 28 : 36}
       />
       {narrow ? null : wide ? (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">

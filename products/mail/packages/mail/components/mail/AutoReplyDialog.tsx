@@ -234,6 +234,10 @@ export function AutoReplyDialog({
     return () => {
       cancelled = true;
     };
+    // `t` is not in the list. This effect loads the forms, and a run for a
+    // new language removes what the reader typed. `t` is read only for the
+    // text of an error.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialAccount]);
 
   const updateForm = (account: string, patch: Partial<FormState>) => {

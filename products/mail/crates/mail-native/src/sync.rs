@@ -1102,6 +1102,29 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
   };
   let mut sent = 0;
   for (row, raw) in due {
+    /*
+      Taken before it is sent, and only by one.
+
+      Two workers can be looking at one store: a second copy of the app,
+      or the same copy started again over a first that is still running.
+      Both then found this row due, opened a connection of their own, and
+      sent it — and the message went twice, to everybody on it. The claim
+      is the one write they cannot both win.
+    */
+    match db.outbox_claim(row.id, crate::db::now_ms()) {
+      Ok(true) => {}
+      Ok(false) => {
+        log::info!(
+          "[mail-sync] {email}: \"{}\" is already being sent by another worker; leaving it",
+          row.subject
+        );
+        continue;
+      }
+      Err(e) => {
+        log::warn!("[mail-sync] {email}: could not take the message on: {e}");
+        continue;
+      }
+    }
     match smtp.send(email, &row.recipients, raw.as_bytes()) {
       Ok(_) => {
         let _ = db.outbox_done(row.id);

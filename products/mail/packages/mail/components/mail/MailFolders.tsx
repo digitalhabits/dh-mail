@@ -290,7 +290,7 @@ export function readMailThreadDragData(
  * `mergeFoldersByName` — the rail is the one place that needs them apart.
  */
 let foldersCache: MailAccountFolder[] | null = null;
-let foldersListeners = new Set<(folders: MailAccountFolder[]) => void>();
+const foldersListeners = new Set<(folders: MailAccountFolder[]) => void>();
 /** Corrections held over the provider's numbers — see `lib/mail/folder-counts`. */
 const stickyCounts: StickyFolderCounts = new Map();
 

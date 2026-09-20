@@ -32,7 +32,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'sha256-E7NlAkMMDK3r3Bl8hr5tnIL7oGXmsCQ9IVME0iPxFHU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: dhmail: http://dhmail.localhost https://plan.digitalhabits.org; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost https://gmail.googleapis.com https://www.googleapis.com https://docs.googleapis.com https://people.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://graph.microsoft.com https://login.microsoftonline.com; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
   "bundle": {

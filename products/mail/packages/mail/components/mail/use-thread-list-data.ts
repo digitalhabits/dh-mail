@@ -724,6 +724,11 @@ export function useThreadListData(input: {
         }
       }
     },
+    // The list has the count of the mailboxes and not the array. A new
+    // order, or a new `accounts` prop, makes a new array with the same
+    // mailboxes in it, and that must not load the list again.
+    // `reconcileSelection` does not change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       accountEmails.length,
       activeFolder,
@@ -870,6 +875,7 @@ export function useThreadListData(input: {
     loadingList,
     loadingMore,
     refreshing,
+    viewerId,
   ]);
 
   /**
@@ -1011,7 +1017,7 @@ export function useThreadListData(input: {
       clear();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [loadThreads, debouncedSearch]);
+  }, [loadThreads, debouncedSearch, mailSurfaceRef]);
 
   // A chat popout window sent mail: refresh that mailbox's Sent soon
   // (staggered — the provider needs a beat to index the sent copy).

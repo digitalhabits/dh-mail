@@ -29,6 +29,9 @@ const SIGN_IN = /\breconnect\b|invalid_grant/i;
 const OFFLINE: RegExp[] = [
   /the token request failed/i,
   /error sending request/i,
+  // The Outlook worker runs in the web view, and these are a web view's words
+  // for a request that got no answer: Chromium's, WebKit's, and Firefox's.
+  /failed to fetch|load failed|networkerror/i,
   /\breconnecting\s*$/i,
   /timed out|timeout/i,
   /connection (refused|reset|closed|aborted)/i,

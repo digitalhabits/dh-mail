@@ -25,6 +25,7 @@ import { isMailPersonPinned, orderByPersonPin, toggleMailPersonPin } from "@/lib
 import { ComposeView } from "@/components/mail/ComposeView";
 import { ThreadPane } from "@/components/mail/ThreadPane";
 import { CrmProposalHost } from "@/components/mail/CrmProposalHost";
+import { firstReadLines, pausedAfterFirstRead } from "@/lib/mail/first-read";
 import { syncPauseKind } from "@/lib/mail/sync-pause";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
 import { isInteractiveDoubleClickTarget, MAX_CONTROLS_WIDTH, MAX_LIST_ARIA, MIN_CONTROLS_WIDTH, MIN_LIST_HEIGHT, NARROW_LIST_WIDTH, useMailControlsWidth, useMailListHeight, useMailListPlacement, useMailListWidth, nextZoomStop, useMailZoom } from "@/components/mail/use-mail-layout";
@@ -32,6 +33,7 @@ import { SelectionPane } from "@/components/mail/SelectionPane";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { ListNotice, ListNoticeButton } from "@/components/mail/ListNotice";
+import { MailFirstReadLine } from "@/components/mail/MailFirstReadLine";
 import { AlertTriangle, ArrowLeft, Clock, Folder, Funnel, Loader2, Maximize2, Minimize2, Moon, Pin, Plus, Radio, Search, SquarePen, X, Paperclip } from "lucide-react";
 import { MAIL_RECONNECT_REQUEST, toast, type MailReconnectRequest } from "@/lib/mail/toast";
 import { beginNativeWindowDragOnMove, isChatPopoutOpen } from "@/lib/native-shell";
@@ -53,6 +55,7 @@ import { deleteDraft, listHandedOverDraftKeys, newComposeDraftKey, pruneExpiredM
 import { sanitizeEmailHtml, stripQuotedHtml } from "@/components/mail/EmailHtmlView";
 import { plainTextToEditorHtml } from "@/lib/client-email-html";
 import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
+import { dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
 import { formatEmailBody, stripQuotedReplies } from "@/lib/email-mime";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { scheduleMailThreadPrefetch } from "@/lib/mail/prefetch-threads";
@@ -1021,7 +1024,14 @@ export function MailPage({
           : null;
       });
     },
-    [listCacheKey, viewMode, selectedPersonKey]
+    [
+      listCacheKey,
+      viewMode,
+      selectedPersonKey,
+      setThreads,
+      threadsRef,
+      viewerId,
+    ]
   );
 
   const markUnread = React.useCallback(
@@ -1048,7 +1058,7 @@ export function MailPage({
         );
       }
     },
-    [listCacheKey]
+    [listCacheKey, setThreads, viewerId]
   );
 
   /**
@@ -1173,7 +1183,7 @@ export function MailPage({
         );
       }
     },
-    [listCacheKey]
+    [listCacheKey, hiddenRowsRef, setSnoozedCount, setThreads, viewerId]
   );
 
   const undoLastMailAction = React.useCallback(async () => {
@@ -1301,10 +1311,10 @@ export function MailPage({
       hideRow(hiddenRowsRef.current, rowKey, listViewIdRef.current, until);
     }
     loadAbortRef.current?.abort();
-  }, []);
+  }, [hiddenRowsRef, listViewIdRef, loadAbortRef]);
   const unhideRows = React.useCallback((keys: string[]) => {
     for (const rowKey of keys) unhideRow(hiddenRowsRef.current, rowKey);
-  }, []);
+  }, [hiddenRowsRef]);
 
   const moveToFolder = React.useCallback(
     async (
@@ -1363,6 +1373,7 @@ export function MailPage({
       openFolderName,
       hideRemovedRows,
       unhideRows,
+      setThreads,
     ]
   );
 
@@ -1436,6 +1447,7 @@ export function MailPage({
       hideRemovedRows,
       unhideRows,
       isOutlookAccount,
+      setThreads,
     ]
   );
 
@@ -1501,7 +1513,7 @@ export function MailPage({
         toast.error(err instanceof Error ? err.message : "Couldn't move");
       }
     },
-    [threads, folder, activeFolder, removeThread]
+    [threads, folder, activeFolder, removeThread, loadAbortRef, setThreads]
   );
 
   /**
@@ -1592,7 +1604,15 @@ export function MailPage({
         }
       );
     },
-    [threads, removeThread, hideRemovedRows, unhideRows, landOnPerson]
+    [
+      threads,
+      removeThread,
+      hideRemovedRows,
+      unhideRows,
+      landOnPerson,
+      selectedPersonKey,
+      setThreads,
+    ]
   );
 
   /**
@@ -1698,6 +1718,7 @@ export function MailPage({
       selectedPersonKey,
       landOnPerson,
       pushBatchUndo,
+      setThreads,
     ]
   );
 
@@ -1932,6 +1953,7 @@ export function MailPage({
       clearMultiSelection,
       noteLeftOpenFolder,
       pushBatchUndo,
+      setThreads,
     ]
   );
 
@@ -2005,7 +2027,7 @@ export function MailPage({
         );
       }
     },
-    [threads]
+    [threads, setThreads]
   );
 
   /**
@@ -2065,7 +2087,7 @@ export function MailPage({
       const nowPinned = toggleMailPin(summary);
       toast(nowPinned ? t("pinned") : t("unpinned"));
     },
-    [capturePinFlip]
+    [capturePinFlip, t]
   );
 
   // After pin/unpin reflow, glide rows from their old spots (FLIP).
@@ -2166,6 +2188,8 @@ export function MailPage({
       hideRemovedRows,
       unhideRows,
       isOutlookAccount,
+      selected,
+      setThreads,
     ]
   );
 
@@ -2196,7 +2220,7 @@ export function MailPage({
         );
       }
     },
-    [threads, removeThread]
+    [threads, removeThread, setThreads]
   );
 
   /**
@@ -2244,7 +2268,7 @@ export function MailPage({
             });
           }
         : undefined,
-    [purgeFrom]
+    [purgeFrom, threadsRef]
   );
 
   const runPurge = React.useCallback(() => {
@@ -2315,6 +2339,7 @@ export function MailPage({
     unhideRows,
     clearMultiSelection,
     loadThreads,
+    setThreads,
   ]);
 
   /**
@@ -2361,7 +2386,14 @@ export function MailPage({
         );
       }
     },
-    [threads, removeThread, noteLeftOpenFolder, hideRemovedRows, unhideRows]
+    [
+      threads,
+      removeThread,
+      noteLeftOpenFolder,
+      hideRemovedRows,
+      unhideRows,
+      setThreads,
+    ]
   );
 
   const startCompose = React.useCallback(
@@ -2789,6 +2821,7 @@ export function MailPage({
       unhideRows,
       clearMultiSelection,
       noteLeftOpenFolder,
+      setThreads,
     ]
   );
 
@@ -2863,6 +2896,12 @@ export function MailPage({
       activeFolder,
       tab,
       listCacheKey,
+      hiddenRowsRef,
+      listViewIdRef,
+      loadAbortRef,
+      setSnoozedCount,
+      setThreads,
+      viewerId,
     ]
   );
 
@@ -2890,7 +2929,7 @@ export function MailPage({
         );
       }
     },
-    [threads, removeThread]
+    [threads, removeThread, hiddenRowsRef, setSnoozedCount, setThreads]
   );
 
   /**
@@ -2954,7 +2993,7 @@ export function MailPage({
           : mailSay("syncFoundMany", { count: arrived })
       );
     });
-  }, [loadThreads, selected]);
+  }, [loadThreads, selected, threadsRef]);
 
   /**
    * What the providers are holding, across every mailbox that can hold.
@@ -3070,7 +3109,7 @@ export function MailPage({
       patchCachedThreads(viewerId, listCacheKey, next);
       return next;
     });
-  }, [listCacheKey]);
+  }, [listCacheKey, setThreads, threadsRef, viewerId]);
   openThreadRef.current = openThread;
 
   /**
@@ -3180,7 +3219,9 @@ export function MailPage({
                 // bridge. An editor knows nothing of that bridge and would
                 // keep the words while dropping the address, so the links
                 // are put back before the copy is written.
-                return restoreAnchorsForEditing(kept);
+                return dropRemoteImagesForEditing(
+                  restoreAnchorsForEditing(kept)
+                );
               })()
             : plainTextToEditorHtml(
                 stripQuotedReplies(
@@ -3329,10 +3370,17 @@ export function MailPage({
       onMoveToInbox: () => void moveToInbox(t),
       here: hereNow,
     }),
+    // `hereNow` is not in the list. It is declared below this callback, and
+    // it is a new object on each render. It comes from the tab and the open
+    // folder. `openThread` changes with the list key, and `moveToFolder`
+    // changes with the rows. A new tab or folder changes the two, so this
+    // callback is made again when `hereNow` moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       editAsNewMessage,
       folders,
       moveToFolder,
+      moveToInbox,
       openThread,
       restoreFromTrash,
       setThreadJunk,
@@ -3672,13 +3720,16 @@ export function MailPage({
   // One row per correspondent for the People view.
   const { connecting, connect } = useMailConnect();
   const syncStates = useMailSyncStates();
+  const firstReads = React.useMemo(() => firstReadLines(syncStates), [syncStates]);
+  const syncPaused = React.useMemo(() => pausedAfterFirstRead(syncStates), [syncStates]);
   /** Messages in hand while a mailbox's first read runs; 0 when none is. */
   const readSoFar = React.useMemo(
     () =>
-      syncStates
-        .filter((s) => s.folder === "" && s.phase === "full")
-        .reduce((n, s) => n + (s.fullSyncDone ?? 0), 0),
-    [syncStates]
+      // Only while it runs: a paused mailbox is searched at its provider, whole.
+      firstReads
+        .filter((line) => line.folder === "" && line.state === "reading")
+        .reduce((n, line) => n + line.done, 0),
+    [firstReads]
   );
   /* What the empty state says about a search: that it could not run,
      that it ran over the part read so far, or that it found nothing. */
@@ -3859,11 +3910,14 @@ export function MailPage({
     ? (threads.find((t) => rowStandsFor(t, selected)) ?? null)
     : null;
 
-  const openPerson = (row: PersonRow) => {
-    setComposing(false);
-    setListExpanded(false);
-    landOnPerson(row);
-  };
+  const openPerson = React.useCallback(
+    (row: PersonRow) => {
+      setComposing(false);
+      setListExpanded(false);
+      landOnPerson(row);
+    },
+    [landOnPerson]
+  );
 
   /**
    * Two clicks on a person: their mail in a window of its own — the pane
@@ -4914,54 +4968,38 @@ export function MailPage({
               the same thing in more words — one wait, said once. This one
               is for what is still out *while* there is something to read,
               which is the case nobody was told about. */}
-          {/* The local copy being filled, or a sync that stopped. The first
-              read of a mailbox takes minutes, and the list grows as it goes;
-              this says so, and says when the worker is waiting on the reader. */}
+          {/* The first read of a mailbox, for as long as it is not complete.
+              It takes hours, across many sittings, and the list grows as it
+              goes. The line stays up in every state — reading, waiting to try
+              again, stopped — and says which, at every width of the list. It
+              used to show only while the phase was "full" and the list was
+              wide, so a reader saw it go and took the read for finished. */}
+          {firstReads.map((line) => (
+            <MailFirstReadLine
+              key={`${line.account}|${line.folder}`}
+              line={line}
+              narrow={listNarrow}
+              onReconnect={() =>
+                window.dispatchEvent(
+                  new CustomEvent<MailReconnectRequest>(MAIL_RECONNECT_REQUEST, {
+                    detail: {
+                      provider: isOutlookAccount(line.account) ? "outlook" : "gmail",
+                      email: line.account,
+                    },
+                  })
+                )
+              }
+            />
+          ))}
+          {/* A sync that stopped on a mailbox whose copy is complete. */}
           {!listNarrow
-            ? syncStates
-                .filter((s) => s.phase === "full" || s.phase === "paused")
+            ? syncPaused
                 .map((s) => (
                   <div
                     key={`${s.account}|${s.folder}`}
                     className="border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-2.5"
                   >
-                    {s.phase === "full" ? (
-                      /* A bar with the numbers beside it. The first read of
-                         a big mailbox is an hour; a bar says how far without
-                         asking the reader to do the division. */
-                      (() => {
-                        const done = s.fullSyncDone ?? 0;
-                        const total = Math.max(s.fullSyncTotal ?? 0, 1);
-                        const share = Math.min(1, done / total);
-                        return (
-                          <div
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={total}
-                            aria-valuenow={done}
-                            aria-label={t("syncReadingLabel", { account: s.account })}
-                          >
-                            <p className="flex items-baseline justify-between gap-3 text-[12px] leading-snug">
-                              <span className="min-w-0 truncate font-semibold text-[var(--mail-chrome-fg)]">
-                                {t("syncReadingLabel", { account: s.account })}
-                              </span>
-                              <span className="shrink-0 tabular-nums text-[var(--mail-chrome-muted)]">
-                                {t("syncReadingCount", {
-                                  done: done.toLocaleString(),
-                                  total: total.toLocaleString(),
-                                })}
-                              </span>
-                            </p>
-                            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--mail-chrome-hover)]">
-                              <div
-                                className="h-full rounded-full bg-teal-600 transition-[width] duration-700"
-                                style={{ width: `${Math.max(1, Math.round(share * 100))}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()
-                    ) : syncPauseKind(s.lastError) === "signIn" ? (
+                    {syncPauseKind(s.lastError) === "signIn" ? (
                       /* The grant is not good for the copy — an old one
                          from before the full-mail scope, or one revoked.
                          Said in the reader's terms, with the one thing

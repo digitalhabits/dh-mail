@@ -527,6 +527,7 @@
   --mail-accent: #2a9d8f;
   --mail-link: #2a9d8f;
   --mail-row-selected: #ffffff;
+  --mail-row-selected-solid: #ffffff;
   /* The chrome's hover, so a row in the list and a row in the folders can
      never drift apart. They are the same colour on this theme already. */
   --mail-row-hover: var(--mail-chrome-hover);
@@ -640,6 +641,8 @@
   /* Colour marks the open thread, grey marks the one under the pointer, so
      the two are never mistaken for each other. */
   --mail-row-selected: rgba(42, 157, 143, 0.1);
+  /* The same tint as a solid colour, for a ring drawn over the row. */
+  --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 10%, #1a2735);
   --mail-row-hover: var(--mail-chrome-hover);
 
   /*

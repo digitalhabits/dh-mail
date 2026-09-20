@@ -24,15 +24,30 @@ import { startPointerDrag } from "@/lib/pointer-drag";
  * stands in the bottom right corner, so its right and bottom edges stay
  * where they are. A caller that wants this draws the handles and gives each
  * one `startResize`. The size is kept under `sizeKey`, when there is one.
+ *
+ * A card in the middle of the window is a different animal. Nothing of it
+ * stays put — it is held by its centre, so every edge moves, and an edge
+ * dragged an inch makes the card two inches wider. Both edges of each pair
+ * are given a handle there, because a dialog is grabbed wherever it is
+ * nearest. `centred` says which kind is on screen, and the two keep their
+ * own sizes: the corner's card and the dialog are not the same shape, and
+ * one is not a suggestion for the other.
  */
-export type CardResizeEdge = "left" | "top" | "top-left";
+export type CardResizeEdge =
+  | "left"
+  | "top"
+  | "top-left"
+  | "right"
+  | "bottom"
+  | "bottom-right";
 
 const MIN_CARD_WIDTH = 352;
 const MIN_CARD_HEIGHT = 300;
 
 export function useCardDrag(
   enabled: boolean,
-  sizeKey?: string
+  sizeKey?: string,
+  centred = false
 ): {
   cardRef: React.MutableRefObject<HTMLDivElement | null>;
   offset: { x: number; y: number };
@@ -45,26 +60,37 @@ export function useCardDrag(
 } {
   const cardRef = React.useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = React.useState({ x: 0, y: 0 });
-  const [size, setSize] = React.useState<{ width?: number; height?: number }>({});
+  type CardSize = { width?: number; height?: number };
+  const [sizes, setSizes] = React.useState<{
+    corner: CardSize;
+    centre: CardSize;
+  }>({ corner: {}, centre: {} });
+  const size = centred ? sizes.centre : sizes.corner;
+  /** The dialog's own key, beside the corner card's. */
+  const centreKey = sizeKey ? `${sizeKey}:centred` : undefined;
 
   React.useEffect(() => {
-    if (!enabled || !sizeKey) return;
-    try {
-      const stored = JSON.parse(localStorage.getItem(sizeKey) ?? "null") as {
-        width?: unknown;
-        height?: unknown;
-      } | null;
-      if (!stored) return;
-      const ok = (value: unknown, floor: number): value is number =>
-        typeof value === "number" && Number.isFinite(value) && value >= floor;
-      setSize({
-        width: ok(stored.width, MIN_CARD_WIDTH) ? stored.width : undefined,
-        height: ok(stored.height, MIN_CARD_HEIGHT) ? stored.height : undefined,
-      });
-    } catch {
-      /* private mode, or something else wrote the key */
-    }
-  }, [enabled, sizeKey]);
+    if (!enabled || !sizeKey || !centreKey) return;
+    const read = (key: string): CardSize => {
+      try {
+        const stored = JSON.parse(localStorage.getItem(key) ?? "null") as {
+          width?: unknown;
+          height?: unknown;
+        } | null;
+        if (!stored) return {};
+        const ok = (value: unknown, floor: number): value is number =>
+          typeof value === "number" && Number.isFinite(value) && value >= floor;
+        return {
+          width: ok(stored.width, MIN_CARD_WIDTH) ? stored.width : undefined,
+          height: ok(stored.height, MIN_CARD_HEIGHT) ? stored.height : undefined,
+        };
+      } catch {
+        /* private mode, or something else wrote the key */
+        return {};
+      }
+    };
+    setSizes({ corner: read(sizeKey), centre: read(centreKey) });
+  }, [enabled, sizeKey, centreKey]);
 
   const startResize = (edge: CardResizeEdge) => (event: React.PointerEvent) => {
     if (!enabled || event.button !== 0) return;
@@ -74,36 +100,64 @@ export function useCardDrag(
     event.stopPropagation();
     const box = card.getBoundingClientRect();
     const from = { x: event.clientX, y: event.clientY };
-    // The right and bottom edges stay put, so the room to grow into is
-    // what lies between them and the far sides of the window.
     const MARGIN = 16;
-    const maxWidth = Math.max(MIN_CARD_WIDTH, box.right - MARGIN);
-    const maxHeight = Math.max(MIN_CARD_HEIGHT, box.bottom - MARGIN);
+    // In the corner, the right and bottom edges stay put, so the room to
+    // grow into is what lies between them and the far sides of the window.
+    // In the middle, the room is the window itself, less a margin on each
+    // side — and every inch of the drag moves two edges.
+    const maxWidth = centred
+      ? Math.max(MIN_CARD_WIDTH, window.innerWidth - MARGIN * 2)
+      : Math.max(MIN_CARD_WIDTH, box.right - MARGIN);
+    const maxHeight = centred
+      ? Math.max(MIN_CARD_HEIGHT, window.innerHeight - MARGIN * 2)
+      : Math.max(MIN_CARD_HEIGHT, box.bottom - MARGIN);
+    const grows = centred ? 2 : 1;
+    const movesWidth = edge !== "top" && edge !== "bottom";
+    const movesHeight = edge !== "left" && edge !== "right";
+    // Which way the edge under the hand makes the card bigger.
+    const wider = edge === "right" || edge === "bottom-right" ? 1 : -1;
+    const taller = edge === "bottom" || edge === "bottom-right" ? 1 : -1;
     let latest = size;
     startPointerDrag(
       { handle: event.currentTarget as HTMLElement, pointerId: event.pointerId },
       {
-        cursor:
-          edge === "left" ? "ew-resize" : edge === "top" ? "ns-resize" : "nwse-resize",
+        cursor: !movesHeight ? "ew-resize" : !movesWidth ? "ns-resize" : "nwse-resize",
         onMove: (move) => {
           const next = { ...latest };
-          if (edge !== "top") {
+          if (movesWidth) {
             next.width = Math.round(
-              Math.min(maxWidth, Math.max(MIN_CARD_WIDTH, box.width + (from.x - move.clientX)))
+              Math.min(
+                maxWidth,
+                Math.max(
+                  MIN_CARD_WIDTH,
+                  box.width + (move.clientX - from.x) * wider * grows
+                )
+              )
             );
           }
-          if (edge !== "left") {
+          if (movesHeight) {
             next.height = Math.round(
-              Math.min(maxHeight, Math.max(MIN_CARD_HEIGHT, box.height + (from.y - move.clientY)))
+              Math.min(
+                maxHeight,
+                Math.max(
+                  MIN_CARD_HEIGHT,
+                  box.height + (move.clientY - from.y) * taller * grows
+                )
+              )
             );
           }
           latest = next;
-          setSize(next);
+          setSizes((current) =>
+            centred
+              ? { ...current, centre: next }
+              : { ...current, corner: next }
+          );
         },
         onEnd: () => {
-          if (!sizeKey) return;
+          const key = centred ? centreKey : sizeKey;
+          if (!key) return;
           try {
-            localStorage.setItem(sizeKey, JSON.stringify(latest));
+            localStorage.setItem(key, JSON.stringify(latest));
           } catch {
             /* private mode */
           }
@@ -152,9 +206,12 @@ export function useCardDrag(
     offset,
     startDrag,
     cardStyle:
-      offset.x || offset.y || size.width || size.height
+      (!centred && (offset.x || offset.y)) || size.width || size.height
         ? {
-            ...(offset.x || offset.y
+            /* Never in the middle: the dialog is held there by a transform
+               of its own, and a second one would take its place and drop
+               it back into the corner it was carried from. */
+            ...(!centred && (offset.x || offset.y)
               ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
               : {}),
             ...(size.width ? { width: size.width } : {}),

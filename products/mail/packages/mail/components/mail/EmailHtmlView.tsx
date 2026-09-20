@@ -663,7 +663,8 @@ function buildSrcDoc(
   allowImages: boolean,
   origin: string,
   imageMaxHeight?: number,
-  bodyColor?: string
+  bodyColor?: string,
+  frameCss?: string
 ): string {
   // Remote images are rewritten to the same-origin proxy when allowed, so the
   // iframe never hits CORP/hotlink blocks on the sender's CDN. data: (cid)
@@ -771,6 +772,17 @@ function buildSrcDoc(
     // `recolorEmailForDark` once the frame has laid out — see there. That
     // used to be a blanket "everything inherits", which threw away a
     // heading's navy and a call-out's pink along with the black.
+    /*
+      And last, whatever the caller draws this frame into.
+
+      The thread pane passes nothing: a message there is read on a card
+      built around it. The send preview passes a page, because its frame
+      stands inside a card that already has a size, a face and a colour,
+      and the mail in it must go on looking the way it looked when the
+      same markup sat in the page itself. Last in the list, so a rule here
+      wins against the one above it on equal specificity.
+    */
+    ...(frameCss ? [frameCss] : []),
     "</style>",
     "</head><body>",
     body,
@@ -1643,6 +1655,7 @@ export function EmailHtmlView({
   zoom = 1,
   imageMaxHeight,
   bodyColor,
+  frameCss,
   onContentDoubleClick,
   darkRecolor = false,
 }: {
@@ -1666,6 +1679,14 @@ export function EmailHtmlView({
    * with, and the bubble under it can be dark. See `ownWordsInTheDark`.
    */
   bodyColor?: string;
+  /**
+   * Extra CSS for the frame, last in its stylesheet.
+   *
+   * For a caller that shows a message inside a card of its own and needs
+   * the words to keep that card's face — the send preview. See
+   * `composer-preview`.
+   */
+  frameCss?: string;
   /**
    * Thread-pane zoom. CSS zoom on an ancestor never reaches an iframe's
    * document properly — WebKit scales the frame's rendered pixels (blurry,
@@ -1726,9 +1747,10 @@ export function EmailHtmlView({
       allowImages,
       window.location.origin,
       imageMaxHeight,
-      bodyColor
+      bodyColor,
+      frameCss
     );
-  }, [html, allowImages, inlineImages, imageMaxHeight, bodyColor]);
+  }, [html, allowImages, inlineImages, imageMaxHeight, bodyColor, frameCss]);
 
   React.useEffect(() => {
     if (ready) {

@@ -43,26 +43,45 @@ suite(async () => {
     button.startsWith("{onFloatReply && !floating ?"),
     button.trim().split("\n")[0]
   );
-  const back = pane.slice(
-    pane.lastIndexOf("<button", pane.indexOf('t("backToThread")')),
-    pane.indexOf("</button>", pane.indexOf('t("backToThread")'))
+  /*
+    Since the card was given the window buttons, the heading has three of
+    them — put away, fill the window, close — and a fourth that opened the
+    thread was one too many: Close already puts the card away, and the
+    draft stays on the thread either way. So the way home is the key it
+    always shared with the hand-over.
+  */
+  check(
+    "the card's heading has no button back to the thread",
+    !pane.includes('t("backToThread")'),
+    pane.includes("backToThread") ? "still drawn" : "gone"
+  );
+  const key = pane.slice(
+    pane.indexOf("floatMessageShortcutRef.current = () => {"),
+    pane.indexOf("floatReply();")
   );
   check(
-    "in the card, the heading's button brings the reply home",
-    back.includes("onClick={onUnfloatReply}"),
-    back.trim()
+    "and the key that floated the reply brings it home",
+    key.includes("if (floating) {") && key.includes("onUnfloatReply?.();"),
+    key.trim().split("\n").slice(1, 4).join(" ").trim()
   );
 
   // Coming back to the window must not open the floating reply a second
   // time, in the thread, from the draft the hand-over saved.
-  const adopt = pane.slice(
-    pane.indexOf("const adoptStoredDraft"),
-    pane.indexOf('window.addEventListener("focus", adoptStoredDraft)')
+  // The function lives with the card and the pop-out now. The pane keeps
+  // only the listener that calls it.
+  const homeHook = src("use-composer-home.ts");
+  const adopt = homeHook.slice(
+    homeHook.indexOf("const adoptStoredDraft"),
+    homeHook.indexOf("const bringBackPopout")
   );
   check(
     "the thread leaves the draft alone while the card holds it",
     adopt.includes("replyFloatingRef.current) return"),
     adopt.trim().split("\n").slice(0, 4).join("\n")
+  );
+  check(
+    "and the pane still looks for a draft when its window comes to the front",
+    pane.includes('window.addEventListener("focus", adoptStoredDraft)')
   );
 
   /**

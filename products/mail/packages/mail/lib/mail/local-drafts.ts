@@ -50,6 +50,16 @@ export type ThreadMailDraft = DraftBase & {
   threadId: string;
   mode: ThreadComposerMode;
   body: string;
+  /**
+   * The subject the writer set, when it is not the thread's own.
+   *
+   * Absent means the reply goes out under the name the thread already has.
+   * Saved because the composer's state travels through this record — to the
+   * floating card, to another thread and back, into a new window — and a
+   * subject left out of it came back as the old one, which is what the
+   * message then went out as.
+   */
+  subject?: string;
   toList: MailRecipient[];
   ccList: MailRecipient[];
   showCc: boolean;
@@ -418,6 +428,7 @@ export function isThreadDraftEmpty(
   defaultCc: MailRecipient[]
 ): boolean {
   if (htmlToPlainText(draft.body).trim()) return false;
+  if (draft.subject?.trim()) return false;
   if (draft.attachments.length) return false;
   if (recipientsSignature(draft.toList) !== recipientsSignature(defaultTo)) {
     return false;

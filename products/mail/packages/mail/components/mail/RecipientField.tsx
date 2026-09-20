@@ -140,7 +140,7 @@ let contactsCache: Promise<{
   sources: MailContactSourceSummary[];
 }> | null = null;
 let listsCache: MailContactList[] | null = null;
-let listsListeners = new Set<(lists: MailContactList[]) => void>();
+const listsListeners = new Set<(lists: MailContactList[]) => void>();
 let staleSyncStarted = false;
 
 
@@ -1596,7 +1596,7 @@ export function RecipientField({
       });
     }
     return [...byEmail.values()];
-  }, [contacts, ownAccounts]);
+  }, [contacts, ownAccounts, t]);
 
   const menu = filterMenu(draft, contactsForMenu, lists, values);
   const showMenu = menuOpen && menu.length > 0;

@@ -7,6 +7,7 @@
  * only when the pass under way has ended.
  */
 
+import { firstReadLines } from "@/lib/mail/first-read";
 import { startOutlookSync, stopOutlookSync, wakeOutlookSync } from "@/lib/mail/outlook-sync";
 import { rememberOutlookAccessToken } from "@/lib/mail/outlook-token";
 import { setMailStore } from "@/lib/mail/store";
@@ -207,7 +208,16 @@ suite(async () => {
   await new Promise((r) => setTimeout(r, 200));
   check("stop leaves the mailbox in phase none", phaseAfterStop === "none", phaseAfterStop);
   check("and nothing writes after it", overall().phase === "none" && states.length === setsBefore, overall());
+  check("and the stop keeps the count, though the store replaces the row", overall().fullSyncTotal === 3 && overall().fullSyncDone === 3, overall());
+  check("a complete read that is stopped has no first-read line", firstReadLines(states).length === 0, firstReadLines(states));
+
+  // A new sitting on a mailbox that was read to the end: no first read, no bar.
+  const fullsBeforeRestart = fullAnnouncements;
+  const callsBeforeRestart = deltaCalls.length;
   check("a stopped worker can start again", startOutlookSync(me) === true);
+  await until(() => overall()?.phase === "live" && deltaCalls.length >= callsBeforeRestart + 2, "the first pass of the new sitting");
+  check("a start on a complete mailbox does not announce a first read", fullAnnouncements === fullsBeforeRestart, fullAnnouncements);
+  check("and asks each folder from where it left off", deltaCalls.slice(callsBeforeRestart).every((c) => c.token != null), deltaCalls.slice(callsBeforeRestart));
   await stopOutlookSync(me);
 
   // A first read cut short by an error is announced again when it resumes,
@@ -224,6 +234,7 @@ suite(async () => {
   wakeOutlookSync(me, "inbox");
   await until(() => overall()?.phase === "live", "the resumed first read");
   check("the resumed read announced itself again and ended live", fullAnnouncements === fullsAtStart + 2 && overall().fullSyncTotal === 3, { fullAnnouncements, overall: overall() });
+  check("a complete read has a count equal to its total", overall().fullSyncDone === overall().fullSyncTotal, overall());
   await stopOutlookSync(me);
 
   /*
@@ -259,6 +270,21 @@ suite(async () => {
     overall()
   );
   const doneAtPause = overall().fullSyncDone;
+  const atPause = firstReadLines(states);
+  check(
+    "the list has a line for the paused read, with the count and the state",
+    atPause.length === 1 && atPause[0].state === "waiting" && atPause[0].done === doneAtPause && atPause[0].total >= atPause[0].done,
+    atPause
+  );
+  // The app is closed in the middle of the read, and opened again.
+  await stopOutlookSync(big);
+  const atStop = firstReadLines(states);
+  check(
+    "a stop in the middle of the read keeps the line, and says stopped",
+    atStop.length === 1 && atStop[0].state === "stopped" && atStop[0].done === doneAtPause,
+    { atStop, overall: overall() }
+  );
+  check("a worker starts again on the mailbox", startOutlookSync(big) === true);
   // A new sign-in token arrives while the read is paused, as it does every
   // hour of a read that takes several.
   rememberOutlookAccessToken(big, "tok-2");
@@ -285,6 +311,11 @@ suite(async () => {
     "the count goes on from where it was, and does not start again",
     (overall().fullSyncDone ?? 0) > doneAtPause,
     { atPause: doneAtPause, atEnd: overall().fullSyncDone }
+  );
+  check(
+    "the line goes away only when the read is complete",
+    firstReadLines(states).length === 0 && overall().fullSyncDone === overall().fullSyncTotal,
+    { lines: firstReadLines(states), overall: overall() }
   );
   check(
     "the finished folder holds its delta link, and is no longer marked as being read",

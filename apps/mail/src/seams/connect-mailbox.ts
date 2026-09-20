@@ -56,6 +56,9 @@ export const startMailConnect: MailConnectSeam["startMailConnect"] = async (
     const connected = await connectMailbox(provider, email);
     toast.success(`Connected ${connected.email}`, { id: waiting });
     // The mailbox list belongs to App, which reads it from the store.
+    // `useMailRouter` is not a React hook in this build. The host contract
+    // gives it that name, and here it is a plain function with no state.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     useMailRouter().refresh();
   } catch (err) {
     // A wait the reader called off ended the way they asked it to. Telling

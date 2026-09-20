@@ -102,6 +102,8 @@ export function SendLaterMenu({
   }, [open]);
 
   // The same times the snooze menu offers, recomputed each time this opens.
+  // `open` is in the list for that purpose, although the body does not read it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = React.useMemo(() => snoozeOptions(), [open]);
 
   const choose = (iso: string) => {

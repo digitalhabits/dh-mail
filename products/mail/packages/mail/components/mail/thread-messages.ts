@@ -6,6 +6,13 @@ import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { type MailRecipient } from "@/lib/mail/contact-list-types";
 import { signalPopoutSend } from "@/lib/mail/popout";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
+import type { DraftAttachmentSnapshot } from "@/lib/mail/local-drafts";
+import {
+  sanitizeEmailHtml,
+  stripQuotedHtml,
+} from "@/components/mail/EmailHtmlView";
+import { replyHistoryEntry } from "@/lib/mail/reply-history";
+import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
 
 /** What the composer at the bottom of a thread is currently writing. */
 export type ComposerMode = "reply" | "replyAll" | "forward";
@@ -35,12 +42,47 @@ export type OutboxEntry = {
   status: OutboxStatus;
   mode: ComposerMode;
   reply: string;
+  /** The subject the writer set, if they set one. Empty means the thread's. */
+  subject: string;
+  /**
+   * Under a name of its own, so it is not part of the thread it answers.
+   *
+   * No bubble is put in that thread for it, and it is said in a toast
+   * instead — the message is on its way to a conversation of its own.
+   */
+  startsNewThread?: boolean;
   toList: MailRecipient[];
   ccList: MailRecipient[];
   showCc: boolean;
   editRecipients: boolean;
   includeSignature: boolean;
   fromAccount: string;
+  /**
+   * The files that were in the strip, so that Undo can put them back.
+   *
+   * Not the same as `request.attachments`. That one is what goes to the
+   * provider. This one is what the strip shows, and Send empties the strip
+   * with the composer. A reaction has no files and leaves this out.
+   */
+  attachments?: DraftAttachmentSnapshot[];
+  /**
+   * Set for a forward only: what Undo needs beyond the composer's own fields.
+   *
+   * A forward waits out the same count as a reply. It has no bubble in the
+   * thread, because it goes to somebody else, so a toast says that it went.
+   * The two boxes under the composer are not part of the composer's state,
+   * and Send resets them, so they travel here.
+   */
+  forward?: {
+    /** The message that was picked to forward. Null: the newest one. */
+    quoteMessageId: string | null;
+    /** The "include its files" box. */
+    includeFiles: boolean;
+    /** The "whole conversation" box: the fetched thread, or null for off. */
+    conversation: MailMessage[] | null;
+    /** The recipients as the toast names them. */
+    who: string;
+  };
   /** POST /api/mail/send body (minus account-specific bits filled at send time). */
   request: {
     account: string;
@@ -57,6 +99,16 @@ export type OutboxEntry = {
     discardProviderDraft?: string;
     /** The thread's history, rebuilt by the composer. */
     appendix?: { text: string; html: string };
+    /** The one message that a forward carries. Left out for a whole conversation. */
+    forward?: {
+      fromName: string;
+      fromEmail: string;
+      date: string;
+      subject: string;
+      to: string[];
+      text: string;
+      html?: string;
+    };
     noQuote?: boolean;
     messageCount?: number;
     /** After send, Grok prepends Notes on related CRM records. */
@@ -221,4 +273,27 @@ export async function loadWholeThread(
     after = last.id;
   }
   return out;
+}
+
+/**
+ * The message's own words, shaped for the rebuilt history.
+ *
+ * Each entry goes in stripped of its own quoted tail: quoting bodies
+ * whole would nest every mail's tail inside the new one and send the
+ * thread many times over. A message that is nothing but a quote falls
+ * back to its full text rather than vanishing.
+ */
+export function historyEntryOf(m: MailMessage) {
+  let html: string | undefined;
+  if (m.bodyHtml) {
+    const safe = sanitizeEmailHtml(m.bodyHtml);
+    const split = stripQuotedHtml(safe);
+    // The same put-back as a copied message needs. This tail is quoted
+    // into a mail that goes out, where a span carrying an address is a
+    // dead link at the other end — nobody there has our click bridge.
+    html = restoreAnchorsForEditing(
+      split.hadQuote && split.html.trim() ? split.html : safe
+    );
+  }
+  return replyHistoryEntry(m, html);
 }

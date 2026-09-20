@@ -3,5 +3,6 @@
 const noop = () => {};
 export const toast = Object.assign(noop, {
   success: noop, error: noop, message: noop, loading: noop, warning: noop,
+  custom: noop, dismiss: noop,
 });
 export default { toast };

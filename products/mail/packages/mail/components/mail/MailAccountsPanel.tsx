@@ -739,6 +739,10 @@ export function MailAccountsPanel({
       // Never leave the menu stuck on “Loading…” after a failed fetch.
       setAccounts((prev) => prev ?? seedAccountRows(knownEmailsRef.current));
     }
+    // `t` is not in the list. Two effects run when this callback changes,
+    // and a new language must not load the accounts again. `t` is read only
+    // for the text of an error.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Prefetch on mail page load so opening the menu is usually instant.

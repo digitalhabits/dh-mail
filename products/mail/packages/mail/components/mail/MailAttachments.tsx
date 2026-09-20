@@ -263,9 +263,11 @@ export function useDraftAttachments() {
   const readersRef = React.useRef<Map<string, FileReader>>(new Map());
 
   React.useEffect(() => {
+    // One Map for the life of the hook. Nothing assigns the ref again.
+    const readers = readersRef.current;
     return () => {
-      for (const reader of readersRef.current.values()) reader.abort();
-      readersRef.current.clear();
+      for (const reader of readers.values()) reader.abort();
+      readers.clear();
     };
   }, []);
 
@@ -603,7 +605,6 @@ function AttachmentTile({
     >
       <div className="relative flex h-[104px] items-center justify-center bg-stone-100">
         {image && src ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt=""
@@ -618,7 +619,6 @@ function AttachmentTile({
           /* The page from the top, on white: a document is recognised by
              its first lines, and `cover` from the middle would show the
              middle of a page and cut off the letterhead. */
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={pdfSrc}
             alt=""
@@ -1618,7 +1618,6 @@ function AttachmentPreviewBody({
                   : "flex min-h-full min-w-full p-4"
               }
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
                 alt={attachment.filename}
@@ -1708,7 +1707,6 @@ function DraftAttachmentThumb({ item }: { item: DraftAttachment }) {
   if (!src || failed) return <TypeBadge filename={item.filename} />;
   return (
     <span className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-stone-100">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt=""
@@ -2010,7 +2008,6 @@ export function DraftAttachmentThumbs({
             }
           >
             {src ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={src} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-1">

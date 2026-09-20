@@ -200,6 +200,28 @@ async function dropListRowsFromAnOlderShape(): Promise<void> {
   }
 }
 
+/**
+ * The name this message will be known by, everywhere it lands.
+ *
+ * Written by us rather than left to the provider. A message sent without
+ * one is named by the server as it goes, so the same message sent twice —
+ * which two workers over one outbox once managed — arrived under two
+ * names, and nothing at either end could tell it was one message. With a
+ * name of our own, a second copy folds into the first wherever messages
+ * are folded by it, this app's own reader included.
+ *
+ * The domain is the sender's, which is what a receiving server expects to
+ * see and what its checks are least surprised by.
+ */
+export function newRfcMessageId(account: string): string {
+  const domain = account.split("@")[1]?.trim().toLowerCase() || "mail.invalid";
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replace(/-/g, "")
+      : `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  return `<${Date.now().toString(36)}.${random}@${domain}>`;
+}
+
 /** Normalize RFC 822 Message-ID for snooze / cross-mailbox matching. */
 function normalizeRfcMessageId(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -2468,6 +2490,7 @@ export async function sendMailMessage(input: {
     ...(input.cc?.length ? [`Cc: ${input.cc.join(", ")}`] : []),
     ...(input.bcc?.length ? [`Bcc: ${input.bcc.join(", ")}`] : []),
     `Subject: ${encodeSubject(input.subject)}`,
+    `Message-ID: ${newRfcMessageId(input.account)}`,
     ...(input.inReplyTo ? [`In-Reply-To: ${input.inReplyTo}`] : []),
     ...(input.references ? [`References: ${input.references}`] : []),
     "MIME-Version: 1.0",

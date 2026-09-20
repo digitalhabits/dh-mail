@@ -2,7 +2,10 @@
 
 import { SenderAvatar } from "@/components/mail/SenderAvatar";
 
-import { type PersonRow } from "@/lib/mail/person-participants";
+import {
+  type PersonParticipant,
+  type PersonRow,
+} from "@/lib/mail/person-participants";
 import { cn } from "@/lib/utils";
 
 export function PersonAvatar({
@@ -22,7 +25,44 @@ export function PersonAvatar({
     : row.email
       ? [{ name: row.name, email: row.email }]
       : row.people.slice(0, 1);
-  const count = row.participantCount || people.length;
+  return (
+    <PeopleAvatar
+      people={people}
+      count={row.participantCount || people.length}
+      logoEmail={row.email}
+      logoUrl={row.crmLogoUrl}
+      unread={row.unread}
+      onNavy={onNavy}
+      size={size}
+    />
+  );
+}
+
+/**
+ * One face, or a pile of them: two discs for two people, three for three,
+ * and two with a +N for more. The person view and the thread list both draw
+ * from this, so one conversation looks the same in each.
+ */
+export function PeopleAvatar({
+  people,
+  count = people.length,
+  logoEmail = "",
+  logoUrl,
+  unread = false,
+  onNavy = false,
+  size = 36,
+}: {
+  people: PersonParticipant[];
+  /** How many people the pile stands for. It can be more than it holds. */
+  count?: number;
+  /** Whose disc takes the CRM logo in a pile. One face alone always does. */
+  logoEmail?: string;
+  logoUrl?: string;
+  unread?: boolean;
+  onNavy?: boolean;
+  /** Side of the square, in px. Layouts below are for 36. */
+  size?: number;
+}) {
   const scale = size / 36;
   const px = (n: number) => Math.round(n * scale);
   const ring =
@@ -97,8 +137,8 @@ export function PersonAvatar({
               email={slot.person.email}
               logoUrl={
                 people.length === 1 ||
-                slot.person.email.toLowerCase() === row.email.toLowerCase()
-                  ? row.crmLogoUrl
+                slot.person.email.toLowerCase() === logoEmail.toLowerCase()
+                  ? logoUrl
                   : undefined
               }
               onNavy={onNavy}
@@ -107,7 +147,7 @@ export function PersonAvatar({
           </span>
         ) : null
       )}
-      {row.unread ? (
+      {unread ? (
         <span
           className={cn(
             "absolute h-2 w-2 rounded-full bg-[var(--mail-accent)] ring-2",

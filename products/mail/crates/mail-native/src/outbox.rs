@@ -28,7 +28,8 @@ pub const SCHEMA: &str = r#"
     last_error      TEXT,
     created_at      INTEGER NOT NULL,
     failed_at       INTEGER,
-    draft_message_id TEXT
+    draft_message_id TEXT,
+    claimed_at      INTEGER
   );
   CREATE INDEX IF NOT EXISTS outbox_account_idx ON outbox (account_email, send_at);
 "#;
@@ -39,11 +40,21 @@ pub const SCHEMA: &str = r#"
 pub fn migrate(conn: &rusqlite::Connection) -> DbResult<()> {
   let _ = conn.execute("ALTER TABLE outbox ADD COLUMN failed_at INTEGER", []);
   let _ = conn.execute("ALTER TABLE outbox ADD COLUMN draft_message_id TEXT", []);
+  let _ = conn.execute("ALTER TABLE outbox ADD COLUMN claimed_at INTEGER", []);
   Ok(())
 }
 
 /// Tries at a connection that keeps failing before the message is given back.
 pub const MAX_ATTEMPTS: i64 = 20;
+
+/// How long a claim on a message is believed.
+///
+/// A worker takes a message before it sends it, and lets go if the send
+/// fails. Nothing lets go if the process dies mid-send, so a claim also
+/// grows old: after this, another worker may take the message on. Long
+/// enough for a big message on a slow line to go, short enough that a
+/// crash does not leave a reply sitting there for the afternoon.
+pub const CLAIM_STALE_MS: i64 = 5 * 60 * 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -118,9 +129,14 @@ impl MailDb {
   pub fn outbox_due(&self, account: &str, now: i64) -> DbResult<Vec<(OutboxRow, String)>> {
     let conn = self.conn_mut();
     let mut stmt = conn.prepare(&format!(
-      "{OUTBOX_SELECT}, raw FROM outbox WHERE account_email = ?1 AND send_at <= ?2 AND failed_at IS NULL ORDER BY send_at, id"
+      "{OUTBOX_SELECT}, raw FROM outbox
+       WHERE account_email = ?1 AND send_at <= ?2 AND failed_at IS NULL
+         AND (claimed_at IS NULL OR claimed_at <= ?3)
+       ORDER BY send_at, id"
     ))?;
-    let rows = stmt.query_map(params![account, now], |r| Ok((read_row(r)?, r.get::<_, String>(12)?)))?;
+    let rows = stmt.query_map(params![account, now, now - CLAIM_STALE_MS], |r| {
+      Ok((read_row(r)?, r.get::<_, String>(12)?))
+    })?;
     Ok(rows.collect::<Result<_, _>>()?)
   }
 
@@ -130,6 +146,24 @@ impl MailDb {
     let mut stmt = conn.prepare(&format!("{OUTBOX_SELECT} FROM outbox WHERE account_email = ?1 ORDER BY send_at, id"))?;
     let rows = stmt.query_map(params![account], read_row)?;
     Ok(rows.collect::<Result<_, _>>()?)
+  }
+
+  /// Take this message on, if nobody else has.
+  ///
+  /// The one thing standing between a reader and a message sent twice.
+  /// Two workers can be looking at one store — a second copy of the app,
+  /// or the same copy started again over a first that has not gone — and
+  /// both used to find the same row due, open their own connection, and
+  /// send it. The update is the race: SQLite lets one of them write, and
+  /// the other is told it changed nothing and leaves the message alone.
+  pub fn outbox_claim(&self, id: i64, now: i64) -> DbResult<bool> {
+    let conn = self.conn_mut();
+    let n = conn.execute(
+      "UPDATE outbox SET claimed_at = ?2
+       WHERE id = ?1 AND (claimed_at IS NULL OR claimed_at <= ?3)",
+      params![id, now, now - CLAIM_STALE_MS],
+    )?;
+    Ok(n > 0)
   }
 
   pub fn outbox_done(&self, id: i64) -> DbResult<()> {
@@ -143,7 +177,7 @@ impl MailDb {
   pub fn outbox_failed(&self, id: i64, error: &str, permanent: bool) -> DbResult<bool> {
     let conn = self.conn_mut();
     conn.execute(
-      "UPDATE outbox SET attempts = attempts + 1, last_error = ?2 WHERE id = ?1",
+      "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, claimed_at = NULL WHERE id = ?1",
       params![id, error],
     )?;
     let attempts: i64 = conn.query_row("SELECT attempts FROM outbox WHERE id = ?1", params![id], |r| r.get(0))?;
@@ -165,7 +199,7 @@ impl MailDb {
   pub fn outbox_send_now(&self, account: &str, id: i64) -> DbResult<bool> {
     let conn = self.conn_mut();
     let n = conn.execute(
-      "UPDATE outbox SET send_at = ?3, failed_at = NULL, attempts = 0, last_error = NULL
+      "UPDATE outbox SET send_at = ?3, failed_at = NULL, attempts = 0, last_error = NULL, claimed_at = NULL
        WHERE id = ?1 AND account_email = ?2",
       params![id, account, now_ms()],
     )?;
@@ -175,6 +209,8 @@ impl MailDb {
   pub fn outbox_count_due(&self, account: &str, now: i64) -> DbResult<i64> {
     let conn = self.conn_mut();
     Ok(conn.query_row(
+      // Claimed or not: a message being sent is still one the reader is
+      // waiting on, and the count is for them.
       "SELECT COUNT(*) FROM outbox WHERE account_email = ?1 AND send_at <= ?2 AND failed_at IS NULL",
       params![account, now],
       |r| r.get(0),
@@ -248,6 +284,39 @@ mod tests {
     assert_eq!(again[0].0.attempts, 0);
     assert_eq!(again[0].0.status(now_ms()), "sending");
     assert!(db.outbox_cancel("vera@example.com", later).unwrap());
+    assert!(db.outbox_list("vera@example.com").unwrap().is_empty());
+  }
+
+  #[test]
+  fn one_message_is_sent_by_one_worker() {
+    let db = MailDb::open_in_memory().unwrap();
+    let now = now_ms();
+    let id = db
+      .outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], "raw", "Hello", &["ann@x.test".into()], None, None)
+      .unwrap();
+
+    // Two workers, one message: the first takes it, the second is told it
+    // changed nothing and leaves it alone.
+    assert!(db.outbox_claim(id, now).unwrap());
+    assert!(!db.outbox_claim(id, now).unwrap());
+    // And it is no longer offered to the pass that comes next.
+    assert!(db.outbox_due("vera@example.com", now).unwrap().is_empty());
+    // But the reader is still waiting on it, so it still counts.
+    assert_eq!(db.outbox_count_due("vera@example.com", now).unwrap(), 1);
+
+    // A send that failed lets the message go, for the next try.
+    assert!(!db.outbox_failed(id, "451 try later", false).unwrap());
+    assert_eq!(db.outbox_due("vera@example.com", now_ms()).unwrap().len(), 1);
+
+    // A claim nobody let go of — the process died mid-send — is believed
+    // for a while and then is not.
+    assert!(db.outbox_claim(id, now).unwrap());
+    assert!(db.outbox_due("vera@example.com", now + CLAIM_STALE_MS - 1).unwrap().is_empty());
+    assert_eq!(db.outbox_due("vera@example.com", now + CLAIM_STALE_MS).unwrap().len(), 1);
+    assert!(db.outbox_claim(id, now + CLAIM_STALE_MS).unwrap());
+
+    // Sent, and gone.
+    db.outbox_done(id).unwrap();
     assert!(db.outbox_list("vera@example.com").unwrap().is_empty());
   }
 }

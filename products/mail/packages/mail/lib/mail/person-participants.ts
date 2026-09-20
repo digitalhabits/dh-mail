@@ -71,6 +71,57 @@ export function groupPeopleLabel(people: PersonParticipant[]): string {
 }
 
 /**
+ * The other people on one thread: you and your own addresses left out, a
+ * second address for the same name dropped, the counterpart first.
+ *
+ * The person view groups by this and the thread list draws its avatar from
+ * it, so one thread shows the same faces in both.
+ */
+export function threadPeople(t: MailThreadSummary): {
+  externals: PersonParticipant[];
+  lead: PersonParticipant;
+  /** Lead first, then the rest in list order (To order on send). */
+  named: PersonParticipant[];
+  /** You + one other = 1:1. You + two others (Dana and Chris) = group. */
+  isGroup: boolean;
+} {
+  // Rows from an older cache have no participant list; fall back to the
+  // counterpart so the view still works until the next refresh.
+  const raw = t.externalParticipants?.length
+    ? t.externalParticipants
+    : [{ name: t.fromName, email: t.fromEmail }];
+  const accountKey = normalizeEmail(t.account);
+  const externals = collapseSameNameParticipants(
+    raw.filter((p) => {
+      if (!p.email) return false;
+      if (normalizeEmail(p.email) === accountKey) return false;
+      if (isOwnPersonalAddress(p.email)) return false;
+      return true;
+    })
+  );
+  // Prefer the row's counterpart (fromEmail) when it is truly external —
+  // on Sent that is first To — not Map insertion order, and never "you".
+  const lead =
+    externals.find(
+      (p) =>
+        p.email.toLowerCase() === t.fromEmail.toLowerCase() &&
+        !isOwnPersonalAddress(p.email)
+    ) ??
+    externals[0] ?? { name: t.fromName, email: t.fromEmail };
+  const isGroup = externals.length >= 2;
+  const named =
+    isGroup && lead.email
+      ? [
+          lead,
+          ...externals.filter(
+            (p) => p.email.toLowerCase() !== lead.email.toLowerCase()
+          ),
+        ]
+      : externals;
+  return { externals, lead, named, isGroup };
+}
+
+/**
  * Collapse threads into one row per correspondent, iMessage-style. Identity is
  * the counterpart's email address — never the CRM record, which is usually an
  * organization and would lump colleagues together.
@@ -93,41 +144,7 @@ export function groupThreadsByPerson(
 ): PersonRow[] {
   const rows = new Map<string, PersonRow>();
   for (const t of threads) {
-    // Rows from an older cache have no participant list; fall back to the
-    // counterpart so the view still works until the next refresh.
-    const raw = t.externalParticipants?.length
-      ? t.externalParticipants
-      : [{ name: t.fromName, email: t.fromEmail }];
-    const accountKey = normalizeEmail(t.account);
-    const externals = collapseSameNameParticipants(
-      raw.filter((p) => {
-        if (!p.email) return false;
-        if (normalizeEmail(p.email) === accountKey) return false;
-        if (isOwnPersonalAddress(p.email)) return false;
-        return true;
-      })
-    );
-    // Prefer the row's counterpart (fromEmail) when it is truly external —
-    // on Sent that is first To — not Map insertion order, and never "you".
-    const lead =
-      externals.find(
-        (p) =>
-          p.email.toLowerCase() === t.fromEmail.toLowerCase() &&
-          !isOwnPersonalAddress(p.email)
-      ) ??
-      externals[0] ?? { name: t.fromName, email: t.fromEmail };
-    // You + one other = 1:1. You + two others (e.g. Dana and Chris) = group.
-    const isGroup = externals.length >= 2;
-    // Lead first in the title, then the rest in list order (To order on send).
-    const named =
-      isGroup && lead.email
-        ? [
-            lead,
-            ...externals.filter(
-              (p) => p.email.toLowerCase() !== lead.email.toLowerCase()
-            ),
-          ]
-        : externals;
+    const { externals, lead, named, isGroup } = threadPeople(t);
     // Keyed by who the addresses belong to, so a person writing from two
     // addresses on one contact card is one row — and a group of the same
     // people is one row whichever addresses they wrote from.

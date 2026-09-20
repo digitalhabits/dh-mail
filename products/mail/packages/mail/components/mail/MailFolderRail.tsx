@@ -1787,7 +1787,7 @@ export function MailFolderRail({
         }
       });
     },
-    [folderDrag, onRenameFolder, whileBusy]
+    [folderDrag, onRenameFolder, whileBusy, t]
   );
 
   /** Out of whatever holds it, back to the top of its own mailbox. */
@@ -1810,7 +1810,7 @@ export function MailFolderRail({
         }
       });
     },
-    [folderDrag, onRenameFolder, whileBusy]
+    [folderDrag, onRenameFolder, whileBusy, t]
   );
 
   const revealFolder = React.useCallback(
@@ -2053,7 +2053,7 @@ export function MailFolderRail({
         }
       });
     },
-    [onRenameFolder, whileBusy]
+    [onRenameFolder, whileBusy, t]
   );
 
   const runDelete = React.useCallback(async () => {
@@ -2070,7 +2070,7 @@ export function MailFolderRail({
     } finally {
       setDeleting(false);
     }
-  }, [confirmDelete, deleting, onDeleteFolder]);
+  }, [confirmDelete, deleting, onDeleteFolder, t]);
 
   /**
    * Make a folder inside the one that was right-clicked.

@@ -11,6 +11,7 @@
 //! listener, register the two URI schemes, and list the commands in
 //! `generate_handler!`. See `setup` and `commands` below.
 
+pub mod backdrop;
 #[cfg(target_os = "macos")]
 pub mod clipboard;
 #[cfg(target_os = "macos")]

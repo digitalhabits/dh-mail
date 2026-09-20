@@ -224,7 +224,9 @@ export function SnoozeMenu({
     buttons[next]?.focus();
   };
 
-  // Recompute times each time the menu opens.
+  // Recompute times each time the menu opens. `open` is in the list for that
+  // purpose, although the body does not read it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = React.useMemo(() => snoozeOptions(), [open]);
   const today = snoozeDayStart(new Date());
   const monthCells = React.useMemo(() => snoozeMonthGrid(viewMonth), [viewMonth]);

@@ -118,11 +118,28 @@ protection, not the secret.
 
 ## Reading a message safely
 
-HTML mail is shown in an iframe of its own, with a Content-Security-Policy
-that lets no script run except one hash-pinned helper of ours, after the
-HTML has been stripped of scripts, forms, embeds and event handlers. The
-iframe keeps the sender's CSS away from the app — see
+The app never draws a sender's HTML into its own page. It shows each message
+in an iframe of its own. That iframe carries a Content-Security-Policy that
+lets no script run, except one hash-pinned helper of ours. Before the
+message reaches the iframe, it loses its scripts, forms, embeds and event
+handlers. The iframe also keeps the sender's CSS away from the app — see
 [`EmailHtmlView.tsx`](/products/mail/packages/mail/components/mail/EmailHtmlView.tsx).
+
+Three views show a message this way, because each one can hold words that
+somebody else wrote:
+
+- The reading pane.
+- The preview of a message before you send it. It shows the original you
+  quote, and it shows your own text, which starts as an older message when
+  you write from one.
+- The printed document, which names no script source at all — see
+  [`print-document.ts`](/products/mail/packages/mail/components/mail/print-document.ts).
+
+**The app's own page has a policy as well.** Scripts can run only from the
+app itself, and the page can connect only to the hosts in the table above.
+It is the second guard, for the case where something gets past the first.
+See `csp` in
+[`tauri.conf.json`](/apps/mail/src-tauri/tauri.conf.json).
 
 **Remote images load by default**, as they do in Apple Mail and Outlook. An
 image fetched from a sender's server can tell them that you opened their

@@ -95,7 +95,15 @@ export async function stopOutlookSync(account: string): Promise<void> {
   if (worker.timer != null) window.clearTimeout(worker.timer);
   workers.delete(email);
   await worker.current?.catch(() => undefined);
-  await publish({ account: email, folder: "", phase: "none" });
+  // The row as it stands, with the phase changed: a state that named only the
+  // phase wiped the count of a first read, and the list took the read for done.
+  await publish({ ...(await overallRow(email)), account: email, folder: "", phase: "none" });
+}
+
+/** The mailbox's own row, as the store holds it now. */
+async function overallRow(email: string): Promise<MailSyncState | undefined> {
+  const states = await mailStore().sync.list().catch(() => [] as MailSyncState[]);
+  return (Array.isArray(states) ? states : []).find((s) => s.account === email && s.folder === "");
 }
 
 /** Look at the server now rather than at the next tick. */
@@ -145,9 +153,7 @@ async function pass(email: string): Promise<void> {
       the phase wiped the count of the first read: the read that resumed
       started its bar again from nought, over mail it already had.
     */
-    const prior = (await mailStore().sync.list().catch(() => [])).find(
-      (s) => s.account === email && s.folder === ""
-    );
+    const prior = await overallRow(email);
     await publish({
       ...prior,
       account: email,
@@ -243,13 +249,27 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
     A pause after a completed read still announces nothing: the delta
     links stand, and only what changed is read.
   */
+  /*
+    A worker that starts on a mailbox it read to the end in an earlier sitting
+    has no first read to do. Every folder holds a delta link, so the pass reads
+    only what changed. Without this, each start of the app put up a bar at
+    "0 of fifty thousand" that went away seconds later, which reads as a read
+    that gave up.
+  */
+  const folderRow = (id: string) => states.find((s) => s.account === email && s.folder === id);
+  if (scope === "all" && !worker.firstReadDone && folders.length && folders.every((f) => folderRow(f.id)?.phase === "live")) {
+    worker.firstReadDone = true;
+  }
   const firstTime = scope === "all" && !worker.firstReadDone;
   let total = 0;
   let done = 0;
   if (firstTime) {
     total = folders.reduce((n, f) => n + (f.count || 0), 0);
-    // Taken up where the cut-short read left off, not from nought.
-    done = overall?.phase === "full" || overall?.phase === "paused" ? (overall.fullSyncDone ?? 0) : 0;
+    // Taken up where the cut-short read left off, not from nought. A row whose
+    // count an older version wiped starts from the folders that are finished.
+    const kept = overall && overall.phase !== "live" ? (overall.fullSyncDone ?? 0) : 0;
+    const finished = folders.reduce((n, f) => n + (folderRow(f.id)?.phase === "live" ? f.count || 0 : 0), 0);
+    done = Math.max(kept, finished);
     await publish({ account: email, folder: "", phase: "full", fullSyncTotal: Math.max(total, done), fullSyncDone: done });
   }
   let changed = false;
@@ -406,7 +426,15 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
   // An inbox-only pass says nothing about the whole: the first read may
   // still be under way, and its bar stays up.
   if (scope === "all") {
-    await publish({ account: email, folder: "", phase: "live", fullSyncTotal: total || undefined, fullSyncDone: done || undefined, lastOkAt: Date.now() });
+    /*
+      A read that is complete has a count equal to its total, as the Gmail
+      worker's has. The list tells a first read that is not finished by a count
+      short of its total, in whatever phase, so the two numbers must agree
+      here. Folder counts move while a read runs, and the sum of rows read is
+      seldom the sum Graph gave at the start.
+    */
+    const whole = firstTime ? Math.max(total, done) : (overall?.fullSyncTotal ?? undefined);
+    await publish({ account: email, folder: "", phase: "live", fullSyncTotal: whole, fullSyncDone: whole, lastOkAt: Date.now() });
     worker.firstReadDone = true;
   }
   if (changed) {

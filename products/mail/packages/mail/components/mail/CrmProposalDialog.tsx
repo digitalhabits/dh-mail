@@ -259,7 +259,6 @@ function LogoField({ url, onChange }: { url: string; onChange: (url: string) => 
     <div className="flex items-start gap-3">
       <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
         {url && !broken ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={url}
             alt=""
@@ -423,7 +422,6 @@ function PickerField({
   ).slice(0, allowNew ? 8 : 20);
 
   const logo = held?.logo ? (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={held.logo}
       alt=""
@@ -483,7 +481,6 @@ function PickerField({
                 }}
               >
                 {o.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={o.logo}
                     alt=""

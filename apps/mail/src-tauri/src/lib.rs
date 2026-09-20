@@ -180,6 +180,7 @@ macro_rules! mail_commands {
   ($($platform:path),* $(,)?) => {
     tauri::generate_handler![
       open_calendar_invite,
+      mail_native::backdrop::set_window_backdrop,
       mail_native::popout::open_chat_popout,
       mail_native::popout::resize_chat_popout,
       mail_native::popout::close_chat_popout,
@@ -307,6 +308,9 @@ pub fn run() {
       _ => {}
     })
     .setup(|app| {
+      // First, so the window is never seen in the config's cream on a dark
+      // theme. See mail_native::backdrop.
+      mail_native::backdrop::restore(app.handle());
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

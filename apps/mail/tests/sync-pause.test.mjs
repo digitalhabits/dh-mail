@@ -27,6 +27,10 @@ suite(async () => {
     syncPauseKind(drops)
   );
   check("a timed-out read is a lost connection", syncPauseKind("read timed out") === "offline");
+  // The Outlook worker runs in the web view, which has its own words for it.
+  for (const reason of ["Failed to fetch", "TypeError: Load failed", "NetworkError when attempting to fetch resource."]) {
+    check(`a web view's "${reason}" is a lost connection`, syncPauseKind(reason) === "offline", syncPauseKind(reason));
+  }
   for (const reason of [
     "connection: could not reach imap.gmail.com:993 (Operation timed out) — reconnecting",
     "the server did not answer in time — reconnecting",

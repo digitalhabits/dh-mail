@@ -41,6 +41,22 @@ suite(async () => {
     !/useState<[^>]*CrmProposeResult/.test(pane),
     "ThreadPane.tsx holds CrmProposeResult in useState"
   );
+  /*
+    The pane's AI and CRM panel now lives in a hook that the pane calls. The
+    hook is made again with the pane for every thread, so the same rule
+    applies to it: it asks the host for proposals and holds none.
+  */
+  const assistant = src("use-thread-assistant.ts");
+  check(
+    "the pane's AI and CRM hook does not keep the proposals in state",
+    !/useState<[^>]*CrmProposeResult/.test(assistant) &&
+      !assistant.includes("<CrmProposalDialog"),
+    "use-thread-assistant.ts holds CrmProposeResult in useState"
+  );
+  check(
+    "it asks the host for them",
+    assistant.includes("proposeCrmFromThread({")
+  );
   check(
     "the host mounts the dialog",
     host.includes("<CrmProposalDialog")

@@ -22,6 +22,7 @@ import type { MailStoreProvider } from "@/lib/mail/store/types";
 import { mailApiFetch } from "@/lib/mail/api";
 import { mailUsesCrmPeople } from "@/lib/mail/product-flavor";
 import { useMailColorMode } from "@/lib/mail/theme";
+import { useWindowBackdrop } from "@/lib/mail/window-backdrop";
 
 import {
   EMPTY_OWN_IDENTITY,
@@ -54,6 +55,9 @@ export function App() {
   // The first-run screen draws its own chrome, outside MailPage, so it needs
   // the shell tokens itself. MailPage puts the class on its own root.
   const colorMode = useMailColorMode();
+  // The window's own color, under the page: the theme's, not the cream in
+  // tauri.conf.json. It shows at launch and while the window grows.
+  useWindowBackdrop(colorMode);
   const [mailboxes, setMailboxes] = React.useState<MailboxRef[] | null>(null);
   const [connecting, setConnecting] = React.useState(false);
   const [problems, setProblems] = React.useState<MailboxProblem[]>([]);

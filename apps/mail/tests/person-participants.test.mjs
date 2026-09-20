@@ -9,6 +9,7 @@
 import {
   collapseSameNameParticipants,
   groupThreadsByPerson,
+  threadPeople,
 } from "@/lib/mail/person-participants";
 import { mailerIdentityAddress } from "@/lib/mail/person-identity";
 
@@ -120,6 +121,32 @@ suite(async () => {
     "an unnamed address next to a named one stays a second person",
     lonely[0]?.isGroup === true && lonely[0].participantCount === 2,
     lonely[0] ? String(lonely[0].participantCount) : "no row"
+  );
+
+  // ---- What the thread list draws its avatar from ---------------------------
+  const chris = { name: "Chris Vale", email: "chris@example.org" };
+  const dana = { name: "Dana Vale", email: "dana@example.com" };
+  const seen = threadPeople(
+    thread([dana, chris, { name: "Ulrik", email: me }], chris)
+  );
+  check(
+    "a thread's people are the others, the one who wrote last first, never you",
+    seen.isGroup === true &&
+      seen.named.map((p) => p.email).join(",") === `${chris.email},${dana.email}`,
+    seen.named.map((p) => p.email).join(",")
+  );
+  const sameRow = groupThreadsByPerson([
+    thread([dana, chris, { name: "Ulrik", email: me }], chris),
+  ])[0];
+  check(
+    "the person view's row names the same people in the same order, so both lists show one pile",
+    sameRow?.people.map((p) => p.email).join(",") ===
+      seen.named.map((p) => p.email).join(","),
+    sameRow?.people.map((p) => p.email).join(",") ?? "no row"
+  );
+  check(
+    "a one-to-one thread is not a group, so its row keeps one face",
+    threadPeople(thread([dana])).isGroup === false
   );
 
   // ---- A machine that stamps a token on each address ------------------------

@@ -13,8 +13,89 @@ import { Eye, SendHorizontal } from "lucide-react";
 
 import { fetchSignatureSettings } from "@/components/mail/SignatureDialog";
 import { SignatureContent } from "@/components/mail/signature-view";
+import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
 import { Button } from "@/components/ui/button";
+import { MAIL_PLAIN_LINK_ATTR } from "@/lib/mail/soften-anchors";
 import { useMailT } from "@/lib/mail/i18n";
+
+/**
+ * Why the two bodies below are frames and not markup in this card.
+ *
+ * Both of them can hold somebody else's HTML. The quote is the message
+ * being answered. The body is the message being written, which is the same
+ * markup whenever a mail is written from an older one — see the
+ * copy-to-a-new-message path in `MailPage` — or taken back out of the
+ * send-later queue in `ThreadPane`.
+ *
+ * `sanitizeEmailHtml` is a blocklist. It names no `style`, no `svg` and no
+ * `math`, and the reader can carry that because its frame answers to
+ * `default-src 'none'`. This card is in the app's own document, where a
+ * sender's stylesheet is live: it reads the page with attribute selectors,
+ * it fetches what it names, and it can hide the window. So the preview
+ * shows both bodies in the reader's frame, which is the one place in this
+ * app where a stranger's markup is already safe.
+ *
+ * The frames are given the card's own face, so the preview looks the way it
+ * looked when this was markup in the page. See `frameCss` in
+ * `EmailHtmlView`.
+ */
+
+/**
+ * What Tailwind's preflight did to a sender's markup while it sat in the
+ * page: no default margins, headings at the surrounding size, lists with no
+ * marker until one is asked for, images as blocks.
+ *
+ * The frame has no preflight, so the browser's own defaults would apply and
+ * a quoted heading would come out three times the size it is today.
+ */
+const PREVIEW_RESET_CSS = [
+  "*{box-sizing:border-box}",
+  "body{margin:0;padding:0}",
+  "p,h1,h2,h3,h4,h5,h6,blockquote,figure,pre,ul,ol,dl,dd{margin:0}",
+  "h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}",
+  "ul,ol{padding:0;list-style:none}",
+  "table{border-collapse:collapse}",
+  "img,svg,video{display:block;vertical-align:middle}",
+  /*
+    The colour a border takes when the sender named a width and no colour.
+    Preflight gives it this grey, and the frame would otherwise give it the
+    colour of the words — so a plain `border-left:2px` under a quote came
+    out grey here and would have come out the colour of the text.
+  */
+  "*{border-color:rgb(229,231,235)}",
+].join("");
+
+/**
+ * A link in the preview is the blue the card drew it in.
+ *
+ * Only a real anchor. Every link a sender wrote is a span by the time the
+ * frame sees it (see `softenAnchorsForParse`), and in this card those were
+ * never blue: the rule that painted them named `a`, and a span is not one.
+ * So the span keeps whatever the sender gave it, as it did here before.
+ */
+const PREVIEW_LINK_CSS = [
+  "a{color:#1d4ed8;text-decoration:underline}",
+  `[${MAIL_PLAIN_LINK_ATTR}]{color:inherit;text-decoration:inherit}`,
+].join("");
+
+/** The message being written, at the size and colour this card shows it. */
+const PREVIEW_BODY_CSS = [
+  PREVIEW_RESET_CSS,
+  "body{font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.625;color:#222}",
+  "p{margin:0 0 12px}",
+  "ul{list-style:disc;padding-left:20px}",
+  "ol{list-style:decimal;padding-left:20px}",
+  PREVIEW_LINK_CSS,
+].join("");
+
+/** The message being answered, smaller and greyer, as a quote is here. */
+const PREVIEW_QUOTE_CSS = [
+  PREVIEW_RESET_CSS,
+  "body{font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.625;color:#78716c}",
+  "p{margin:6px 0}",
+  "blockquote{border-left:1px solid #e7e5e4;padding-left:8px}",
+  PREVIEW_LINK_CSS,
+].join("");
 
 /**
  * The signature as it will send, below the message body.
@@ -217,9 +298,14 @@ export function SentPreview({
         style={{ fontFamily: "Helvetica, Arial, sans-serif" }}
       >
         {hasBody ? (
-          <div
-            className="text-[16px] leading-relaxed text-[#222] [&_a]:text-blue-700 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
-            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          <EmailHtmlView
+            html={bodyHtml}
+            /* Pictures show, as they did when this was markup in the page.
+               In the frame they are fetched the way the reader fetches
+               them: by the shell, with no cookies and no referrer. */
+            allowImages
+            zoom={zoom}
+            frameCss={PREVIEW_BODY_CSS}
           />
         ) : (
           <p className="text-sm text-stone-400">
@@ -241,10 +327,14 @@ export function SentPreview({
             {showFullQuote ? (
               <>
                 {quote.html ? (
-                  <div
-                    className="mt-1 [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l [&_blockquote]:border-stone-200 [&_blockquote]:pl-2 [&_img]:max-w-full [&_p]:my-1.5"
-                    dangerouslySetInnerHTML={{ __html: quote.html }}
-                  />
+                  <div className="mt-1">
+                    <EmailHtmlView
+                      html={quote.html}
+                      allowImages
+                      zoom={zoom}
+                      frameCss={PREVIEW_QUOTE_CSS}
+                    />
+                  </div>
                 ) : (
                   <p className="mt-1 whitespace-pre-line">{quote.text}</p>
                 )}
