@@ -45,6 +45,7 @@ import {
   updateMailContactList,
 } from "@/lib/mail/contact-lists";
 import {
+  hasStaleCopyHistory,
   hasUnsyncedContactSources,
   hideHistorySuggestion,
   listContactSourceStatuses,
@@ -963,14 +964,31 @@ async function routeStandaloneMailApi(
       }
 
       case "/api/mail/contact-sources/sync": {
-        if (
-          q.get("ifStale") === "1" &&
-          !(await hasUnsyncedContactSources(OWNER_ID))
-        ) {
+        /*
+          Two reasons to sync behind a reader who is starting a message.
+
+          A source that never synced is the first run, and it takes
+          everything, the scan of sent mail over the provider's API
+          included. History the copy can refresh is the other, and it takes
+          one query per mailbox — so `includeHistory` is false there, which
+          holds the slow scan back and lets the cheap one through.
+
+          Neither reason, and nothing runs. Before this there was only the
+          first, so once every source had synced once the pass never ran
+          again and the history rows stopped moving.
+        */
+        const ifStale = q.get("ifStale") === "1";
+        const firstRun = ifStale && (await hasUnsyncedContactSources(OWNER_ID));
+        const staleCopy =
+          ifStale && !firstRun && (await hasStaleCopyHistory(OWNER_ID));
+        if (ifStale && !firstRun && !staleCopy) {
           return ok({ skipped: true, results: [] });
         }
         const results = await syncAllContactSources({
           clerkUserId: OWNER_ID,
+          // Stale copy history on its own is one query per mailbox. It must
+          // never pull the scan of sent mail over the API in with it.
+          includeHistory: !staleCopy,
         });
         // The classifier holds its index for minutes. Without this, contacts
         // that just arrived are not treated as contacts until it expires.

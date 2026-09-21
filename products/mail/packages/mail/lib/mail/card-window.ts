@@ -28,7 +28,17 @@ export type CardWindowView = "normal" | "minimised" | "full";
  */
 export function cardWindowClass(view: CardWindowView): string {
   if (view === "full") {
-    return "fixed left-1/2 top-1/2 z-50 h-[calc(100vh-6rem)] max-h-none w-[min(52rem,calc(100vw-4rem))] max-w-none -translate-x-1/2 -translate-y-1/2";
+    /*
+      The ceilings are the window, not the card's own idea of itself.
+
+      A size the reader dragged is an inline width and height, and it
+      outlives the window it was chosen in: a smaller window later, an
+      external display unplugged, and the card was drawn at the old size
+      from its middle — its heading above the top of the screen, its right
+      edge past the right of it, and no buttons to press to get out.
+      `max-` puts that right on every frame, and for free.
+    */
+    return "fixed left-1/2 top-1/2 z-50 h-[calc(100vh-6rem)] max-h-[calc(100vh-2rem)] w-[min(52rem,calc(100vw-4rem))] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2";
   }
   if (view === "minimised") {
     return "fixed bottom-0 right-6 z-40 h-auto max-h-none w-[22rem] max-w-[calc(100vw-3rem)] rounded-b-none";

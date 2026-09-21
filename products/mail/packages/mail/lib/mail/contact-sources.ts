@@ -484,14 +484,27 @@ async function upsertHistoryRows(
   return mailStore().contactSources.countVisibleHistory(account);
 }
 
+/**
+ * Who this mailbox wrote to, into the history rows.
+ *
+ * The copy answers first, whichever provider the mailbox is: one query
+ * against rows the app already holds, against hundreds of calls to read
+ * the same sent mail over the provider's API. The Outlook side asked
+ * Graph even where the copy could have answered, for no reason beyond the
+ * order the two were written in.
+ *
+ * The rows are merged, never replaced, so a copy that is still filling
+ * takes nothing away from what an earlier scan found.
+ */
 async function syncHistory(
   provider: MailProvider,
   account: string
 ): Promise<void> {
   const entries =
-    provider === "gmail"
-      ? (await collectFromLocalCopy(account)) ?? (await collectGmailHistory(account))
-      : await collectOutlookHistory(account);
+    (await collectFromLocalCopy(account)) ??
+    (provider === "gmail"
+      ? await collectGmailHistory(account)
+      : await collectOutlookHistory(account));
   const count = await upsertHistoryRows(account, entries);
   await saveState("history", account, { count, error: null, synced: true });
 }
@@ -507,8 +520,10 @@ export type SyncContactSourcesOptions = {
   /** Only sync address books for mailboxes this local owner connected. */
   clerkUserId: string;
   /**
-   * Sent-mail history is slow (hundreds of API calls per account). Skip it for
-   * the background “if stale” pass that fires from compose; Sync now includes it.
+   * Whether to read sent-mail history over the provider's API, which is
+   * hundreds of calls per account. False for the background “if stale”
+   * pass that fires from compose: that one still refreshes history for
+   * every mailbox the local copy serves, because there it is one query.
    */
   includeHistory?: boolean;
   onProgress?: (progress: SyncProgress) => void;
@@ -579,17 +594,30 @@ export async function syncAllContactSources(
       await run("mac", MAC_ACCOUNT, syncMacContacts);
     }
 
-    if (includeHistory && !disabled.has("history")) {
+    /*
+      History, from the copy in the background and from anywhere on demand.
+
+      A scan of sent mail over the provider's API is hundreds of calls, so
+      it belongs to Sync now and not to the pass that fires from compose.
+      That left the history rows as old as the last time somebody pressed
+      the button: a person written to since then was offered by nothing,
+      and the reader typed the address out again each time.
+
+      The copy answers the same question with one query, so for a mailbox
+      the copy serves there is nothing to save by waiting. Mailboxes the
+      copy does not serve still wait for Sync now.
+    */
+    if (!disabled.has("history")) {
       for (const account of accounts) {
-        if (account.provider === "gmail") {
-          await run("history", account.email, () =>
-            syncHistory("gmail", account.email)
-          );
-        } else {
-          await run("history", account.email, () =>
-            syncHistory("outlook", account.email)
-          );
+        if (!includeHistory && !(await localStoreServes(account.email))) {
+          continue;
         }
+        await run("history", account.email, () =>
+          syncHistory(
+            account.provider === "gmail" ? "gmail" : "outlook",
+            account.email
+          )
+        );
       }
     }
 
@@ -943,6 +971,50 @@ export async function listEnabledSourceSummaries(
  * True when a provider address book still needs a first sync attempt.
  * Skips history (slow) and accounts that already need reconnect for scopes.
  */
+/**
+ * How long history from the copy may stand before compose refreshes it.
+ *
+ * The pass that fires from compose is cheap for these mailboxes — one
+ * query each — so this is short. It is not zero: a compose opened twice
+ * in a minute must not redo the work twice.
+ */
+const COPY_HISTORY_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Is there a mailbox whose history the copy can refresh, and has not lately?
+ *
+ * The pass from compose used to ask one question: has any source never
+ * synced? Once every source had synced once, the answer was no for good,
+ * and history stopped moving — the rows stayed as old as the last time
+ * somebody pressed Sync now. An address written to after that was offered
+ * by nothing, and the reader typed it out again every time.
+ *
+ * Only mailboxes the copy serves count. For the rest, reading sent mail is
+ * hundreds of calls to the provider, which is Sync now's work and not
+ * something to do behind a reader who is starting a message.
+ */
+export async function hasStaleCopyHistory(
+  clerkUserId: string
+): Promise<boolean> {
+  const settings = await getContactSourceSettings();
+  if (new Set(settings.disabled).has("history")) return false;
+  const accounts = await listConnectedMailAccounts(clerkUserId);
+  if (!accounts.length) return false;
+  const states = await mailStore().contactSources.listState();
+  const cutoff = Date.now() - COPY_HISTORY_MAX_AGE_MS;
+  for (const account of accounts) {
+    if (!(await localStoreServes(account.email))) continue;
+    const state = states.find(
+      (row) =>
+        row.source === "history" &&
+        row.account.toLowerCase() === account.email.toLowerCase()
+    );
+    const at = state?.syncedAt ? Date.parse(state.syncedAt) : 0;
+    if (!at || Number.isNaN(at) || at < cutoff) return true;
+  }
+  return false;
+}
+
 export async function hasUnsyncedContactSources(
   clerkUserId: string
 ): Promise<boolean> {

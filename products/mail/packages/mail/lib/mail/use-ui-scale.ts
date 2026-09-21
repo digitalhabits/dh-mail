@@ -110,8 +110,22 @@ export function useApplyUiScale(scale: number): void {
     };
     apply();
     window.addEventListener("resize", apply);
+    /*
+      And again whenever the page is actually laid out at another size.
+
+      The shell's zoom is set over an async call, so this effect runs
+      before the zoom it was woken for has reached the webview: the
+      measurement is then the window at the old zoom, which is too big.
+      Nothing else told us — a zoom is not always a `resize` — so a card
+      that reads the variable stood taller than the screen, and its
+      heading, which is what carries it, hung off the top.
+    */
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    observer?.observe(root);
     return () => {
       window.removeEventListener("resize", apply);
+      observer?.disconnect();
       root.style.removeProperty("--mail-viewport-h");
     };
   }, [scale]);

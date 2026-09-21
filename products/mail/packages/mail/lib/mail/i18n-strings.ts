@@ -139,12 +139,12 @@ const en = {
   syncPausedHelp:
     "Mail tries again by itself. If this message stays, reconnect the account.",
   syncPausedDetails: "Details: {reason}",
-  syncOffline: "Mail cannot reach Gmail for {account}",
+  syncOffline: "Mail cannot reach {provider} for {account}",
   syncOfflineHelp:
     "Mail tries again by itself. Your internet can work while this shows: some networks block mail connections.",
   syncNeedsReconnect:
     "{account} needs a new permission. Mail now keeps a copy of this mailbox on this computer, which the old connection cannot fill. Reconnect once and the copy starts.",
-  actionRefused: "Gmail refused \"{kind}\" on a thread in {account}",
+  actionRefused: "{provider} refused \"{kind}\" on a thread in {account}",
   sendRefused: "\"{subject}\" was not sent",
   contactSourcesFooter: "Mail reads these sources; it never edits them",
   needsPermission: "needs permission",
@@ -785,7 +785,6 @@ const en = {
   popOutChat: "Pop out chat",
   writeWhileYouBrowse: "Write while you browse",
   backToThread: "Open the thread",
-  backToTheMessage: "Open the message",
   // The thread and its reply box
   threadStarted: "See how this thread started",
   close: "Close",
@@ -1213,12 +1212,12 @@ const da: Partial<Record<keyof typeof en, string>> = {
   syncPausedHelp:
     "Mail prøver igen af sig selv. Hvis beskeden bliver stående, så forbind kontoen igen.",
   syncPausedDetails: "Detaljer: {reason}",
-  syncOffline: "Mail kan ikke få forbindelse til Gmail for {account}",
+  syncOffline: "Mail kan ikke få forbindelse til {provider} for {account}",
   syncOfflineHelp:
     "Mail prøver igen af sig selv. Dit internet kan godt virke imens: nogle netværk blokerer forbindelser til mail.",
   syncNeedsReconnect:
     "{account} har brug for en ny tilladelse. Mail gemmer nu en kopi af denne postkasse på din computer, og den gamle forbindelse kan ikke fylde den. Forbind igen én gang, så starter kopien.",
-  actionRefused: "Gmail afviste \"{kind}\" på en tråd i {account}",
+  actionRefused: "{provider} afviste \"{kind}\" på en tråd i {account}",
   sendRefused: "\"{subject}\" blev ikke sendt",
   contactSourcesFooter: "Mail læser disse kilder; Mail ændrer dem ikke",
   needsPermission: "kræver tilladelse",
@@ -1845,7 +1844,6 @@ const da: Partial<Record<keyof typeof en, string>> = {
   popOutChat: "Åbn chatten i eget vindue",
   writeWhileYouBrowse: "Skriv videre, mens du kigger i andre tråde",
   backToThread: "Åbn tråden",
-  backToTheMessage: "Åbn beskeden",
   threadStarted: "Se, hvordan samtalen begyndte",
   close: "Luk",
   goToLatest: "Gå til den nyeste meddelelse",

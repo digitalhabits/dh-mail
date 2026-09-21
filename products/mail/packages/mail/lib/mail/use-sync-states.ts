@@ -12,6 +12,7 @@ import * as React from "react";
 
 import { forgetSyncStates, syncStates, SYNC_STATE_WINDOW_EVENT } from "@/lib/mail/local-store";
 import { mailSay } from "@/lib/mail/i18n";
+import { useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { toast } from "@/lib/mail/toast";
 import type { MailSyncState } from "@/lib/mail/store/types";
 
@@ -30,6 +31,19 @@ function sorted(list: MailSyncState[]): MailSyncState[] {
 
 export function useMailSyncStates(): MailSyncState[] {
   const [states, setStates] = React.useState<MailSyncState[]>([]);
+  /**
+   * Which server refused, so the line names the mailbox's own.
+   *
+   * Through a ref, and set in an effect of its own: the listeners below
+   * are registered once, and putting this in their deps would tear the
+   * worker's three listeners down and build them again every time the set
+   * of Outlook mailboxes loads.
+   */
+  const isOutlookAccount = useIsOutlookAccount();
+  const isOutlookRef = React.useRef(isOutlookAccount);
+  React.useEffect(() => {
+    isOutlookRef.current = isOutlookAccount;
+  }, [isOutlookAccount]);
   React.useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -76,8 +90,13 @@ export function useMailSyncStates(): MailSyncState[] {
       void tauriEvent
         .listen("mail-sync-action-failed", (event) => {
           const detail = event.payload as { account?: string; kind?: string; error?: string };
+          const account = detail.account ?? "";
           toast.error(
-            mailSay("actionRefused", { kind: detail.kind ?? "", account: detail.account ?? "" }),
+            mailSay("actionRefused", {
+              provider: isOutlookRef.current(account) ? "Outlook" : "Gmail",
+              kind: detail.kind ?? "",
+              account,
+            }),
             { description: detail.error }
           );
         })

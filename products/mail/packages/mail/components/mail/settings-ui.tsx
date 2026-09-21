@@ -543,10 +543,27 @@ export function SettingsDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          // 88% of the window in the app's own pixels — vh is not scaled by
-          // the app's zoom, and at 120% the foot of the panel was below the
-          // sill of the window.
-          "relative flex max-h-[calc(var(--mail-viewport-h,100dvh)*0.88)] max-w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl",
+          /*
+            88% of the window, and of the window by both measures.
+
+            The card is held in the middle of the screen, so a card taller
+            than the screen hangs off both ends of it — and the end that is
+            out of reach is the top, which is the heading, which is the
+            handle it is carried by. A reader then has a card they can
+            neither read the top of nor move.
+
+            `--mail-viewport-h` is the window in the pixels the app lays
+            out in: `zoom` scales lengths and does not scale `vh`, so on
+            that path `dvh` is too big. But the variable is measured, and a
+            measurement can be out of date — the shell's zoom is set over
+            an async call, so the pass that writes the variable can run
+            before the zoom it is writing it for. Then the variable is too
+            big instead.
+
+            Neither is ever too small, so the smaller of the two is the
+            window whichever path is in use and whatever has just changed.
+          */
+          "relative flex max-h-[calc(min(var(--mail-viewport-h,100dvh),100dvh)*0.88)] max-w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl",
           // The card itself still answers the pointer when the shade does not.
           seeThrough && "pointer-events-auto",
           width

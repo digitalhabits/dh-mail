@@ -335,6 +335,42 @@ const QUOTED_REPLY_MARKERS: RegExp[] = [
  * Cut the quoted chain of earlier messages off a reply, keeping only the new
  * text. Falls back to the full text when stripping would leave nothing.
  */
+/**
+ * Links as a mail client writes them into text, said as a person would.
+ *
+ * The text/plain half of an HTML mail carries each link as its words with
+ * the address welded on in angle brackets, and Outlook writes it with no
+ * space at all:
+ *
+ *   University Cafes and Catering<https://catering.ed.ac.uk/central-area>
+ *
+ * Nothing downstream ever takes the brackets off. Read into a CRM field by
+ * the mail assistant, that line then goes out in the participants' email
+ * and into the printed programme exactly as it stands — angle brackets and
+ * all, and in the email not even as a link, because the field is escaped.
+ *
+ * So a welded address becomes the parentheses a person would have written,
+ * and `mailto:` is dropped: an address is an address. An address in
+ * brackets with a space before it is the ordinary way of writing one in
+ * plain text and reads well already, so it only loses its brackets.
+ */
+const ANGLE_LINK = "(?:https?://|mailto:)[^\\s<>]+";
+
+export function unwrapAngleLinks(text: string): string {
+  const plain = (target: string) => target.replace(/^mailto:/i, "");
+  return text
+    // Welded to the words before it: those keep their place, and the
+    // address follows them as a person would have put it.
+    .replace(
+      new RegExp(`(\\S)<(${ANGLE_LINK})>`, "gi"),
+      (_, before: string, target: string) => `${before} (${plain(target)})`
+    )
+    // On its own: a link and nothing else.
+    .replace(new RegExp(`<(${ANGLE_LINK})>`, "gi"), (_, target: string) =>
+      plain(target)
+    );
+}
+
 export function stripQuotedReplies(text: string): string {
   if (!text) return "";
   const padded = `\n${text}`;

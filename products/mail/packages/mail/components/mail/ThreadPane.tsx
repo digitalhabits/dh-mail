@@ -203,15 +203,10 @@ import type {
 } from "@/lib/mail/types";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
-import { useCardDrag } from "@/components/mail/use-card-drag";
 import {
-  CardWindowBackdrop,
-  CardWindowButtons,
-} from "@/components/mail/card-window";
-import {
-  cardWindowClass,
-  type CardWindowView,
-} from "@/lib/mail/card-window";
+  FloatingCardChrome,
+  useFloatingCard,
+} from "@/components/mail/floating-card";
 import { ThreadParticipants, participantsWithAddresses, threadPeople } from "@/components/mail/ThreadParticipants";
 import { scheduleThreadRefetchAfterSend, historyEntryOf } from "@/components/mail/thread-messages";
 import { PopoutStrip } from "@/components/mail/PopoutStrip";
@@ -868,27 +863,17 @@ export function ThreadPane({
     in the way of it until they are moved.
   */
   /**
-   * Out of the way, ordinary, or the whole window — see `card-window`.
+   * Out of the way, ordinary, or the whole window — see `floating-card`,
+   * which both floating cards stand in.
    *
    * Only ever the first of those in a pane, which is not a card and has
-   * nowhere to go. Held per card: one handed out again starts ordinary.
+   * nowhere to go.
    */
-  const [cardView, setCardView] = React.useState<CardWindowView>("normal");
-  /** The card is the window: what is in it has the width of the window. */
-  const cardFull = Boolean(floating) && cardView === "full";
-  /** Sized by hand in either shape, and put away in neither. */
-  const cardSizeable = Boolean(floating) && cardView !== "minimised";
-  const {
-    cardRef,
-    startDrag,
-    cardStyle,
-    size: cardSize,
-    startResize: startCardResize,
-  } = useCardDrag(
+  const card = useFloatingCard(
     Boolean(floating),
-    "dh-mail-floating-reply-size",
-    cardFull
+    "dh-mail-floating-reply-size"
   );
+  const { cardRef, size: cardSize } = card;
   /**
    * The card has a height the reader gave it, so the reply fills the card:
    * the same layout as focus mode, where the reply fills the pane. Without
@@ -896,7 +881,7 @@ export function ThreadPane({
    */
   const bandFills =
     replyFocus ||
-    (Boolean(floating) && (Boolean(cardSize.height) || cardView === "full"));
+    (Boolean(floating) && (Boolean(cardSize.height) || card.full));
 
   /* The pane's measured width and what it decides — see
      use-thread-pane-geometry.ts. */
@@ -1913,7 +1898,7 @@ export function ThreadPane({
       /* The size it was dragged to — one for the corner, one for the
          dialog. Put away, neither: that one is its heading, and as wide
          as a heading needs. */
-      style={cardSizeable ? cardStyle : undefined}
+      style={card.style}
       className={cn(
         "mail-thread-surface relative flex flex-col bg-[var(--mail-thread)]",
         floating
@@ -1923,7 +1908,7 @@ export function ThreadPane({
             // screen is wide enough that it lays itself out as a pane.
             "mail-floating-reply overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
           : "min-h-0 flex-1",
-        floating && cardWindowClass(cardView),
+        card.className,
         /*
           The card is the message being written, so with the composer shut
           there is nothing in it to show — it stood there as an empty thread
@@ -1937,137 +1922,18 @@ export function ThreadPane({
         floating && !mode && cardHadComposer.current && "hidden"
       )}
     >
-      {/* Only while there is a card to see: a message on its way out hides
-          its card for the length of the Undo, and a dimmed window with
-          nothing on it would be all that was left. */}
-      <CardWindowBackdrop
-        shown={Boolean(floating) && cardView === "full" && Boolean(mode)}
-        onDismiss={() => setCardView("normal")}
+      {/*
+        The dimmed page, the edges that size the card, and the heading with
+        its buttons — all of it the frame both floating cards stand in. The
+        card's own way home is the key, not a button: see
+        `floatMessageShortcutRef`.
+      */}
+      <FloatingCardChrome
+        card={card}
+        title={thread?.subject || "\u2026"}
+        hidden={!mode}
+        onClose={() => onFloatReply?.()}
       />
-      {cardSizeable ? (
-        /*
-          The card is made larger from the edges that can move. In the
-          corner those are the left edge, the top edge and the corner
-          between them — the other two stay where the corner is. In the
-          middle every edge moves, so every edge is given a handle.
-
-          Thin strips over the border, above the heading: the heading
-          carries the card, and a press on its top few pixels must size it,
-          not move it. Not while the card is put away: a heading on the
-          bottom edge has no size worth choosing.
-        */
-        <>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("dragToResize")}
-            title={t("dragToResize")}
-            onPointerDown={startCardResize("left")}
-            className="absolute inset-y-0 left-0 z-20 w-1.5 cursor-ew-resize touch-none"
-          />
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label={t("dragToResize")}
-            title={t("dragToResize")}
-            onPointerDown={startCardResize("top")}
-            className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-ns-resize touch-none"
-          />
-          {/* Large enough to reach past the rounded corner, which cuts the
-              first few pixels of it away. */}
-          <div
-            aria-hidden
-            onPointerDown={startCardResize("top-left")}
-            className="absolute left-0 top-0 z-30 h-5 w-5 cursor-nwse-resize touch-none"
-          />
-          {cardFull ? (
-            /* The far side of a card held by its middle. Each of these
-               grows it from both ends at once, which is what being held
-               by the middle means — and is why the corner card, which is
-               pinned by these very edges, has none of them. */
-            <>
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("dragToResize")}
-                title={t("dragToResize")}
-                onPointerDown={startCardResize("right")}
-                className="absolute inset-y-0 right-0 z-20 w-1.5 cursor-ew-resize touch-none"
-              />
-              <div
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label={t("dragToResize")}
-                title={t("dragToResize")}
-                onPointerDown={startCardResize("bottom")}
-                className="absolute inset-x-0 bottom-0 z-20 h-1.5 cursor-ns-resize touch-none"
-              />
-              <div
-                aria-hidden
-                onPointerDown={startCardResize("bottom-right")}
-                className="absolute bottom-0 right-0 z-30 h-5 w-5 cursor-nwse-resize touch-none"
-              />
-            </>
-          ) : null}
-        </>
-      ) : null}
-      {floating ? (
-        <div
-          className={cn(
-            "flex shrink-0 touch-none select-none items-center gap-2 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-3 py-2",
-            cardView === "normal" && "cursor-grab active:cursor-grabbing",
-            // Put away, the heading is all there is — so it is also the way
-            // back, which is where a reader presses first.
-            cardView === "minimised" && "cursor-pointer"
-          )}
-          onPointerDown={cardView === "normal" ? startDrag : undefined}
-          onClick={
-            cardView === "minimised"
-              ? (event) => {
-                  if (
-                    (event.target as HTMLElement).closest("button, a, input")
-                  ) {
-                    return;
-                  }
-                  setCardView("normal");
-                }
-              : undefined
-          }
-        >
-          {/*
-            The subject is a name, not a button. It was one, and a press took
-            the reply back to the thread — so a click on the heading, which is
-            also what carries the card, put the card away. The button beside it
-            is the way back.
-          */}
-          <span
-            className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-800"
-            title={thread?.subject || undefined}
-          >
-            {thread?.subject || "…"}
-          </span>
-          {/* No button back to the thread. It opened the thread and put
-              the card away, and Close puts the card away — with the draft
-              kept on the thread either way, so the difference was which
-              of them the reader was looking at afterwards, which is not
-              worth a button beside three that size and shut the card.
-              The key still does it: see `floatMessageShortcutRef`. */}
-          <CardWindowButtons
-            view={cardView}
-            onChange={setCardView}
-            className="shrink-0 rounded-md p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
-          />
-          <button
-            type="button"
-            title={t("close")}
-            aria-label={t("close")}
-            className="shrink-0 rounded-md p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
-            onClick={onFloatReply}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : null}
       {!floating ? (
       <div
         onDoubleClick={(e) => {
@@ -3024,7 +2890,7 @@ export function ThreadPane({
                 : "px-8",
             /* The card put away keeps everything it holds — the words, the
                caret, the files picked — and shows none of it. */
-            floating && cardView === "minimised" && "hidden",
+            card.minimised && "hidden",
             bandFills && "flex-1",
             !bandFills && "overflow-hidden"
           )}
@@ -3117,7 +2983,7 @@ export function ThreadPane({
                    so the box takes it — right-aligned at a share of a pane
                    that wide, it stood with half the dialog empty beside
                    it. */
-                compactComposer || fullWidthComposer || cardFull
+                compactComposer || fullWidthComposer || card.full
                   ? "100%"
                   : `${composerWidthPct}%`,
               maxWidth: "100%",
@@ -3126,7 +2992,7 @@ export function ThreadPane({
           {/* No edges to drag while the box is the whole pane: there is
               nowhere for either to go, and a handle that cannot move is a
               handle that reads as broken. */}
-          {compactComposer || fullWidthComposer || cardFull ? null : (
+          {compactComposer || fullWidthComposer || card.full ? null : (
             <>
               <div
                 role="separator"

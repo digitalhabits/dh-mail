@@ -53,7 +53,8 @@ suite(async () => {
   );
   check("no reason at all is other", syncPauseKind(null) === "other" && syncPauseKind("  ") === "other");
 
-  const line = `${mailSay("syncOffline", { account: "vera@vaerksted.example" })} · ${mailSay("syncOfflineHelp")}`;
+  // The provider is the mailbox's own — see sync-notice-provider.
+  const line = `${mailSay("syncOffline", { provider: "Gmail", account: "vera@vaerksted.example" })} · ${mailSay("syncOfflineHelp")}`;
   check("the offline line names the mailbox", line.includes("vera@vaerksted.example") && !line.includes("{"), line);
   check("and does not repeat the worker's words", !/token|request|url|oauth/i.test(line), line);
   check("and says Mail tries again by itself", /tries again/i.test(line), line);

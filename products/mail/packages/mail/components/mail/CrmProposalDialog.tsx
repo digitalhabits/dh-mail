@@ -181,6 +181,13 @@ const TOOL_LABEL: Record<CrmProposal["tool"], string> = {
   update_course: "Course details",
 };
 
+/** Changes a course, which has a Course key and no `crm_records` id. */
+const COURSE_TOOLS = new Set<CrmProposal["tool"]>(["update_course"]);
+
+/** A table by the name on its tab. Every CRM source is that one word. */
+const tableLabel = (source: string) =>
+  source.charAt(0).toUpperCase() + source.slice(1);
+
 /** A course change's fields, as the course form names them, in the form's order. */
 const COURSE_FIELD_LABELS: [string, string][] = [
   ["startDate", "First day"],
@@ -681,20 +688,29 @@ export function CrmProposalDialog({
       const failed = json.results.filter((r) => !r.ok);
       const applied = json.results.length - failed.length;
       if (applied) {
-        // Every record the applied changes touched, by table: the ones the
-        // proposals named and the ones a create made. View opens the table
-        // with the most of them, showing those rows.
+        /*
+          Every table the applied changes touched, and the rows in it.
+
+          A course is not a row: it is a line in the catalogue the
+          Facilitators tab holds, so it carries a table and nothing to
+          scroll to. The tally asked every proposal for a `recordId`, so a
+          course was counted nowhere — View went to whichever table was
+          left, and the line under it never said a second one had changed.
+        */
         const okIds = new Set(json.results.filter((r) => r.ok).map((r) => r.id));
         const bySource = new Map<string, string[]>();
         const touch = (source: string, recordId: string) => {
-          if (!source || !recordId) return;
+          if (!source) return;
           const ids = bySource.get(source) ?? [];
-          if (!ids.includes(recordId)) ids.push(recordId);
+          if (recordId && !ids.includes(recordId)) ids.push(recordId);
           bySource.set(source, ids);
         };
         for (const r of chosen) {
-          if (okIds.has(r.proposal.id) && "recordId" in r.input) {
+          if (!okIds.has(r.proposal.id)) continue;
+          if ("recordId" in r.input) {
             touch(str(r.input.source), str(r.input.recordId));
+          } else if (COURSE_TOOLS.has(r.proposal.tool)) {
+            touch("facilitators", "");
           }
         }
         for (const r of json.results) {
@@ -702,11 +718,24 @@ export function CrmProposalDialog({
           const made = (r as { result?: { record?: { source?: string; id?: string } } }).result?.record;
           if (made?.id) touch(str(made.source), made.id);
         }
-        const [best] = [...bySource.entries()].sort((a, b) => b[1].length - a[1].length);
-        const target = best ? { source: best[0], recordId: best[1].join(",") } : null;
-        const others = bySource.size > 1 ? bySource.size - 1 : 0;
+        /* View opens the table with the most rows to show. The rest are
+           named under it: "1 other table" said something had changed
+           somewhere and left the reader to find it. */
+        const [best] = [...bySource.entries()].sort(
+          (a, b) => b[1].length - a[1].length
+        );
+        const target = best
+          ? { source: best[0], recordId: best[1].join(",") }
+          : null;
+        const others = [...bySource.keys()].filter((s) => s !== best?.[0]);
         toast.success(applied === 1 ? "CRM updated" : `CRM updated: ${applied} changes`, {
-          ...(others ? { description: `Also in ${others} other table${others > 1 ? "s" : ""}.` } : {}),
+          ...(others.length
+            ? {
+                description: `Also changed: ${others
+                  .map((s) => tableLabel(s))
+                  .join(", ")}.`,
+              }
+            : {}),
           ...(target
             ? {
                 action: {

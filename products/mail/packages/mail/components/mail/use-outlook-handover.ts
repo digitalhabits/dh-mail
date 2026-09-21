@@ -20,6 +20,7 @@ import {
   bodyTravels,
   ccBackToSelf,
   copyMessageToClipboard,
+  handoverFiles,
   saveAttachmentsForHandover,
   withoutTrailingSignature,
   openOutlookCompose,
@@ -230,18 +231,33 @@ export function useOutlookHandover(input: {
         // markDraftHandedOver, and the list, which says so rather than
         // showing the copy as an unfinished letter.
         void markDraftHandedOver(threadDraftKey(account, threadId), fromAccount);
-        const savedFiles = await saveAttachmentsForHandover(attachments);
+        /*
+          The pictures in the body, which the pasteboard cannot carry either.
+
+          The HTML on the pasteboard holds each one as a `data:` URI, and
+          Outlook drops those on the paste: the message arrived with its
+          words and a gap where each picture had been, and nothing said so.
+
+          A send lifts them into parts of the message — see
+          `extractInlineImages` — but here there is no message to make
+          parts of. So they go to the downloads folder beside the
+          attachments, to be dragged in where they belong. The pasteboard
+          keeps them as they are: a `cid:` left in a paste is a broken
+          picture rather than none, which is worse than the gap.
+        */
+        const travelling = handoverFiles(attachments, carrying.html);
+        const savedFiles = await saveAttachmentsForHandover(travelling);
         toast.success(
           carried ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
           {
-            ...(attachments.length
+            ...(travelling.length
               ? {
                   description: savedFiles
                     ? mailSay("outlookFilesInDownloads", {
                         count: `${savedFiles} file${savedFiles === 1 ? "" : "s"}`,
                       })
                     : mailSay("outlookFilesLeftBehind", {
-                        count: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
+                        count: `${travelling.length} file${travelling.length === 1 ? "" : "s"}`,
                       }),
                   duration: 12_000,
                 }

@@ -14,6 +14,7 @@
  * and retyping it.
  */
 
+import { extractInlineImages } from "@/lib/mail/inline-images";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 
 /**
@@ -217,6 +218,27 @@ export async function copyMessageToClipboard(input: {
  * Only in the desktop app. A browser cannot write to disk, and the caller
  * says so instead. Returns how many were written.
  */
+/**
+ * Everything that cannot ride in the paste: the files, and the pictures.
+ *
+ * A `mailto:` has no attachments, and the pasteboard carries the body —
+ * so both end up in the downloads folder to be dragged in. The pictures
+ * belong on that list for a reason of their own: the HTML on the
+ * pasteboard holds each one as a `data:` URI, and Outlook drops those on
+ * the paste. The message arrived with its words and a gap where each
+ * picture had been, and nothing said so.
+ *
+ * A send has somewhere better to put them — its own MIME part, referred
+ * to by `cid:`, which is what `extractInlineImages` is for. There is no
+ * message to make parts of here.
+ */
+export function handoverFiles(
+  attachments: { filename: string; contentBase64: string }[],
+  html: string
+): { filename: string; contentBase64: string }[] {
+  return [...attachments, ...extractInlineImages(html).images];
+}
+
 export async function saveAttachmentsForHandover(
   attachments: { filename: string; contentBase64: string }[]
 ): Promise<number> {

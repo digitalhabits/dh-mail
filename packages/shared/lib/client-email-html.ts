@@ -311,11 +311,21 @@ export function wrapEmailPreviewDocument(bodyHtml: string): string {
   <head>
     <meta charset="utf-8" />
     <style>
+      /*
+       * A white sheet, in the dark theme as well. The preview shows what the
+       * reader of the email will see, and that is a white sheet. Said here,
+       * so the dark page behind the frame cannot show through the writing.
+       */
+      html {
+        color-scheme: light;
+        background: #ffffff;
+      }
       body {
         font-family: Helvetica, Arial, sans-serif;
         font-size: 14px;
         line-height: 1.6;
         color: #222;
+        background: #ffffff;
         margin: 16px;
       }
       p { margin: 0 0 12px 0; line-height: 1.5; }

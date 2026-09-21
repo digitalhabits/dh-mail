@@ -24,7 +24,6 @@ import {
   PictureInPicture2,
   SendHorizontal,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 
@@ -110,6 +109,10 @@ import {
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { mailUsesCrmPeople } from "@/lib/mail/product-flavor";
 import { cn } from "@/lib/utils";
+import {
+  FloatingCardChrome,
+  useFloatingCard,
+} from "@/components/mail/floating-card";
 
 
 /**
@@ -441,7 +444,25 @@ export function ComposeView({
     seed?.draftKey ?? newComposeDraftKey()
   );
   const editorHandle = React.useRef<RichTextEditorHandle | null>(null);
-  const composeRef = React.useRef<HTMLDivElement>(null);
+  const composeRef = React.useRef<HTMLDivElement | null>(null);
+  /**
+   * Out of the way, ordinary, or the whole window — see `floating-card`,
+   * the frame this card shares with the reply card.
+   *
+   * Only ever the first of those in the pane, which is not a card.
+   */
+  const card = useFloatingCard(
+    Boolean(floating),
+    "dh-mail-floating-compose-size"
+  );
+  /** The root element, to the pinch zoom and to the card alike. */
+  const setComposeNode = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      composeRef.current = node;
+      card.cardRef.current = node;
+    },
+    [card.cardRef]
+  );
   const {
     items: attachItems,
     ready: attachmentsReady,
@@ -1246,27 +1267,55 @@ export function ComposeView({
 
   return (
     <div
-      ref={composeRef}
+      ref={setComposeNode}
+      /* The size it was dragged to — one for the corner, one for the
+         dialog. Put away, neither: that one is its heading, and as wide
+         as a heading needs. */
+      style={card.style}
       className={cn(
         "mail-thread-surface relative bg-[var(--mail-thread)]",
         floating
-          ? // The card, at the size the reply's card uses, so the two are
-            // the same thing in the same corner. A height of its own, not
-            // one the message grows: the message scrolls inside it.
-            "mail-floating-reply fixed bottom-4 right-6 z-40 flex h-[32rem] max-h-[calc(100vh-2rem)] w-[34rem] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
-          : "min-h-0 flex-1 overflow-y-auto"
+          ? // The card, in the same corner and the same frame as the
+            // reply's card, so the two are the same thing.
+            "mail-floating-reply flex flex-col overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
+          : "min-h-0 flex-1 overflow-y-auto",
+        card.className,
+        // A height of its own, not one the message grows: the message
+        // scrolls inside it. Only in the corner — put away the card is its
+        // heading, and full it is the window. A height the reader dragged
+        // is an inline style, so it wins over this.
+        card.floating && card.view === "normal" && "h-[32rem]"
       )}
     >
+      {/*
+        The dimmed page, the edges that size the card, and the heading with
+        its buttons — the frame both floating cards stand in. The subject
+        is written inside the card, on the row it belongs to, so the
+        heading only names the message.
+      */}
+      {/* No button back to the pane. Close puts the card away and the
+          draft stays in the one new-message slot, so the two buttons did
+          the same thing and differed only in what the reader looked at
+          afterwards — which the reply card dropped its own such button
+          over. The key still does it: see the shortcut below. */}
+      <FloatingCardChrome
+        card={card}
+        title={subject.trim() || t("newEmail")}
+        onClose={onClose}
+      />
       {/* Half the padding above, full below. The zoom pill used to float
           over the card and the space above it was the card's own margin.
           With the pill in the flow that space sat above the pill instead,
           which pushed the card down the pane. */}
       <div
-        className={
+        className={cn(
           floating
             ? "flex min-h-0 flex-1 flex-col p-0"
-            : "px-8 pb-8 pt-4"
-        }
+            : "px-8 pb-8 pt-4",
+          // Put away, the card shows none of what it holds: the heading is
+          // all there is, on the bottom edge.
+          card.minimised && "hidden"
+        )}
       >
         {/* The zoom sits above the card, not on its top right corner.
             Floated over the corner it covered the end of the subject, and
@@ -1400,32 +1449,10 @@ export function ComposeView({
                   <PictureInPicture2 className="h-4 w-4" />
                 </button>
               ) : null}
-              {floating ? (
-                <>
-                  <button
-                    type="button"
-                    title={`${t("backToTheMessage")} (${formatShortcut(
-                      shortcuts.floatMessage
-                    )})`}
-                    aria-label={`${t("backToTheMessage")} (${formatShortcut(
-                      shortcuts.floatMessage
-                    )})`}
-                    className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                    onClick={onUnfloat}
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    title={t("close")}
-                    aria-label={t("close")}
-                    className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                    onClick={onClose}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </>
-              ) : onToggleFocus ? (
+              {/* In the card these two stand in the heading above, beside
+                  the three the frame gives every card. Here the row holds
+                  only what the pane needs. */}
+              {floating ? null : onToggleFocus ? (
                 <button
                   type="button"
                   title={`${focusMode ? t("showMailList") : t("focusMode")} (${formatShortcut(

@@ -49,7 +49,13 @@ import { createCustomList, customListTabId, deleteCustomList, parseCustomListTab
 import { accountChipLabels, formatAccountChipLabel } from "@/lib/mail/account-labels";
 import type { MailFolder } from "@/lib/mail/folder-types";
 import { getMailFilterRowOpen, setMailFilterRowOpen } from "@/lib/mail/layout";
-import { syncMailPinSummaries, toggleMailPin, unpinMailThread } from "@/lib/mail/pins";
+import {
+  isMailPinned,
+  pinMailThread,
+  syncMailPinSummaries,
+  toggleMailPin,
+  unpinMailThread,
+} from "@/lib/mail/pins";
 import { attachmentUrl } from "@/components/mail/MailAttachments";
 import { deleteDraft, listHandedOverDraftKeys, newComposeDraftKey, pruneExpiredMailDrafts, saveComposeDraft, threadDraftKey, type DraftAttachmentSnapshot } from "@/lib/mail/local-drafts";
 import { sanitizeEmailHtml, stripQuotedHtml } from "@/components/mail/EmailHtmlView";
@@ -1089,6 +1095,8 @@ export function MailPage({
      * the restore never overtakes the delete.
      */
     after?: Promise<unknown>;
+    /** It was pinned, and archiving took the pin off. Undo puts it back. */
+    wasPinned?: boolean;
   };
 
   type MailUndoEntry = MailThreadUndoEntry | MailBatchUndoEntry;
@@ -1171,6 +1179,9 @@ export function MailPage({
               )
             )
           );
+          // The pin archiving took off. Undo is the whole move back, and a
+          // thread that returns to the inbox without its pin is not that.
+          if (undo.wasPinned) pinMailThread(undo.summary);
           toast.success(
             mailSay(
               undo.kind === "trash" ? "restoredToInbox" : "movedBackToInbox"
@@ -1211,7 +1222,8 @@ export function MailPage({
       label: string,
       folderName?: string,
       leftFolderName?: string | null,
-      after?: Promise<unknown>
+      after?: Promise<unknown>,
+      wasPinned?: boolean
     ): string => {
       const id = `${kind}-${threadKey(summary)}-${Date.now()}`;
       const toastId =
@@ -1234,6 +1246,7 @@ export function MailPage({
         id,
         kind,
         summary,
+        wasPinned,
         toastId,
         folderName,
         leftFolderName,
@@ -1404,6 +1417,16 @@ export function MailPage({
         `[mail] archive ${key} "${summary?.subject ?? "(not in the list)"}"`,
         new Error("called from").stack?.split("\n").slice(1, 5).join("\n")
       );
+      /*
+        A pin is a shortcut to something in the inbox, so archiving takes
+        it off.
+
+        It used to stay, and the band went on drawing the thread from the
+        summary the pin kept: the reader pressed Archive, was told it was
+        archived, and watched the row sit exactly where it was.
+      */
+      const wasPinned = isMailPinned(t.account, t.threadId);
+      if (wasPinned) unpinMailThread(t.account, t.threadId);
       // Every copy behind the row — the same reason as in `trash`.
       const copies = everyCopy(t, threads);
       const keys = copies.map(threadKey);
@@ -1426,7 +1449,8 @@ export function MailPage({
             `"${summary.subject}" archived in ${provider}`,
             undefined,
             undefined,
-            sent
+            sent,
+            wasPinned
           )
         : null;
       try {
@@ -1436,6 +1460,8 @@ export function MailPage({
         dropMailUndo(undoId);
         unhideRows(keys);
         setThreads(before);
+        // The rows come back, so the pin does too.
+        if (wasPinned && summary) pinMailThread(summary);
         toast.error(err instanceof Error ? err.message : "Couldn't archive");
       }
     },
@@ -2138,6 +2164,8 @@ export function MailPage({
       const copies = everyCopy(t, threads);
       const keys = copies.map(threadKey);
       // Trash removes the conversation — drop pin + body cache with it.
+      // Noted first, so undo can put the pin back with the conversation.
+      const wasPinned = copies.some((c) => isMailPinned(c.account, c.threadId));
       for (const c of copies) {
         unpinMailThread(c.account, c.threadId);
         invalidateCachedMailThread(c.account, c.threadId);
@@ -2163,7 +2191,8 @@ export function MailPage({
             `"${summary.subject}" moved to Trash in ${provider}`,
             undefined,
             openFolderName,
-            sent
+            sent,
+            wasPinned
           )
         : null;
       try {
@@ -2175,6 +2204,8 @@ export function MailPage({
         dropMailUndo(undoId);
         unhideRows(keys);
         setThreads(before);
+        // The rows come back, so the pin does too.
+        if (wasPinned && summary) pinMailThread(summary);
         toast.error(err instanceof Error ? err.message : "Couldn't delete");
       }
     },
@@ -5030,7 +5061,18 @@ export function MailPage({
                          are in the log, and no longer on a tooltip — a
                          reader hovered and met a sentence in English about
                          seconds and servers. */
-                      <ListNotice kind="offline" title={t("syncOffline", { account: s.account })}>
+                      <ListNotice
+                        kind="offline"
+                        /* The mailbox's own provider, not Gmail for
+                           everybody: an Outlook account was told that Mail
+                           could not reach Gmail for it. */
+                        title={t("syncOffline", {
+                          provider: isOutlookAccount(s.account)
+                            ? "Outlook"
+                            : "Gmail",
+                          account: s.account,
+                        })}
+                      >
                         {t("syncOfflineHelp")}
                       </ListNotice>
                     ) : (
@@ -6227,10 +6269,28 @@ export function MailPage({
                 else void markUnread(selected);
               }}
               onTogglePin={() => {
-                // A pin is kept by the list row's summary. A thread opened
-                // from a search hit or a deep link has no row here, so
-                // there is nothing to pin it as; say so rather than nothing.
-                if (selectedRow) togglePin(selectedRow);
+                /*
+                  A pin is kept by the list row's summary. A thread opened
+                  from a search hit or a deep link has no row here, so
+                  there is nothing to pin it as; say so rather than nothing.
+
+                  A thread that is already pinned always has one, though —
+                  the summary the pin itself kept — and it is not always in
+                  the list. Archive a pinned thread and it leaves the flow
+                  list; the band goes on drawing it from that summary. The
+                  pin button then had no row to work from and refused,
+                  telling the reader to open from the list a thread that was
+                  open and in the list. It could not be unpinned, and so it
+                  could not be got rid of at all.
+                */
+                const row =
+                  selectedRow ??
+                  pins.find(
+                    (pin) =>
+                      pin.account === selected.account &&
+                      pin.threadId === selected.threadId
+                  )?.summary;
+                if (row) togglePin(row);
                 else toast("Open it from the list to pin it");
               }}
               pinned={pinKeySet.has(threadKey(selected))}
