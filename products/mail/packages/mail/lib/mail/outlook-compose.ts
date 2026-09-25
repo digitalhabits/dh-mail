@@ -178,11 +178,22 @@ export function withoutTrailingSignature(
  *
  * Both flavours: Outlook takes the HTML, and anything else that reads the
  * pasteboard gets something sensible rather than markup.
+ *
+ * Two doors, because one of them is shut here. `navigator.clipboard.write`
+ * carries both flavours, and the WebKit the desktop app runs in has no such
+ * method — measured 2026-09-22, where the message went over as words alone
+ * and a paste into Outlook lost its bold headings and its bullets. A copy
+ * event carries both flavours in every engine: the words go in a box off
+ * the page, the box is selected, and the handler writes the two flavours
+ * into the event.
+ *
+ * It answers whether the formatting travelled, so that a caller does not
+ * tell the reader to paste something that is not on the pasteboard.
  */
 export async function copyMessageToClipboard(input: {
   html: string;
   text: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const clipboard = navigator.clipboard as Clipboard & {
     write?: (items: ClipboardItem[]) => Promise<void>;
   };
@@ -194,13 +205,58 @@ export async function copyMessageToClipboard(input: {
           "text/plain": new Blob([input.text], { type: "text/plain" }),
         }),
       ]);
-      return;
+      return true;
     } catch {
-      // Falls through to the words, which is worse than the formatting and
-      // better than an empty pasteboard.
+      // The other door, and then the words alone.
     }
   }
-  await navigator.clipboard.writeText(input.text);
+  if (copyThroughCopyEvent(input)) return true;
+  try {
+    await navigator.clipboard.writeText(input.text);
+  } catch {
+    // An empty pasteboard is all that is left to report.
+  }
+  return false;
+}
+
+/**
+ * The older door: a copy event, with both flavours written into it.
+ *
+ * The selection the reader had is put back, so a copy behind their back
+ * does not move their cursor.
+ */
+function copyThroughCopyEvent(input: { html: string; text: string }): boolean {
+  if (typeof document === "undefined" || !document.execCommand) return false;
+  const onCopy = (event: ClipboardEvent) => {
+    event.clipboardData?.setData("text/html", input.html);
+    event.clipboardData?.setData("text/plain", input.text);
+    event.preventDefault();
+  };
+  // Off the page and still selectable: what `display: none` holds cannot be
+  // selected, and what cannot be selected cannot be copied.
+  const box = document.createElement("div");
+  box.setAttribute("aria-hidden", "true");
+  box.style.cssText =
+    "position:fixed;left:-9999px;top:0;white-space:pre-wrap;user-select:text;";
+  box.textContent = input.text;
+  const selection = window.getSelection();
+  const had = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+  document.addEventListener("copy", onCopy);
+  document.body.appendChild(box);
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    selection?.removeAllRanges();
+    if (had) selection?.addRange(had);
+    box.remove();
+    document.removeEventListener("copy", onCopy);
+  }
 }
 
 /**

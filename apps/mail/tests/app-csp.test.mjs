@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { MAIL_LINK_BRIDGE_CSP_HASH } from "@/lib/mail/link-bridge";
 import { MAIL_IMAGE_CSP_SOURCE } from "@/lib/mail/image-proxy";
 import { GOOGLE_TOKEN_ENDPOINT } from "../src/oauth-config";
+import { USAGE_PING_URL } from "@/lib/mail/usage-ping";
 
 import { check, suite } from "./harness.mjs";
 
@@ -109,6 +110,14 @@ suite(async () => {
   ]) {
     check(`the app can still reach ${host}`, has("connect-src", host));
   }
+
+  // The anonymous usage count goes to the planner, and only to its origin.
+  check(
+    "the usage count can reach the planner's ping, and nothing else of ours is named",
+    has("connect-src", new URL(USAGE_PING_URL).origin) &&
+      (sources("connect-src") ?? []).filter((s) => /digitalhabits/.test(s)).length === 1,
+    sources("connect-src")?.join(" ")
+  );
 
   // --- What must not ------------------------------------------------------
 

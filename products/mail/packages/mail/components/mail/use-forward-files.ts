@@ -16,7 +16,7 @@
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { mailApiFetch } from "@/lib/mail/api";
-import { attachmentUrl } from "@/components/mail/MailAttachments";
+import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { buildQuoteHistory } from "@/lib/mail/quote-history";
 import type { MailChatPartSummary } from "@/lib/mail/chat-types";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";

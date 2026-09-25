@@ -8,6 +8,7 @@
  */
 
 import { firstReadLines } from "@/lib/mail/first-read";
+import { noteOutlookMove } from "@/lib/mail/outlook-moves";
 import { startOutlookSync, stopOutlookSync, wakeOutlookSync } from "@/lib/mail/outlook-sync";
 import { rememberOutlookAccessToken } from "@/lib/mail/outlook-token";
 import { setMailStore } from "@/lib/mail/store";
@@ -31,6 +32,8 @@ let lastOverallPhase = null;
 const upserts = [];
 const bodies = [];
 const removed = [];
+/** Each removal with the folder it was reported for. */
+const removals = [];
 setMailStore({
   settings: { get: async () => null, set: async () => {} },
   accounts: {
@@ -59,7 +62,10 @@ setMailStore({
   messages: {
     upsertMany: async (account, rows) => upserts.push(...rows.map((r) => ({ ...r, account }))),
     putBody: async (account, id, body) => bodies.push({ account, id, body }),
-    removeMessages: async (account, ids) => removed.push(...ids),
+    removeMessages: async (account, ids, options) => {
+      removed.push(...ids);
+      removals.push({ ids: [...ids], leftFolder: options?.leftFolder ?? null });
+    },
   },
 });
 
@@ -95,6 +101,10 @@ const deltaCalls = [];
 /** A folder of two pages, whose second page fails once: a read cut short mid-folder. */
 let failSecondPageOnce = false;
 let expireInboxOnce = false;
+/** Graph reports the inbox's message gone once: deleted, or moved away. */
+let removeInboxOnce = false;
+/** The archive's message arrives in the inbox under a new id, as a move makes it. */
+let arriveMovedOnce = false;
 /** Graph fails the archive's delta once: a first read cut short partway. */
 let failArchiveOnce = false;
 globalThis.fetch = async (url, init) => {
@@ -132,6 +142,20 @@ globalThis.fetch = async (url, init) => {
     if (folder === "inbox" && token && expireInboxOnce) {
       expireInboxOnce = false;
       return json({ error: { code: "SyncStateNotFound", message: "gone" } }, 410);
+    }
+    if (folder === "inbox" && token && arriveMovedOnce) {
+      arriveMovedOnce = false;
+      return json({
+        value: [message("arch-1-moved", "inbox")],
+        "@odata.deltaLink": `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=inbox-t${deltaCalls.length}`,
+      });
+    }
+    if (folder === "inbox" && token && removeInboxOnce) {
+      removeInboxOnce = false;
+      return json({
+        value: [{ id: "inbox-1", "@removed": { reason: "deleted" } }],
+        "@odata.deltaLink": `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=inbox-t${deltaCalls.length}`,
+      });
     }
     const value = token ? [] : [message(`${folder}-1`, folder)];
     return json({
@@ -178,6 +202,26 @@ suite(async () => {
   const inboxPass = deltaCalls.slice(before);
   check("an inbox wake asks only the inbox", inboxPass.every((c) => c.folder === "inbox") && inboxPass.length === 1, inboxPass);
   check("and asks from where it left off", inboxPass[0].token != null, inboxPass[0]);
+
+  // Graph says a message has left the inbox: its row leaves the copy, for
+  // the inbox only, since the folder it went to may already hold it.
+  removeInboxOnce = true;
+  const removalsBefore = removals.length;
+  wakeOutlookSync(me, "inbox");
+  await until(() => removals.length > removalsBefore, "the removal");
+  const gone = removals[removals.length - 1];
+  check("a message Graph reports gone leaves the copy", gone.ids.join(",") === "inbox-1", JSON.stringify(gone));
+  check("and is taken out of the inbox only", gone.leftFolder === "INBOX", JSON.stringify(gone));
+
+  // A message this app moved arrives under its new id: the row it had
+  // before the move goes in the same step (see outlook-moves.ts).
+  noteOutlookMove("arch-1", "arch-1-moved");
+  arriveMovedOnce = true;
+  const movesBefore = removals.length;
+  wakeOutlookSync(me, "inbox");
+  await until(() => removals.length > movesBefore, "the moved row's removal");
+  check("a moved message's old row goes when it arrives under its new id", removals[removals.length - 1].ids.join(",") === "arch-1", JSON.stringify(removals[removals.length - 1]));
+  check("and the new row is in the copy", upserts.some((r) => r.messageId === "arch-1-moved"));
 
   // Graph has forgotten the inbox's delta: the folder is read again from the start.
   expireInboxOnce = true;

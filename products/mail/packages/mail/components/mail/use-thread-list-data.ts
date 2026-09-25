@@ -371,6 +371,12 @@ export function useThreadListData(input: {
        * kept coming — the list stayed empty until the whole mailbox was in.
        */
       coalesce?: boolean;
+      /**
+       * Called with the rows this read put in the list, as it puts them
+       * there. The state and `threadsRef` only hold them after the next
+       * render, which comes after this promise has settled.
+       */
+      onLoaded?: (threads: MailThreadSummary[]) => void;
     }): Promise<boolean> => {
       // fresh = bypass caches; quiet = background poll (no spinner / toasts).
       const fresh = options?.fresh ?? false;
@@ -419,30 +425,237 @@ export function useThreadListData(input: {
       const isCurrent = () => gen === loadGenRef.current;
       inFlightRef.current = true;
 
+      /** What the list shows while it loads: the cached rows, the rows on screen, or a skeleton. */
+      const showWhileLoading = (
+        cached: ReturnType<typeof readCachedList>,
+        warmRows: MailThreadSummary[]
+      ) => {
+        if (fresh) {
+          if (!quiet) setRefreshing(true);
+        } else if (cached?.threads.length) {
+          // The cache key carries the query, so these rows answer it.
+          setThreads(cached.threads);
+          setResultsQuery(debouncedSearch);
+          setListCursor(cached.nextCursor);
+          setLoadingList(false);
+          setRefreshing(true);
+        } else if (warmRows.length > 0) {
+          // Page snapshot / prior paint already on screen — keep rows and refresh
+          // in place (don't blank into a skeleton for 15s on a cache-key miss).
+          setLoadingList(false);
+          setRefreshing(true);
+        } else {
+          setThreads([]);
+          setListCursor(null);
+          setLoadingList(true);
+          setRefreshing(false);
+        }
+        if (!quiet) setListError(null);
+      };
+
       const cached = fresh ? null : readCachedList(viewerId, key);
-      if (fresh) {
-        if (!quiet) setRefreshing(true);
-      } else if (cached?.threads.length) {
-        // The cache key carries the query, so these rows answer it.
-        setThreads(cached.threads);
-        setResultsQuery(debouncedSearch);
-        setListCursor(cached.nextCursor);
-        setLoadingList(false);
-        setRefreshing(true);
-      } else if (warmRows.length > 0) {
-        // Page snapshot / prior paint already on screen — keep rows and refresh
-        // in place (don't blank into a skeleton for 15s on a cache-key miss).
-        setLoadingList(false);
-        setRefreshing(true);
-      } else {
-        setThreads([]);
-        setListCursor(null);
-        setLoadingList(true);
-        setRefreshing(false);
-      }
-      if (!quiet) setListError(null);
+      showWhileLoading(cached, warmRows);
       const controller = new AbortController();
       loadAbortRef.current = controller;
+
+      /** The view asks for one mailbox, and that mailbox is paused. */
+      const scopedToPausedMailbox = (params: URLSearchParams) => {
+        const scopedAccount = params.get("account");
+        return Boolean(
+          scopedAccount &&
+            mailPauseVerdictForAccount(
+              pauseStateRef.current,
+              scopedAccount,
+              new Date()
+            ).paused
+        );
+      };
+
+      /** The answer is still for the list on screen: no newer load, and the same view. */
+      const stillWanted = () => {
+        if (!isCurrent()) return false;
+        const latest = listQueryRef.current;
+        const latestKey = mailListCacheKey(
+          latest.activeFolderName
+            ? `label:${latest.activeFolderName}`
+            : latest.folder,
+          latest.debouncedSearch
+            ? `${latest.debouncedSearch}|${latest.searchScopeKey}`
+            : ""
+        );
+        return latestKey === key;
+      };
+
+      /**
+       * Every mailbox asked on its own, and merged into the list as each
+       * answer lands: one slow mailbox no longer holds back the others.
+       * Throws when none answered and some failed, as the single read does.
+       */
+      const loadEachMailbox = async (params: URLSearchParams): Promise<boolean> => {
+        const hideFiltered = (rows: MailThreadSummary[]) => {
+          const now = Date.now();
+          pruneHiddenRows(hiddenRowsRef.current, now);
+          const visibleAccounts = new Set(
+            accountEmails.map((email) => email.toLowerCase())
+          );
+          return rows.filter((t) => {
+            if (!visibleAccounts.has(t.account.toLowerCase())) return false;
+            return !rowIsHidden(hiddenRowsRef.current, threadKey(t), listViewIdRef.current, now);
+          });
+        };
+
+        // Rows already on screen (or cached) hold their place until their
+        // own mailbox's fetch lands.
+        const buckets = new Map<string, MailThreadSummary[]>();
+        for (const t of cached?.threads ?? warmRows) {
+          const bucket = buckets.get(t.account);
+          if (bucket) bucket.push(t);
+          else buckets.set(t.account, [t]);
+        }
+        const mergedNow = () =>
+          dedupeThreadsByTip(hideFiltered([...buckets.values()].flat()));
+
+        const cursorTokens: Record<string, string> = {};
+        let successes = 0;
+        let firstError: unknown = null;
+        // Slow Gmail + CRM classify regularly runs 20–30s; keep headroom.
+        const ACCOUNT_TIMEOUT_MS = 60_000;
+        /** Cap parallel mailbox fetches so we do not stampede DB / Gmail. */
+        const ACCOUNT_CONCURRENCY = 2;
+
+        /** Which mailboxes did not come back, and what each said. */
+        const failures: { email: string; reason: string }[] = [];
+
+        const fetchAccount = async (email: string) => {
+          const accountController = new AbortController();
+          const onParentAbort = () => accountController.abort();
+          if (controller.signal.aborted) {
+            accountController.abort();
+          } else {
+            controller.signal.addEventListener("abort", onParentAbort);
+          }
+          const accountTimeout = window.setTimeout(
+            () => accountController.abort(),
+            ACCOUNT_TIMEOUT_MS
+          );
+          try {
+            const p = new URLSearchParams(params);
+            p.set("account", email);
+            const json = await apiJson<{
+              threads?: MailThreadSummary[];
+              nextCursor?: string | null;
+            }>(`/api/mail/threads?${p.toString()}`, {
+              signal: accountController.signal,
+            });
+            if (!isCurrent()) return;
+            const rows = Array.isArray(json.threads) ? json.threads : [];
+            // Same flaky-empty guard as the unified path, per mailbox:
+            // never let an empty warm-browse response erase known rows.
+            const hadRows = (buckets.get(email)?.length ?? 0) > 0;
+            if (!fresh && !debouncedSearch && !rows.length && hadRows) {
+              successes += 1;
+              return;
+            }
+            successes += 1;
+            Object.assign(cursorTokens, decodeCursorTokens(json.nextCursor));
+            buckets.set(email, rows);
+            // Rows from one mailbox are already the server's answer, so
+            // local narrowing must stop even though others are still out.
+            setThreads(mergedNow());
+            setResultsQuery(debouncedSearch);
+          } catch (err) {
+            if (firstError == null) firstError = err;
+            // Which one, and what it answered. This used to go only to the
+            // console, where the toast could not reach it and nobody
+            // reading the planner's log would ever find it.
+            const aborted =
+              err instanceof DOMException && err.name === "AbortError";
+            failures.push({
+              email,
+              reason: aborted
+                ? mailSay("mailboxTimedOut")
+                : err instanceof Error
+                  ? err.message
+                  : String(err),
+            });
+            console.warn(`[mail] ${email} did not refresh:`, err);
+          } finally {
+            window.clearTimeout(accountTimeout);
+            controller.signal.removeEventListener("abort", onParentAbort);
+          }
+        };
+
+        for (let i = 0; i < liveEmails.length; i += ACCOUNT_CONCURRENCY) {
+          if (!isCurrent() || controller.signal.aborted) break;
+          const batch = liveEmails.slice(i, i + ACCOUNT_CONCURRENCY);
+          await Promise.all(batch.map((email) => fetchAccount(email)));
+        }
+
+        if (!stillWanted()) return false;
+        if (!successes) {
+          /*
+            Nothing came back, and nothing failed either.
+
+            A mailbox whose answer arrived after the reader had moved on —
+            typed in the search box, opened a folder, changed tab — returns
+            without counting, because its rows are for a list nobody is
+            looking at any more. A newer refresh is already running. That is
+            not a failure to report; it is this one having nothing to say.
+          */
+          if (!failures.length) return false;
+          setUnreadable(failures.map(plainFailure));
+          throw firstError instanceof Error
+            ? firstError
+            : new Error("Couldn't load inbox");
+        }
+        const threads = mergedNow();
+        const nextCursor = encodeCursorTokens(cursorTokens);
+        setThreads(threads);
+        options?.onLoaded?.(threads);
+        setResultsQuery(debouncedSearch);
+        setListCursor(nextCursor);
+        writeCachedList(viewerId, key, { threads, nextCursor });
+        reconcileSelection(threads);
+        /*
+          Only the mailboxes that actually failed.
+
+          Counting instead — fewer successes than mailboxes — reported the
+          reader's own typing as an error: an answer that arrived too late
+          to be wanted leaves the count short without anything having gone
+          wrong. Named at the top of the list rather than in a toast: a
+          toast is gone in seconds, and the rows that did come back go on
+          looking like the whole answer for as long as the list is open.
+        */
+        setUnreadable(failures.map(plainFailure));
+        return successes === liveEmails.length;
+      };
+
+      /** What a failed read says: in the list when it has nothing to show, else in a toast. */
+      const reportLoadError = (
+        err: unknown,
+        cached: ReturnType<typeof readCachedList>,
+        warmRows: MailThreadSummary[]
+      ) => {
+        // Keep showing the cached / on-screen list if we have one.
+        const haveWarm =
+          (cached?.threads.length ?? 0) > 0 || warmRows.length > 0;
+        const message =
+          err instanceof Error && err.name === "AbortError"
+            ? mailSay("inboxLoadTimedOut")
+            : err instanceof Error
+              ? err.message
+              : "Couldn't load inbox";
+        if (!fresh && !haveWarm) {
+          setListError(message);
+        } else if (!quiet) {
+          toast.error(
+            err instanceof Error && err.name === "AbortError"
+              ? message
+              : message.replace("Couldn't load inbox", "Couldn't refresh inbox")
+          );
+        }
+      };
+
       /** Single-mailbox wall clock; multi-account uses a per-mailbox timeout. */
       let timeout: number | null = null;
       try {
@@ -453,15 +666,8 @@ export function useThreadListData(input: {
         }
         if (fresh && !snoozedView) params.set("fresh", "1");
         if (incremental && !snoozedView) params.set("incremental", "1");
-        const scopedAccount = params.get("account");
-        if (
-          scopedAccount &&
-          mailPauseVerdictForAccount(
-            pauseStateRef.current,
-            scopedAccount,
-            new Date()
-          ).paused
-        ) {
+        // One mailbox asked for, and it is paused: nothing to fetch.
+        if (scopedToPausedMailbox(params)) {
           setLoadingList(false);
           setRefreshing(false);
           return true;
@@ -475,151 +681,7 @@ export function useThreadListData(input: {
           !params.has("account") &&
           accountEmails.length > 1
         ) {
-          const hideFiltered = (rows: MailThreadSummary[]) => {
-            const now = Date.now();
-            pruneHiddenRows(hiddenRowsRef.current, now);
-            const visibleAccounts = new Set(
-              accountEmails.map((email) => email.toLowerCase())
-            );
-            return rows.filter((t) => {
-              if (!visibleAccounts.has(t.account.toLowerCase())) return false;
-              return !rowIsHidden(hiddenRowsRef.current, threadKey(t), listViewIdRef.current, now);
-            });
-          };
-
-          // Rows already on screen (or cached) hold their place until their
-          // own mailbox's fetch lands.
-          const buckets = new Map<string, MailThreadSummary[]>();
-          for (const t of cached?.threads ?? warmRows) {
-            const bucket = buckets.get(t.account);
-            if (bucket) bucket.push(t);
-            else buckets.set(t.account, [t]);
-          }
-          const mergedNow = () =>
-            dedupeThreadsByTip(hideFiltered([...buckets.values()].flat()));
-
-          const cursorTokens: Record<string, string> = {};
-          let successes = 0;
-          let firstError: unknown = null;
-          // Slow Gmail + CRM classify regularly runs 20–30s; keep headroom.
-          const ACCOUNT_TIMEOUT_MS = 60_000;
-          /** Cap parallel mailbox fetches so we do not stampede DB / Gmail. */
-          const ACCOUNT_CONCURRENCY = 2;
-
-          /** Which mailboxes did not come back, and what each said. */
-          const failures: { email: string; reason: string }[] = [];
-
-          const fetchAccount = async (email: string) => {
-            const accountController = new AbortController();
-            const onParentAbort = () => accountController.abort();
-            if (controller.signal.aborted) {
-              accountController.abort();
-            } else {
-              controller.signal.addEventListener("abort", onParentAbort);
-            }
-            const accountTimeout = window.setTimeout(
-              () => accountController.abort(),
-              ACCOUNT_TIMEOUT_MS
-            );
-            try {
-              const p = new URLSearchParams(params);
-              p.set("account", email);
-              const json = await apiJson<{
-                threads?: MailThreadSummary[];
-                nextCursor?: string | null;
-              }>(`/api/mail/threads?${p.toString()}`, {
-                signal: accountController.signal,
-              });
-              if (!isCurrent()) return;
-              const rows = Array.isArray(json.threads) ? json.threads : [];
-              // Same flaky-empty guard as the unified path, per mailbox:
-              // never let an empty warm-browse response erase known rows.
-              const hadRows = (buckets.get(email)?.length ?? 0) > 0;
-              if (!fresh && !debouncedSearch && !rows.length && hadRows) {
-                successes += 1;
-                return;
-              }
-              successes += 1;
-              Object.assign(cursorTokens, decodeCursorTokens(json.nextCursor));
-              buckets.set(email, rows);
-              // Rows from one mailbox are already the server's answer, so
-              // local narrowing must stop even though others are still out.
-              setThreads(mergedNow());
-              setResultsQuery(debouncedSearch);
-            } catch (err) {
-              if (firstError == null) firstError = err;
-              // Which one, and what it answered. This used to go only to the
-              // console, where the toast could not reach it and nobody
-              // reading the planner's log would ever find it.
-              const aborted =
-                err instanceof DOMException && err.name === "AbortError";
-              failures.push({
-                email,
-                reason: aborted
-                  ? mailSay("mailboxTimedOut")
-                  : err instanceof Error
-                    ? err.message
-                    : String(err),
-              });
-              console.warn(`[mail] ${email} did not refresh:`, err);
-            } finally {
-              window.clearTimeout(accountTimeout);
-              controller.signal.removeEventListener("abort", onParentAbort);
-            }
-          };
-
-          for (let i = 0; i < liveEmails.length; i += ACCOUNT_CONCURRENCY) {
-            if (!isCurrent() || controller.signal.aborted) break;
-            const batch = liveEmails.slice(i, i + ACCOUNT_CONCURRENCY);
-            await Promise.all(batch.map((email) => fetchAccount(email)));
-          }
-
-          if (!isCurrent()) return false;
-          const latestQuery = listQueryRef.current;
-          const currentKey = mailListCacheKey(
-            latestQuery.activeFolderName
-              ? `label:${latestQuery.activeFolderName}`
-              : latestQuery.folder,
-            latestQuery.debouncedSearch
-              ? `${latestQuery.debouncedSearch}|${latestQuery.searchScopeKey}`
-              : ""
-          );
-          if (currentKey !== key) return false;
-          if (!successes) {
-            /*
-              Nothing came back, and nothing failed either.
-
-              A mailbox whose answer arrived after the reader had moved on —
-              typed in the search box, opened a folder, changed tab — returns
-              without counting, because its rows are for a list nobody is
-              looking at any more. A newer refresh is already running. That is
-              not a failure to report; it is this one having nothing to say.
-            */
-            if (!failures.length) return false;
-            setUnreadable(failures.map(plainFailure));
-            throw firstError instanceof Error
-              ? firstError
-              : new Error("Couldn't load inbox");
-          }
-          const threads = mergedNow();
-          const nextCursor = encodeCursorTokens(cursorTokens);
-          setThreads(threads);
-          setResultsQuery(debouncedSearch);
-          setListCursor(nextCursor);
-          writeCachedList(viewerId, key, { threads, nextCursor });
-          reconcileSelection(threads);
-          /*
-            Only the mailboxes that actually failed.
-
-            Counting instead — fewer successes than mailboxes — reported the
-            reader's own typing as an error: an answer that arrived too late
-            to be wanted leaves the count short without anything having gone
-            wrong. Named at the top of the list rather than in a toast: a
-            toast is gone in seconds, and the rows that did come back go on
-            looking like the whole answer for as long as the list is open.
-          */
-          setUnreadable(failures.map(plainFailure));
-          return successes === liveEmails.length;
+          return await loadEachMailbox(params);
         }
 
         timeout = window.setTimeout(() => controller.abort(), 45_000);
@@ -632,18 +694,8 @@ export function useThreadListData(input: {
             : `/api/mail/threads?${params.toString()}`,
           { signal: controller.signal }
         );
-        if (!isCurrent()) return false;
         // Query changed while we were in flight (search typed, tab switch…).
-        const latest = listQueryRef.current;
-        const latestKey = mailListCacheKey(
-          latest.activeFolderName
-            ? `label:${latest.activeFolderName}`
-            : latest.folder,
-          latest.debouncedSearch
-            ? `${latest.debouncedSearch}|${latest.searchScopeKey}`
-            : ""
-        );
-        if (latestKey !== key) return false;
+        if (!stillWanted()) return false;
 
         const rawThreads = Array.isArray(json.threads) ? json.threads : [];
         // One answer for every mailbox: nothing was left out.
@@ -677,6 +729,7 @@ export function useThreadListData(input: {
               return !rowIsHidden(hiddenRowsRef.current, threadKey(t), listViewIdRef.current, now);
             });
         setThreads(threads);
+        options?.onLoaded?.(threads);
         setResultsQuery(debouncedSearch);
         setListCursor(nextCursor);
         writeCachedList(viewerId, key, { threads, nextCursor });
@@ -688,24 +741,7 @@ export function useThreadListData(input: {
         if (!isCurrent()) return false;
         // Navigating to OAuth cancels in-flight fetches (WebKit: "Load failed").
         if (shouldIgnoreFetchError()) return false;
-        // Keep showing the cached / on-screen list if we have one.
-        const haveWarm =
-          (cached?.threads.length ?? 0) > 0 || warmRows.length > 0;
-        const message =
-          err instanceof Error && err.name === "AbortError"
-            ? mailSay("inboxLoadTimedOut")
-            : err instanceof Error
-              ? err.message
-              : "Couldn't load inbox";
-        if (!fresh && !haveWarm) {
-          setListError(message);
-        } else if (!quiet) {
-          toast.error(
-            err instanceof Error && err.name === "AbortError"
-              ? message
-              : message.replace("Couldn't load inbox", "Couldn't refresh inbox")
-          );
-        }
+        reportLoadError(err, cached, warmRows);
         return false;
       } finally {
         if (timeout != null) window.clearTimeout(timeout);

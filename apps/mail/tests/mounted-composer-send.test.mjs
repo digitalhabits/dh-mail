@@ -22,71 +22,22 @@
  * draft. These walks must pass before and after the composer moves out of
  * ThreadPane.
  *
+ * The last walks close gaps the ThreadPane split left open: the Reply button
+ * at the foot of the thread, the question a message that speaks of a file
+ * and carries none is asked (Go back sends nothing, Send anyway sends), and
+ * the Escape question (Keep draft keeps the words, Enter discards). A
+ * walk sends with Command+Enter from inside the reply. Two more open Edit
+ * subject, under the box, and Preview first from the Send options. A reply
+ * under a new subject goes without the thread's id and still answers the
+ * message.
+ *
  * The DOM globals must be in place before a component module runs. Thus the
  * page is imported dynamically from the impl file.
  */
 
-import { Window } from "happy-dom";
+import { installDom } from "./mounted-dom.mjs";
 
-const win = new Window({ url: "http://localhost:3473/" });
-globalThis.window = win;
-for (const key of [
-  "document",
-  "navigator",
-  "location",
-  "history",
-  "localStorage",
-  "sessionStorage",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-  "matchMedia",
-  "HTMLElement",
-  "HTMLInputElement",
-  "HTMLIFrameElement",
-  "SVGElement",
-  "Element",
-  "Node",
-  "NodeFilter",
-  "Event",
-  "CustomEvent",
-  "KeyboardEvent",
-  "MouseEvent",
-  "PointerEvent",
-  "DragEvent",
-  "StorageEvent",
-  "MutationObserver",
-  "ResizeObserver",
-  "IntersectionObserver",
-  "FileReader",
-  "CSSStyleDeclaration",
-  "DOMParser",
-  "XMLSerializer",
-  "Range",
-  "Selection",
-  "Text",
-  "Comment",
-  "DocumentFragment",
-]) {
-  if (win[key] !== undefined && globalThis[key] === undefined) {
-    globalThis[key] = win[key];
-  }
-}
-// happy-dom leaves these out; the app only needs them to exist.
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
-if (typeof globalThis.IntersectionObserver === "undefined") {
-  globalThis.IntersectionObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
+installDom();
 
 void import("./mounted-composer-send.impl.mjs").catch((err) => {
   console.error("the mounted suite could not start:", err);

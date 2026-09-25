@@ -16,20 +16,13 @@
  * store does with a summary is checked below it, where it can be run.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { toggleMailPin, listMailPins, isMailPinned } from "@/lib/mail/pins";
+import { findCachedThread, writeCachedList } from "@/lib/mail/list-cache";
 
 import { check, suite } from "./harness.mjs";
+import { mailPageSource } from "./mail-page-source.mjs";
 
-const page = readFileSync(
-  join(
-    process.cwd(),
-    "../../products/mail/packages/mail/components/mail/MailPage.tsx"
-  ),
-  "utf8"
-);
+const page = mailPageSource();
 
 /** Invented, and shaped like a row the list would hand over. */
 const SUMMARY = {
@@ -57,45 +50,58 @@ suite(async () => {
     handler.includes("selectedRow ??") ? "falls back" : "list row only"
   );
   check(
-    "matched by the thread it is on, as the band matches it",
-    handler.includes("pin.account === selected.account") &&
-      handler.includes("pin.threadId === selected.threadId")
+    "matched by the thread it is on, and by one rule for all three",
+    handler.includes("t.account === selected.account") &&
+      handler.includes("t.threadId === selected.threadId") &&
+      handler.includes("pins.find(mine)?.summary"),
+    handler.includes("const mine =") ? "one predicate" : "three"
   );
   check(
-    "and a thread with no row and no pin is still told why",
+    "and failing both, any list this viewer has already read",
+    handler.includes("findCachedThread(viewerId, mine)"),
+    handler.includes("findCachedThread") ? "looks in the cache" : "gives up"
+  );
+  check(
+    "and a thread in none of the three is still told why",
     page.includes('else toast("Open it from the list to pin it");')
   );
 
   /*
-    Archiving takes the pin off, because a pin is a shortcut to something
-    in the inbox. Trash already did; archive was the odd one out, and the
-    band went on drawing the thread from the summary the pin kept.
+    Archiving and deleting take the pin off, Undo puts it back, and a
+    refused archive keeps it: walked in mounted-list-actions, which drives
+    them in the page rather than reading the lines that do them.
   */
-  check(
-    "archiving takes the pin off",
-    page.includes("const wasPinned = isMailPinned(t.account, t.threadId);") &&
-      page.includes("if (wasPinned) unpinMailThread(t.account, t.threadId);")
-  );
-  check(
-    "trash still does too, and notes it before it does",
-    page.includes(
-      "const wasPinned = copies.some((c) => isMailPinned(c.account, c.threadId));"
-    )
-  );
-  check(
-    "and undo puts the pin back with the conversation",
-    page.includes("if (undo.wasPinned) pinMailThread(undo.summary);")
-  );
-  check(
-    "as does an archive or a delete that failed",
-    (page.match(/if \(wasPinned && summary\) pinMailThread\(summary\);/g) ?? [])
-      .length === 2
-  );
 
   /*
     The store's half: a summary is all it takes either way, so the one the
     pin kept unpins the thread exactly as the list row would have.
   */
+  /*
+    The cache's half: a thread older than the page the list has loaded is
+    in no list on screen, but it is in one the viewer has already read.
+  */
+  const VIEWER = "pin-viewer";
+  const mine = (t) =>
+    t.account === SUMMARY.account && t.threadId === SUMMARY.threadId;
+  check(
+    "a thread nobody has read is not in the cache",
+    findCachedThread(VIEWER, mine) === null
+  );
+  writeCachedList(VIEWER, "inbox|", { threads: [SUMMARY], nextCursor: null });
+  check(
+    "one from a list already read is found",
+    findCachedThread(VIEWER, mine)?.threadId === SUMMARY.threadId
+  );
+  check(
+    "but not for another viewer, whose lists are their own",
+    findCachedThread("somebody-else", mine) === null
+  );
+  writeCachedList(VIEWER, "search|tiago", { threads: [], nextCursor: null });
+  check(
+    "an empty list does not hide one that has it",
+    findCachedThread(VIEWER, mine)?.threadId === SUMMARY.threadId
+  );
+
   check("a thread starts unpinned", isMailPinned(SUMMARY) === false);
   check("pinning it says so", toggleMailPin(SUMMARY) === true);
   check("and it is on the list", listMailPins().length === 1);

@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { cardWindowClass } from "@/lib/mail/card-window";
 
 import { check, suite } from "./harness.mjs";
+import { composeViewSource, threadPaneSource } from "./mail-page-source.mjs";
 
 const src = (name) =>
   readFileSync(
@@ -25,8 +26,8 @@ const src = (name) =>
   so the rules below are read there.
 */
 const frame = src("floating-card.tsx");
-const pane = src("ThreadPane.tsx");
-const compose = src("ComposeView.tsx");
+const pane = threadPaneSource();
+const compose = composeViewSource();
 const drag = src("use-card-drag.ts");
 
 suite(async () => {

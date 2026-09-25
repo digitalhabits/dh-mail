@@ -1,8 +1,6 @@
 import "server-only";
 
 import {
-  bodyHasInlineImage,
-  getOutlookAttachmentBytes,
   getOutlookMessageFull,
   getOutlookMessageTimes,
   graphAddress,
@@ -11,23 +9,29 @@ import {
   listConversationMessages,
   listOutlookConversationDrafts,
   listOutlookConversationSummaries,
-  listOutlookAttachmentMeta,
-  listOutlookFileAttachments,
-  resolveOutlookInlineImages,
   getOutlookAutomaticReplies,
   markOutlookMessageRead,
   unreadMessageIds,
   updateOutlookAutomaticReplies,
   moveOutlookConversation,
+  deleteOutlookMessage,
+  type GraphMessage,
+} from "@/lib/outlook/api";
+import {
   createOutlookDraft,
   sendOutlookMail,
   clearOutlookDeferredSend,
-  deleteOutlookMessage,
   listOutlookScheduledMessages,
   sendOutlookDraftNow,
-  type GraphMessage,
+} from "@/lib/outlook/send";
+import {
+  bodyHasInlineImage,
+  getOutlookAttachmentBytes,
+  listOutlookAttachmentMeta,
+  listOutlookFileAttachments,
+  resolveOutlookInlineImages,
   getOutlookMessageSource,
-} from "@/lib/outlook/api";
+} from "@/lib/outlook/attachments";
 import { findOutlookFolder } from "@/lib/mail/outlook-folders";
 import {
   clearOutlookAccessToken,
@@ -46,9 +50,9 @@ import type {
   MailThreadDetail,
   MailThreadSummary,
 } from "@/lib/mail/types";
-import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
+import { isOwnOrgAddress } from "@/lib/own-addresses";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
-import { replyAllRecipients, sentFromThisMailbox } from "@/lib/mail/reply-target";
+import { replyTargets } from "@/lib/mail/reply-target";
 import {
   type Classifier,
   classifyThread,
@@ -62,6 +66,7 @@ import { signatureHtml } from "@/lib/mail/signature-html";
 import { htmlToText } from "@/lib/mail/html-to-text";
 import { getMailSignatureSettings } from "@/lib/mail/settings";
 import { PlanError } from "@/lib/plan/errors";
+import { participantNames } from "@/lib/mail/thread-participants";
 
 // Tokens live in their own module so folders can reach them too. Re-exported
 // here because most callers already import them from the inbox.
@@ -323,25 +328,17 @@ async function graphMessageToMailMessage(
   };
 }
 
-export async function getOutlookMailThread(
-  account: string,
+/**
+ * The page of a conversation asked for: around a search hit, after a
+ * message, or before one (the newest page when nothing is named). Outlook
+ * cannot give the oldest page; see the note inside.
+ */
+async function readOutlookWindow(
+  token: string,
   threadId: string,
-  options?: {
-    before?: string;
-    after?: string;
-    around?: string;
-    /**
-     * The oldest page, rather than the newest. Refused here — see below.
-     */
-    oldest?: boolean;
-    limit?: number;
-    /** When false, skip marking the tip message read (background prefetch). */
-    markRead?: boolean;
-  }
-): Promise<MailThreadDetail> {
-  const token = await outlookAccessTokenFor(account);
-  const limit = options?.limit ?? THREAD_PAGE_SIZE;
-
+  options: { before?: string; after?: string; around?: string; oldest?: boolean } | undefined,
+  limit: number
+): Promise<{ rawMessages: GraphMessage[]; hasOlder: boolean; hasNewer: boolean }> {
   let rawMessages: GraphMessage[] = [];
   let hasOlder = false;
   let hasNewer = false;
@@ -415,6 +412,58 @@ export async function getOutlookMailThread(
     hasNewer = Boolean(options?.before);
   }
 
+  return { rawMessages, hasOlder, hasNewer };
+}
+
+/**
+ * Opening a thread marks it read — all of it, not just its newest message.
+ *
+ * Graph has no conversation-level read flag, and the list here calls a
+ * conversation unread when any message in it is. Marking only the newest
+ * one read therefore looked right until the next sync, which read the rest
+ * of the conversation and put the row back in bold. It was never that the
+ * read state failed to reach Outlook; it was that most of it was never sent.
+ */
+function markOpenedConversationRead(
+  token: string,
+  account: string,
+  threadId: string,
+  rawMessages: GraphMessage[],
+  hasOlder: boolean
+): void {
+  void Promise.all(
+    unreadMessageIds(rawMessages).map((id) =>
+      markOutlookMessageRead(token, id, true).catch(() => undefined)
+    )
+  );
+  // A thread longer than one page can hold an unread message further back,
+  // and one is enough to make the whole row unread again.
+  if (hasOlder) {
+    void markOutlookThreadRead(account, threadId).catch(() => undefined);
+  }
+}
+
+export async function getOutlookMailThread(
+  account: string,
+  threadId: string,
+  options?: {
+    before?: string;
+    after?: string;
+    around?: string;
+    /**
+     * The oldest page, rather than the newest. Refused: see readOutlookWindow.
+     */
+    oldest?: boolean;
+    limit?: number;
+    /** When false, skip marking the tip message read (background prefetch). */
+    markRead?: boolean;
+  }
+): Promise<MailThreadDetail> {
+  const token = await outlookAccessTokenFor(account);
+  const limit = options?.limit ?? THREAD_PAGE_SIZE;
+
+  const { rawMessages, hasOlder, hasNewer } = await readOutlookWindow(token, threadId, options, limit);
+
   // A reply the reader started in Outlook and never sent. Only on the newest
   // page — paging back through an old thread should not reopen a composer.
   const draft =
@@ -451,78 +500,17 @@ export async function getOutlookMailThread(
   const last = tip;
   const subject = (last?.subject || "").trim() || "(no subject)";
 
-  const lastFrom = last ? graphAddress(last.from) : { email: "", name: "" };
-  const lastTo = last
-    ? graphAddresses(last.toRecipients).map((p) => p.email)
-    : [];
-  const lastCc = last
-    ? graphAddresses(last.ccRecipients).map((p) => p.email)
-    : [];
-  // Not "from an address of mine" — from *this* mailbox. See the note on
-  // `sentFromThisMailbox`; the difference is a thread with yourself.
-  const sentByUs = sentFromThisMailbox({
-    from: lastFrom.email,
+  const reply = replyTargets({
+    from: last ? graphAddress(last.from).email : "",
+    to: last ? graphAddresses(last.toRecipients).map((p) => p.email) : [],
+    cc: last ? graphAddresses(last.ccRecipients).map((p) => p.email) : [],
     account,
-    to: lastTo,
-    cc: lastCc,
-  });
-  const accountKey = normalizeEmail(account);
-
-  const recipients = (items: string[]) => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of items) {
-      const email = raw.trim();
-      if (!email) continue;
-      const key = normalizeEmail(email);
-      if (key === accountKey || seen.has(key)) continue;
-      seen.add(key);
-      out.push(email);
-    }
-    return out;
-  };
-
-  const replyTo = sentByUs ? lastTo : [lastFrom.email];
-  const replyAll = replyAllRecipients({
-    from: lastFrom.email,
-    to: lastTo,
-    cc: lastCc,
-    account,
-    sentByUs,
   });
 
-  const names: string[] = [];
-  let hasOwn = false;
-  for (const m of messages) {
-    if (m.own) {
-      hasOwn = true;
-      continue;
-    }
-    const short = m.fromName.split("<")[0].trim() || m.fromEmail;
-    if (!names.includes(short)) names.push(short);
-  }
-  if (hasOwn) names.push("You");
+  const names = participantNames(messages);
 
-  /**
-   * Opening a thread marks it read — all of it, not just its newest message.
-   *
-   * Graph has no conversation-level read flag, and the list here calls a
-   * conversation unread when any message in it is. Marking only the newest
-   * one read therefore looked right until the next sync, which read the rest
-   * of the conversation and put the row back in bold. It was never that the
-   * read state failed to reach Outlook; it was that most of it was never sent.
-   */
   if (options?.markRead !== false && !options?.before && !options?.after) {
-    void Promise.all(
-      unreadMessageIds(rawMessages).map((id) =>
-        markOutlookMessageRead(token, id, true).catch(() => undefined)
-      )
-    );
-    // A thread longer than one page can hold an unread message further back,
-    // and one is enough to make the whole row unread again.
-    if (hasOlder) {
-      void markOutlookThreadRead(account, threadId).catch(() => undefined);
-    }
+    markOpenedConversationRead(token, account, threadId, rawMessages, hasOlder);
   }
 
   const chat = await getChatForThread(
@@ -584,12 +572,10 @@ export async function getOutlookMailThread(
     reply: {
       inReplyTo: last?.internetMessageId || "",
       references: last?.internetMessageId || "",
-      // Self-addressed threads (notes to yourself) would otherwise strip down
-      // to nobody — replying to yourself is legitimate, so keep the mailbox.
-      to: recipients(replyTo).length ? recipients(replyTo) : [account],
+      to: reply.to,
       cc: [],
-      allTo: replyAll.to,
-      allCc: replyAll.cc,
+      allTo: reply.allTo,
+      allCc: reply.allCc,
     },
   };
 }

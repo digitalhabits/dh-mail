@@ -8,66 +8,9 @@
  * everything as the provider already holds it must not post at all.
  */
 
-import { Window } from "happy-dom";
+import { installDom } from "./mounted-dom.mjs";
 
-const win = new Window({ url: "http://localhost:3473/" });
-globalThis.window = win;
-for (const key of [
-  "document",
-  "navigator",
-  "location",
-  "history",
-  "localStorage",
-  "sessionStorage",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-  "matchMedia",
-  "HTMLElement",
-  "HTMLInputElement",
-  "HTMLIFrameElement",
-  "SVGElement",
-  "Element",
-  "Node",
-  "Event",
-  "CustomEvent",
-  "KeyboardEvent",
-  "MouseEvent",
-  "PointerEvent",
-  "DragEvent",
-  "StorageEvent",
-  "MutationObserver",
-  "ResizeObserver",
-  "IntersectionObserver",
-  "FileReader",
-  "CSSStyleDeclaration",
-  "DOMParser",
-  "XMLSerializer",
-  "Range",
-  "Selection",
-  "Text",
-  "Comment",
-  "DocumentFragment",
-]) {
-  if (win[key] !== undefined && globalThis[key] === undefined) {
-    globalThis[key] = win[key];
-  }
-}
-// happy-dom leaves these out; the app only needs them to exist.
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
-if (typeof globalThis.IntersectionObserver === "undefined") {
-  globalThis.IntersectionObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
+installDom();
 
 void import("./mounted-autoreply.impl.mjs").catch((err) => {
   console.error("the mounted suite could not start:", err);

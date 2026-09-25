@@ -7,10 +7,7 @@ import { type MailRecipient } from "@/lib/mail/contact-list-types";
 import { signalPopoutSend } from "@/lib/mail/popout";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import type { DraftAttachmentSnapshot } from "@/lib/mail/local-drafts";
-import {
-  sanitizeEmailHtml,
-  stripQuotedHtml,
-} from "@/components/mail/EmailHtmlView";
+import { sanitizeEmailHtml, stripQuotedHtml } from "@/lib/mail/email-html";
 import { replyHistoryEntry } from "@/lib/mail/reply-history";
 import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
 

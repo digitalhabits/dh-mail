@@ -15,11 +15,9 @@
 
 import * as React from "react";
 
-import {
-  CrmProposalDialog,
-  type CrmProposeResult,
-} from "@/components/mail/CrmProposalDialog";
-import { attachmentUrl } from "@/components/mail/MailAttachments";
+import { CrmProposalDialog } from "@/components/mail/CrmProposalDialog";
+import { type CrmProposeResult } from "@/components/mail/crm-proposal-parts";
+import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { readAttachmentText } from "@/lib/mail/attachment-text";
 import { threadKey } from "@/lib/mail/thread-copies";
@@ -112,6 +110,47 @@ export function showCrmProposal(
   });
 }
 
+type AttachmentText = { filename: string; text: string };
+
+/**
+ * The text of the thread's files, read in this webview, one after another
+ * with the dialog saying which. A file that cannot be read is named in an
+ * error and left out. Null when the ask was stopped on the way.
+ */
+async function readAttachmentTexts(
+  account: string,
+  picked: CrmReadableAttachment[],
+  say: (stage: string) => void,
+  signal: AbortSignal
+): Promise<AttachmentText[] | null> {
+  const texts: AttachmentText[] = [];
+  for (const [i, a] of picked.entries()) {
+    say(`Reading ${a.filename} (${i + 1} of ${picked.length})…`);
+    try {
+      const text = await readAttachmentText(
+        attachmentUrl({
+          account,
+          messageId: a.messageId,
+          attachment: {
+            attachmentId: a.attachmentId,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            size: 0,
+          },
+        }),
+        a.mimeType
+      );
+      if (text?.trim()) texts.push({ filename: a.filename, text });
+    } catch (err) {
+      toast.error(
+        `Couldn't read ${a.filename}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+    if (signal.aborted) return null;
+  }
+  return texts;
+}
+
 /**
  * ✨: ask the planner what this thread changes, and show the proposals.
  * Nothing is written until the reader applies. The thread's participants,
@@ -152,38 +191,16 @@ export async function proposeCrmFromThread({
   try {
     // Opt-in: the reader chose to give the AI the thread's PDFs. The text
     // comes out in this webview; only the text goes to the planner.
-    let texts: { filename: string; text: string }[] | undefined;
+    let texts: AttachmentText[] | undefined;
     if (include) {
-      texts = [];
-      const picked = attachments.slice(0, 3);
-      for (const [i, a] of picked.entries()) {
-        show({
-          loading: true,
-          result: null,
-          stage: `Reading ${a.filename} (${i + 1} of ${picked.length})…`,
-        });
-        try {
-          const text = await readAttachmentText(
-            attachmentUrl({
-              account,
-              messageId: a.messageId,
-              attachment: {
-                attachmentId: a.attachmentId,
-                filename: a.filename,
-                mimeType: a.mimeType,
-                size: 0,
-              },
-            }),
-            a.mimeType
-          );
-          if (text?.trim()) texts.push({ filename: a.filename, text });
-        } catch (err) {
-          toast.error(
-            `Couldn't read ${a.filename}: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-        if (mine.signal.aborted) return;
-      }
+      const read = await readAttachmentTexts(
+        account,
+        attachments.slice(0, 3),
+        (stage) => show({ loading: true, result: null, stage }),
+        mine.signal
+      );
+      if (!read) return;
+      texts = read;
       show({ loading: true, result: null });
     }
     // Two calls: the match is a second, the model is longer. The dialog

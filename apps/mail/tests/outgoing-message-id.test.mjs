@@ -41,7 +41,8 @@ suite(async () => {
   check("and no two are the same", many.size === 200, `${many.size} of 200`);
 
   const send = readFileSync(
-    join(process.cwd(), "../../products/mail/packages/mail/lib/mail/inbox.ts"),
+    // The send lives in inbox-send.ts since the inbox core was split by concern.
+    join(process.cwd(), "../../products/mail/packages/mail/lib/mail/inbox-send.ts"),
     "utf8"
   );
   const headers = send.slice(

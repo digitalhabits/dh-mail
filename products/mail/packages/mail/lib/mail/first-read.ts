@@ -19,6 +19,11 @@
  *   count equal to the total.
  * - A folder of the mailbox has the phase "reading": the Outlook worker keeps
  *   its place in a folder under that phase until the folder is finished.
+ *
+ * A row for a mailbox that is not in the list is not a read. When a mailbox
+ * was removed while its worker read a batch, the worker wrote that batch
+ * after the store dropped the mailbox, and a row stayed with a short count.
+ * Mail never starts that mailbox again, so the line said "stopped" forever.
  */
 
 import { syncPauseKind } from "@/lib/mail/sync-pause";
@@ -70,8 +75,18 @@ function stateOf(row: MailSyncState): FirstReadState {
   return kind === "offline" ? "offline" : "waiting";
 }
 
-/** One line for each first read that is not complete, in the order given. */
-export function firstReadLines(states: MailSyncState[]): FirstReadLine[] {
+/** Only the rows of these mailboxes; all rows when no list is given. */
+function ofMailboxes(states: MailSyncState[], mailboxes?: readonly string[]): MailSyncState[] {
+  if (!mailboxes) return states;
+  return states.filter((row) => mailboxes.some((m) => sameAccount(m, row.account)));
+}
+
+/**
+ * One line for each first read that is not complete, in the order given.
+ * `mailboxes` are the mailboxes in the list; rows of any other are left out.
+ */
+export function firstReadLines(all: MailSyncState[], mailboxes?: readonly string[]): FirstReadLine[] {
+  const states = ofMailboxes(all, mailboxes);
   return states
     .filter((row) => firstReadUnfinished(row, states))
     .map((row) => {
@@ -89,6 +104,7 @@ export function firstReadLines(states: MailSyncState[]): FirstReadLine[] {
 }
 
 /** A sync that paused on a mailbox whose first read is complete. The old notice is for these. */
-export function pausedAfterFirstRead(states: MailSyncState[]): MailSyncState[] {
+export function pausedAfterFirstRead(all: MailSyncState[], mailboxes?: readonly string[]): MailSyncState[] {
+  const states = ofMailboxes(all, mailboxes);
   return states.filter((row) => row.phase === "paused" && !firstReadUnfinished(row, states));
 }

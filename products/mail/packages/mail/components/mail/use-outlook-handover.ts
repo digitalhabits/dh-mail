@@ -26,7 +26,7 @@ import {
   openOutlookCompose,
   outlookComposeUrl,
 } from "@/lib/mail/outlook-compose";
-import { sanitizeEmailHtml } from "@/components/mail/EmailHtmlView";
+import { sanitizeEmailHtml } from "@/lib/mail/email-html";
 import { quotedReplyMessage } from "@/lib/mail/reaction-message";
 import { bodyToEmailHtml, htmlToPlainText } from "@/lib/client-email-html";
 import { formatEmailBody } from "@/lib/email-mime";

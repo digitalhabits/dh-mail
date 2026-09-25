@@ -17,12 +17,14 @@ import "server-only";
 import {
   graphAddress,
   graphAddresses,
-  listOutlookAttachmentMeta,
   listOutlookFolderDelta,
-  resolveOutlookInlineImages,
-  bodyHasInlineImage,
   type GraphMessage,
 } from "@/lib/outlook/api";
+import {
+  listOutlookAttachmentMeta,
+  resolveOutlookInlineImages,
+  bodyHasInlineImage,
+} from "@/lib/outlook/attachments";
 import { outlookAccessTokenFor } from "@/lib/mail/outlook-token";
 import { listOutlookFolders, type OutlookFolder } from "@/lib/mail/outlook-folders";
 import { mailStore } from "@/lib/mail/store";
@@ -228,6 +230,115 @@ function labelFor(role: string | undefined, path: string): string | null {
   }
 }
 
+/** One message's body as the copy keeps it. */
+type PageBody = { id: string; text: string; html: string | null; inline: Record<string, string>; attachments: unknown[] };
+
+/**
+ * A page of a folder's delta, read: the rows it brings, the ids it says
+ * are gone, and each message's body with its files and inline pictures.
+ */
+async function readPageEntries(
+  token: string,
+  entries: Awaited<ReturnType<typeof listOutlookFolderDelta>>["entries"],
+  label: string | null
+): Promise<{ rows: MailStoredMessage[]; removed: string[]; bodies: PageBody[] }> {
+  const rows: MailStoredMessage[] = [];
+  const removed: string[] = [];
+  const pending: Promise<PageBody>[] = [];
+  for (const entry of entries) {
+    if (entry.kind === "removed") {
+      removed.push(entry.id);
+      continue;
+    }
+    const m = entry.message;
+    rows.push(rowFrom(m, label));
+    const html = m.body?.contentType?.toLowerCase() === "html" ? (m.body.content ?? "") : null;
+    const text = html ? "" : (m.body?.content ?? m.bodyPreview ?? "");
+    /*
+      The attachments of a page's messages are asked for side by side.
+      They were asked for one after another: a page of a hundred messages
+      with thirty attachments was thirty requests in a row, each waiting
+      on the one before, and that was most of the hours a big mailbox
+      took. The Graph client lets three requests for a mailbox run at
+      once and queues the rest, so this cannot ask faster than it may.
+    */
+    pending.push(
+      (async (): Promise<PageBody> => {
+        let inline: Record<string, string> = {};
+        let attachments: unknown[] = [];
+        if (m.hasAttachments || bodyHasInlineImage(html ?? undefined)) {
+          const meta = await listOutlookAttachmentMeta(token, m.id).catch(() => []);
+          attachments = meta
+            .filter((a) => !a.isInline)
+            .map((a) => ({
+              section: a.id,
+              filename: a.name || "attachment",
+              mimeType: a.contentType || "application/octet-stream",
+              size: a.size ?? 0,
+            }));
+          if (html && bodyHasInlineImage(html)) {
+            inline = await resolveOutlookInlineImages(token, m.id, html, meta).catch(() => ({}));
+          }
+        }
+        return { id: m.id, text, html, inline, attachments };
+      })()
+    );
+  }
+  const bodies = await Promise.all(pending);
+  return { rows, removed, bodies };
+}
+
+/** A page's rows and their bodies, written to the copy. */
+async function storePageRows(email: string, rows: MailStoredMessage[], bodies: PageBody[]): Promise<void> {
+  const store = mailStore();
+  await store.messages.upsertMany(email, rows);
+  for (const b of bodies) {
+    await store.messages.putBody(email, b.id, {
+      text: b.text || null,
+      html: b.html,
+      inlineImages: b.inline,
+      attachments: b.attachments,
+    });
+  }
+}
+
+/**
+ * The rows a page makes stale, taken out of the copy: a moved message's
+ * old row, and the messages the folder says it no longer holds. True when
+ * any row went.
+ */
+async function dropReplacedAndRemoved(
+  email: string,
+  rows: MailStoredMessage[],
+  removed: string[],
+  label: string | null
+): Promise<boolean> {
+  const store = mailStore();
+  let changed = false;
+  // A message this app moved arrives here under its new id. The row it
+  // had before the move, kept until now, goes in the same step, so the
+  // list never shows the mail twice and never shows it in no folder.
+  const replaced = settledOutlookMoves(rows.map((r) => r.messageId));
+  if (replaced.length) {
+    await store.messages.removeMessages(email, replaced);
+    changed = true;
+  }
+  if (removed.length) {
+    // Gone from this folder: moved elsewhere (the other folder's delta
+    // brings it back under its new label) or deleted for good. A message
+    // that this app moved keeps its row until then: outlook-moves.ts.
+    const now = removalsToApplyNow(removed);
+    if (now.length) {
+      // Believed about this folder only. The report can come after the
+      // folder the message went to has delivered it, and must not take
+      // the row that stands there now.
+      await store.messages.removeMessages(email, now, { leftFolder: label ?? "" });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker): Promise<void> {
   const known = scope === "all" || !worker.folders ? await listOutlookFolders(email) : worker.folders;
   worker.folders = known;
@@ -320,87 +431,16 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
         }
         throw err;
       }
-      const rows: MailStoredMessage[] = [];
-      const removed: string[] = [];
-      type Body = { id: string; text: string; html: string | null; inline: Record<string, string>; attachments: unknown[] };
-      const pending: Promise<Body>[] = [];
-      for (const entry of page.entries) {
-        if (entry.kind === "removed") {
-          removed.push(entry.id);
-          continue;
-        }
-        const m = entry.message;
-        rows.push(rowFrom(m, label));
-        const html = m.body?.contentType?.toLowerCase() === "html" ? (m.body.content ?? "") : null;
-        const text = html ? "" : (m.body?.content ?? m.bodyPreview ?? "");
-        /*
-          The attachments of a page's messages are asked for side by side.
-          They were asked for one after another: a page of a hundred messages
-          with thirty attachments was thirty requests in a row, each waiting
-          on the one before, and that was most of the hours a big mailbox
-          took. The Graph client lets three requests for a mailbox run at
-          once and queues the rest, so this cannot ask faster than it may.
-        */
-        pending.push(
-          (async (): Promise<Body> => {
-            let inline: Record<string, string> = {};
-            let attachments: unknown[] = [];
-            if (m.hasAttachments || bodyHasInlineImage(html ?? undefined)) {
-              const meta = await listOutlookAttachmentMeta(token, m.id).catch(() => []);
-              attachments = meta
-                .filter((a) => !a.isInline)
-                .map((a) => ({
-                  section: a.id,
-                  filename: a.name || "attachment",
-                  mimeType: a.contentType || "application/octet-stream",
-                  size: a.size ?? 0,
-                }));
-              if (html && bodyHasInlineImage(html)) {
-                inline = await resolveOutlookInlineImages(token, m.id, html, meta).catch(() => ({}));
-              }
-            }
-            return { id: m.id, text, html, inline, attachments };
-          })()
-        );
-      }
-      const bodies = await Promise.all(pending);
+      const { rows, removed, bodies } = await readPageEntries(token, page.entries, label);
       if (rows.length) {
-        await store.messages.upsertMany(email, rows);
-        for (const b of bodies) {
-          await store.messages.putBody(email, b.id, {
-            text: b.text || null,
-            html: b.html,
-            inlineImages: b.inline,
-            attachments: b.attachments,
-          });
-        }
+        await storePageRows(email, rows, bodies);
         changed = true;
         done += rows.length;
         if (firstTime) {
           await publish({ account: email, folder: "", phase: "full", fullSyncTotal: Math.max(total, done), fullSyncDone: done });
         }
       }
-      // A message this app moved arrives here under its new id. The row it
-      // had before the move, kept until now, goes in the same step, so the
-      // list never shows the mail twice and never shows it in no folder.
-      const replaced = settledOutlookMoves(rows.map((r) => r.messageId));
-      if (replaced.length) {
-        await store.messages.removeMessages(email, replaced);
-        changed = true;
-      }
-      if (removed.length) {
-        // Gone from this folder: moved elsewhere (the other folder's delta
-        // brings it back under its new label) or deleted for good. A message
-        // that this app moved keeps its row until then: outlook-moves.ts.
-        const now = removalsToApplyNow(removed);
-        if (now.length) {
-          // Believed about this folder only. The report can come after the
-          // folder the message went to has delivered it, and must not take
-          // the row that stands there now.
-          await store.messages.removeMessages(email, now, { leftFolder: label ?? "" });
-          changed = true;
-        }
-      }
+      if (await dropReplacedAndRemoved(email, rows, removed, label)) changed = true;
       if (page.nextLink) {
         link = page.nextLink;
         /*

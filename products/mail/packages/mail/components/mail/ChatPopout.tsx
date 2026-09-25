@@ -17,18 +17,20 @@
 import * as React from "react";
 import { Minus, Square, X } from "lucide-react";
 
+import { attachmentUrl } from "@/lib/mail/attachment-save";
 import {
-  attachmentUrl,
   AttachmentSizeSummary,
   AttachToolbarButton,
   ComposerDropOverlay,
-  DraftAttachmentPreviewDialog,
   DraftAttachmentThumbs,
-  openAttachmentOutside,
   useComposerFileDrop,
   useComposerPaste,
   useDraftAttachments,
-} from "@/components/mail/MailAttachments";
+} from "@/components/mail/draft-attachments";
+import {
+  DraftAttachmentPreviewDialog,
+} from "@/components/mail/attachment-preview";
+import { openAttachmentOutside } from "@/components/mail/attachment-files";
 import { MailBubble } from "@/components/mail/MailBubble";
 import { EmojiPickerButton } from "@/components/ui/EmojiPicker";
 import {

@@ -1121,6 +1121,7 @@ export function RichTextEditor({
   useEffect(() => {
     let cancelled = false;
     let unbind = () => {};
+    let bound: HTMLElement | null = null;
     let tries = 0;
 
     const bind = () => {
@@ -1136,6 +1137,11 @@ export function RichTextEditor({
         if (tries++ < 600) window.setTimeout(bind, 100);
         return;
       }
+      // Already watching this one.
+      if (tooltip.root === bound) return;
+      // A box from a Quill that is gone: let go of it before taking this one.
+      unbind();
+      bound = tooltip.root;
 
       /*
        * The link editor and the snow preview, corrected in place.
@@ -1301,12 +1307,32 @@ export function RichTextEditor({
         tooltip.position = original;
         if (variant === "bubble") editor.off("selection-change", place);
         observer.disconnect();
+        unbind = () => {};
+        bound = null;
       };
     };
 
     bind();
+    /*
+      Quill can be built again under us.
+
+      A new editor brings a new tooltip, and everything bound above is then
+      watching a box that is no longer on the page: the link editor stands
+      where Quill left it, and — the one a reader sees — the tint on the
+      words it was opened for is never taken off, because the hand that
+      takes it off is watching the old box. So a rebuild binds again.
+
+      The wrapper is React's own element and stays, so a rebuild shows up
+      as a change inside it. Everything else that happens in there — every
+      letter typed — costs one comparison.
+    */
+    const rebuilt = new MutationObserver(() => bind());
+    if (wrapperRef.current) {
+      rebuilt.observe(wrapperRef.current, { childList: true, subtree: true });
+    }
     return () => {
       cancelled = true;
+      rebuilt.disconnect();
       unbind();
     };
   }, [variant]);

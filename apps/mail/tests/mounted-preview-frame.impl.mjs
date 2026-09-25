@@ -26,7 +26,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
-import { sanitizeEmailHtml } from "@/components/mail/EmailHtmlView";
+import { sanitizeEmailHtml } from "@/lib/mail/email-html";
 import { SentPreview } from "@/components/mail/composer-preview";
 
 import { check, suite } from "./harness.mjs";

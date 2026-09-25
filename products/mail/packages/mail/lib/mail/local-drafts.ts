@@ -325,18 +325,86 @@ export async function listMailDrafts(): Promise<MailDraft[]> {
   }
 }
 
+/** Addresses as a reader tells them apart: lower case, in order. */
+function addressesOf(list: MailRecipient[] | undefined): string[] {
+  return (list ?? []).map((r) =>
+    (r.kind === "email" ? r.email : `list:${r.listId}`).trim().toLowerCase()
+  );
+}
+
+/**
+ * What a draft says, as the reader would tell two versions apart: who it is
+ * from and to, the subject, the words, the files, and whether it went to
+ * Outlook.
+ *
+ * Not the markup, and not the composer's own state — where the caret was,
+ * whether the Cc row is showing, fields an older version wrote. Those change
+ * when a draft is only opened.
+ */
+function draftContent(draft: MailDraft): string {
+  const words = htmlToPlainText(draft.body ?? "").replace(/\s+/g, " ").trim();
+  const files = (draft.attachments ?? []).map((a) => `${a.filename}:${a.size}`);
+  const common = {
+    words,
+    to: addressesOf(draft.toList),
+    cc: addressesOf(draft.ccList),
+    files,
+    handedOver: draft.handedOver?.at ?? null,
+  };
+  return JSON.stringify(
+    draft.kind === "compose"
+      ? {
+          ...common,
+          from: draft.from ?? "",
+          subject: draft.subject.trim(),
+          bcc: addressesOf(draft.bccList),
+        }
+      : {
+          ...common,
+          account: draft.account,
+          threadId: draft.threadId,
+          mode: draft.mode,
+          subject: draft.subject?.trim() ?? "",
+        }
+  );
+}
+
+/**
+ * Whether two drafts say the same thing.
+ *
+ * Opening a draft writes it back — the composer's fields fill in, and that
+ * is a change to the autosave — and every save used to stamp it now. The
+ * Drafts list shows the newest first, so a draft moved to the top when it
+ * was only looked at. Its time now moves only when what it says does.
+ */
+export function sameDraftContent(a: MailDraft, b: MailDraft): boolean {
+  return a.kind === b.kind && draftContent(a) === draftContent(b);
+}
+
 export function setDraft(draft: MailDraft): Promise<void> {
   // Queued per key — see draft-write-queue. The save on a pause in the
   // typing and the delete on Send must land in the order they were asked
-  // for, or the sent message comes back as a draft.
+  // for, or the sent message comes back as a draft. The read that decides
+  // the time is in the same queue, so it sees every save asked for before
+  // it.
   return enqueueDraftWrite(draft.key, async () => {
     try {
       const db = await openDb();
       try {
-        const tx = db.transaction(STORE, "readwrite");
-        await idbRequest(
-          tx.objectStore(STORE).put({ ...draft, updatedAt: Date.now() })
+        // Two transactions, not one: a transaction can close while a
+        // promise is awaited between its requests. The queue keeps the
+        // pair in order.
+        const stored = await idbRequest<MailDraft | undefined>(
+          db.transaction(STORE, "readonly").objectStore(STORE).get(draft.key)
         );
+        // Written in full every time — the caret and the rest travel in it
+        // to a pop-out — but dated only by a change in what it says.
+        const updatedAt =
+          stored && sameDraftContent(stored, draft)
+            ? stored.updatedAt
+            : Date.now();
+        const tx = db.transaction(STORE, "readwrite");
+        await idbRequest(tx.objectStore(STORE).put({ ...draft, updatedAt }));
       } finally {
         db.close();
       }

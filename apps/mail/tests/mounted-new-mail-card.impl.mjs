@@ -68,7 +68,8 @@ const draftRows = new Map();
   };
 }
 
-setMailApiTransport(async (path) => {
+const sends = [];
+setMailApiTransport(async (path, init) => {
   const url = new URL(path, "http://localhost:3473");
   const p = url.pathname;
   const json = (body) =>
@@ -76,6 +77,10 @@ setMailApiTransport(async (path) => {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  if (p === "/api/mail/send") {
+    sends.push(JSON.parse(String(init?.body ?? "{}")));
+    return json({ ok: true, id: "sent-1", threadId: "sent-thread-1" });
+  }
   if (p === "/api/mail/threads") return json({ threads: [], nextCursor: null });
   if (p === "/api/mail/snoozed")
     return json(url.searchParams.get("countOnly") ? { count: 0 } : { threads: [] });
@@ -194,8 +199,26 @@ async function main() {
     // The pane's composer first. The card is the same composer, handed out.
     clickEl(byTitle(/new email/i));
     await sleep(500);
+    // In the pane, the card has its three resize handles, and the row
+    // under it offers a signature.
+    const handles = () =>
+      [...document.querySelectorAll("[role=separator]")]
+        .map((el) => el.getAttribute("aria-label"))
+        .filter((l) => /^Resize/.test(l || ""));
+    assert.deepEqual(
+      handles(),
+      ["Resize width", "Resize height", "Resize width and height"],
+      "the pane's card can be resized on its edge, its foot and its corner"
+    );
+    assert(
+      buttons().some((b) => (b.textContent || "").trim() === "Add signature"),
+      "the row under the card offers a signature"
+    );
+    pass("in the pane, the card has its resize handles and the signature row");
+
     clickEl(byTitle(/write while you browse/i));
     await sleep(900);
+    assert.equal(handles().length, 0, "the floating card has no resize handles of its own");
 
     assert(document.querySelector(".mail-floating-reply"), "the card is up");
     assert.equal(
@@ -268,6 +291,28 @@ async function main() {
     );
     draftIsWhole("back in the corner");
     pass("Escape leaves the full view, and the draft survives every move");
+
+    // Send. It waits out its count first; a page that goes away sends it
+    // at once, which is how the walk skips the wait.
+    const sendButton = buttons(card()).find((b) => (b.textContent || "").trim() === "Send");
+    assert(sendButton, "the card has its Send button");
+    clickEl(sendButton);
+    await sleep(300);
+    assert.equal(sends.length, 0, "Send waits out its count");
+    window.dispatchEvent(new window.Event("pagehide"));
+    await sleep(500);
+    assert.equal(sends.length, 1, "one message went to the send route");
+    const sent = sends[0];
+    assert.equal(sent.account, ACCOUNT, "from the mailbox in scope");
+    assert.deepEqual(sent.to, [TO]);
+    assert.equal(sent.subject, SUBJECT);
+    assert(String(sent.body || "").includes(WORDS), "with the words written");
+    assert.deepEqual(
+      (sent.attachments || []).map((a) => a.filename),
+      [FILE_NAME],
+      "and the file"
+    );
+    pass("Send puts the message, with its file, on the send route after its count");
   } catch (err) {
     console.error("FAIL ", err?.message || err);
     process.exitCode = 1;

@@ -15,6 +15,11 @@ import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { MailShortcutsPanel } from "@/components/mail/MailShortcutsDialog";
 import { SnoozeOptionsPanel } from "@/components/mail/SnoozeOptionsPanel";
+import {
+  readUsagePingEnabled,
+  usagePingAvailable,
+  writeUsagePingEnabled,
+} from "@/lib/mail/usage-ping";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
 import { OPEN_MAIL_ACCOUNTS_EVENT, isMailSettingsCategory, type MailSettingsCategory } from "@/lib/mail/open-mail-accounts-menu";
@@ -258,6 +263,7 @@ export function MailLayoutMenu({
   const [loadImagesByDefault, setLoadImagesByDefault] =
     useLoadImagesByDefault();
   const [theme, setTheme] = useMailTheme();
+  const [usagePing, setUsagePing] = React.useState(readUsagePingEnabled);
   const t = useMailT();
 
   // Opened from the mailbox filter next to search, the app menu, or a dialog
@@ -400,6 +406,24 @@ export function MailLayoutMenu({
               }
             />
             <SettingsTextSizeRow />
+            {/* The public desktop app only: the team build, the planner's
+                mail tab and a browser send no ping, so they show no switch. */}
+            {usagePingAvailable() ? (
+              <SettingsRow
+                label={t("sendUsageCount")}
+                hint={t("sendUsageCountHint")}
+                control={
+                  <SettingsToggle
+                    checked={usagePing}
+                    onChange={(enabled) => {
+                      setUsagePing(enabled);
+                      writeUsagePingEnabled(enabled);
+                    }}
+                    label={t("sendUsageCount")}
+                  />
+                }
+              />
+            ) : null}
           </SettingsGroup>
         </SettingsPane>
       );

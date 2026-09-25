@@ -39,8 +39,8 @@ import {
   type ComposerState,
   type EditableField,
 } from "@/lib/mail/thread-composer-state";
-import type { useDraftAttachments } from "@/components/mail/MailAttachments";
-import { stripQuotedHtml } from "@/components/mail/EmailHtmlView";
+import type { useDraftAttachments } from "@/components/mail/draft-attachments";
+import { stripQuotedHtml } from "@/lib/mail/email-html";
 import {
   draftBodyForComposer,
   shouldImportProviderDraft,
@@ -58,7 +58,7 @@ import type { MailThreadDetail } from "@/lib/mail/types";
 
 
 /** A setter for one field. It accepts a value or an updater function. */
-type FieldSetter<F extends EditableField> = (
+export type FieldSetter<F extends EditableField> = (
   value: ComposerState[F] | ((previous: ComposerState[F]) => ComposerState[F])
 ) => void;
 

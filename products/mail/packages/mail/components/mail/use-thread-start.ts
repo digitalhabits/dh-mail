@@ -14,7 +14,7 @@ import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { afterMailPaneSlide } from "@/lib/mail/pane-slide";
-import { stripQuotedHtml } from "@/components/mail/EmailHtmlView";
+import { stripQuotedHtml } from "@/lib/mail/email-html";
 import { readImageChoices } from "@/components/mail/MailBubble";
 import type { MailChatRef } from "@/lib/mail/chat-types";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";

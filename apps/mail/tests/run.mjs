@@ -11,9 +11,15 @@
  *
  *   pnpm --dir apps/mail test          all suites
  *   pnpm --dir apps/mail test connect  one, by name
+ *
+ * The suites run side by side, one per core less one (TEST_JOBS sets
+ * another number; TEST_JOBS=1 runs them one at a time). They can: each
+ * runs in its own process with its own fakes, and none opens a port or
+ * writes a shared file. Each suite's output is printed whole, in name
+ * order, so a run reads the same however the work was shared out.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,13 +58,15 @@ if (!suites.length) {
 }
 
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "dh-mail-tests-"));
-let failed = 0;
+const jobs = Math.max(1, Number(process.env.TEST_JOBS) || os.availableParallelism() - 1);
 
-for (const suite of suites) {
+/** Bundle one suite, run it, and hand back what it printed and whether it passed. */
+async function runSuite(suite) {
   const bundle = path.join(out, suite.replace(".mjs", ".cjs"));
   // The mounted suite renders, so React rides inside its bundle; every
   // other suite never calls it, and leaving it external keeps them lean.
   const mounted = suite.startsWith("mounted-");
+  const flavor = suite.includes("-internal") ? "internal" : "public";
   await esbuild.build({
     entryPoints: [path.join(here, suite)],
     outfile: bundle,
@@ -76,9 +84,11 @@ for (const suite of suites) {
     },
     define: {
       "import.meta.env": JSON.stringify(TEST_ENV),
-      // The same flavor the app ships as. The team layer is off.
-      "process.env.NEXT_PUBLIC_MAIL_PRODUCT_FLAVOR": '"public"',
-      "process.env.MAIL_PRODUCT_FLAVOR": '"public"',
+      // The same flavor the app ships as: the team layer (CRM) is off. A
+      // suite with "-internal" in its name is built as the team's app, so
+      // what only the team build draws can be walked too.
+      "process.env.NEXT_PUBLIC_MAIL_PRODUCT_FLAVOR": JSON.stringify(flavor),
+      "process.env.MAIL_PRODUCT_FLAVOR": JSON.stringify(flavor),
       // React's CJS entry branches on this at require time.
       ...(mounted ? { "process.env.NODE_ENV": '"production"' } : {}),
     },
@@ -98,10 +108,46 @@ for (const suite of suites) {
       : undefined,
   });
 
-  console.log(`\n── ${suite.replace(".test.mjs", "")}`);
-  const run = spawnSync(process.execPath, [bundle], { stdio: "inherit" });
-  if (run.status !== 0) failed += 1;
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [bundle], { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks = [];
+    child.stdout.on("data", (c) => chunks.push(c));
+    child.stderr.on("data", (c) => chunks.push(c));
+    child.on("close", (code) => resolve({ ok: code === 0, output: Buffer.concat(chunks).toString("utf8") }));
+  });
 }
+
+/*
+  A few workers take the next suite from the list until it is empty. The
+  results are printed in name order as soon as every suite before them has
+  finished, so the output does not interleave.
+*/
+const results = new Array(suites.length);
+let printed = 0;
+let failed = 0;
+const printReady = () => {
+  while (printed < suites.length && results[printed]) {
+    const { ok, output } = results[printed];
+    console.log(`\n── ${suites[printed].replace(".test.mjs", "")}`);
+    if (output) process.stdout.write(output.endsWith("\n") ? output : `${output}\n`);
+    if (!ok) failed += 1;
+    printed += 1;
+  }
+};
+let next = 0;
+await Promise.all(
+  Array.from({ length: Math.min(jobs, suites.length) }, async () => {
+    while (next < suites.length) {
+      const i = next++;
+      try {
+        results[i] = await runSuite(suites[i]);
+      } catch (err) {
+        results[i] = { ok: false, output: `the suite could not be built or run: ${err?.stack || err}` };
+      }
+      printReady();
+    }
+  })
+);
 
 fs.rmSync(out, { recursive: true, force: true });
 if (failed) {

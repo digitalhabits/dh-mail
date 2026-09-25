@@ -1,8 +1,21 @@
-// Toasts have no meaning outside a browser. These record nothing on purpose:
-// what a toast said is not what any of these suites is checking.
-const noop = () => {};
-export const toast = Object.assign(noop, {
-  success: noop, error: noop, message: noop, loading: noop, warning: noop,
-  custom: noop, dismiss: noop,
+// Toasts have no meaning outside a browser, so nothing is drawn.
+//
+// A suite that must press a toast's button (the Undo of an archive) sets
+// `toastSink.push` to a function. Every call then goes to it as
+// { kind, message, data }. For every other suite the sink is null, and a
+// toast does nothing.
+export const toastSink = { push: null };
+const record = (kind) => (message, data) => {
+  toastSink.push?.({ kind, message, data });
+  return `${kind}-${Math.random().toString(36).slice(2, 8)}`;
+};
+export const toast = Object.assign(record("plain"), {
+  success: record("success"),
+  error: record("error"),
+  message: record("message"),
+  loading: record("loading"),
+  warning: record("warning"),
+  custom: record("custom"),
+  dismiss: () => {},
 });
 export default { toast };

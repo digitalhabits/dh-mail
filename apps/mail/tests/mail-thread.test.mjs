@@ -13,6 +13,10 @@ import {
   fakeMailProviders,
   fakeMailStore,
   GMAIL,
+  GMAIL_THREADS,
+  gmailMessage,
+  GRAPH_MESSAGES,
+  graphMessage,
   OUTLOOK,
 } from "./fake-mail.mjs";
 import { check, suite } from "./harness.mjs";
@@ -59,6 +63,40 @@ suite(async () => {
   check("gmail: a prefetch leaves the unread badge alone",
     !requests.some((r) => r.url.endsWith("/modify")));
 
+  // ---- A Gmail thread with a draft, split from an older one -----------------------
+  // Only for these checks, and taken out after. Its first message answers
+  // one in another thread (Gmail split the conversation), and Gmail holds
+  // an unsent reply in it.
+  const draft = gmailMessage("g9d", "g9", {
+    From: GMAIL, To: "Alma Aagaard <alma@example.org>", Subject: "Re: Keys",
+    Date: "Tue, 18 Aug 2026 10:00:00 +0000", "Message-ID": "<g9d@gmail.com>",
+  }, { text: "Half written." });
+  draft.labelIds = ["DRAFT"];
+  GMAIL_THREADS.g9 = [
+    gmailMessage("g9m1", "g9", {
+      From: "Alma Aagaard <alma@example.org>", To: GMAIL, Subject: "Re: Keys",
+      Date: "Tue, 18 Aug 2026 09:00:00 +0000", "Message-ID": "<g9m1@example.org>",
+      "In-Reply-To": "<keys-0@example.org>", References: "<keys-0@example.org>",
+    }, { text: "Found them." }),
+    draft,
+  ];
+  const ids = (t) => t.messages.map((m) => m.id).join(",");
+  for (const [how, extra] of [["in one call", { messageCountHint: 1 }], ["from the id list", {}]]) {
+    const store = fakeMailStore();
+    fakeMailProviders();
+    const g9 = await getMailThread(GMAIL, "g9", { markRead: false, ...extra });
+    check(`gmail: the draft is not a message (${how})`, ids(g9) === "g9m1", ids(g9));
+    check(`gmail: the draft Gmail holds comes with the thread (${how})`,
+      g9.providerDraft?.ref === "g9d" && g9.providerDraft?.bodyText === "Half written." &&
+        g9.providerDraft?.to.join() === ALMA.email,
+      JSON.stringify(g9.providerDraft));
+    const lookup = store.calls.find((c) => c.op === "chats.findByMessageIds");
+    check(`gmail: a thread that answers older mail asks for the conversation it belongs to (${how})`,
+      String(JSON.stringify(lookup?.args?.messageIds ?? null)).includes("<keys-0@example.org>"),
+      JSON.stringify(lookup));
+  }
+  delete GMAIL_THREADS.g9;
+
   // ---- Outlook -------------------------------------------------------------------
   fakeMailStore();
   ({ requests } = fakeMailProviders());
@@ -95,6 +133,26 @@ suite(async () => {
   check("outlook: a prefetch leaves the unread badge alone",
     !requests.some((r) => r.method === "PATCH"));
 
+  // A conversation of three for this check alone: two unread from Alma,
+  // then our own answer. Taken out again after, so no other check sees it.
+  const extra = [
+    graphMessage("o9m1", "o9", { subject: "Keys", from: ALMA.email, fromName: ALMA.name, to: [OUTLOOK], at: "2026-08-17T09:00:00Z", rfcId: "<o9m1@example.org>", html: "<p>Keys?</p>", read: false }),
+    graphMessage("o9m2", "o9", { subject: "Re: Keys", from: ALMA.email, fromName: ALMA.name, to: [OUTLOOK], at: "2026-08-17T10:00:00Z", rfcId: "<o9m2@example.org>", html: "<p>Found them.</p>", read: false }),
+    graphMessage("o9m3", "o9", { subject: "Re: Keys", from: OUTLOOK, fromName: "Me", to: [ALMA.email], at: "2026-08-17T11:00:00Z", rfcId: "<o9m3@example.org>", html: "<p>Good.</p>" }),
+  ];
+  GRAPH_MESSAGES.push(...extra);
+  ({ requests } = fakeMailProviders());
+  const keys = await getMailThread(OUTLOOK, "o9");
+  await new Promise((r) => setTimeout(r, 0));
+  const keysPatched = requests.filter((r) => r.method === "PATCH").map((r) => r.url.split("/").pop()).sort();
+  check("outlook: with two unread, opening marks both read",
+    keysPatched.join(",") === "o9m1,o9m2", keysPatched.join(","));
+  check("outlook: the participants are the other side, then You",
+    keys.participants.join("|") === "Alma Aagaard|You", keys.participants.join("|"));
+  check("outlook: our own last message is answered to the other side",
+    keys.reply.to.join(",") === ALMA.email, keys.reply.to.join(","));
+  GRAPH_MESSAGES.splice(GRAPH_MESSAGES.length - extra.length, extra.length);
+
   // ---- The same shape from both -------------------------------------------------
   const g = await getMailThread(GMAIL, "g1", { markRead: false });
   const o = await getMailThread(OUTLOOK, "o1", { markRead: false });
@@ -102,8 +160,56 @@ suite(async () => {
   check("both providers answer the same fields",
     shape(g) === shape(o), `${shape(g)} / ${shape(o)}`);
 
-  // ---- A thread that is not there ---------------------------------------------
+  // ---- A page of a Gmail thread ---------------------------------------------------
+  // g3 holds two messages, oldest first. A page of one shows the one asked for.
+  const newest = await getMailThread(GMAIL, "g3", { markRead: false, limit: 1 });
+  check("gmail: a page of one is the newest message, with an older one behind it",
+    ids(newest) === "g3m2" && newest.hasOlder === true && newest.hasNewer === false,
+    `${ids(newest)} older:${newest.hasOlder}`);
+  const oldest = await getMailThread(GMAIL, "g3", { markRead: false, limit: 1, oldest: true });
+  check("gmail: the oldest page is the first message",
+    ids(oldest) === "g3m1" && oldest.hasNewer === true, ids(oldest));
+  const before = await getMailThread(GMAIL, "g3", { markRead: false, limit: 1, before: "g3m2" });
+  check("gmail: before a message, the one before it", ids(before) === "g3m1", ids(before));
+  const after = await getMailThread(GMAIL, "g3", { markRead: false, limit: 1, after: "g3m2" });
+  check("gmail: after the last message, nothing", after.messages.length === 0, ids(after));
+
   let refused = null;
+  // ---- A page of an Outlook conversation ------------------------------------------
+  // The fake Graph answers the whole conversation whatever the filter, so
+  // these check what is asked, and the flags the page is given.
+  const plainUrls = (rs) => rs.map((r) => decodeURIComponent(r.url.replace(/\+/g, " ")));
+  ({ requests } = fakeMailProviders());
+  const olderPage = await getMailThread(OUTLOOK, "o1", { markRead: false, before: "o1m2" });
+  check("outlook: before a message asks for what came before its time",
+    plainUrls(requests).some((u) => /conversationId eq 'o1'/.test(u) && /receivedDateTime lt 2026-08-15T11:00:00Z/.test(u)),
+    plainUrls(requests).join("\n"));
+  check("outlook: and that page has newer messages after it", olderPage.hasNewer === true);
+  check("outlook: a page back offers no draft", olderPage.providerDraft === undefined);
+
+  ({ requests } = fakeMailProviders());
+  const newerPage = await getMailThread(OUTLOOK, "o1", { markRead: false, after: "o1m1" });
+  check("outlook: after a message asks for what came after its time",
+    plainUrls(requests).some((u) => /receivedDateTime gt 2026-08-15T10:00:00Z/.test(u)),
+    plainUrls(requests).join("\n"));
+  check("outlook: and that page has older messages before it", newerPage.hasOlder === true);
+
+  ({ requests } = fakeMailProviders());
+  const aroundPage = await getMailThread(OUTLOOK, "o1", { markRead: false, around: "o1m1" });
+  check("outlook: around a search hit reads the hit itself",
+    requests.some((r) => /\/me\/messages\/o1m1(\?|$)/.test(r.url)) && aroundPage.messages.some((m) => m.id === "o1m1"),
+    ids(aroundPage));
+
+  refused = null;
+  try {
+    await getMailThread(OUTLOOK, "o1", { markRead: false, oldest: true });
+  } catch (err) {
+    refused = err;
+  }
+  check("outlook: the oldest page is refused, not guessed", refused?.status === 501, `${refused?.status} ${refused?.message}`);
+
+  // ---- A thread that is not there ---------------------------------------------
+  refused = null;
   try {
     await getMailThread(OUTLOOK, "nope", { markRead: false });
   } catch (err) {

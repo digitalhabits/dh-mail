@@ -79,6 +79,9 @@ const CHOIR_MESSAGES = [
     bodyText: "Same time. See you by the organ.",
     own: false,
     rfcMessageId: "<choir-m3@sangkor.example>",
+    attachments: [
+      { attachmentId: "seating", filename: "seating-plan.txt", mimeType: "text/plain", size: 812 },
+    ],
   },
 ];
 
@@ -134,6 +137,13 @@ const byTitle = (re) =>
     re.test((b.getAttribute("title") || "") + (b.getAttribute("aria-label") || ""))
   );
 const bodyText = () => document.body.textContent || "";
+const press = (key, init = {}) =>
+  (document.activeElement || document.body).dispatchEvent(
+    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init })
+  );
+const stored = (name) => window.localStorage.getItem(name);
+const UI_SCALE = "redd-plan-mail-ui-scale";
+const ZOOM = "redd-plan-mail-zoom";
 
 async function main() {
   let root;
@@ -153,6 +163,22 @@ async function main() {
     assert(bodyText().includes("Your library loan is due back"));
     pass("the page mounts and paints the fetched rows");
 
+    // With nothing open, Command+Plus and Minus size the app.
+    press("=", { metaKey: true, code: "Equal" });
+    await sleep(100);
+    assert(Number(stored(UI_SCALE)) > 1, `Command+Plus with nothing open makes the app larger (${stored(UI_SCALE)})`);
+    press("-", { metaKey: true, code: "Minus" });
+    await sleep(100);
+    assert.equal(stored(UI_SCALE), null, `and Command+Minus brings it back (${stored(UI_SCALE)})`);
+    // Option+Command: always the app, and 0 puts it back.
+    press("≠", { metaKey: true, altKey: true, code: "Equal" });
+    await sleep(100);
+    assert(Number(stored(UI_SCALE)) > 1, "Option+Command+Plus makes the app larger");
+    press("º", { metaKey: true, altKey: true, code: "Digit0" });
+    await sleep(100);
+    assert.equal(stored(UI_SCALE), null, "and Option+Command+0 puts it back");
+    pass("the text size keys size the app when nothing is open");
+
     const rowLeaf = [...document.querySelectorAll("*")].filter(
       (e) =>
         e.childElementCount === 0 &&
@@ -163,6 +189,27 @@ async function main() {
     assert(byTitle(/focus mode/i), "the reader's toolbar is up");
     assert(bodyText().includes("See you by the organ."));
     pass("a click on a row opens the thread and its messages");
+
+    const heading = document.querySelector(".mail-thread-header h2");
+    assert.equal(heading?.textContent?.trim(), "Choir practice moves to Thursday", "the heading names the thread");
+    assert(byTitle(/^1 attachment/), "and the strip rolls up the thread's one file");
+    pass("the thread's heading names it, and its files are rolled up in the strip");
+
+    // With a thread open, Command+Plus is the thread's zoom; the app stays.
+    const zoomBefore = Number(stored(ZOOM) ?? 1);
+    press("=", { metaKey: true, code: "Equal" });
+    await sleep(400);
+    assert(Number(stored(ZOOM)) > zoomBefore, `Command+Plus with a thread open zooms the thread (${zoomBefore} -> ${stored(ZOOM)})`);
+    assert.equal(stored(UI_SCALE), null, "and leaves the app's size alone");
+    press("-", { metaKey: true, code: "Minus" });
+    await sleep(400);
+    assert.equal(Number(stored(ZOOM)), zoomBefore, "Command+Minus zooms it back");
+    press("≠", { metaKey: true, altKey: true, code: "Equal" });
+    await sleep(100);
+    assert(Number(stored(UI_SCALE)) > 1, "Option+Command+Plus is still the app with a thread open");
+    press("º", { metaKey: true, altKey: true, code: "Digit0" });
+    await sleep(100);
+    pass("with a thread open, Command+Plus zooms the thread and Option+Command+Plus the app");
 
     clickEl(byTitle(/focus mode/i));
     await sleep(700);

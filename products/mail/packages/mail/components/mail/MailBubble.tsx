@@ -13,6 +13,7 @@ import {
   Clock,
   Copy,
   CornerUpLeft,
+  Download,
   Forward,
   Info,
   MoreHorizontal,
@@ -36,12 +37,13 @@ import {
   MessageCalendarInvite,
   nonCalendarAttachments,
 } from "@/components/mail/CalendarInviteCard";
-import {
-  EmailHtmlView,
-  htmlHasRemoteImages,
-  stripQuotedHtml,
-} from "@/components/mail/EmailHtmlView";
+import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
+import { htmlHasRemoteImages, stripQuotedHtml } from "@/lib/mail/email-html";
 import { MessageAttachmentChips } from "@/components/mail/MailAttachments";
+import {
+  savableAttachments,
+  saveMessageAttachments,
+} from "@/lib/mail/attachment-save";
 import { printMailMessages } from "@/components/mail/print-mail";
 import {
   NO_MESSAGE_META,
@@ -57,6 +59,7 @@ import { useMailColorMode } from "@/lib/mail/theme";
 import type { MailAttachment } from "@/lib/mail/types";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
+import type { MailT } from "@/lib/mail/i18n-strings";
 
 const MAIL_IMAGES_SENDER_KEY = "redd-plan-mail-images-senders";
 /** Bubbles in the open thread listen so "Load images" applies to every message from that sender. */
@@ -119,6 +122,8 @@ function MessageHoverActions({
   onReplyTo,
   onForward,
   onEditAsNew,
+  onDownloadAttachments,
+  attachmentCount = 0,
   onPrint,
   onShowOriginal,
   onToggleDetails,
@@ -132,6 +137,10 @@ function MessageHoverActions({
   onReplyTo?: () => void;
   onForward?: () => void;
   onEditAsNew?: () => void;
+  /** Save this message's files, for a reader whose tiles are out of view. */
+  onDownloadAttachments?: () => void;
+  /** How many files that would save, which decides the wording. */
+  attachmentCount?: number;
   onPrint?: () => void;
   onShowOriginal?: () => void;
   onToggleDetails?: () => void;
@@ -144,6 +153,7 @@ function MessageHoverActions({
   const hasMenu =
     Boolean(onForward) ||
     Boolean(onEditAsNew) ||
+    Boolean(onDownloadAttachments) ||
     canCopy ||
     canCopyRecipients ||
     Boolean(onPrint) ||
@@ -228,7 +238,10 @@ function MessageHoverActions({
           <MailPopoverContent
             side={own ? "left" : "right"}
             align="center"
-            className="w-44 p-1"
+            // Sized to the longest line rather than to a set width: "Download
+            // attachments" is wider than the menu used to be, and a wrapped
+            // menu item reads as two.
+            className="w-auto min-w-[11rem] p-1"
             // Opened with a click, the menu used to hand focus to its first
             // item, which drew the keyboard ring round "Forward" as if it
             // had been chosen. Focus goes to the menu itself instead: no
@@ -296,6 +309,21 @@ function MessageHoverActions({
                 {t("copyRecipients")}
               </button>
             ) : null}
+            {onDownloadAttachments ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDownloadAttachments();
+                }}
+              >
+                <Download className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                {attachmentCount > 1
+                  ? t("downloadAttachments")
+                  : t("downloadAttachment")}
+              </button>
+            ) : null}
             {onToggleDetails ? (
               <button
                 type="button"
@@ -312,7 +340,12 @@ function MessageHoverActions({
             {/* The message as a document — printed, or as it came — stands
                 apart from what is done with its words. */}
             {(onPrint || onShowOriginal) &&
-            (onForward || onEditAsNew || canCopy || canCopyRecipients || onToggleDetails) ? (
+            (onForward ||
+              onEditAsNew ||
+              onDownloadAttachments ||
+              canCopy ||
+              canCopyRecipients ||
+              onToggleDetails) ? (
               <div aria-hidden className="my-1 h-px bg-stone-200" />
             ) : null}
             {onPrint ? (
@@ -349,6 +382,154 @@ function MessageHoverActions({
   );
 }
 
+/** Who a bubble names as its sender, and how. */
+function bubbleSender(
+  message: BubbleMessage,
+  account: string
+): { displayName: string; fromEmail: string; fromLabel: string } {
+  const displayName = message.own
+    ? message.fromName || "You"
+    : message.fromName || message.fromEmail;
+  // Even own messages show the mailbox that actually sent them — mail from
+  // another of our aliases must not masquerade as the connected account.
+  const fromEmail = message.fromEmail || (message.own ? account : "");
+  /**
+   * The name only when it says something the address does not.
+   *
+   * Mail from an address with no name against it arrived named by its own
+   * address, and the line read `someone@example.com (someone@example.com)`.
+   */
+  const fromLabel =
+    message.fromName &&
+    message.fromName.trim().toLowerCase() !== fromEmail.trim().toLowerCase()
+      ? `${message.fromName} <${fromEmail}>`
+      : fromEmail;
+  return { displayName, fromEmail, fromLabel };
+}
+
+/**
+ * The line over a message, and the details under its menu. See the notes
+ * where MailBubble reads them.
+ */
+function bubbleMetaLines({
+  message,
+  account,
+  displayName,
+  fromLabel,
+  stamp,
+  metaNeeds,
+  t,
+}: {
+  message: BubbleMessage;
+  account: string;
+  displayName: string;
+  fromLabel: string;
+  stamp: string;
+  metaNeeds: MessageMeta;
+  t: MailT;
+}): { metaHeadline: string; metaDetails: string } {
+  const changeNotes = [
+    metaNeeds.added.length ? `Added ${metaNeeds.added.join(", ")}` : "",
+    metaNeeds.removed.length ? `Removed ${metaNeeds.removed.join(", ")}` : "",
+  ].filter(Boolean);
+  /**
+   * Our own messages are named by address, not by "You".
+   *
+   * The only reason to name ourselves is that the message went out from
+   * another of our addresses, and "You" is the one answer that does not say
+   * which. Somebody else is named the way they signed the message.
+   */
+  const senderLabel = message.own
+    ? message.fromEmail || account
+    : displayName;
+  const metaHeadline = [metaNeeds.sender ? senderLabel : "", ...changeNotes]
+    .filter(Boolean)
+    .join(" · ");
+  const metaDetails = [
+    stamp,
+    fromLabel ? `${t("fieldFromColon")} ${fromLabel}` : "",
+    message.toEmails?.length
+      ? `${t("fieldToColon")} ${message.toEmails.join(", ")}`
+      : "",
+    message.ccEmails?.length
+      ? `${t("fieldCcColon")} ${message.ccEmails.join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { metaHeadline, metaDetails };
+}
+
+/** Whether a message of ours is on its way, or failed to go. */
+type BubbleSendStatus = OutboxStatus | undefined;
+
+/** The colour a tall message's fade runs from: its bubble's own. */
+function bubbleFadeFrom(sendStatus: BubbleSendStatus, own: boolean): string {
+  const sendingOut = sendStatus === "sending";
+  const failedOut = sendStatus === "failed";
+  return (    sendingOut || failedOut
+      ? failedOut
+        ? "from-red-50"
+        : "from-[var(--mail-bubble-other)]"
+      : own
+        ? "from-[var(--mail-bubble-own)]"
+        : "from-[var(--mail-bubble-other)]");
+}
+
+/** Under a message of ours on its way: "Sending", or "Not sent" with Retry and Edit. */
+function SendStatusCaption({
+  status,
+  onRetry,
+  onEdit,
+}: {
+  status: BubbleSendStatus;
+  onRetry?: () => void;
+  onEdit?: () => void;
+}) {
+  const t = useMailT();
+  return status === "sending" ? (
+    <div className="mt-1 flex items-center gap-1 px-1 text-[11px] text-stone-400">
+      <Clock className="h-3 w-3 shrink-0" aria-hidden />
+      <span>{t("sending")}</span>
+    </div>
+  ) : status === "failed" ? (
+    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[11px] text-red-600/90">
+      <span>{t("notSent")}</span>
+      <span aria-hidden>·</span>
+      <button
+        type="button"
+        className="font-medium underline-offset-2 hover:underline"
+        onClick={onRetry}
+      >
+        {t("retry")}
+      </button>
+      <span aria-hidden>·</span>
+      <button
+        type="button"
+        className="font-medium underline-offset-2 hover:underline"
+        onClick={onEdit}
+      >
+        {t("edit")}
+      </button>
+    </div>
+  ) : null;
+}
+
+/** The message a bubble draws. */
+type BubbleMessage = {
+  id: string;
+  fromName: string;
+  fromEmail: string;
+  toEmails?: string[];
+  ccEmails?: string[];
+  sentAt: string | null;
+  bodyText: string;
+  bodyHtml?: string;
+  inlineImages?: Record<string, string>;
+  attachments?: MailAttachment[];
+  own: boolean;
+};
+
 export function MailBubble({
   message,
   account,
@@ -370,19 +551,7 @@ export function MailBubble({
   onShowOriginal,
   showPrint = true,
 }: {
-  message: {
-    id: string;
-    fromName: string;
-    fromEmail: string;
-    toEmails?: string[];
-    ccEmails?: string[];
-    sentAt: string | null;
-    bodyText: string;
-    bodyHtml?: string;
-    inlineImages?: Record<string, string>;
-    attachments?: MailAttachment[];
-    own: boolean;
-  };
+  message: BubbleMessage;
   account: string;
   /** Thread subject, used as the title when this message is printed. */
   subject?: string;
@@ -602,52 +771,17 @@ export function MailBubble({
 
   const sendingOut = sendStatus === "sending";
   const failedOut = sendStatus === "failed";
-  const displayName = message.own
-    ? message.fromName || "You"
-    : message.fromName || message.fromEmail;
-  // Even own messages show the mailbox that actually sent them — mail from
-  // another of our aliases must not masquerade as the connected account.
-  const fromEmail = message.fromEmail || (message.own ? account : "");
-  /**
-   * The name only when it says something the address does not.
-   *
-   * Mail from an address with no name against it arrived named by its own
-   * address, and the line read `someone@example.com (someone@example.com)`.
-   */
-  const fromLabel =
-    message.fromName &&
-    message.fromName.trim().toLowerCase() !== fromEmail.trim().toLowerCase()
-      ? `${message.fromName} <${fromEmail}>`
-      : fromEmail;
+  const { displayName, fromLabel } = bubbleSender(message, account);
   /** Nothing to stamp until it has gone. */
   const stamp = sendingOut || failedOut ? "" : messageStamp(message.sentAt);
 
-  const statusCaption = sendingOut ? (
-    <div className="mt-1 flex items-center gap-1 px-1 text-[11px] text-stone-400">
-      <Clock className="h-3 w-3 shrink-0" aria-hidden />
-      <span>{t("sending")}</span>
-    </div>
-  ) : failedOut ? (
-    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[11px] text-red-600/90">
-      <span>{t("notSent")}</span>
-      <span aria-hidden>·</span>
-      <button
-        type="button"
-        className="font-medium underline-offset-2 hover:underline"
-        onClick={onRetrySend}
-      >
-        {t("retry")}
-      </button>
-      <span aria-hidden>·</span>
-      <button
-        type="button"
-        className="font-medium underline-offset-2 hover:underline"
-        onClick={onEditSend}
-      >
-        {t("edit")}
-      </button>
-    </div>
-  ) : null;
+  const statusCaption = (
+    <SendStatusCaption
+      status={sendStatus}
+      onRetry={onRetrySend}
+      onEdit={onEditSend}
+    />
+  );
 
   const [failedCalendarIds, setFailedCalendarIds] = React.useState(
     () => new Set<string>()
@@ -656,6 +790,9 @@ export function MailBubble({
     message.attachments,
     failedCalendarIds
   );
+  /* What the menu can save: the tiles, less any file still on its way out.
+     A calendar invite is not among them — it has its own "Download event". */
+  const savableFiles = savableAttachments(fileAttachments);
   const noteCalendarUnavailable = React.useCallback((attachmentId: string) => {
     setFailedCalendarIds((prev) => {
       if (prev.has(attachmentId)) return prev;
@@ -699,35 +836,15 @@ export function MailBubble({
    * the address it was named after — and left the reader to find the time
    * at the end of it.
    */
-  const changeNotes = [
-    metaNeeds.added.length ? `Added ${metaNeeds.added.join(", ")}` : "",
-    metaNeeds.removed.length ? `Removed ${metaNeeds.removed.join(", ")}` : "",
-  ].filter(Boolean);
-  /**
-   * Our own messages are named by address, not by "You".
-   *
-   * The only reason to name ourselves is that the message went out from
-   * another of our addresses, and "You" is the one answer that does not say
-   * which. Somebody else is named the way they signed the message.
-   */
-  const senderLabel = message.own
-    ? message.fromEmail || account
-    : displayName;
-  const metaHeadline = [metaNeeds.sender ? senderLabel : "", ...changeNotes]
-    .filter(Boolean)
-    .join(" · ");
-  const metaDetails = [
+  const { metaHeadline, metaDetails } = bubbleMetaLines({
+    message,
+    account,
+    displayName,
+    fromLabel,
     stamp,
-    fromLabel ? `${t("fieldFromColon")} ${fromLabel}` : "",
-    message.toEmails?.length
-      ? `${t("fieldToColon")} ${message.toEmails.join(", ")}`
-      : "",
-    message.ccEmails?.length
-      ? `${t("fieldCcColon")} ${message.ccEmails.join(", ")}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    metaNeeds,
+    t,
+  });
   const canLoadImages =
     !loadImagesByDefault && showHtml && hasImages && !sendingOut && !failedOut;
   const showMetaRow =
@@ -757,14 +874,7 @@ export function MailBubble({
   };
 
   const clamped = isTall && !bodyFullyExpanded;
-  const fadeFrom =
-    sendingOut || failedOut
-      ? failedOut
-        ? "from-red-50"
-        : "from-[var(--mail-bubble-other)]"
-      : message.own
-        ? "from-[var(--mail-bubble-own)]"
-        : "from-[var(--mail-bubble-other)]";
+  const fadeFrom = bubbleFadeFrom(sendStatus, message.own);
 
   /** To and Cc as written, each address once, for "Copy recipients". */
   const messageRecipients = React.useMemo(() => {
@@ -809,37 +919,15 @@ export function MailBubble({
       )}
     >
       {showMetaRow ? (
-      <div
-        className={cn(
-          "mb-1 flex w-full min-w-0 items-baseline gap-x-3 gap-y-1 px-1",
-          message.own && "flex-row-reverse"
-        )}
-      >
-        <p
-          className={cn(
-            "min-w-0 flex-1 text-[11px] text-stone-500",
-            // Open on demand, the line is the answer to a question that was
-            // just asked — so it wraps and shows all of it. Unasked for, it
-            // is one short note beside a message and stays on its line.
-            detailsOpen ? "whitespace-pre-line" : "truncate",
-            message.own && "text-right"
-          )}
-          title={detailsOpen ? undefined : metaHeadline}
-        >
-          {detailsOpen ? metaDetails : metaHeadline}
-        </p>
-        {canLoadImages ? (
-          <span className="flex shrink-0 items-baseline gap-2">
-            <button
-              type="button"
-              className="text-[11px] text-stone-500 underline decoration-stone-400 underline-offset-2 hover:text-stone-700"
-              onClick={toggleImages}
-            >
-              {allowImages ? "Hide images" : "Load images"}
-            </button>
-          </span>
-        ) : null}
-      </div>
+      <BubbleMetaRow
+        message={message}
+        detailsOpen={detailsOpen}
+        metaHeadline={metaHeadline}
+        metaDetails={metaDetails}
+        canLoadImages={canLoadImages}
+        toggleImages={toggleImages}
+        allowImages={allowImages}
+      />
       ) : null}
       {/* Anchored to the bubble rather than to the column, so it lines up
           with the middle of the words and not with the middle of the line of
@@ -863,6 +951,17 @@ export function MailBubble({
         onReplyTo={sendingOut || failedOut ? undefined : onReplyTo}
         onForward={sendingOut || failedOut ? undefined : onForward}
         onEditAsNew={sendingOut || failedOut ? undefined : onEditAsNew}
+        onDownloadAttachments={
+          savableFiles.length
+            ? () =>
+                void saveMessageAttachments({
+                  account,
+                  messageId: message.id,
+                  attachments: savableFiles,
+                })
+            : undefined
+        }
+        attachmentCount={savableFiles.length}
         onPrint={showPrint ? printThisMessage : undefined}
         onShowOriginal={sendingOut || failedOut ? undefined : onShowOriginal}
         // Who it was from and who it went to, for the message where the line
@@ -895,171 +994,53 @@ export function MailBubble({
         )}
       >
         {message.attachments?.length ? (
-          <div className={cn(showHtml ? "px-3.5 pt-3" : "pb-1")}>
-            <MessageCalendarInvite
-              account={account}
-              messageId={message.id}
-              attachments={message.attachments}
-              onUnavailable={noteCalendarUnavailable}
-            />
-          </div>
+          <BubbleInvites
+            showHtml={showHtml}
+            account={account}
+            message={message}
+            noteCalendarUnavailable={noteCalendarUnavailable}
+          />
         ) : null}
         {/* Above the body, not under it. At the bottom of a long message the
             files are past the fold, and the reader has to scroll a message
             they may not want to read to find out one is attached. */}
         {fileAttachments.length ? (
-          <div className={cn(showHtml ? "px-3.5 pt-3" : "pb-2")}>
-            <MessageAttachmentChips
-              account={account}
-              messageId={message.id}
-              attachments={fileAttachments}
-              onPreview={onPreviewAttachment}
-            />
-          </div>
+          <BubbleFiles
+            showHtml={showHtml}
+            account={account}
+            message={message}
+            fileAttachments={fileAttachments}
+            onPreviewAttachment={onPreviewAttachment}
+          />
         ) : null}
-        <div
-          className={cn(
-            "relative",
-            showHtml && "overflow-hidden rounded-t-lg",
-
-          )}
-        >
-          <div
-            ref={bodyMeasureRef}
-            className={cn(clamped && "max-h-[340px] overflow-hidden")}
-          >
-            {showHtml ? (
-              <div
-                className={cn(
-                  "relative",
-                  sendingOut && "opacity-60",
-                  /*
-                    No wrapper of ours around the sender's page.
-
-                    The mail is laid out exactly as it is in the light —
-                    same width, same left edge, same padding — and only its
-                    colours change, which the re-lighting does inside the
-                    frame. A sheet or an island here moved the words in from
-                    the edge and centred them, so switching theme moved the
-                    text about, and that is not what a theme is for.
-                  */
-                )}
-              >
-                {/* A frame cannot be floated into, so the time sits over its
-                    bottom corner. The frame is the sender's own layout and
-                    ends in whitespace far more often than not. */}
-                {timeCorner ? (
-                  <span className="pointer-events-none absolute bottom-1.5 right-3 z-10">
-                    {timeCorner}
-                  </span>
-                ) : null}
-                <EmailHtmlView
-                  onContentDoubleClick={toggleDetailsFromBody}
-                  html={shownHtml}
-                  inlineImages={message.inlineImages}
-                  allowImages={allowImages}
-                  zoom={zoom}
-                  bodyColor={readInTheDark ? "#e2e9f0" : undefined}
-                  darkRecolor={readInTheDark}
-                />
-                {htmlSplit?.hadQuote ? (
-                  <button
-                    type="button"
-                    /* Up into the frame's own tail, which is empty by
-                       construction: the frame carries 20pt of bottom padding
-                       for the time to sit in, and the height it reports adds
-                       a little more so a footer cannot clip. With the dots
-                       here the time sits below the frame instead, so that
-                       room is a hole, and this takes most of it back. */
-                    className="mx-3.5 -mt-4 mb-1.5 inline-flex h-3 items-center justify-center gap-[2.5px] rounded-full bg-stone-200/70 px-2 text-stone-600 hover:bg-stone-200"
-                    title={showQuoted ? t("hideQuotedText") : t("showQuotedText")}
-                    onClick={toggleQuoted}
-                  >
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <>
-                <p
-                  className={cn(
-                    "whitespace-pre-wrap break-words text-sm",
-                    // The time is floated so that it settles beside the
-                    // last line rather than spending a line of its own.
-                    // A message with no words has no line for it to settle
-                    // on, and a box holding nothing but a float has no
-                    // height — so the time fell out of the bubble and sat
-                    // on its bottom edge. That happens on a message that
-                    // is only a picture, which is most of the pictures.
-                    // This gives the paragraph the float's height back.
-                    "after:block after:clear-both after:content-['']",
-                    sendingOut ? "text-stone-500" : "text-stone-800"
-                  )}
-                >
-                  <LinkifiedText
-                    text={showQuoted ? fullBody : stripped}
-                    onEmailClick={requestMailComposeTo}
-                  />
-                  {timeCorner}
-                </p>
-                {hasHidden ? (
-                  <button
-                    type="button"
-                    className="mt-1 inline-flex h-3 items-center justify-center gap-[2.5px] rounded-full bg-stone-200/70 px-2 text-stone-600 hover:bg-stone-200"
-                    title={showQuoted ? t("hideQuotedText") : t("showQuotedText")}
-                    onClick={toggleQuoted}
-                  >
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                    <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
-                  </button>
-                ) : null}
-              </>
-            )}
-          </div>
-          {clamped ? (
-            <div
-              aria-hidden
-              className={cn(
-                "pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent",
-                fadeFrom
-              )}
-            />
-          ) : null}
-        </div>
-        {clamped ? (
-          <div
-            className={cn(
-              "flex justify-center",
-              showHtml ? "px-3.5 pb-2.5 pt-1" : "pt-2"
-            )}
-          >
-            <button
-              type="button"
-              className="rounded-full bg-white px-3 py-1 text-xs font-medium text-teal-700 shadow-sm ring-1 ring-stone-200 hover:text-teal-800"
-              onClick={() => setBodyFullyExpanded(true)}
-            >
-              {t("showFullMessage")}
-            </button>
-          </div>
-        ) : bodyFullyExpanded && isTall ? (
-          <div
-            className={cn(
-              "flex justify-center",
-              showHtml ? "px-3.5 pb-2.5 pt-1" : "pt-2"
-            )}
-          >
-            <button
-              type="button"
-              className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
-              onClick={() => setBodyFullyExpanded(false)}
-            >
-              {t("showLess")}
-            </button>
-          </div>
-        ) : null}
+        <BubbleBody
+          showHtml={showHtml}
+          bodyMeasureRef={bodyMeasureRef}
+          clamped={clamped}
+          sendingOut={sendingOut}
+          timeCorner={timeCorner}
+          toggleDetailsFromBody={toggleDetailsFromBody}
+          shownHtml={shownHtml}
+          message={message}
+          allowImages={allowImages}
+          zoom={zoom}
+          readInTheDark={readInTheDark}
+          htmlSplit={htmlSplit}
+          showQuoted={showQuoted}
+          t={t}
+          toggleQuoted={toggleQuoted}
+          fullBody={fullBody}
+          stripped={stripped}
+          hasHidden={hasHidden}
+          fadeFrom={fadeFrom}
+        />
+        <ShowMoreToggle
+          clamped={clamped}
+          expanded={bodyFullyExpanded && isTall}
+          showHtml={showHtml}
+          onExpand={() => setBodyFullyExpanded(true)}
+          onCollapse={() => setBodyFullyExpanded(false)}
+        />
       </div>
       </div>
       {statusCaption}
@@ -1067,6 +1048,7 @@ export function MailBubble({
     </div>
   );
 }
+
 /**
  * How far outside the bubble the hover rail stands when nothing is in the
  * way: its own width (w-8, border included) and one pixel of air.
@@ -1178,4 +1160,324 @@ function subscribeLoadImagesByDefault(onChange: () => void): () => void {
 /** Optimistic send bubble (not yet replaced by a provider message id). */
 export function isPendingLocalMessage(id: string): boolean {
   return id.startsWith("local-");
+}
+
+/**
+ * The message's words: its html in a frame, or its text, with the quoted
+ * history behind a toggle, the time in the corner, and the fade and Show
+ * more of a tall message.
+ */
+function BubbleBody({
+  showHtml,
+  bodyMeasureRef,
+  clamped,
+  sendingOut,
+  timeCorner,
+  toggleDetailsFromBody,
+  shownHtml,
+  message,
+  allowImages,
+  zoom,
+  readInTheDark,
+  htmlSplit,
+  showQuoted,
+  t,
+  toggleQuoted,
+  fullBody,
+  stripped,
+  hasHidden,
+  fadeFrom,
+}: {
+  showHtml: boolean;
+  bodyMeasureRef: React.RefObject<HTMLDivElement | null>;
+  clamped: boolean;
+  sendingOut: boolean;
+  timeCorner: React.JSX.Element | null;
+  toggleDetailsFromBody: () => void;
+  shownHtml: string;
+  message: BubbleMessage;
+  allowImages: boolean;
+  zoom: number | undefined;
+  readInTheDark: boolean;
+  htmlSplit: { html: string; hadQuote: boolean; } | null;
+  showQuoted: boolean;
+  t: MailT;
+  toggleQuoted: () => void;
+  fullBody: string;
+  stripped: string;
+  hasHidden: boolean;
+  fadeFrom: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative",
+        showHtml && "overflow-hidden rounded-t-lg",
+
+      )}
+    >
+      <div
+        ref={bodyMeasureRef}
+        className={cn(clamped && "max-h-[340px] overflow-hidden")}
+      >
+        {showHtml ? (
+          <div
+            className={cn(
+              "relative",
+              sendingOut && "opacity-60",
+              /*
+                No wrapper of ours around the sender's page.
+
+                The mail is laid out exactly as it is in the light —
+                same width, same left edge, same padding — and only its
+                colours change, which the re-lighting does inside the
+                frame. A sheet or an island here moved the words in from
+                the edge and centred them, so switching theme moved the
+                text about, and that is not what a theme is for.
+              */
+            )}
+          >
+            {/* A frame cannot be floated into, so the time sits over its
+                bottom corner. The frame is the sender's own layout and
+                ends in whitespace far more often than not. */}
+            {timeCorner ? (
+              <span className="pointer-events-none absolute bottom-1.5 right-3 z-10">
+                {timeCorner}
+              </span>
+            ) : null}
+            <EmailHtmlView
+              onContentDoubleClick={toggleDetailsFromBody}
+              html={shownHtml}
+              inlineImages={message.inlineImages}
+              allowImages={allowImages}
+              zoom={zoom}
+              bodyColor={readInTheDark ? "#e2e9f0" : undefined}
+              darkRecolor={readInTheDark}
+            />
+            {htmlSplit?.hadQuote ? (
+              <button
+                type="button"
+                /* Up into the frame's own tail, which is empty by
+                   construction: the frame carries 20pt of bottom padding
+                   for the time to sit in, and the height it reports adds
+                   a little more so a footer cannot clip. With the dots
+                   here the time sits below the frame instead, so that
+                   room is a hole, and this takes most of it back. */
+                className="mx-3.5 -mt-4 mb-1.5 inline-flex h-3 items-center justify-center gap-[2.5px] rounded-full bg-stone-200/70 px-2 text-stone-600 hover:bg-stone-200"
+                title={showQuoted ? t("hideQuotedText") : t("showQuotedText")}
+                onClick={toggleQuoted}
+              >
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            <p
+              className={cn(
+                "whitespace-pre-wrap break-words text-sm",
+                // The time is floated so that it settles beside the
+                // last line rather than spending a line of its own.
+                // A message with no words has no line for it to settle
+                // on, and a box holding nothing but a float has no
+                // height — so the time fell out of the bubble and sat
+                // on its bottom edge. That happens on a message that
+                // is only a picture, which is most of the pictures.
+                // This gives the paragraph the float's height back.
+                "after:block after:clear-both after:content-['']",
+                sendingOut ? "text-stone-500" : "text-stone-800"
+              )}
+            >
+              <LinkifiedText
+                text={showQuoted ? fullBody : stripped}
+                onEmailClick={requestMailComposeTo}
+              />
+              {timeCorner}
+            </p>
+            {hasHidden ? (
+              <button
+                type="button"
+                className="mt-1 inline-flex h-3 items-center justify-center gap-[2.5px] rounded-full bg-stone-200/70 px-2 text-stone-600 hover:bg-stone-200"
+                title={showQuoted ? t("hideQuotedText") : t("showQuotedText")}
+                onClick={toggleQuoted}
+              >
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+                <span className="h-[2.5px] w-[2.5px] rounded-full bg-current" />
+              </button>
+            ) : null}
+          </>
+        )}
+      </div>
+      {clamped ? (
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent",
+            fadeFrom
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The calendar invites a message carries, each as a card.
+ */
+function BubbleInvites({
+  showHtml,
+  account,
+  message,
+  noteCalendarUnavailable,
+}: {
+  showHtml: boolean;
+  account: string;
+  message: BubbleMessage;
+  noteCalendarUnavailable: (attachmentId: string) => void;
+}) {
+  return (
+    <div className={cn(showHtml ? "px-3.5 pt-3" : "pb-1")}>
+      <MessageCalendarInvite
+        account={account}
+        messageId={message.id}
+        attachments={message.attachments}
+        onUnavailable={noteCalendarUnavailable}
+      />
+    </div>
+  );
+}
+
+/**
+ * The line over a message: who sent it or who was added and removed, the
+ * details when asked for, and the offer to load its pictures.
+ */
+function BubbleMetaRow({
+  message,
+  detailsOpen,
+  metaHeadline,
+  metaDetails,
+  canLoadImages,
+  toggleImages,
+  allowImages,
+}: {
+  message: BubbleMessage;
+  detailsOpen: boolean;
+  metaHeadline: string;
+  metaDetails: string;
+  canLoadImages: boolean;
+  toggleImages: () => void;
+  allowImages: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-1 flex w-full min-w-0 items-baseline gap-x-3 gap-y-1 px-1",
+        message.own && "flex-row-reverse"
+      )}
+    >
+      <p
+        className={cn(
+          "min-w-0 flex-1 text-[11px] text-stone-500",
+          // Open on demand, the line is the answer to a question that was
+          // just asked — so it wraps and shows all of it. Unasked for, it
+          // is one short note beside a message and stays on its line.
+          detailsOpen ? "whitespace-pre-line" : "truncate",
+          message.own && "text-right"
+        )}
+        title={detailsOpen ? undefined : metaHeadline}
+      >
+        {detailsOpen ? metaDetails : metaHeadline}
+      </p>
+      {canLoadImages ? (
+        <span className="flex shrink-0 items-baseline gap-2">
+          <button
+            type="button"
+            className="text-[11px] text-stone-500 underline decoration-stone-400 underline-offset-2 hover:text-stone-700"
+            onClick={toggleImages}
+          >
+            {allowImages ? "Hide images" : "Load images"}
+          </button>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Show the whole of a tall message, or fold it again. */
+function ShowMoreToggle({
+  clamped,
+  expanded,
+  showHtml,
+  onExpand,
+  onCollapse,
+}: {
+  clamped: boolean;
+  expanded: boolean;
+  showHtml: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+}) {
+  const t = useMailT();
+  return clamped ? (
+    <div
+      className={cn(
+        "flex justify-center",
+        showHtml ? "px-3.5 pb-2.5 pt-1" : "pt-2"
+      )}
+    >
+      <button
+        type="button"
+        className="rounded-full bg-white px-3 py-1 text-xs font-medium text-teal-700 shadow-sm ring-1 ring-stone-200 hover:text-teal-800"
+        onClick={onExpand}
+      >
+        {t("showFullMessage")}
+      </button>
+    </div>
+  ) : expanded ? (
+    <div
+      className={cn(
+        "flex justify-center",
+        showHtml ? "px-3.5 pb-2.5 pt-1" : "pt-2"
+      )}
+    >
+      <button
+        type="button"
+        className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
+        onClick={onCollapse}
+      >
+        {t("showLess")}
+      </button>
+    </div>
+  ) : null;
+}
+
+/**
+ * The files on a message, as chips under the words.
+ */
+function BubbleFiles({
+  showHtml,
+  account,
+  message,
+  fileAttachments,
+  onPreviewAttachment,
+}: {
+  showHtml: boolean;
+  account: string;
+  message: BubbleMessage;
+  fileAttachments: MailAttachment[];
+  onPreviewAttachment: (attachment: MailAttachment) => void;
+}) {
+  return (
+    <div className={cn(showHtml ? "px-3.5 pt-3" : "pb-2")}>
+      <MessageAttachmentChips
+        account={account}
+        messageId={message.id}
+        attachments={fileAttachments}
+        onPreview={onPreviewAttachment}
+      />
+    </div>
+  );
 }

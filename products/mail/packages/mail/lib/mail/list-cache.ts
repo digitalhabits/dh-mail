@@ -104,6 +104,49 @@ export function readCachedList(
  * The list the reader is on is corrected by the state that removed the row.
  * This is for the other nine.
  */
+/**
+ * A summary for one thread, from any list already read.
+ *
+ * The reader can pin what the list is holding. A thread opened from a
+ * search hit, from a deep link, or simply older than the page the list has
+ * loaded is not in it — so the pin had nothing to pin the thread as, and
+ * said so. Unpin such a thread and it could not be pinned again: the pin's
+ * own summary went with the pin.
+ *
+ * Every list this viewer has read is cached, summaries and all, and a
+ * thread they are looking at has almost always been in one of them. So it
+ * is looked for there before the reader is turned away. Memory first,
+ * because it is the freshest; then the store, which outlives the session.
+ *
+ * A summary from a cache is a snapshot, which is what a pin keeps anyway —
+ * `syncMailPinSummaries` brings each one up to date when the list holds it.
+ */
+export function findCachedThread(
+  viewerId: string,
+  isThread: (thread: MailThreadSummary) => boolean
+): MailThreadSummary | null {
+  const prefix = `${viewerId}\0`;
+  for (const [memKey, entry] of mailThreadsMemory) {
+    if (!memKey.startsWith(prefix)) continue;
+    const found = entry.threads.find(isThread);
+    if (found) return found;
+  }
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(mailThreadsStorageKey(viewerId));
+    if (!raw) return null;
+    const all = JSON.parse(raw) as Record<string, MailListCacheEntry>;
+    for (const entry of Object.values(all)) {
+      if (!entry || !Array.isArray(entry.threads)) continue;
+      const found = entry.threads.find(isThread);
+      if (found) return found;
+    }
+  } catch {
+    /* quota / private mode — memory above is still correct this session */
+  }
+  return null;
+}
+
 export function forgetThreadEverywhere(
   viewerId: string,
   isThread: (thread: MailThreadSummary) => boolean

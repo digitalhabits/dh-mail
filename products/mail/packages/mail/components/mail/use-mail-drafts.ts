@@ -14,11 +14,7 @@
 import * as React from "react";
 
 import { mailApiJson as apiJson } from "@/lib/mail/api";
-import {
-  isComposeDraftKey,
-  listMailDrafts,
-  subscribeMailDrafts,
-} from "@/lib/mail/local-drafts";
+import { listMailDrafts, subscribeMailDrafts } from "@/lib/mail/local-drafts";
 import { htmlToPlainText } from "@/lib/client-email-html";
 import { emailsOfRecipients } from "@/lib/mail/contact-list-types";
 import type { MailDraftRow } from "@/lib/mail/types";
@@ -121,10 +117,4 @@ export function useMailDrafts(): {
   );
 
   return { drafts, loading, refresh };
-}
-
-/** True for a row that has no thread to open — a new message, not a reply. */
-export function isStandaloneDraft(row: MailDraftRow): boolean {
-  if (row.origin === "here") return isComposeDraftKey(row.id);
-  return !row.threadId;
 }

@@ -112,3 +112,57 @@ export function replyAllRecipients(input: {
   const own = take(input.sentByUs ? input.to : [input.from, ...input.to], true);
   return { to: own.length ? own : [input.account], cc };
 }
+
+/**
+ * Reply recipients drop the sending mailbox; a self-thread keeps it.
+ *
+ * A thread of notes to yourself would otherwise strip down to nobody, and
+ * replying to yourself is legitimate. Shared by the Gmail reader and the
+ * local copy's reader.
+ */
+export function withSelfFallback(list: string[], account: string): string[] {
+  return list.length ? list : [account];
+}
+
+/**
+ * Reply recipients: without blanks, without the same address twice (Gmail's
+ * dot and +tag forms count as one), and without the mailbox we send from,
+ * so a reply never lands back in this inbox.
+ */
+function replyRecipients(items: string[], account: string): string[] {
+  const accountKey = normalizeEmail(account);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const email = raw.trim();
+    if (!email) continue;
+    const key = normalizeEmail(email);
+    if (key === accountKey || seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
+  }
+  return out;
+}
+
+/**
+ * Whom Reply and Reply all go to, from a thread's newest message.
+ *
+ * Reply goes to the sender, or, when this mailbox sent it, to whoever it
+ * was addressed to. The Gmail, Outlook and local-copy readers all ask
+ * here, each with the addresses read from its own shape of message.
+ */
+export function replyTargets(input: {
+  from: string;
+  to: string[];
+  cc: string[];
+  account: string;
+}): { to: string[]; allTo: string[]; allCc: string[] } {
+  const sentByUs = sentFromThisMailbox(input);
+  const replyTo = sentByUs ? input.to : [input.from];
+  const replyAll = replyAllRecipients({ ...input, sentByUs });
+  return {
+    to: withSelfFallback(replyRecipients(replyTo, input.account), input.account),
+    allTo: replyAll.to,
+    allCc: replyAll.cc,
+  };
+}

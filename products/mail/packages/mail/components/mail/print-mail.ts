@@ -27,7 +27,7 @@
 import { toast } from "@/lib/mail/toast";
 import { mailSay } from "@/lib/mail/i18n-strings";
 
-import { sanitizeEmailHtml } from "@/components/mail/EmailHtmlView";
+import { sanitizeEmailHtml } from "@/lib/mail/email-html";
 import {
   buildPrintDocument,
   type PrintMailInput,

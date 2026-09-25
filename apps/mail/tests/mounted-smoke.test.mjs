@@ -6,7 +6,9 @@
  * it invented fixtures through the transport seam the standalone app
  * already uses, and walks the few gestures a refactor is most likely to
  * break: the list paints, a thread opens, the reader's focus sweep hides
- * and returns the list, the list's own expand toggles. It proves wiring,
+ * and returns the list, the list's own expand toggles, and the text size
+ * keys (Command+Plus and Minus size the app with nothing open and zoom an
+ * open thread; Option+Command+Plus, Minus and 0 are always the app). It proves wiring,
  * not pixels — there is no layout in this DOM, so anything about sizes and
  * scroll positions still belongs to a person with a browser.
  *
@@ -14,66 +16,9 @@
  * why the page itself is imported dynamically from the impl file.
  */
 
-import { Window } from "happy-dom";
+import { installDom } from "./mounted-dom.mjs";
 
-const win = new Window({ url: "http://localhost:3473/" });
-globalThis.window = win;
-for (const key of [
-  "document",
-  "navigator",
-  "location",
-  "history",
-  "localStorage",
-  "sessionStorage",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-  "matchMedia",
-  "HTMLElement",
-  "HTMLInputElement",
-  "HTMLIFrameElement",
-  "SVGElement",
-  "Element",
-  "Node",
-  "Event",
-  "CustomEvent",
-  "KeyboardEvent",
-  "MouseEvent",
-  "PointerEvent",
-  "DragEvent",
-  "StorageEvent",
-  "MutationObserver",
-  "ResizeObserver",
-  "IntersectionObserver",
-  "FileReader",
-  "CSSStyleDeclaration",
-  "DOMParser",
-  "XMLSerializer",
-  "Range",
-  "Selection",
-  "Text",
-  "Comment",
-  "DocumentFragment",
-]) {
-  if (win[key] !== undefined && globalThis[key] === undefined) {
-    globalThis[key] = win[key];
-  }
-}
-// happy-dom leaves these out; the app only needs them to exist.
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
-if (typeof globalThis.IntersectionObserver === "undefined") {
-  globalThis.IntersectionObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
+installDom();
 
 void import("./mounted-smoke.impl.mjs").catch((err) => {
   console.error("the mounted suite could not start:", err);

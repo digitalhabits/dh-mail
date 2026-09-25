@@ -16,7 +16,7 @@ import {
   useComposerFileDrop,
   useComposerPaste,
   useDraftAttachments,
-} from "@/components/mail/MailAttachments";
+} from "@/components/mail/draft-attachments";
 import { dataUrlTooBig } from "@/lib/mail/inline-paste";
 import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
 

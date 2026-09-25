@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { isThreadDraftEmpty } from "@/lib/mail/local-drafts";
 
 import { check, suite } from "./harness.mjs";
+import { threadPaneSource } from "./mail-page-source.mjs";
 
 const src = (name) =>
   readFileSync(
@@ -57,7 +58,7 @@ suite(async () => {
     isThreadDraftEmpty({ ...emptyDraft, subject: "   " }, [], []) === true
   );
 
-  const pane = src("ThreadPane.tsx");
+  const pane = threadPaneSource();
   // The composer's state and its stored draft live here now.
   const composer = src("use-thread-composer.ts");
   // And the send, the outbox and Undo live here. The pane keeps the rule
@@ -145,39 +146,16 @@ suite(async () => {
     thread when the subject matches — so the thread's id is left off and
     the trail is left to In-Reply-To and References.
   */
+  // That a renamed reply is a new conversation, sent without the thread's
+  // id and still answering the message, is walked in mounted-composer-send.
+  // A forward, which is never a reply, is checked here.
   const rule = pane.slice(
     pane.indexOf("const startsNewThread ="),
     pane.indexOf(";", pane.indexOf("subjectDraft.trim() !== replySubject.trim()"))
   );
   check(
-    "a renamed reply is a new conversation",
-    rule.includes("subjectDraft.trim() !== replySubject.trim()"),
-    rule.split("\n").slice(1).join(" ").trim()
-  );
-  check(
-    "a forward is not, having always started its own",
+    "a forward is not a new conversation, having always started its own",
     rule.includes("!forwarding")
-  );
-
-  const request = sendHook.slice(
-    sendHook.indexOf("const entry: OutboxEntry = {"),
-    sendHook.indexOf("inReplyTo: thread.reply.inReplyTo")
-  );
-  check(
-    "so the send leaves the thread's id off",
-    request.includes(
-      "threadId: crossAccount || startsNewThread ? undefined : threadId"
-    ),
-    request.includes("threadId:") ? "left off" : "missing"
-  );
-
-  const after = sendHook.slice(
-    sendHook.indexOf("inReplyTo: thread.reply.inReplyTo")
-  );
-  check(
-    "and still says what it answers",
-    after.startsWith("inReplyTo: thread.reply.inReplyTo,") &&
-      after.slice(0, 200).includes("references: thread.reply.references")
   );
 
   check(

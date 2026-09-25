@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople } from "@/lib/mail/person-participants";
+import type { MailT } from "@/lib/mail/i18n-strings";
 
 /** A finger that has moved this far has said which way it is going. */
 const SWIPE_DECIDE_PX = 8;
@@ -477,6 +478,87 @@ export function ThreadMessageCount({
 }
 
 /**
+ * The row's own classes: its shape at each width and density, and how it
+ * shows that it is the one open.
+ */
+function threadRowClass({
+  narrow,
+  wide,
+  compact,
+  padX,
+  selected,
+}: {
+  narrow: boolean | undefined;
+  wide: boolean | undefined;
+  compact: boolean;
+  padX: string;
+  selected: boolean | undefined;
+}): string {
+  return cn(
+    "group relative flex cursor-grab transition-colors active:cursor-grabbing",
+    // No ring of the browser's own. A row is focusable so the arrow keys
+    // can carry focus with the selection, and the selection is already
+    // painted — the ring drew a second, louder marker over the top of it,
+    // clipped by the list into a line above and below the row.
+    "outline-none focus:outline-none focus-visible:outline-none",
+    narrow
+      ? "items-center justify-center px-1 py-1.5"
+      : wide
+        ? compact
+          ? cn("items-center gap-3 py-1.5", padX)
+          : cn("items-start gap-3 py-2", padX)
+        : compact
+          ? cn("items-center gap-2.5 py-1.5", padX)
+          : cn("items-start gap-3 py-3", padX),
+    /*
+      The open thread, said twice: a fill, and a bar down the left.
+
+      Light fills it white, because the list is cream and the plainest
+      surface reads as the one being attended to. Dark cannot do that —
+      white there is a hole — so it takes a tenth of the accent, which
+      is the same colour as the bar. Either way the fill is a colour and
+      the hover is a grey, so a row you are pointing at is never read as
+      a row you have opened.
+    */
+    // The ring between the discs of a group's avatar is the row's own
+    // fill, so the discs look cut out of it. The open row's fill in dark
+    // is a tint you can see through, and a ring has to be solid — see
+    // --mail-row-selected-solid.
+    selected
+      ? "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)]"
+      : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]",
+    selected &&
+      "before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+  );
+}
+
+/**
+ * What a swipe uncovers: the action it is about to take, in the gap the
+ * row leaves behind. It travels the other way, so it stands still on the
+ * screen while the row moves off it. Archive to the right, snooze to the
+ * left, full strength once far enough to be taken.
+ */
+function SwipeUnder({ swipeX }: { swipeX: number }) {
+  return swipeX > 0 ? (
+    <span
+      aria-hidden
+      className="mail-row-swipe absolute inset-y-0 flex items-center justify-start bg-teal-600 pl-4 text-white"
+      style={{ left: -swipeX, width: swipeX }}
+    >
+      <Archive className={cn("h-5 w-5", swipeX >= SWIPE_COMMIT_PX ? "opacity-100" : "opacity-50")} />
+    </span>
+  ) : swipeX < 0 ? (
+    <span
+      aria-hidden
+      className="mail-row-swipe absolute inset-y-0 flex items-center justify-end bg-amber-500 pr-4 text-white"
+      style={{ right: swipeX, width: -swipeX }}
+    >
+      <Clock className={cn("h-5 w-5", -swipeX >= SWIPE_COMMIT_PX ? "opacity-100" : "opacity-50")} />
+    </span>
+  ) : null;
+}
+
+/**
  * Inbox row. Hover shows read / snooze / archive; pinning is on the
  * right-click menu, and on the reader's strip once the thread is open.
  * `dragKind: "pin"` marks the payload so dropping on the date flow unpins.
@@ -676,67 +758,19 @@ export function ThreadListRow({
     .join(" — ");
 
   const rowActions = (
-    <span
-      className={rowActionsClass}
-      onClick={(e) => e.stopPropagation()}
-      // Enter on a button is that button's, not the row's — the row opens the
-      // thread on Enter and would otherwise do both.
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        title={say(t.unread ? "markAsRead" : "markAsUnread")}
-        aria-label={say(t.unread ? "markAsRead" : "markAsUnread")}
-        className={actionBtn}
-        onClick={onToggleRead}
-      >
-        {/* The same icon whichever way the click will go, and the same one
-            the reader uses. A control that changes shape reads as two
-            controls; the label says which way it goes. */}
-        <MailDotIcon className={actionIcon} />
-      </button>
-      {onSnooze ? (
-        <SnoozeMenu
-          onSnooze={onSnooze}
-          onCancelSnooze={onCancelSnooze}
-          currentUntil={t.snoozedUntil}
-          onOpenChange={setSnoozeOpen}
-          // Snooze… on the right-click menu opens this one, so both ways
-          // through end at the same list of times.
-          openSignal={snoozeSignal}
-          trigger={
-            <button
-              type="button"
-              title={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
-              aria-label={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
-              className={actionBtn}
-            >
-              <RotateCwFadingClock className={actionIcon} />
-            </button>
-          }
-        />
-      ) : null}
-      {/* Archive rather than pin.
-
-          The three that hover shows are the three a reader does over and
-          over on the way down a list: read it, put it off, put it away.
-          Pinning is not one of those — it is done to the few conversations
-          that are going to stay, and it stays done. It is still on the
-          right-click menu, and now on the reader's own strip beside
-          snooze, which is where it is wanted: on the conversation being
-          read, not the one being passed over. */}
-      {onArchive ? (
-        <button
-          type="button"
-          title={say("actionArchive")}
-          aria-label={say("actionArchive")}
-          className={actionBtn}
-          onClick={onArchive}
-        >
-          <Archive className={actionIcon} />
-        </button>
-      ) : null}
-    </span>
+    <RowHoverActions
+      rowActionsClass={rowActionsClass}
+      say={say}
+      t={t}
+      actionBtn={actionBtn}
+      onToggleRead={onToggleRead}
+      actionIcon={actionIcon}
+      onSnooze={onSnooze}
+      onCancelSnooze={onCancelSnooze}
+      setSnoozeOpen={setSnoozeOpen}
+      snoozeSignal={snoozeSignal}
+      onArchive={onArchive}
+    />
   );
 
   return (
@@ -809,63 +843,9 @@ export function ThreadListRow({
         e.preventDefault();
         setMenuAt({ x: e.clientX, y: e.clientY });
       }}
-      className={cn(
-        "group relative flex cursor-grab transition-colors active:cursor-grabbing",
-        // No ring of the browser's own. A row is focusable so the arrow keys
-        // can carry focus with the selection, and the selection is already
-        // painted — the ring drew a second, louder marker over the top of it,
-        // clipped by the list into a line above and below the row.
-        "outline-none focus:outline-none focus-visible:outline-none",
-        narrow
-          ? "items-center justify-center px-1 py-1.5"
-          : wide
-            ? compact
-              ? cn("items-center gap-3 py-1.5", padX)
-              : cn("items-start gap-3 py-2", padX)
-            : compact
-              ? cn("items-center gap-2.5 py-1.5", padX)
-              : cn("items-start gap-3 py-3", padX),
-        /*
-          The open thread, said twice: a fill, and a bar down the left.
-
-          Light fills it white, because the list is cream and the plainest
-          surface reads as the one being attended to. Dark cannot do that —
-          white there is a hole — so it takes a tenth of the accent, which
-          is the same colour as the bar. Either way the fill is a colour and
-          the hover is a grey, so a row you are pointing at is never read as
-          a row you have opened.
-        */
-        // The ring between the discs of a group's avatar is the row's own
-        // fill, so the discs look cut out of it. The open row's fill in dark
-        // is a tint you can see through, and a ring has to be solid — see
-        // --mail-row-selected-solid.
-        selected
-          ? "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)]"
-          : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]",
-        selected &&
-          "before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
-      )}
+      className={threadRowClass({ narrow, wide, compact, padX, selected })}
     >
-      {/* What the swipe uncovers: the action it is about to take, in the
-          gap the row leaves behind. It travels the other way, so it
-          stands still on the screen while the row moves off it. */}
-      {swipeX > 0 ? (
-        <span
-          aria-hidden
-          className="mail-row-swipe absolute inset-y-0 flex items-center justify-start bg-teal-600 pl-4 text-white"
-          style={{ left: -swipeX, width: swipeX }}
-        >
-          <Archive className={cn("h-5 w-5", swipeX >= SWIPE_COMMIT_PX ? "opacity-100" : "opacity-50")} />
-        </span>
-      ) : swipeX < 0 ? (
-        <span
-          aria-hidden
-          className="mail-row-swipe absolute inset-y-0 flex items-center justify-end bg-amber-500 pr-4 text-white"
-          style={{ right: swipeX, width: -swipeX }}
-        >
-          <Clock className={cn("h-5 w-5", -swipeX >= SWIPE_COMMIT_PX ? "opacity-100" : "opacity-50")} />
-        </span>
-      ) : null}
+      {swipeX !== 0 ? <SwipeUnder swipeX={swipeX} /> : null}
       {/* Everybody on the thread, as the person view draws them: one face
           for a one-to-one, a pile for a group. */}
       <PeopleAvatar
@@ -877,159 +857,21 @@ export function ThreadListRow({
         size={!narrow && !wide && compact ? 28 : 36}
       />
       {narrow ? null : wide ? (
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <p
-              className={cn(
-                "w-[10rem] shrink-0 truncate text-sm font-semibold",
-                onNavy ? "text-white" : "text-stone-900"
-              )}
-            >
-              <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
-            </p>
-            {hasDraft ? <DraftBadge /> : null}
-            {compact && t.hasCalendarInvite ? (
-              <span
-                className="inline-flex shrink-0"
-                title={t.calendarInviteWhen || "Calendar invite"}
-              >
-                <Calendar
-                  className={cn(
-                    "h-3.5 w-3.5 stroke-[1.5]",
-                    "text-[var(--mail-chrome-muted)] opacity-80"
-                  )}
-                  aria-hidden
-                />
-              </span>
-            ) : null}
-            {compact && t.hasAttachments ? (
-              <span
-                className={cn(
-                  "inline-flex shrink-0",
-                  t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
-                )}
-                title={say("hasAttachments")}
-              >
-                <Paperclip
-                  className={cn(
-                    "h-3.5 w-3.5 stroke-[1.5]",
-                    "text-[var(--mail-chrome-muted)]"
-                  )}
-                  aria-hidden
-                />
-              </span>
-            ) : null}
-            <p className="min-w-0 flex-1 truncate text-sm">
-              <span
-                className={cn(
-                  t.unread && "font-semibold",
-                  onNavy ? "text-white/85" : "text-stone-700"
-                )}
-              >
-                <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
-              </span>
-              {compact && t.snippet && !poppedOut ? (
-                <span className={onNavy ? "text-white/45" : "text-[#908985]"}>
-                  {" — "}
-                  <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
-                </span>
-              ) : null}
-            </p>
-            {poppedOut ? <PoppedOutBadge /> : null}
-            <ThreadMessageCount
-              count={t.messageCount}
-              label={say("threadMessageMany", { count: t.messageCount })}
-            />
-            {t.snoozedUntil && onSnooze ? (
-              <span
-                className={atRestClass}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <SnoozeMenu
-                  onSnooze={onSnooze}
-                  onCancelSnooze={onCancelSnooze}
-                  currentUntil={t.snoozedUntil}
-                  trigger={
-                    <button
-                      type="button"
-                      className={snoozeBtn}
-                      title={say("changeSnooze")}
-                    >
-                      <Clock className="h-3 w-3" aria-hidden />
-                      {formatSnoozeWakeLabel(t.snoozedUntil)}
-                    </button>
-                  }
-                />
-              </span>
-            ) : (
-              <p
-                className={cn(
-                  atRestClass,
-                  "w-[4.5rem] text-right text-xs tabular-nums",
-                  withYear && "w-[6rem]",
-                  onNavy ? "text-white/40" : "text-stone-400"
-                )}
-              >
-                {rowTime(t.lastAt, { withYear })}
-              </p>
-            )}
-            {rowActions}
-          </div>
-          {compact ||
-          poppedOut ||
-          !(t.snippet || t.hasCalendarInvite || t.hasAttachments) ? null : (
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="w-[10rem] shrink-0" aria-hidden />
-              {t.hasCalendarInvite ? (
-                <span
-                  className="inline-flex shrink-0"
-                  title={t.calendarInviteWhen || "Calendar invite"}
-                >
-                  <Calendar
-                    className={cn(
-                      "h-3.5 w-3.5 stroke-[1.5]",
-                      "text-[var(--mail-chrome-muted)] opacity-80"
-                    )}
-                    aria-hidden
-                  />
-                </span>
-              ) : null}
-              {t.hasAttachments ? (
-                <span
-                  className={cn(
-                    "inline-flex shrink-0",
-                    t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
-                  )}
-                  title={say("hasAttachments")}
-                >
-                  <Paperclip
-                    className={cn(
-                      "h-3.5 w-3.5 stroke-[1.5]",
-                      "text-[var(--mail-chrome-muted)]"
-                    )}
-                    aria-hidden
-                  />
-                </span>
-              ) : null}
-              <p
-                className={cn(
-                  "min-w-0 flex-1 truncate text-xs",
-                  onNavy ? "text-white/45" : "text-[#908985]"
-                )}
-              >
-                <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
-              </p>
-              <span
-                className={cn(
-                  "w-[4.5rem] shrink-0",
-                  withYear && "w-[6rem]"
-                )}
-                aria-hidden
-              />
-            </div>
-          )}
-        </div>
+        <WideRowBody
+          onNavy={onNavy}
+          t={t}
+          highlight={highlight}
+          hasDraft={hasDraft}
+          compact={compact}
+          say={say}
+          poppedOut={poppedOut}
+          onSnooze={onSnooze}
+          atRestClass={atRestClass}
+          onCancelSnooze={onCancelSnooze}
+          snoozeBtn={snoozeBtn}
+          withYear={withYear}
+          rowActions={rowActions}
+        />
       ) : compact ? (
         <>
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1134,122 +976,19 @@ export function ThreadListRow({
           {rowActions}
         </>
       ) : (
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <p
-                className={cn(
-                  "min-w-0 truncate text-sm font-semibold",
-                  onNavy ? "text-white" : "text-stone-900"
-                )}
-              >
-                <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
-              </p>
-              {hasDraft ? <DraftBadge /> : null}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-            <ThreadMessageCount
-              count={t.messageCount}
-              label={say("threadMessageMany", { count: t.messageCount })}
-            />
-            {/* At rest: time (or wake time). On hover: read / snooze / pin. */}
-            {t.snoozedUntil && onSnooze ? (
-              <span
-                className={atRestClass}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <SnoozeMenu
-                  onSnooze={onSnooze}
-                  onCancelSnooze={onCancelSnooze}
-                  currentUntil={t.snoozedUntil}
-                  trigger={
-                    <button
-                      type="button"
-                      className={snoozeBtn}
-                      title={say("changeSnooze")}
-                    >
-                      <Clock className="h-3 w-3" aria-hidden />
-                      {formatSnoozeWakeLabel(t.snoozedUntil)}
-                    </button>
-                  }
-                />
-              </span>
-            ) : (
-              <p
-                className={cn(
-                  atRestClass,
-                  "text-xs",
-                  onNavy ? "text-white/40" : "text-stone-400"
-                )}
-              >
-                {rowTime(t.lastAt, { withYear })}
-              </p>
-            )}
-            {rowActions}
-            </div>
-          </div>
-          <p
-            className={cn(
-              "mt-0.5 truncate text-sm",
-              t.unread && "font-semibold",
-              onNavy ? "text-white/85" : "text-stone-700"
-            )}
-          >
-            <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
-          </p>
-          <p
-            className={cn(
-              "mt-0.5 flex min-w-0 items-center gap-1.5 text-xs",
-              onNavy ? "text-white/45" : "text-[#908985]"
-            )}
-          >
-            {t.hasCalendarInvite ? (
-              <span
-                className={cn(
-                  "inline-flex max-w-[55%] shrink-0 items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
-                  onNavy
-                    ? "border-white/15 bg-white/10 text-white/70"
-                    : "border-stone-200 bg-[#f4f1ec] text-stone-600"
-                )}
-                title={t.calendarInviteWhen || "Calendar invite"}
-              >
-                <Calendar
-                  className={cn(
-                    "h-3 w-3 shrink-0 stroke-[1.5]",
-                    "text-[var(--mail-chrome-muted)] opacity-80"
-                  )}
-                  aria-hidden
-                />
-                <span className="truncate">
-                  {t.calendarInviteWhen || "Invite"}
-                </span>
-              </span>
-            ) : null}
-            {t.hasAttachments ? (
-              <span
-                className={cn(
-                  "inline-flex shrink-0",
-                  // Closer to what is before it than the row's own gap: the
-                  // clip is a mark on the row, not another item in the
-                  // line. Closer again behind the calendar, because there
-                  // the two are one aside about the same thread.
-                  t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
-                )}
-                title={say("hasAttachments")}
-              >
-                <Paperclip
-                  className={cn(
-                    "h-3 w-3 shrink-0 stroke-[1.5]",
-                    "text-[var(--mail-chrome-muted)] opacity-80"
-                  )}
-                  aria-hidden
-                />
-              </span>
-            ) : null}
-            <span className="min-w-0 truncate"><Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} /></span>
-          </p>
-        </div>
+        <StackedRowBody
+          onNavy={onNavy}
+          t={t}
+          highlight={highlight}
+          hasDraft={hasDraft}
+          say={say}
+          onSnooze={onSnooze}
+          atRestClass={atRestClass}
+          onCancelSnooze={onCancelSnooze}
+          snoozeBtn={snoozeBtn}
+          withYear={withYear}
+          rowActions={rowActions}
+        />
       )}
       {menuAt ? (
         <ThreadRowMenu
@@ -1291,3 +1030,436 @@ export function ThreadListRow({
  * planner sends the user to its OAuth routes, the standalone product runs the
  * flow itself. See `@/lib/mail/connect-mailbox`.
  */
+
+/**
+ * The row stacked: the people and the time on one line, then the subject,
+ * then the snippet. What a narrow list shows.
+ */
+function StackedRowBody({
+  onNavy,
+  t,
+  highlight,
+  hasDraft,
+  say,
+  onSnooze,
+  atRestClass,
+  onCancelSnooze,
+  snoozeBtn,
+  withYear,
+  rowActions,
+}: {
+  onNavy: boolean;
+  t: MailThreadSummary;
+  highlight: string[] | undefined;
+  hasDraft: boolean;
+  say: MailT;
+  onSnooze: ((untilIso: string) => void) | undefined;
+  atRestClass: string;
+  onCancelSnooze: (() => void) | undefined;
+  snoozeBtn: string;
+  withYear: boolean;
+  rowActions: React.JSX.Element;
+}) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p
+            className={cn(
+              "min-w-0 truncate text-sm font-semibold",
+              onNavy ? "text-white" : "text-stone-900"
+            )}
+          >
+            <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+          </p>
+          {hasDraft ? <DraftBadge /> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+        <ThreadMessageCount
+          count={t.messageCount}
+          label={say("threadMessageMany", { count: t.messageCount })}
+        />
+        {/* At rest: time (or wake time). On hover: read / snooze / pin. */}
+        {t.snoozedUntil && onSnooze ? (
+          <span
+            className={atRestClass}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <SnoozeMenu
+              onSnooze={onSnooze}
+              onCancelSnooze={onCancelSnooze}
+              currentUntil={t.snoozedUntil}
+              trigger={
+                <button
+                  type="button"
+                  className={snoozeBtn}
+                  title={say("changeSnooze")}
+                >
+                  <Clock className="h-3 w-3" aria-hidden />
+                  {formatSnoozeWakeLabel(t.snoozedUntil)}
+                </button>
+              }
+            />
+          </span>
+        ) : (
+          <p
+            className={cn(
+              atRestClass,
+              "text-xs",
+              onNavy ? "text-white/40" : "text-stone-400"
+            )}
+          >
+            {rowTime(t.lastAt, { withYear })}
+          </p>
+        )}
+        {rowActions}
+        </div>
+      </div>
+      <p
+        className={cn(
+          "mt-0.5 truncate text-sm",
+          t.unread && "font-semibold",
+          onNavy ? "text-white/85" : "text-stone-700"
+        )}
+      >
+        <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
+      </p>
+      <p
+        className={cn(
+          "mt-0.5 flex min-w-0 items-center gap-1.5 text-xs",
+          onNavy ? "text-white/45" : "text-[#908985]"
+        )}
+      >
+        {t.hasCalendarInvite ? (
+          <span
+            className={cn(
+              "inline-flex max-w-[55%] shrink-0 items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+              onNavy
+                ? "border-white/15 bg-white/10 text-white/70"
+                : "border-stone-200 bg-[#f4f1ec] text-stone-600"
+            )}
+            title={t.calendarInviteWhen || "Calendar invite"}
+          >
+            <Calendar
+              className={cn(
+                "h-3 w-3 shrink-0 stroke-[1.5]",
+                "text-[var(--mail-chrome-muted)] opacity-80"
+              )}
+              aria-hidden
+            />
+            <span className="truncate">
+              {t.calendarInviteWhen || "Invite"}
+            </span>
+          </span>
+        ) : null}
+        {t.hasAttachments ? (
+          <span
+            className={cn(
+              "inline-flex shrink-0",
+              // Closer to what is before it than the row's own gap: the
+              // clip is a mark on the row, not another item in the
+              // line. Closer again behind the calendar, because there
+              // the two are one aside about the same thread.
+              t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
+            )}
+            title={say("hasAttachments")}
+          >
+            <Paperclip
+              className={cn(
+                "h-3 w-3 shrink-0 stroke-[1.5]",
+                "text-[var(--mail-chrome-muted)] opacity-80"
+              )}
+              aria-hidden
+            />
+          </span>
+        ) : null}
+        <span className="min-w-0 truncate"><Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} /></span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The row on one line: the people, the subject and snippet, and the time,
+ * for a list wide enough to hold them side by side.
+ */
+function WideRowBody({
+  onNavy,
+  t,
+  highlight,
+  hasDraft,
+  compact,
+  say,
+  poppedOut,
+  onSnooze,
+  atRestClass,
+  onCancelSnooze,
+  snoozeBtn,
+  withYear,
+  rowActions,
+}: {
+  onNavy: boolean;
+  t: MailThreadSummary;
+  highlight: string[] | undefined;
+  hasDraft: boolean;
+  compact: boolean;
+  say: MailT;
+  poppedOut: boolean;
+  onSnooze: ((untilIso: string) => void) | undefined;
+  atRestClass: string;
+  onCancelSnooze: (() => void) | undefined;
+  snoozeBtn: string;
+  withYear: boolean;
+  rowActions: React.JSX.Element;
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-3">
+        <p
+          className={cn(
+            "w-[10rem] shrink-0 truncate text-sm font-semibold",
+            onNavy ? "text-white" : "text-stone-900"
+          )}
+        >
+          <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+        </p>
+        {hasDraft ? <DraftBadge /> : null}
+        {compact && t.hasCalendarInvite ? (
+          <span
+            className="inline-flex shrink-0"
+            title={t.calendarInviteWhen || "Calendar invite"}
+          >
+            <Calendar
+              className={cn(
+                "h-3.5 w-3.5 stroke-[1.5]",
+                "text-[var(--mail-chrome-muted)] opacity-80"
+              )}
+              aria-hidden
+            />
+          </span>
+        ) : null}
+        {compact && t.hasAttachments ? (
+          <span
+            className={cn(
+              "inline-flex shrink-0",
+              t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
+            )}
+            title={say("hasAttachments")}
+          >
+            <Paperclip
+              className={cn(
+                "h-3.5 w-3.5 stroke-[1.5]",
+                "text-[var(--mail-chrome-muted)]"
+              )}
+              aria-hidden
+            />
+          </span>
+        ) : null}
+        <p className="min-w-0 flex-1 truncate text-sm">
+          <span
+            className={cn(
+              t.unread && "font-semibold",
+              onNavy ? "text-white/85" : "text-stone-700"
+            )}
+          >
+            <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
+          </span>
+          {compact && t.snippet && !poppedOut ? (
+            <span className={onNavy ? "text-white/45" : "text-[#908985]"}>
+              {" — "}
+              <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
+            </span>
+          ) : null}
+        </p>
+        {poppedOut ? <PoppedOutBadge /> : null}
+        <ThreadMessageCount
+          count={t.messageCount}
+          label={say("threadMessageMany", { count: t.messageCount })}
+        />
+        {t.snoozedUntil && onSnooze ? (
+          <span
+            className={atRestClass}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <SnoozeMenu
+              onSnooze={onSnooze}
+              onCancelSnooze={onCancelSnooze}
+              currentUntil={t.snoozedUntil}
+              trigger={
+                <button
+                  type="button"
+                  className={snoozeBtn}
+                  title={say("changeSnooze")}
+                >
+                  <Clock className="h-3 w-3" aria-hidden />
+                  {formatSnoozeWakeLabel(t.snoozedUntil)}
+                </button>
+              }
+            />
+          </span>
+        ) : (
+          <p
+            className={cn(
+              atRestClass,
+              "w-[4.5rem] text-right text-xs tabular-nums",
+              withYear && "w-[6rem]",
+              onNavy ? "text-white/40" : "text-stone-400"
+            )}
+          >
+            {rowTime(t.lastAt, { withYear })}
+          </p>
+        )}
+        {rowActions}
+      </div>
+      {compact ||
+      poppedOut ||
+      !(t.snippet || t.hasCalendarInvite || t.hasAttachments) ? null : (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="w-[10rem] shrink-0" aria-hidden />
+          {t.hasCalendarInvite ? (
+            <span
+              className="inline-flex shrink-0"
+              title={t.calendarInviteWhen || "Calendar invite"}
+            >
+              <Calendar
+                className={cn(
+                  "h-3.5 w-3.5 stroke-[1.5]",
+                  "text-[var(--mail-chrome-muted)] opacity-80"
+                )}
+                aria-hidden
+              />
+            </span>
+          ) : null}
+          {t.hasAttachments ? (
+            <span
+              className={cn(
+                "inline-flex shrink-0",
+                t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
+              )}
+              title={say("hasAttachments")}
+            >
+              <Paperclip
+                className={cn(
+                  "h-3.5 w-3.5 stroke-[1.5]",
+                  "text-[var(--mail-chrome-muted)]"
+                )}
+                aria-hidden
+              />
+            </span>
+          ) : null}
+          <p
+            className={cn(
+              "min-w-0 flex-1 truncate text-xs",
+              onNavy ? "text-white/45" : "text-[#908985]"
+            )}
+          >
+            <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
+          </p>
+          <span
+            className={cn(
+              "w-[4.5rem] shrink-0",
+              withYear && "w-[6rem]"
+            )}
+            aria-hidden
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The buttons that show on a row under the pointer: read or unread,
+ * snooze, and archive.
+ */
+function RowHoverActions({
+  rowActionsClass,
+  say,
+  t,
+  actionBtn,
+  onToggleRead,
+  actionIcon,
+  onSnooze,
+  onCancelSnooze,
+  setSnoozeOpen,
+  snoozeSignal,
+  onArchive,
+}: {
+  rowActionsClass: string;
+  say: MailT;
+  t: MailThreadSummary;
+  actionBtn: string;
+  onToggleRead: () => void;
+  actionIcon: string;
+  onSnooze: ((untilIso: string) => void) | undefined;
+  onCancelSnooze: (() => void) | undefined;
+  setSnoozeOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  snoozeSignal: number;
+  onArchive: (() => void) | undefined;
+}) {
+  return (
+    <span
+      className={rowActionsClass}
+      onClick={(e) => e.stopPropagation()}
+      // Enter on a button is that button's, not the row's — the row opens the
+      // thread on Enter and would otherwise do both.
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        title={say(t.unread ? "markAsRead" : "markAsUnread")}
+        aria-label={say(t.unread ? "markAsRead" : "markAsUnread")}
+        className={actionBtn}
+        onClick={onToggleRead}
+      >
+        {/* The same icon whichever way the click will go, and the same one
+            the reader uses. A control that changes shape reads as two
+            controls; the label says which way it goes. */}
+        <MailDotIcon className={actionIcon} />
+      </button>
+      {onSnooze ? (
+        <SnoozeMenu
+          onSnooze={onSnooze}
+          onCancelSnooze={onCancelSnooze}
+          currentUntil={t.snoozedUntil}
+          onOpenChange={setSnoozeOpen}
+          // Snooze… on the right-click menu opens this one, so both ways
+          // through end at the same list of times.
+          openSignal={snoozeSignal}
+          trigger={
+            <button
+              type="button"
+              title={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
+              aria-label={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
+              className={actionBtn}
+            >
+              <RotateCwFadingClock className={actionIcon} />
+            </button>
+          }
+        />
+      ) : null}
+      {/* Archive rather than pin.
+
+          The three that hover shows are the three a reader does over and
+          over on the way down a list: read it, put it off, put it away.
+          Pinning is not one of those — it is done to the few conversations
+          that are going to stay, and it stays done. It is still on the
+          right-click menu, and now on the reader's own strip beside
+          snooze, which is where it is wanted: on the conversation being
+          read, not the one being passed over. */}
+      {onArchive ? (
+        <button
+          type="button"
+          title={say("actionArchive")}
+          aria-label={say("actionArchive")}
+          className={actionBtn}
+          onClick={onArchive}
+        >
+          <Archive className={actionIcon} />
+        </button>
+      ) : null}
+    </span>
+  );
+}

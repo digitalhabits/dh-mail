@@ -31,7 +31,7 @@
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { promisesAnAttachment } from "@/lib/mail/attachment-hint";
-import { sanitizeEmailHtml } from "@/components/mail/EmailHtmlView";
+import { sanitizeEmailHtml } from "@/lib/mail/email-html";
 import {
   quotedReplyMessage,
   reactionMessage,
@@ -51,7 +51,7 @@ import {
   type MailRecipient,
 } from "@/lib/mail/contact-list-types";
 import { messageStamp } from "@/lib/mail/date-format";
-import { type CrmProposeResult } from "@/components/mail/CrmProposalDialog";
+import { type CrmProposeResult } from "@/components/mail/crm-proposal-parts";
 import { showCrmProposal } from "@/components/mail/CrmProposalHost";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
@@ -63,7 +63,7 @@ import {
 import { toastCrmNotesResult } from "@/components/mail/thread-crm-notes";
 import type { OlderThreadPart } from "@/components/mail/use-thread-stream";
 import type { ReadableThreadAttachment } from "@/components/mail/use-thread-assistant";
-import type { useDraftAttachments } from "@/components/mail/MailAttachments";
+import type { useDraftAttachments } from "@/components/mail/draft-attachments";
 import type { useThreadComposer } from "@/components/mail/use-thread-composer";
 import { readyAttachmentsForDraft } from "@/lib/mail/local-drafts";
 

@@ -11,7 +11,8 @@
 import assert from "node:assert/strict";
 
 import { setOwnMailIdentity } from "@/lib/own-addresses";
-import { replyAllRecipients, sentFromThisMailbox } from "@/lib/mail/reply-target";
+import { replyAllRecipients, replyTargets, sentFromThisMailbox, withSelfFallback } from "@/lib/mail/reply-target";
+import { participantNames } from "@/lib/mail/thread-participants";
 import { check, suite } from "./harness.mjs";
 
 const OUTLOOK = "vera.vinter@vaerksted.example";
@@ -122,4 +123,36 @@ suite(async () => {
     twice.to.join() === `${OTHER},Frida@Fisker.example` && twice.cc.length === 0,
     JSON.stringify(twice)
   );
+
+  // A thread of notes to yourself: the reply keeps the mailbox rather than
+  // going to nobody. Anyone else stays as they are.
+  check(
+    "a reply with nobody left goes to the mailbox itself",
+    withSelfFallback([], "me@example.test").join(",") === "me@example.test"
+  );
+  check(
+    "a reply with somebody in it goes to them",
+    withSelfFallback(["alma@example.org"], "me@example.test").join(",") === "alma@example.org"
+  );
+
+  // What the three thread readers ask: Reply and Reply all from the newest
+  // message.
+  const incoming = replyTargets({ from: OTHER, to: [OUTLOOK], cc: ["frida@fisker.example"], account: OUTLOOK });
+  check("Reply to a message sent to us goes to its sender", incoming.to.join() === OTHER, JSON.stringify(incoming));
+  check("Reply all adds the others, not us", incoming.allTo.join() === OTHER && incoming.allCc.join() === "frida@fisker.example", JSON.stringify(incoming));
+  const outgoing = replyTargets({ from: OUTLOOK, to: [OTHER, OTHER.toUpperCase()], cc: [], account: OUTLOOK });
+  check("Reply to our own message goes to whom we wrote, once", outgoing.to.join() === OTHER, JSON.stringify(outgoing));
+  const note = replyTargets({ from: OUTLOOK, to: [OUTLOOK], cc: [], account: OUTLOOK });
+  check("Reply to a note to ourselves comes back to the mailbox", note.to.join() === OUTLOOK, JSON.stringify(note));
+
+  check(
+    "a thread is named for the others, once each, in the order they wrote, then You",
+    participantNames([
+      { fromName: "Frida Fisker <frida@fisker.example>", fromEmail: "frida@fisker.example" },
+      { own: true, fromName: "Vera", fromEmail: OUTLOOK },
+      { fromName: "", fromEmail: OTHER },
+      { fromName: "Frida Fisker", fromEmail: "frida@fisker.example" },
+    ]).join("|") === `Frida Fisker|${OTHER}|You`
+  );
+  check("a thread of ours alone is named You", participantNames([{ own: true, fromName: "Vera", fromEmail: OUTLOOK }]).join() === "You");
 });

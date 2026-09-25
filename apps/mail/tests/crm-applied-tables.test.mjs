@@ -21,9 +21,10 @@ const REPO = join(process.cwd(), "../..");
 const src = (path) => readFileSync(join(REPO, path), "utf8");
 
 suite(async () => {
-  const dialog = src(
-    "products/mail/packages/mail/components/mail/CrmProposalDialog.tsx"
-  );
+  // The dialog and the parts its cards are drawn with, as one text.
+  const dialog =
+    src("products/mail/packages/mail/components/mail/CrmProposalDialog.tsx") +
+    src("products/mail/packages/mail/components/mail/crm-proposal-parts.tsx");
 
   check(
     "a course names the table it is shown in",

@@ -14,7 +14,7 @@ import {
   inlineImagesReferencedBy,
   OUTLOOK_ATTACHMENT_META_QUERY,
   referencedContentIds,
-} from "@/lib/outlook/api";
+} from "@/lib/outlook/attachments";
 
 import { check, suite } from "./harness.mjs";
 

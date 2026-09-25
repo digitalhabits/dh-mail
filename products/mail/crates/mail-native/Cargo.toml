@@ -25,6 +25,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1"
 base64 = "0.22"
+# Every charset a message may name, by the labels browsers accept.
+encoding_rs = "0.8"
 # Loopback listener for the OAuth redirect, and the planner sign-in.
 tiny_http = "0.12"
 url = "2.5"

@@ -332,6 +332,10 @@ async function main() {
     );
     assert(subjectBox, "a forward shows its subject row");
     assert.equal(subjectBox.value, `Fwd: ${SUBJECT}`);
+    assert(
+      /Forwarding (your message|.+'s message)/.test(document.body.textContent || ""),
+      "and says which message goes with it"
+    );
 
     const recipientBox = inputs().find((i) =>
       /name@example\.com/.test(i.getAttribute("placeholder") || "")
@@ -409,6 +413,11 @@ async function main() {
     await sleep(300);
     clickEl(byTitle(/^reply to this message/i));
     await sleep(300);
+    assert(
+      /Replying to /.test(document.body.textContent || ""),
+      "the reply says which message it answers"
+    );
+    assert(byTitle(/^answer the thread instead/i), "with the way back to the whole thread");
     const replyButton = buttons().find(
       (b) => /^send \(/i.test(b.getAttribute("title") || "") && !b.disabled
     );
@@ -804,6 +813,158 @@ async function main() {
       "the words that were typed after that are in the stored draft"
     );
     pass("a draft that a slow store reopens is saved again");
+
+    /*
+      The Reply button at the foot of the thread, and the question a
+      message that speaks of a file and carries none is asked before it
+      goes. Go back sends nothing; Send anyway sends it.
+    */
+    await openThread(BENCH_SUBJECT, "Who has a brush?");
+    await sleep(600);
+    if (editorWords() !== null) {
+      clickEl(byTitle(/^discard/i));
+      await sleep(300);
+    }
+    const replyButtons = buttons().filter((b) => /^reply \(/i.test(b.getAttribute("title") || ""));
+    assert(replyButtons.length >= 2, "Reply stands in the toolbar and at the foot");
+    clickEl(replyButtons[replyButtons.length - 1]);
+    await sleep(1500);
+    writeReply("<p>I have attached the paint list.</p>");
+    await sleep(300);
+    const sendNow = () =>
+      buttons().find((b) => /^send \(/i.test(b.getAttribute("title") || "") && !b.disabled);
+    const before = sends.length;
+    clickEl(sendNow());
+    await sleep(400);
+    const text = () => document.body.textContent || "";
+    assert(text().includes("Did you mean to attach a file?"), "the question is asked");
+    clickEl(buttons().find((b) => (b.textContent || "").trim() === "Go back"));
+    await sleep(300);
+    assert(!text().includes("Did you mean to attach a file?"), "Go back puts it away");
+    assert.equal(editorWords(), "I have attached the paint list.", "and the words are still there");
+    window.dispatchEvent(new window.Event("pagehide"));
+    await sleep(300);
+    assert.equal(sends.length, before, "nothing was sent");
+    pass("the Reply button at the foot of the thread opens a reply");
+    pass("a message that speaks of a file and has none asks first, and Go back sends nothing");
+
+    clickEl(sendNow());
+    await sleep(400);
+    clickEl(buttons().find((b) => (b.textContent || "").trim() === "Send anyway"));
+    await sleep(300);
+    window.dispatchEvent(new window.Event("pagehide"));
+    await sleep(500);
+    assert.equal(sends.length, before + 1, "Send anyway sends it");
+    assert(String(sends[sends.length - 1].html).includes("paint list"));
+    pass("and Send anyway sends it");
+
+    /*
+      Escape on a reply with words in it asks before it throws them away.
+      Keep draft keeps them. A second question, answered with Enter,
+      discards.
+    */
+    clickEl(byTitle(/^reply \(/i));
+    await sleep(1500);
+    writeReply("<p>A second thought about the bench.</p>");
+    await sleep(300);
+    const escape = () =>
+      document.body.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      );
+    escape();
+    await sleep(300);
+    assert(text().includes("Discard draft?"), "Escape asks");
+    clickEl(buttons().find((b) => (b.textContent || "").trim() === "Keep draft"));
+    await sleep(300);
+    assert.equal(editorWords(), "A second thought about the bench.", "Keep draft keeps the words");
+    escape();
+    await sleep(300);
+    assert(text().includes("Discard draft?"), "Escape asks again");
+    document.body.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+    );
+    await sleep(500);
+    assert.equal(editorWords(), null, "Enter discards the reply");
+    pass("Escape asks before a written reply is thrown away; Keep draft keeps it, Enter discards");
+
+    /* Command+Enter sends, from inside the reply being written. */
+    clickEl(byTitle(/^reply \(/i));
+    await sleep(1500);
+    writeReply("<p>Sent with the keys.</p>");
+    await sleep(300);
+    const box = document.querySelector(".ql-editor");
+    box.focus();
+    const beforeKeys = sends.length;
+    const bubbles = () => document.querySelectorAll("[data-message-id]").length;
+    const bubblesBefore = bubbles();
+    box.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true })
+    );
+    await sleep(400);
+    assert.equal(bubbles(), bubblesBefore + 1, "a reply stands in its thread while it waits");
+    window.dispatchEvent(new window.Event("pagehide"));
+    await sleep(500);
+    assert.equal(sends.length, beforeKeys + 1, "Command+Enter sent the reply");
+    assert(String(sends[sends.length - 1].html).includes("Sent with the keys."));
+    assert.equal(sends[sends.length - 1].threadId, "bench-1", "a plain reply joins its thread");
+    pass("Command+Enter sends the reply the caret is in");
+
+    /* Edit subject, in the row under the box, opens the subject. */
+    clickEl(byTitle(/^reply \(/i));
+    await sleep(1500);
+    const subjectFields = () =>
+      [...document.querySelectorAll("input, textarea")].filter(
+        (f) => f.getAttribute("placeholder") === `Re: ${BENCH_SUBJECT}`
+      );
+    assert.equal(subjectFields().length, 0, "no subject field at first");
+    const editSubject = buttons().find((b) => (b.textContent || "").trim() === "Edit subject");
+    assert(editSubject, "the row under the box offers Edit subject");
+    clickEl(editSubject);
+    await sleep(300);
+    assert.equal(subjectFields().length, 1, "Edit subject opens it");
+    pass("Edit subject, under the box, opens the subject of a reply");
+
+    /* Preview first, from the Send options, and back. */
+    writeReply("<p>Paint first, then the bench.</p>");
+    await sleep(300);
+    clickEl(buttons().find((b) => b.getAttribute("aria-label") === "Send options"));
+    await sleep(300);
+    const previewItem = [...document.querySelectorAll("[role=menuitem], button")].find(
+      (b) => (b.textContent || "").trim() === "Preview first"
+    );
+    assert(previewItem, "the Send options offer a preview");
+    clickEl(previewItem);
+    await sleep(500);
+    const back = () => buttons().find((b) => (b.textContent || "").includes("Back to editing"));
+    assert(back(), "the preview is up");
+    assert(text().includes("Paint first, then the bench."), "with the words as they will go");
+    clickEl(back());
+    await sleep(400);
+    assert(!back(), "Back to editing puts the preview away");
+    assert.equal(editorWords(), "Paint first, then the bench.", "and the words are kept");
+    pass("Preview first shows the message as it will go, and Back to editing keeps the words");
+
+    /*
+      A reply under a new subject is a new conversation: Gmail and Outlook
+      both start one. It goes without the thread's id and still says what
+      it answers. (Edit subject floats it into the card, which draws no
+      bubbles, so the rule against a bubble in the old thread cannot be
+      seen here; changed-subject reads it.)
+    */
+    typeInto(subjectFields()[0], "Paint for the bench");
+    await sleep(300);
+    const beforeRename = sends.length;
+    clickEl(sendNow());
+    await sleep(500);
+    window.dispatchEvent(new window.Event("pagehide"));
+    await sleep(500);
+    assert.equal(sends.length, beforeRename + 1, "the renamed reply went");
+    const renamed = sends[sends.length - 1];
+    assert.equal(renamed.subject, "Paint for the bench");
+    assert.equal(renamed.threadId, undefined, "without the thread's id");
+    assert.equal(renamed.inReplyTo, "<bench-b1@torvet.example>", "still answering the message");
+    assert(String(renamed.references).includes("<bench-b1@torvet.example>"), "and its references");
+    pass("a reply under a new subject starts a new conversation that still says what it answers");
 
     root.unmount();
     process.exit(0);

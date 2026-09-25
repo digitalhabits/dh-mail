@@ -108,6 +108,8 @@ pub struct OnDemandPool {
 struct WorkerFlags {
   stop: Arc<AtomicBool>,
   wake: Arc<AtomicBool>,
+  /// The mailbox is being removed: the worker drops its copy when it ends.
+  forget: Arc<AtomicBool>,
 }
 
 /// The running workers, by mailbox.
@@ -157,7 +159,13 @@ pub fn mail_sync_start(app: AppHandle, accounts: Vec<String>) -> Result<Vec<Stri
 /// that the mailbox is no longer being read; the thread ends when it next
 /// looks at the flag, within a batch or an IDLE.
 #[tauri::command(async)]
-pub fn mail_sync_stop(app: AppHandle, account: String) -> Result<(), String> {
+///
+/// With `forget`, the mailbox is being removed, and its copy goes too. The
+/// worker can still be in a batch, and that batch lands after any drop done
+/// now. So the worker drops the copy itself as it ends, after its last
+/// write. On 2026-09-18 a batch landed after the drop, and a row stayed with
+/// a short count: the list said "stopped" for a mailbox that was gone.
+pub fn mail_sync_stop(app: AppHandle, account: String, forget: Option<bool>) -> Result<(), String> {
   // A kept on-demand connection goes with the worker: a disconnected
   // mailbox must not stay signed in from the last file it served.
   {
@@ -165,11 +173,22 @@ pub fn mail_sync_stop(app: AppHandle, account: String) -> Result<(), String> {
     pool.idle.lock().unwrap().remove(&account.trim().to_lowercase());
   }
   let email = account.to_lowercase();
+  let forget = forget.unwrap_or(false);
   let supervisor = app.state::<SyncSupervisor>();
-  if let Some(flags) = supervisor.workers.lock().unwrap().get(&email) {
+  // Under the lock, so this and the worker's end are one after the other.
+  let workers = supervisor.workers.lock().unwrap();
+  if let Some(flags) = workers.get(&email) {
+    if forget {
+      flags.forget.store(true, Ordering::SeqCst);
+    }
     flags.stop.store(true, Ordering::SeqCst);
   }
-  set_phase(&app, &email, "none");
+  if forget {
+    // Now as well, so the list loses the mailbox at once.
+    drop_copy(&app, &email);
+  } else {
+    set_phase(&app, &email, "none");
+  }
   Ok(())
 }
 
@@ -555,16 +574,26 @@ fn start_account(app: &AppHandle, email: String) -> bool {
   }
   let stop = Arc::new(AtomicBool::new(false));
   let wake = Arc::new(AtomicBool::new(false));
-  workers.insert(email.clone(), WorkerFlags { stop: stop.clone(), wake: wake.clone() });
+  let forget = Arc::new(AtomicBool::new(false));
+  workers.insert(
+    email.clone(),
+    WorkerFlags { stop: stop.clone(), wake: wake.clone(), forget: forget.clone() },
+  );
   let handle = app.clone();
   thread::Builder::new()
     .name(format!("mail-sync {email}"))
-    .spawn(move || run_worker(handle, email, stop, wake))
+    .spawn(move || run_worker(handle, email, stop, wake, forget))
     .expect("spawn sync worker");
   true
 }
 
-fn run_worker(app: AppHandle, email: String, stop: Arc<AtomicBool>, wake: Arc<AtomicBool>) {
+fn run_worker(
+  app: AppHandle,
+  email: String,
+  stop: Arc<AtomicBool>,
+  wake: Arc<AtomicBool>,
+  forget: Arc<AtomicBool>,
+) {
   let mut failures: usize = 0;
   let mut transient: usize = 0;
   while !stop.load(Ordering::SeqCst) {
@@ -606,9 +635,23 @@ fn run_worker(app: AppHandle, email: String, stop: Arc<AtomicBool>, wake: Arc<At
     }
   }
   let supervisor = app.state::<SyncSupervisor>();
-  supervisor.workers.lock().unwrap().remove(&email);
-  set_phase(&app, &email, "none");
-  log::info!("[mail-sync] {email}: worker stopped");
+  let mut workers = supervisor.workers.lock().unwrap();
+  workers.remove(&email);
+  if forget.load(Ordering::SeqCst) {
+    drop_copy(&app, &email);
+    log::info!("[mail-sync] {email}: worker stopped, copy dropped");
+  } else {
+    set_phase(&app, &email, "none");
+    log::info!("[mail-sync] {email}: worker stopped");
+  }
+}
+
+/// A removed mailbox's messages, bodies and sync state, gone.
+fn drop_copy(app: &AppHandle, email: &str) {
+  let db = app.state::<MailDb>();
+  if let Err(e) = db.messages_clear_account(email, false) {
+    log::warn!("[mail-sync] {email}: could not drop the copy: {e}");
+  }
 }
 
 /// Record and announce a phase with nothing else changed. "none" is the

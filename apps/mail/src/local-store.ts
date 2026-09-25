@@ -44,9 +44,14 @@ export async function startLocalStoreSync(mailboxes: MailboxRef[]): Promise<stri
   return [...outlook, ...started];
 }
 
+/**
+ * Stop a removed mailbox's sync. The Gmail worker can still be in a batch,
+ * so it is told to drop the mailbox's copy itself when it ends, after its
+ * last write.
+ */
 export async function stopLocalStoreSync(account: string): Promise<void> {
   await stopOutlookSync(account);
   const invoke = tauriInvoke();
   if (!invoke) return;
-  await invoke("mail_sync_stop", { account });
+  await invoke("mail_sync_stop", { account, forget: true });
 }

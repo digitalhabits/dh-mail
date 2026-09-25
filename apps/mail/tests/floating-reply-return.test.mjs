@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { check, suite } from "./harness.mjs";
+import { mailPageSource, threadPaneSource } from "./mail-page-source.mjs";
 
 // From the working directory, not from this file: the harness compiles each
 // test into a temp directory, so the file's own path leads nowhere.
@@ -25,7 +26,7 @@ const src = (name) =>
   );
 
 suite(async () => {
-  const pane = src("ThreadPane.tsx");
+  const pane = threadPaneSource();
   const button = pane.slice(
     pane.lastIndexOf("{onFloatReply", pane.indexOf("<PictureInPicture2")),
     pane.indexOf("<PictureInPicture2")
@@ -89,7 +90,7 @@ suite(async () => {
    * The card is mounted from MailPage, which is the only place that knows
    * what the reader is looking at and can move them.
    */
-  const page = src("MailPage.tsx");
+  const page = mailPageSource();
   const card = page.slice(page.indexOf("{floatingReply ? ("));
   const home = card.slice(
     card.indexOf("onUnfloatReply={"),

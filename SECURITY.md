@@ -24,14 +24,26 @@ The app talks to these hosts:
 | `people.googleapis.com` | Google Contacts, for the address book | [`contact-sources.ts`](/products/mail/packages/mail/lib/mail/contact-sources.ts) |
 | `graph.microsoft.com` | Outlook: mail, contacts and settings | [`lib/outlook/api.ts`](/products/mail/packages/mail/lib/outlook/api.ts) |
 | `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com` | Sign-in, and every token refresh after it | [`oauth.rs`](/products/mail/crates/mail-native/src/oauth.rs), [`oauth-config.ts`](/apps/mail/src/oauth-config.ts) |
+| `plan.digitalhabits.org` | The anonymous daily usage count — see below. Off in Settings > General | [`usage-ping.ts`](/products/mail/packages/mail/lib/mail/usage-ping.ts) |
 | Whatever host a sender put an image on | Remote images in HTML mail — see "Reading a message safely" below. On by default; off in Settings | [`images.rs`](/products/mail/crates/mail-native/src/images.rs) |
 
 That is the whole list. Links in mail, calendar invites and the Help menu
 open in your browser, not in the app.
 
-**There is no analytics, no crash reporting, no telemetry and no update
-check.** Nothing counts what you do or reports it anywhere. You can check
-this: there is no analytics SDK in the dependency lists
+**There is no analytics, no crash reporting and no update check.** Nothing
+counts what you do in the app or reports it anywhere.
+
+The one thing the app sends to us is an anonymous usage count, so we know
+roughly how many people use it. Once a day it sends three things to
+`plan.digitalhabits.org/api/ping`: the word `mail`, the system (`mac` or
+`windows`), and a random id that the app makes again at the start of each
+month, so two months of one install cannot be joined. Nothing about your
+mail, your mailboxes, your contacts or your accounts goes with it, and our
+server keeps no address and no user agent beside it. Turn it off in
+Settings > General, "Send anonymous usage count"; with it off, nothing is
+sent. The code is [`usage-ping.ts`](/products/mail/packages/mail/lib/mail/usage-ping.ts).
+
+You can check the rest: there is no analytics SDK in the dependency lists
 (`apps/mail/package.json`, `apps/mail/src-tauri/Cargo.toml`,
 `products/mail/crates/mail-native/Cargo.toml`), and nothing in
 `apps/mail/src`, `apps/mail/lib`, `packages/shared`,

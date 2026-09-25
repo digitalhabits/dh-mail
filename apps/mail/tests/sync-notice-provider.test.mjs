@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { mailSay } from "@/lib/mail/i18n-strings";
 
 import { check, suite } from "./harness.mjs";
+import { mailPageSource } from "./mail-page-source.mjs";
 
 const MAIL = join(
   process.cwd(),
@@ -67,7 +68,8 @@ suite(async () => {
     destination and not the mailbox's server — the hand-over says where the
     draft went, and that is Outlook whoever the mailbox belongs to.
   */
-  const strings = src("lib/mail/i18n-strings.ts");
+  // The words, one file per language.
+  const strings = src("lib/mail/i18n-en.ts") + "\n" + src("lib/mail/i18n-da.ts");
   const HANDOVER = ["draftIsInOutlookFrom", "openInOutlookFrom"];
   const baked = strings
     .split("\n")
@@ -84,10 +86,11 @@ suite(async () => {
   );
 
   /* Both ends pick the name from the mailbox. */
-  const page = src("components/mail/MailPage.tsx");
+  // Whitespace collapsed: the line is what matters, not how deep it stands.
+  const page = mailPageSource().replace(/\s+/g, " ");
   check(
     "the list notice picks the name from the mailbox",
-    page.includes('provider: isOutlookAccount(s.account)\n                            ? "Outlook"\n                            : "Gmail",'),
+    page.includes('provider: isOutlookAccount(s.account) ? "Outlook" : "Gmail",'),
     page.includes('t("syncOffline"') ? "drawn" : "missing"
   );
   const states = src("lib/mail/use-sync-states.ts");

@@ -72,7 +72,9 @@ const CHOIR_MESSAGES = [
 ];
 
 const unknownPaths = new Set();
+const askedPaths = [];
 setMailApiTransport(async (path) => {
+  askedPaths.push(path);
   const url = new URL(path, "http://localhost:3473");
   const p = url.pathname;
   const json = (body) =>
@@ -189,6 +191,30 @@ async function main() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await sleep(200);
+
+    // A swipe to the right: the archive under the row shows while the
+    // finger moves, and letting go far enough archives the conversation.
+    const touch = (type, x) => {
+      const ev = new window.Event(type, { bubbles: true, cancelable: true });
+      ev.touches = type === "touchend" ? [] : [{ clientX: x, clientY: 200 }];
+      ev.changedTouches = [{ clientX: x, clientY: 200 }];
+      return ev;
+    };
+    const swiped = rowFor("Your library loan is due back");
+    swiped.dispatchEvent(touch("touchstart", 40));
+    swiped.dispatchEvent(touch("touchmove", 60));
+    swiped.dispatchEvent(touch("touchmove", 140));
+    await sleep(100);
+    assert(document.querySelector(".mail-row-swipe"), "the archive shows under the row as it moves");
+    const before = askedPaths.length;
+    swiped.dispatchEvent(touch("touchend", 140));
+    await sleep(600);
+    assert(!document.querySelector(".mail-row-swipe"), "and goes when the finger lifts");
+    assert(
+      askedPaths.slice(before).some((p) => /archive/i.test(p)),
+      `a swipe past the mark archives it: ${askedPaths.slice(before).join(" ")}`
+    );
+    pass("a swipe to the right shows the archive under the row, and archives it");
 
     const drawer = document.querySelector(".mail-phone-drawer");
     assert(drawer && drawer.getAttribute("aria-hidden") === "true", "the drawer starts closed");

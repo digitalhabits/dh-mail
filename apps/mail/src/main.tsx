@@ -22,6 +22,7 @@ import { hostOsFromUserAgent, markPhoneForm } from "@/lib/mail/host-form";
 import { ChatPopout } from "@/components/mail/ChatPopout";
 import { openMailAccountsMenu } from "@/components/mail/MailPage";
 import { setMailApiTransport } from "@/lib/mail/api";
+import { startUsagePing } from "@/lib/mail/usage-ping";
 import {
   MAIL_COLOR_MODE_EVENT,
   readMailColorMode,
@@ -91,6 +92,13 @@ const isReader = params.get("reader") === "1";
 const person = params.get("person") ?? "";
 const account = params.get("account") ?? "";
 const threadId = params.get("thread") ?? "";
+
+// The anonymous daily usage count (lib/mail/usage-ping). The main window
+// sends it; the reader and popout windows are the same install and would
+// only count it twice. Not in a demo session, nor in a development build.
+if (!isPopout && !isReader && !demoMode && !import.meta.env.DEV) {
+  startUsagePing();
+}
 
 function Root() {
   // The window buttons on Windows sit over the title strip. Not in the

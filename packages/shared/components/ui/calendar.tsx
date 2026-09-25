@@ -41,6 +41,7 @@ export function Calendar({
   min,
   max,
   className,
+  friendly = false,
 }: {
   /** `yyyy-mm-dd`, or "" for nothing chosen. */
   value: string;
@@ -48,6 +49,12 @@ export function Calendar({
   min?: string;
   max?: string;
   className?: string;
+  /**
+   * Mail's look, from its custom snooze: the month in serif, larger round
+   * days, and the chosen one in teal. For a form that wants to read as one
+   * of ours rather than as a system control.
+   */
+  friendly?: boolean;
 }) {
   const today = todayDateKey();
   const selected = parseDateKey(value);
@@ -85,7 +92,7 @@ export function Calendar({
   };
 
   return (
-    <div className={cn("w-[15rem] select-none", className)}>
+    <div className={cn(friendly ? "w-[17rem]" : "w-[15rem]", "select-none", className)}>
       <div className="flex items-center justify-between px-1 pb-2">
         <button
           type="button"
@@ -104,7 +111,10 @@ export function Calendar({
           onClick={() => setPickingMonth((open) => !open)}
           aria-expanded={pickingMonth}
           aria-label={pickingMonth ? "Back to the days" : "Choose a month and year"}
-          className="rounded px-2 py-0.5 text-sm font-semibold text-stone-900 hover:bg-stone-100"
+          className={cn(
+            "rounded px-2 py-0.5 text-stone-900 hover:bg-stone-100",
+            friendly ? "font-serif text-[15px] font-bold" : "text-sm font-semibold"
+          )}
         >
           {pickingMonth ? view.year : `${MONTHS[view.month]} ${view.year}`}
         </button>
@@ -141,7 +151,11 @@ export function Calendar({
                   disabled
                     ? "cursor-not-allowed text-stone-300"
                     : "text-stone-700 hover:bg-stone-100",
-                  isCurrent && !disabled && "bg-stone-900 font-semibold text-white hover:bg-stone-900"
+                  isCurrent &&
+                    !disabled &&
+                    (friendly
+                      ? "bg-teal-700 font-semibold text-white hover:bg-teal-700"
+                      : "bg-stone-900 font-semibold text-white hover:bg-stone-900")
                 )}
               >
                 {label.slice(0, 3)}
@@ -154,9 +168,13 @@ export function Calendar({
         {WEEKDAYS.map((label) => (
           <span
             key={label}
-            className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-stone-400"
+            className={
+              friendly
+                ? "py-1 text-center text-[11px] font-medium text-stone-400"
+                : "pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-stone-400"
+            }
           >
-            {label}
+            {friendly ? label.charAt(0) : label}
           </span>
         ))}
         {cells.map((day, i) => {
@@ -174,14 +192,18 @@ export function Calendar({
               aria-pressed={isSelected}
               onClick={() => onSelect(key)}
               className={cn(
-                "h-7 rounded text-center text-[13px] tabular-nums",
+                friendly
+                  ? "mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-sm tabular-nums transition-colors"
+                  : "h-7 rounded text-center text-[13px] tabular-nums",
                 disabled
                   ? "cursor-not-allowed text-stone-300"
                   : "text-stone-700 hover:bg-stone-100",
                 // Today is a ring, so it still reads when it is also selected.
                 isToday && !isSelected && "ring-1 ring-inset ring-stone-300",
                 isSelected &&
-                  "bg-stone-900 font-semibold text-white hover:bg-stone-900"
+                  (friendly
+                    ? "bg-teal-700 font-semibold text-white hover:bg-teal-700"
+                    : "bg-stone-900 font-semibold text-white hover:bg-stone-900")
               )}
             >
               {day}
@@ -207,6 +229,8 @@ export function DateField({
   /** For a field inside something that already stacks high, e.g. a portal. */
   contentClassName,
   align = "start",
+  friendly = false,
+  modal = false,
 }: {
   value: string;
   onChange: (key: string) => void;
@@ -218,12 +242,20 @@ export function DateField({
   className?: string;
   contentClassName?: string;
   align?: "start" | "center" | "end";
+  /** Mail's calendar look — see Calendar. */
+  friendly?: boolean;
+  /**
+   * A layer of its own, for a field inside a modal dialog: the dialog holds
+   * the focus and the pointer, and a popover that is not modal inside it
+   * shows and cannot be clicked.
+   */
+  modal?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const label = value ? formatDateKey(value) : placeholder;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal={modal} open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -237,11 +269,15 @@ export function DateField({
           {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent align={align} className={cn("w-auto p-2", contentClassName)}>
+      <PopoverContent
+        align={align}
+        className={cn("w-auto", friendly ? "p-3" : "p-2", contentClassName)}
+      >
         <Calendar
           value={value}
           min={min}
           max={max}
+          friendly={friendly}
           onSelect={(key) => {
             onChange(key);
             setOpen(false);

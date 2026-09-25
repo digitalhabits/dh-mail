@@ -17,10 +17,12 @@ import { tauriInvoke } from "@/lib/mail/store/tauri";
 import type { MailStoredBody, MailStoredMessage } from "@/lib/mail/store/types";
 import type { MailAttachment, MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
-import { replyAllRecipients, sentFromThisMailbox } from "@/lib/mail/reply-target";
+import { replyTargets } from "@/lib/mail/reply-target";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
 import { adoptSplitThread, getChatForThread, noteChatMessageIds } from "@/lib/mail/chats";
-import { THREAD_AROUND_RADIUS, THREAD_PAGE_SIZE } from "@/lib/mail/thread-classify";
+import { THREAD_PAGE_SIZE } from "@/lib/mail/thread-classify";
+import { emptyThreadDetail, threadWindow } from "@/lib/mail/thread-window";
+import { participantNames } from "@/lib/mail/thread-participants";
 
 /** An attachment id that names an IMAP section of the message. */
 export const IMAP_ATTACHMENT_PREFIX = "imap:";
@@ -58,7 +60,7 @@ export async function threadFromLocalStore(
   const draft = rows.filter((r) => r.isDraft).sort((a, b) => b.sentAt - a.sentAt)[0] ?? null;
   const limit = options?.limit ?? THREAD_PAGE_SIZE;
   const window = pickWindow(all, options, limit);
-  if (!window) return emptyDetail(account, threadId);
+  if (!window) return emptyThreadDetail(account, threadId);
 
   // Bodies the window lacks, fetched once and kept. The draft's too.
   const missing = [...window.rows, ...(draft ? [draft] : [])]
@@ -94,42 +96,18 @@ export async function threadFromLocalStore(
   // the window.
   const last = all[all.length - 1];
   const subject = (last.subject ?? "").trim() || "(no subject)";
-  const lastFrom = last.fromEmail;
-  const lastTo = last.to.map((a) => a.email);
-  const lastCc = last.cc.map((a) => a.email);
-  const sentByUs = sentFromThisMailbox({ from: lastFrom, account, to: lastTo, cc: lastCc });
-  const accountKey = normalizeEmail(account);
-  const recipients = (items: string[]) => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of items) {
-      const email = raw.trim();
-      if (!email) continue;
-      const key = normalizeEmail(email);
-      if (key === accountKey || seen.has(key)) continue;
-      seen.add(key);
-      out.push(email);
-    }
-    return out;
-  };
-  const replyTo = sentByUs ? lastTo : [lastFrom];
-  const replyAll = replyAllRecipients({ from: lastFrom, to: lastTo, cc: lastCc, account, sentByUs });
+  const reply = replyTargets({
+    from: last.fromEmail,
+    to: last.to.map((a) => a.email),
+    cc: last.cc.map((a) => a.email),
+    account,
+  });
   const references = [last.references ?? "", last.rfcMessageId ?? ""]
     .map((s) => s.trim())
     .filter(Boolean)
     .join(" ");
 
-  const names: string[] = [];
-  let hasOwn = false;
-  for (const m of messages) {
-    if (m.own) {
-      hasOwn = true;
-      continue;
-    }
-    const short = m.fromName.split("<")[0].trim() || m.fromEmail;
-    if (!names.includes(short)) names.push(short);
-  }
-  if (hasOwn) names.push("You");
+  const names = participantNames(messages);
 
   // Opening a window marks the thread read in the copy at once; the
   // provider learns it through the action queue.
@@ -183,17 +161,14 @@ export async function threadFromLocalStore(
     reply: {
       inReplyTo: (last.rfcMessageId ?? "").trim(),
       references,
-      to: withSelfFallback(recipients(replyTo), account),
+      to: reply.to,
       cc: [],
-      allTo: replyAll.to,
-      allCc: replyAll.cc,
+      allTo: reply.allTo,
+      allCc: reply.allCc,
     },
   };
 }
 
-function withSelfFallback(list: string[], account: string): string[] {
-  return list.length ? list : [account];
-}
 
 /** The rows the view asked for, and whether more lie either side. */
 function pickWindow(
@@ -201,51 +176,15 @@ function pickWindow(
   options: LocalThreadOptions | undefined,
   limit: number
 ): { rows: StoredWithBody[]; hasOlder: boolean; hasNewer: boolean } | null {
-  const len = all.length;
-  const indexOf = (id: string | undefined) => (id ? all.findIndex((r) => r.messageId === id) : -1);
-  let start: number;
-  let end: number;
-  if (options?.around) {
-    const idx = indexOf(options.around);
-    if (idx < 0) {
-      start = Math.max(0, len - limit);
-      end = len;
-    } else {
-      start = Math.max(0, idx - THREAD_AROUND_RADIUS);
-      end = Math.min(len, idx + THREAD_AROUND_RADIUS + 1);
-    }
-  } else if (options?.after) {
-    const idx = indexOf(options.after);
-    if (idx < 0 || idx >= len - 1) return null;
-    start = idx + 1;
-    end = Math.min(len, start + limit);
-  } else if (options?.oldest) {
-    start = 0;
-    end = Math.min(len, limit);
-  } else if (options?.before) {
-    const idx = indexOf(options.before);
-    if (idx <= 0) return null;
-    end = idx;
-    start = Math.max(0, end - limit);
-  } else {
-    start = Math.max(0, len - limit);
-    end = len;
-  }
-  return { rows: all.slice(start, end), hasOlder: start > 0, hasNewer: end < len };
+  const page = threadWindow(
+    all.map((r) => r.messageId),
+    options,
+    limit
+  );
+  if (!page) return null;
+  return { rows: all.slice(page.start, page.end), hasOlder: page.hasOlder, hasNewer: page.hasNewer };
 }
 
-function emptyDetail(account: string, threadId: string): MailThreadDetail {
-  return {
-    account,
-    threadId,
-    subject: "(no subject)",
-    participants: [],
-    messages: [],
-    hasOlder: false,
-    hasNewer: false,
-    reply: { inReplyTo: "", references: "", to: [], cc: [], allTo: [], allCc: [] },
-  };
-}
 
 type StoredPart = { section: string; filename: string; mimeType: string; size: number };
 

@@ -631,18 +631,16 @@ export async function listGmailHistory(
       nextPageToken?: string;
     }>(accessToken, `/history?${params.toString()}`);
     if (data.historyId) historyId = data.historyId;
-    for (const entry of data.history ?? []) {
-      for (const records of [
-        entry.messagesAdded,
-        entry.messagesDeleted,
-        entry.labelsAdded,
-        entry.labelsRemoved,
-      ]) {
-        for (const record of records ?? []) {
-          const threadId = record.message?.threadId;
-          if (threadId) changedThreadIds.add(threadId);
-        }
-      }
+    // Every kind of change names its thread the same way.
+    const records = (data.history ?? []).flatMap((entry) => [
+      ...(entry.messagesAdded ?? []),
+      ...(entry.messagesDeleted ?? []),
+      ...(entry.labelsAdded ?? []),
+      ...(entry.labelsRemoved ?? []),
+    ]);
+    for (const record of records) {
+      const threadId = record.message?.threadId;
+      if (threadId) changedThreadIds.add(threadId);
     }
     pageToken = data.nextPageToken;
     if (!pageToken) {

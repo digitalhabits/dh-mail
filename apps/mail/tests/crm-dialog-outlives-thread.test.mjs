@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { check, suite } from "./harness.mjs";
+import { mailPageSource, threadPaneSource } from "./mail-page-source.mjs";
 
 // From the working directory, not from this file: the harness compiles each
 // test into a temp directory, so the file's own path leads nowhere.
@@ -25,9 +26,9 @@ const src = (name) =>
   );
 
 suite(async () => {
-  const pane = src("ThreadPane.tsx");
+  const pane = threadPaneSource();
   const host = src("CrmProposalHost.tsx");
-  const page = src("MailPage.tsx");
+  const page = mailPageSource();
   const reader = src("ThreadReaderWindow.tsx");
   const person = src("PersonReaderWindow.tsx");
 

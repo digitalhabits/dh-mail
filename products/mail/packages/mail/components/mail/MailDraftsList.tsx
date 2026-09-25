@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 import { rowTime } from "@/lib/mail/date-format";
 import { useMailT } from "@/lib/mail/i18n";
 import type { MailDraftRow } from "@/lib/mail/types";
@@ -95,11 +97,18 @@ export function MailDraftsList({
   loading,
   onOpen,
   openKey,
+  selectedKeys,
   onClearHandedOver,
 }: {
   rows: MailDraftRow[];
   loading: boolean;
-  onOpen: (row: MailDraftRow) => void;
+  /** The click comes along: Shift and Cmd select rows rather than open one. */
+  onOpen: (row: MailDraftRow, event: React.MouseEvent) => void;
+  /**
+   * Rows held by a Shift- or Cmd-click, by `origin:id`. With more than one,
+   * these are the marked rows and the open draft is not.
+   */
+  selectedKeys?: ReadonlySet<string>;
   /** Discard every copy that went to Outlook, in one press. */
   onClearHandedOver?: () => void;
   /**
@@ -150,12 +159,19 @@ export function MailDraftsList({
         // A reply draft has no subject; say who it is to instead.
         const title =
           row.subject || (recipients ? `To ${recipients}` : "(no recipient)");
-        const open = Boolean(openKey) && row.id === openKey;
+        const several = (selectedKeys?.size ?? 0) > 1;
+        const open = several
+          ? Boolean(selectedKeys?.has(`${row.origin}:${row.id}`))
+          : Boolean(openKey) && row.id === openKey;
         return (
           <li key={`${row.origin}:${row.id}`}>
             <button
               type="button"
-              onClick={() => onOpen(row)}
+              onClick={(event) => onOpen(row, event)}
+              // A Shift-click selects rows, not the text between them.
+              onMouseDown={(event) => {
+                if (event.shiftKey) event.preventDefault();
+              }}
               aria-current={open ? "true" : undefined}
               // The open one said the way the thread list says it: a fill
               // and a bar down the left, and the hover kept a grey so a row

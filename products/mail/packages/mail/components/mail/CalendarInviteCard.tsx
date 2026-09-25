@@ -16,9 +16,9 @@ import {
 
 import {
   attachmentDownloadProps,
-  attachmentUrl,
   formatFileSize,
-} from "@/components/mail/MailAttachments";
+} from "@/components/mail/attachment-files";
+import { attachmentUrl } from "@/lib/mail/attachment-save";
 import {
   formatInviteWhen,
   isCalendarAttachment,

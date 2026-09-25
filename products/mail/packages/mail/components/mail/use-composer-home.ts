@@ -53,7 +53,7 @@ import type { MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
 import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
 import type { ComposerMode } from "@/components/mail/thread-messages";
-import type { useDraftAttachments } from "@/components/mail/MailAttachments";
+import type { useDraftAttachments } from "@/components/mail/draft-attachments";
 import type { useThreadComposer } from "@/components/mail/use-thread-composer";
 
 /**
@@ -79,6 +79,8 @@ export function useComposerHome(input: {
   replyFloating?: boolean;
   onFloatReply?: () => void;
   onDraftDiscarded?: () => void;
+  /** The provider's draft, from the Drafts list, when the thread did not carry it. */
+  draftRef?: string;
   // The composer's fields that this hook reads, one by one.
   mode: ComposerMode | null;
   reply: string;
@@ -104,6 +106,7 @@ export function useComposerHome(input: {
     replyFloating,
     onFloatReply,
     onDraftDiscarded,
+    draftRef,
     mode,
     reply,
     replyText,
@@ -218,7 +221,7 @@ export function useComposerHome(input: {
      * cleared. Discarding a reply means the reply is gone, on both sides.
      */
     const providerRef =
-      importedDraftRef.current ?? thread?.providerDraft?.ref ?? null;
+      importedDraftRef.current ?? thread?.providerDraft?.ref ?? draftRef ?? null;
     const restoreAttachments = readyAttachmentsForDraft(snapshot.attachItems);
     const hadSomething =
       Boolean(htmlToPlainText(snapshot.reply).trim()) ||
@@ -303,6 +306,7 @@ export function useComposerHome(input: {
     threadId,
     closeComposer,
     thread?.providerDraft?.ref,
+    draftRef,
     onDraftDiscarded,
     composerSnapshotRef,
     discardedKeyRef,

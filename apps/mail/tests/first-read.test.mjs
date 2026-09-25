@@ -100,4 +100,16 @@ suite(async () => {
   g.set({ account: gmail, folder: "trash", phase: "live", fullSyncTotal: 40, fullSyncDone: 40 });
   const two = firstReadLines(g.rows);
   check("one mailbox's complete read does not hide another's line", two.length === 1 && two[0].account === me, two);
+
+  // A mailbox removed mid-batch: the worker wrote its batch after the store
+  // dropped the mailbox, and stopped. The row stays with a short count.
+  const r = store();
+  const gone = "ulla@example.com";
+  r.set({ account: gmail, folder: "", phase: "live", fullSyncTotal: 900, fullSyncDone: 900 });
+  r.set({ account: gone, folder: "", phase: "none", fullSyncTotal: 58_000, fullSyncDone: 53_000 });
+  check("the row alone reads as a stopped read", firstReadLines(r.rows)[0]?.state === "stopped", firstReadLines(r.rows));
+  check("a removed mailbox has no line", firstReadLines(r.rows, [gmail]).length === 0, firstReadLines(r.rows, [gmail]));
+  check("the list's mailboxes match without case", firstReadLines(r.rows, ["ULLA@example.com"]).length === 1);
+  r.set({ account: gone, folder: "", phase: "paused", fullSyncTotal: 10, fullSyncDone: 10, lastError: "x" });
+  check("nor the notice of a paused sync", pausedAfterFirstRead(r.rows, [gmail]).length === 0, pausedAfterFirstRead(r.rows, [gmail]));
 });

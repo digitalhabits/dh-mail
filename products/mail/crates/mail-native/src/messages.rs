@@ -131,6 +131,46 @@ pub fn migrate(conn: &Connection) -> DbResult<()> {
   repair_snippets(conn)?;
   repair_attachment_flags(conn)?;
   repair_quoted_addresses(conn)?;
+  refetch_misread_bodies(conn)?;
+  Ok(())
+}
+
+/// Bodies read with the wrong charset are fetched again, once.
+///
+/// The decoder once knew only UTF-8 and the Latin-1 family, and read any
+/// other charset as UTF-8, so every byte it could not place was kept as a
+/// replacement mark. A kept body with such a mark in it is taken out and
+/// its row marked as having no body, so the worker fetches it again with
+/// the decoder of today; a row's snippet with a mark in it goes too, so
+/// the fresh body gives it new words. Once, because a body can hold a
+/// replacement mark that its sender really sent.
+fn refetch_misread_bodies(conn: &Connection) -> DbResult<()> {
+  const MARK: &str = "repair.charset-bodies";
+  const VERSION: &str = "1";
+  let done: Option<String> = conn
+    .query_row("SELECT value FROM settings WHERE key = ?1", [MARK], |r| r.get(0))
+    .optional()?;
+  if done.as_deref() == Some(VERSION) {
+    return Ok(());
+  }
+  const MISREAD: &str = "instr(COALESCE(text_body, '') || COALESCE(html_body, ''), char(65533)) > 0";
+  let tx = conn.unchecked_transaction()?;
+  tx.execute(
+    &format!(
+      "UPDATE messages SET body_state = 'none',
+         snippet = CASE WHEN instr(snippet, char(65533)) > 0 THEN '' ELSE snippet END
+       WHERE (account_email, message_id) IN
+         (SELECT account_email, message_id FROM message_bodies WHERE {MISREAD})"
+    ),
+    [],
+  )?;
+  tx.execute(&format!("DELETE FROM message_bodies WHERE {MISREAD}"), [])?;
+  tx.execute(
+    "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    params![MARK, VERSION, now_ms()],
+  )?;
+  tx.commit()?;
   Ok(())
 }
 
@@ -2678,6 +2718,39 @@ mod tests {
     let mut stmt = conn.prepare("SELECT email FROM source_contacts ORDER BY email").unwrap();
     let emails: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
     assert_eq!(emails, vec!["ann@x.test", "bo@y.test"]);
+  }
+
+  #[test]
+  fn bodies_read_with_the_wrong_charset_are_fetched_again_once() {
+    let db = db();
+    let mut misread = msg("m1", "t1", 1, 1_000, &[INBOX]);
+    misread.snippet = "Hej \u{fffd}\u{fffd}ster".into();
+    db.messages_upsert("vera@example.com", &[misread, msg("m2", "t2", 2, 2_000, &[INBOX])]).unwrap();
+    db.bodies_put("vera@example.com", "m1", &BodyRow { text: Some("Hej \u{fffd}\u{fffd}ster".into()), ..Default::default() })
+      .unwrap();
+    db.bodies_put("vera@example.com", "m2", &BodyRow { text: Some("Hej søster".into()), ..Default::default() })
+      .unwrap();
+    let conn = db.conn_mut();
+    conn.execute("DELETE FROM settings WHERE key = 'repair.charset-bodies'", []).unwrap();
+    refetch_misread_bodies(&conn).unwrap();
+    drop(conn);
+
+    // The misread one is wanted again, with its snippet cleared; the good one is kept.
+    let missing = db.messages_bodies_missing("vera@example.com", 0, i64::MAX, 10).unwrap();
+    assert_eq!(missing, vec![("m1".to_string(), 1)]);
+    let conn = db.conn_mut();
+    let snippet: String =
+      conn.query_row("SELECT snippet FROM messages WHERE message_id = 'm1'", [], |r| r.get(0)).unwrap();
+    assert_eq!(snippet, "");
+    drop(conn);
+
+    // Once: a mark put back after the repair stays.
+    db.bodies_put("vera@example.com", "m1", &BodyRow { text: Some("a real \u{fffd}".into()), ..Default::default() })
+      .unwrap();
+    let conn = db.conn_mut();
+    refetch_misread_bodies(&conn).unwrap();
+    drop(conn);
+    assert!(db.messages_bodies_missing("vera@example.com", 0, i64::MAX, 10).unwrap().is_empty());
   }
 
   #[test]

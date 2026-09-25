@@ -3,7 +3,7 @@
 import * as React from "react";
 import { requestMailComposeTo } from "@/lib/mail/compose-to";
 import { toast } from "@/lib/mail/toast";
-import { SaveAsListControl } from "@/components/mail/RecipientField";
+import { SaveAsListControl } from "@/components/mail/recipient-lists";
 import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { copyTextToClipboard } from "@/lib/mail/copy-text";
 import type { MailMessage } from "@/lib/mail/types";

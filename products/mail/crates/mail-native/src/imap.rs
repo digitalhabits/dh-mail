@@ -1019,24 +1019,56 @@ fn hex_pair(a: u8, b: u8) -> Option<u8> {
   Some((hi * 16 + lo) as u8)
 }
 
-/// Bytes in a named charset as text. UTF-8 and the Latin-1 family are
-/// what mail carries; anything else is read as UTF-8 with replacement.
+/// Bytes in a named charset as text.
+///
+/// The name is looked up the way a browser looks up a page's charset, so
+/// every one mail uses is known: Windows-1250 and ISO-8859-2 for Central
+/// Europe, the Cyrillic ones, and the double-byte ones Outlook can pick,
+/// such as GB2312 and ks_c_5601-1987. This used to know only UTF-8 and
+/// the Latin-1 family, and read every other name as UTF-8: each byte
+/// outside ASCII became a replacement mark, one per byte, in the stored
+/// copy.
+///
+/// Two labels are not taken at their word. "us-ascii" cannot hold 8-bit
+/// bytes, so bytes that are good UTF-8 are UTF-8. And UTF-8 that holds no
+/// UTF-8 at all, only stray high bytes, is a Latin mail that did not say
+/// so — often a part with no charset, which is read as UTF-8 by default.
 pub fn decode_charset(bytes: &[u8], charset: &str) -> String {
-  let cs = charset.trim().to_ascii_lowercase();
-  if cs.starts_with("iso-8859-1") || cs == "latin1" || cs.starts_with("windows-1252") || cs == "cp1252" || cs == "us-ascii" {
-    bytes.iter().map(|&b| cp1252_char(b)).collect()
-  } else {
-    String::from_utf8_lossy(bytes).into_owned()
+  let label = charset.trim().trim_matches('"').trim();
+  let encoding = encoding_rs::Encoding::for_label(label.as_bytes()).unwrap_or(encoding_rs::UTF_8);
+  if encoding == encoding_rs::UTF_8 {
+    if std::str::from_utf8(bytes).is_err() && !has_utf8_sequence(bytes) {
+      return encoding_rs::WINDOWS_1252.decode_without_bom_handling(bytes).0.into_owned();
+    }
+    return String::from_utf8_lossy(bytes).into_owned();
   }
+  if label.eq_ignore_ascii_case("us-ascii") {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+      return text.to_string();
+    }
+  }
+  encoding.decode_without_bom_handling(bytes).0.into_owned()
 }
 
-fn cp1252_char(b: u8) -> char {
-  match b {
-    0x80 => '€', 0x82 => '‚', 0x83 => 'ƒ', 0x84 => '„', 0x85 => '…', 0x86 => '†', 0x87 => '‡',
-    0x88 => 'ˆ', 0x89 => '‰', 0x8A => 'Š', 0x8B => '‹', 0x8C => 'Œ', 0x8E => 'Ž', 0x91 => '‘',
-    0x92 => '’', 0x93 => '“', 0x94 => '”', 0x95 => '•', 0x96 => '–', 0x97 => '—', 0x98 => '˜',
-    0x99 => '™', 0x9A => 'š', 0x9B => '›', 0x9C => 'œ', 0x9E => 'ž', 0x9F => 'Ÿ',
-    other => other as char,
+/// Whether the bytes hold at least one well-formed UTF-8 character
+/// outside ASCII.
+fn has_utf8_sequence(bytes: &[u8]) -> bool {
+  let mut rest = bytes;
+  loop {
+    match std::str::from_utf8(rest) {
+      Ok(text) => return !text.is_ascii(),
+      Err(err) => {
+        let good = err.valid_up_to();
+        if !rest[..good].is_ascii() {
+          return true;
+        }
+        let bad = err.error_len().unwrap_or(rest.len() - good);
+        rest = &rest[good + bad..];
+        if rest.is_empty() {
+          return false;
+        }
+      }
+    }
   }
 }
 
@@ -1395,6 +1427,33 @@ pub(crate) fn fake_server(script: Vec<(&'static str, &'static str)>) -> TcpStrea
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn every_charset_a_message_names_is_read() {
+    // Central European: one byte per letter.
+    assert_eq!(decode_charset(b"Nov\xe1kov\xe1 \xe8te", "windows-1250"), "Nováková čte");
+    assert_eq!(decode_charset(b"Nov\xe1kov\xe1 \xe8te", "ISO-8859-2"), "Nováková čte");
+    // Double-byte: quotes and an arrow, two bytes each.
+    assert_eq!(decode_charset(b"\xa1\xb0Hej\xa1\xb1 \xa1\xe6 videre", "ks_c_5601-1987"), "“Hej” → videre");
+    assert_eq!(decode_charset(b"\xa1\xb0Hej\xa1\xb1", "gb2312"), "“Hej”");
+    // The Latin family as before, quotes and all.
+    assert_eq!(decode_charset(b"\x93Hej\x94 p\xe5 dig", "Windows-1252"), "“Hej” på dig");
+    assert_eq!(decode_charset(b"p\xe5 dig", "iso-8859-1"), "på dig");
+    assert_eq!(decode_charset("på dig".as_bytes(), "\"UTF-8\""), "på dig");
+  }
+
+  #[test]
+  fn a_label_that_does_not_fit_the_bytes_is_not_taken_at_its_word() {
+    // No UTF-8 in it at all: a Latin mail that did not say so.
+    assert_eq!(decode_charset(b"Vi ses p\xe5 fredag", "utf-8"), "Vi ses på fredag");
+    // Real UTF-8 with one broken byte stays UTF-8.
+    assert_eq!(decode_charset(b"p\xc3\xa5 \xff", "utf-8"), "på \u{fffd}");
+    // "us-ascii" cannot hold 8-bit bytes; good UTF-8 is UTF-8.
+    assert_eq!(decode_charset("Søren".as_bytes(), "us-ascii"), "Søren");
+    assert_eq!(decode_charset(b"S\xf8ren", "us-ascii"), "Søren");
+    // A name nobody knows is read as UTF-8.
+    assert_eq!(decode_charset("Søren".as_bytes(), "x-unknown"), "Søren");
+  }
 
   #[test]
   fn a_fetch_with_literals_and_gmail_attributes_is_read_whole() {
