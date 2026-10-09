@@ -347,6 +347,12 @@
 .mail-search-hit {
   animation: mail-search-hit-pulse 1.8s ease-out 1;
 }
+/* The search words in the message a search landed on. Frames carry their
+   own copy of this rule: a highlight does not cross into an iframe. */
+::highlight(dh-search-hit) {
+  background-color: rgba(252, 211, 77, 0.6);
+  color: inherit;
+}
 
 /* Optimistic send: pending outline → confirmed fill (~200ms). */
 @keyframes mail-sent-confirm {

@@ -924,37 +924,84 @@ export function useThreadStream(
       : null;
 
   React.useEffect(() => {
-    // Search deep-link: pin the hit in view (once), then stop.
+    /*
+      Search deep-link: the hit's head a quarter of the way down the pane,
+      held there while the thread settles. Placed once, it drifted: the
+      messages above it are frames that reach their height after they
+      load, and each one pushed the hit down, so the pane ended part-way
+      into another message (Ulrik, 2026-10-09). Held as the newest-message
+      pin below holds its place, until the stream stops growing or the
+      reader moves.
+    */
     const el = scrollRef.current;
     if (!thread || !el || !deepLinkTarget) return;
     if (scrolledToFocusRef.current === deepLinkTarget) return;
+    const selector = `[data-message-id="${deepLinkTarget.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+    const SETTLED_MS = 800;
+    const LONGEST_MS = 10_000;
+    const startedAt = Date.now();
+    let lastHeight = -1;
+    let heightSince = startedAt;
+    let placed = -1;
 
     const pin = () => {
-      const target = el.querySelector<HTMLElement>(
-        `[data-message-id="${deepLinkTarget.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`
-      );
-      if (!target) return false;
-      const paneTop = el.getBoundingClientRect().top;
-      const targetTop = target.getBoundingClientRect().top;
-      el.scrollTop = Math.max(
-        0,
-        el.scrollTop + (targetTop - paneTop) - el.clientHeight * 0.25
-      );
+      const now = Date.now();
+      if (el.scrollHeight !== lastHeight) {
+        lastHeight = el.scrollHeight;
+        heightSince = now;
+      } else if (placed >= 0 && now - heightSince >= SETTLED_MS) {
+        stop();
+        return;
+      }
+      if (now - startedAt >= LONGEST_MS) {
+        stop();
+        return;
+      }
+      const target = el.querySelector<HTMLElement>(selector);
+      if (!target) return;
+      // By the browser, not by sums on rectangles: those are zoomed and
+      // the scroller is not, which landed part-way down a message.
+      scrollToTopOf(el, target, (el.clientHeight * 0.25) / (zoomRef.current || 1));
+      placed = Math.round(el.scrollTop);
       scrolledToFocusRef.current = deepLinkTarget;
-      return true;
     };
-    if (pin()) return;
-
-    const observer = new ResizeObserver(() => {
-      if (pin()) observer.disconnect();
-    });
-    observer.observe(el.firstElementChild ?? el);
-    const timer = setTimeout(() => observer.disconnect(), 2000);
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
+    const onScroll = () => {
+      if (placed < 0) return;
+      const clampedPlace = Math.min(placed, Math.max(0, el.scrollHeight - el.clientHeight));
+      if (Math.round(el.scrollTop) !== clampedPlace) stop();
     };
-  }, [thread, deepLinkTarget, scrollRef]);
+    const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+    const readerInput = (e: Event) => {
+      if (e instanceof KeyboardEvent && !SCROLL_KEYS.has(e.key)) return;
+      stop();
+    };
+    const stop = () => {
+      window.clearInterval(interval);
+      resized.disconnect();
+      added.disconnect();
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", readerInput);
+      el.removeEventListener("pointerdown", readerInput);
+      window.removeEventListener("keydown", readerInput);
+    };
+    const resized = new ResizeObserver(() => pin());
+    const watchBubbles = () => {
+      for (const node of el.querySelectorAll<HTMLElement>('[data-mail-bubble="1"]')) resized.observe(node);
+    };
+    const added = new MutationObserver(watchBubbles);
+    watchBubbles();
+    added.observe(el, { childList: true, subtree: true });
+    const interval = window.setInterval(pin, 150);
+    pin();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", readerInput, { passive: true });
+    el.addEventListener("pointerdown", readerInput, { passive: true });
+    window.addEventListener("keydown", readerInput);
+    return stop;
+    // `thread` is read only to see that it is there; a run for each new
+    // thread object would move the scroll under the reader.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(thread), deepLinkTarget, scrollRef]);
 
   React.useEffect(() => {
     if (!highlightMessageId) return;

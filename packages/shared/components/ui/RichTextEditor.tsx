@@ -374,6 +374,34 @@ type ReactQuillInstance = { getEditor: () => QuillEditor };
 const PASTE_DROPPED_FORMATS = ["size", "color", "background"] as const;
 
 /**
+ * True for the length of one paste event.
+ *
+ * Quill runs its clipboard matchers for a paste and also for the HTML it is
+ * seeded with: a saved signature, a reopened draft, an out-of-office. The
+ * formats above were taken off both, so a signature saved in 8pt grey came
+ * back in the editor at the default size, in black, and the next save lost
+ * them for good (a KU tester, 2026-10-09). Only a paste is stripped now.
+ * Quill converts a paste in the same task as the event, so a flag set in a
+ * capturing listener and cleared after the task is enough.
+ */
+let pasting = false;
+let pasteWatchBound = false;
+function watchPastes() {
+  if (pasteWatchBound || typeof document === "undefined") return;
+  pasteWatchBound = true;
+  document.addEventListener(
+    "paste",
+    () => {
+      pasting = true;
+      setTimeout(() => {
+        pasting = false;
+      }, 0);
+    },
+    true
+  );
+}
+
+/**
  * The same delta, with those formats taken off every run in it.
  *
  * Quill hands a matcher the delta it built for one node. Attributes left
@@ -824,6 +852,7 @@ const ReactQuill = dynamic(
     const { default: RQ, Quill } = await import("react-quill-new");
     registerSoftBreak(Quill);
     registerInlineStyles(Quill);
+    watchPastes();
     function ReactQuillWithRef({
       quillRef,
       ...props
@@ -1444,7 +1473,7 @@ export function RichTextEditor({
             1 /* Node.ELEMENT_NODE — the constant is not in scope on the
                  server, and this module is parsed there. */,
             (_node: unknown, delta: { ops?: Array<{ attributes?: Record<string, unknown> }> }) =>
-              stripPastedFormats(delta),
+              pasting ? stripPastedFormats(delta) : delta,
           ],
         ],
       },

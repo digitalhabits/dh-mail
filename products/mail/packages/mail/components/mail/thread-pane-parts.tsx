@@ -310,6 +310,8 @@ export function ThreadMessages({
     goToLatestMessage,
     headHasOlderInPart,
     highlightMessageId,
+    focusMessageId,
+    searchTerms,
     inPeople,
     loadNewerMessages,
     loadOlderMessages,
@@ -408,6 +410,7 @@ export function ThreadMessages({
                         meta={metaById.get(m.id)}
                         earlierFromSender={earlierBySender.get(m.id)}
                         timeLabel={timeOfDay(m.sentAt)}
+                        highlight={m.id === focusMessageId ? searchTerms : undefined}
                         {...bubbleActions(m)}
                         onPreviewAttachment={(attachment) =>
                           setAttachmentPreview({
@@ -470,6 +473,7 @@ export function ThreadMessages({
                     meta={metaById.get(m.id)}
                     earlierFromSender={earlierBySender.get(m.id)}
                     timeLabel={timeOfDay(m.sentAt)}
+                    highlight={m.id === focusMessageId ? searchTerms : undefined}
                     onRetrySend={
                       outboxStatus === "failed"
                         ? () => retryOutboxSend(m.id)

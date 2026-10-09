@@ -10,7 +10,7 @@
 
 import * as React from "react";
 
-import { forgetSyncStates, syncStates, SYNC_STATE_WINDOW_EVENT } from "@/lib/mail/local-store";
+import { forgetSyncStates, syncStates, SYNC_CHANGED_WINDOW_EVENT, SYNC_STATE_WINDOW_EVENT } from "@/lib/mail/local-store";
 import { mailSay } from "@/lib/mail/i18n";
 import { mailProviderFor, mailProviderLabel, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { toast } from "@/lib/mail/toast";
@@ -61,6 +61,20 @@ export function useMailSyncStates(): MailSyncState[] {
       });
     };
     window.addEventListener(SYNC_STATE_WINDOW_EVENT, onWindowState);
+    /*
+      Read every state again when the window gets the focus back, and when
+      new mail lands. A reconnect, or a state some other path wrote, sends
+      no state event, so a "sync paused" line stayed after the reader had
+      signed in again and the mailbox was syncing (2026-10-09).
+    */
+    const reread = () => {
+      forgetSyncStates();
+      void syncStates().then((list) => {
+        if (!cancelled) setStates(sorted(list));
+      });
+    };
+    window.addEventListener("focus", reread);
+    window.addEventListener(SYNC_CHANGED_WINDOW_EVENT, reread);
     const tauriEvent = (window as unknown as { __TAURI__?: { event?: TauriEvent } }).__TAURI__?.event;
     if (tauriEvent?.listen) {
       void tauriEvent
@@ -125,6 +139,8 @@ export function useMailSyncStates(): MailSyncState[] {
     return () => {
       cancelled = true;
       window.removeEventListener(SYNC_STATE_WINDOW_EVENT, onWindowState);
+      window.removeEventListener("focus", reread);
+      window.removeEventListener(SYNC_CHANGED_WINDOW_EVENT, reread);
       unlisten?.();
       unlistenFailed?.();
       unlistenSend?.();

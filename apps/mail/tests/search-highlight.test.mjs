@@ -5,7 +5,9 @@
  * paint follows it, so a marked row and a found row agree.
  */
 
-import { highlightRanges, searchHighlightTerms } from "@/lib/mail/search-highlight";
+import { Window } from "happy-dom";
+
+import { highlightRanges, paintSearchHits, searchHighlightTerms, searchHitRanges } from "@/lib/mail/search-highlight";
 import { check, suite } from "./harness.mjs";
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -27,4 +29,15 @@ suite(async () => {
   check("a phrase in order", same(highlightRanges("London → Paris Nord", ["paris nord"]), [[9, 19]]));
   check("an emoji counts once", same(highlightRanges("🎉 Paris", ["paris"]), [[2, 7]]));
   check("empty in, empty out", same(highlightRanges("", ["paris"]), []) && same(highlightRanges("Paris", []), []));
+
+  // In a message: ranges over the words in its text, none in its style, and
+  // an emoji before a hit does not shift it.
+  const doc = new Window().document;
+  doc.body.innerHTML = '<style>.paris { color: red }</style><p>Train to <b>Paris</b> 🎉 Paris Nord</p>';
+  const hits = searchHitRanges(doc.body, ["paris"]).map((r) => r.toString());
+  check("each word in the text, none in a style", same(hits, ["Paris", "Paris"]), JSON.stringify(hits));
+  // With no highlight registry, painting does nothing and changes nothing.
+  const before = doc.body.innerHTML;
+  paintSearchHits(doc.body, ["paris"])();
+  check("painting leaves the message's markup as it was", doc.body.innerHTML === before);
 });

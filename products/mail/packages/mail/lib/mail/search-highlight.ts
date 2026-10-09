@@ -103,3 +103,56 @@ export function highlightRanges(text: string, terms: string[]): [number, number]
   }
   return merged;
 }
+
+/** The name the search words are painted under: `::highlight(dh-search-hit)`. */
+export const SEARCH_HIT_HIGHLIGHT = "dh-search-hit";
+
+/**
+ * Ranges over the search words in the text under `root`, at word starts as
+ * in the rows. Text in scripts and styles is left alone. A word split over
+ * two text nodes is not found, which mail almost never does.
+ */
+export function searchHitRanges(root: Node, terms: string[]): Range[] {
+  const doc = root.ownerDocument ?? (root as Document);
+  if (!terms.length || !doc?.createTreeWalker) return [];
+  const walker = doc.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+  const out: Range[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement?.tagName;
+    if (parent === "SCRIPT" || parent === "STYLE" || parent === "NOSCRIPT") continue;
+    const text = node.nodeValue ?? "";
+    const ranges = highlightRanges(text, terms);
+    if (!ranges.length) continue;
+    // Code points to UTF-16 offsets: an emoji before a hit counts twice.
+    const offsets: number[] = [0];
+    for (const c of Array.from(text)) offsets.push(offsets[offsets.length - 1] + c.length);
+    for (const [start, end] of ranges) {
+      const range = doc.createRange();
+      range.setStart(node, offsets[start]);
+      range.setEnd(node, offsets[end]);
+      out.push(range);
+    }
+  }
+  return out;
+}
+
+type HighlightRegistry = { set: (name: string, value: unknown) => void; delete: (name: string) => void };
+
+/**
+ * Paint the search words under `root` with the CSS Custom Highlight API: no
+ * change to the message's own markup, so React and the sender's HTML stay
+ * as they are. Answers the function that takes the paint away. A browser
+ * without the API shows no paint, and nothing else changes.
+ */
+export function paintSearchHits(root: Node, terms: string[]): () => void {
+  const view = (root.ownerDocument ?? (root as Document)).defaultView as
+    | (Window & { CSS?: { highlights?: HighlightRegistry }; Highlight?: new (...r: Range[]) => unknown })
+    | null;
+  const registry = view?.CSS?.highlights;
+  const HighlightCtor = view?.Highlight;
+  if (!registry || !HighlightCtor) return () => {};
+  const ranges = searchHitRanges(root, terms);
+  if (!ranges.length) return () => {};
+  registry.set(SEARCH_HIT_HIGHLIGHT, new HighlightCtor(...ranges));
+  return () => registry.delete(SEARCH_HIT_HIGHLIGHT);
+}

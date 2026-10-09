@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { paintSearchHits, SEARCH_HIT_HIGHLIGHT } from "@/lib/mail/search-highlight";
+
 import {
   MAIL_PINCH_SCALE_EVENT,
   MAIL_PINCH_WHEEL_EVENT,
@@ -133,7 +135,10 @@ export function EmailHtmlView({
   onContentDoubleClick,
   onContentContextMenu,
   darkRecolor = false,
+  highlight,
 }: {
+  /** Search words to paint in the message, as the list paints them. */
+  highlight?: string[];
   html: string;
   allowImages: boolean;
   inlineImages?: Record<string, string>;
@@ -223,6 +228,23 @@ export function EmailHtmlView({
   const [ready, setReady] = React.useState(false);
   /** Only show the spinner if paint is slow — cache reopen should not flash it. */
   const [showPlaceholder, setShowPlaceholder] = React.useState(false);
+
+  /*
+    The search words, painted inside the frame once its document is in.
+    The paint is a CSS highlight, so the sender's HTML is not touched.
+  */
+  React.useEffect(() => {
+    if (!ready || !highlight?.length) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    if (!doc.getElementById("dh-search-hit-style")) {
+      const style = doc.createElement("style");
+      style.id = "dh-search-hit-style";
+      style.textContent = `::highlight(${SEARCH_HIT_HIGHLIGHT}) { background-color: rgba(252, 211, 77, 0.6); color: inherit; }`;
+      doc.head?.appendChild(style);
+    }
+    return paintSearchHits(doc.body, highlight);
+  }, [ready, highlight]);
 
   const srcDoc = React.useMemo(() => {
     if (typeof window === "undefined") return "";

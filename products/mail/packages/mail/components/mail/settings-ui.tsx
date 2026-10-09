@@ -18,6 +18,7 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronsUpDown, X } from "lucide-react";
 
 import {
@@ -34,6 +35,7 @@ import {
 } from "@/lib/mail/ui-scale";
 import { formatShortcut } from "@/lib/mail/shortcuts";
 import { useUiScale } from "@/lib/mail/use-ui-scale";
+import { useMailColorMode } from "@/lib/mail/theme";
 import { cn } from "@/lib/utils";
 import { useCardDrag } from "@/components/mail/use-card-drag";
 
@@ -524,11 +526,21 @@ export function SettingsDialog({
     would be a poor thing to shut the dialog with.
   */
   const seeThrough = draggable;
+  const colorMode = useMailColorMode();
 
-  return (
+  /*
+    Drawn at the top of the page, not where it was opened. Opened from the
+    reader, it sat inside the reader's stacking order, and the list's
+    resize edge beside the reader showed through the card (a KU tester,
+    2026-10-09, in the Signature dialog).
+  */
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
+      // The shell's colours, which a portal leaves behind: as MenuShell.
+      data-theme={colorMode}
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center p-6",
+        "mail-shell fixed inset-0 z-50 flex items-center justify-center p-6",
         seeThrough && "pointer-events-none"
       )}
     >
@@ -631,6 +643,7 @@ export function SettingsDialog({
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

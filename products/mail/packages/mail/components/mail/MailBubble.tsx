@@ -9,6 +9,8 @@
  */
 
 import * as React from "react";
+
+import { paintSearchHits } from "@/lib/mail/search-highlight";
 import { Clock } from "lucide-react";
 import {
   MessageContextMenu,
@@ -250,7 +252,10 @@ export function MailBubble({
   onEditAsNew,
   onShowOriginal,
   showPrint = true,
+  highlight,
 }: {
+  /** Search words to paint in the message: the one a search landed on. */
+  highlight?: string[];
   message: BubbleMessage;
   account: string;
   /** Thread subject, used as the title when this message is printed. */
@@ -782,6 +787,7 @@ export function MailBubble({
           fullBody={fullBody}
           stripped={stripped}
           hasHidden={hasHidden}
+          highlight={highlight}
         />
       </div>
       </div>
@@ -920,7 +926,10 @@ function BubbleBody({
   fullBody,
   stripped,
   hasHidden,
+  highlight,
 }: {
+  /** Search words to paint, in the frame or in the plain text. */
+  highlight?: string[];
   showHtml: boolean;
   sendingOut: boolean;
   timeCorner: React.JSX.Element | null;
@@ -940,6 +949,13 @@ function BubbleBody({
   stripped: string;
   hasHidden: boolean;
 }) {
+  /* The search words in a plain-text message, painted as in a frame. */
+  const plainRef = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    const el = plainRef.current;
+    if (showHtml || !el || !highlight?.length) return;
+    return paintSearchHits(el, highlight);
+  }, [highlight, showHtml, showQuoted, fullBody]);
   return (
     <div
       className={cn(
@@ -983,6 +999,7 @@ function BubbleBody({
               zoom={zoom}
               bodyColor={readInTheDark ? "#e2e9f0" : undefined}
               darkRecolor={readInTheDark}
+              highlight={highlight}
             />
             {htmlSplit?.hadQuote ? (
               <button
@@ -1006,6 +1023,7 @@ function BubbleBody({
         ) : (
           <>
             <p
+              ref={plainRef}
               className={cn(
                 "whitespace-pre-wrap break-words text-sm",
                 // The time is floated so that it settles beside the

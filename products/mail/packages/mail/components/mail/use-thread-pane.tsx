@@ -94,6 +94,8 @@ export type ThreadPaneProps = {
   threadId: string;
   /** Search hit — open centered on this message instead of the tip. */
   focusMessageId?: string;
+  /** The search's words, painted in the focus message. */
+  searchTerms?: string[];
   zoom: number;
   onZoomAdjust: (delta: number) => void;
   /** Hide the mail list so the thread fills the pane. */
@@ -241,6 +243,7 @@ export function useThreadPane(props: ThreadPaneProps) {
   accounts,
   threadId,
   focusMessageId,
+  searchTerms,
   zoom,
   onZoomAdjust,
   focusMode,
@@ -1361,6 +1364,8 @@ export function useThreadPane(props: ThreadPaneProps) {
     hidden,
     highlightMessageId,
     historyAppendix,
+    focusMessageId,
+    searchTerms,
     inPeople,
     inJunk,
     inTrash,

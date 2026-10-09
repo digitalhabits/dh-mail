@@ -88,6 +88,7 @@ export function ReadingPaneContent({
     rowMenuActions,
     scheduleSentRefreshForAccount,
     selected,
+    highlightTerms,
     selectedPerson,
     personRows,
     togglePersonPin,
@@ -243,6 +244,7 @@ export function ReadingPaneContent({
               accounts={accountEmails}
               threadId={selected.threadId}
               focusMessageId={selected.focusMessageId}
+              searchTerms={highlightTerms}
               zoom={zoom}
               onZoomAdjust={adjustZoom}
               focusMode={listCollapsed}
