@@ -8,7 +8,9 @@
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
-import { isWindowsHost } from "@/lib/mail/host-os";
+import { tauriInvoke } from "@/lib/mail/store/tauri";
+import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
+import { formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
 import * as React from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
@@ -43,9 +45,12 @@ import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/m
 export function ThreadListColumn({
   m,
   listTabsOrFolder,
+  hide,
 }: {
   m: MailPageModel;
   listTabsOrFolder: React.ReactNode;
+  /** Hidden mailboxes: with every one hidden, the list says so, not "connect". */
+  hide?: MailboxHideControls;
 }) {
   const {
     accountEmails,
@@ -125,6 +130,8 @@ export function ThreadListColumn({
               >
                 {t("connect")}
               </p>
+            ) : hide?.hidden.length ? (
+            <HiddenMailboxesNotice m={m} hide={hide} />
             ) : (
             <NoMailboxNotice m={m} />
             )
@@ -414,6 +421,45 @@ function EmptyListNotice({
 }
 
 /**
+ * What the list shows when every connected mailbox is hidden: that they are,
+ * how, and a way to show one now. It said "Connect an account" before, which
+ * is wrong for a mailbox hidden by its schedule.
+ */
+function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: MailboxHideControls }) {
+  const { t } = m;
+  return (
+    <div className="px-5 py-8">
+      <p className="text-sm font-medium text-[var(--mail-chrome-fg)]">{t("mailboxesHiddenTitle")}</p>
+      <ul className="mt-3 space-y-3">
+        {hide.hidden.map((email) => {
+          const status = hide.statusOf(email);
+          const line = status.byHand
+            ? t("hiddenByHand")
+            : status.reason === "schedule"
+              ? t("hiddenBySchedule", { time: status.untilClock ?? "" })
+              : t("hiddenUntilTime", {
+                  time: status.until ? formatSnoozeDayTime(status.until) : (status.untilClock ?? ""),
+                });
+          return (
+            <li key={email} className="text-sm">
+              <span className="block truncate text-[var(--mail-chrome-fg)]">{email}</span>
+              <span className="block text-[var(--mail-chrome-muted)]">{line}</span>
+              <button
+                type="button"
+                className="mt-1 text-sm font-medium text-teal-600 underline-offset-2 hover:underline"
+                onClick={() => hide.showNow(email)}
+              >
+                {t("showMailboxNow")}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * What the list shows before any mailbox is connected: how to connect one.
  */
 function NoMailboxNotice({
@@ -431,15 +477,6 @@ function NoMailboxNotice({
       <p className="text-sm font-medium text-[var(--mail-chrome-fg)]">
         {t("connectToStart")}
       </p>
-      <p className="mt-1 text-sm text-[var(--mail-chrome-muted)]">
-        {t("connectIntro")}
-      </p>
-      {/* Only where it happens — see MailAccountsPanel. */}
-      {isWindowsHost() ? null : (
-        <p className="mt-1 text-sm text-[var(--mail-chrome-muted)]">
-          {t("connectKeychainHint")}
-        </p>
-      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <Button asChild size="sm" className="gap-1.5">
           <a
@@ -492,6 +529,24 @@ function NoMailboxNotice({
             )}
           </a>
         </Button>
+        {/* Exchange on-prem, in the desktop app only, as in Settings. */}
+        {tauriInvoke() ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-[var(--mail-chrome-chip-border)] bg-transparent text-[var(--mail-chrome-fg)] hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)]"
+            disabled={connecting === "exchange"}
+            onClick={() => connect("exchange")}
+          >
+            {connecting === "exchange" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {t("connectProvider", { provider: "Exchange" })}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

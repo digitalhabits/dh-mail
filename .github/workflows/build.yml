@@ -521,11 +521,17 @@ jobs:
             fi
             gh release upload "$tag" files/* --clobber
           else
+            # What is new, from apps/mail/RELEASE_NOTES.md, then how to
+            # check a download.
+            {
+              if [ -f apps/mail/RELEASE_NOTES.md ]; then cat apps/mail/RELEASE_NOTES.md; echo; fi
+              echo "Built from this source by the Build workflow. Check a download with: \`gh attestation verify <file> --repo ${{ github.repository }}\`"
+            } > release-notes.md
             gh release create "$tag" files/* \
               --draft \
               --target "${{ github.sha }}" \
               --title "Digital Habits: Mail $VERSION" \
-              --notes "Built from this source by the Build workflow. Check a download with: gh attestation verify <file> --repo ${{ github.repository }}"
+              --notes-file release-notes.md
           fi
 
       # The updater's manifest, from every update file the draft now holds:
@@ -540,6 +546,6 @@ jobs:
             [ -e "sigs/$name" ] || touch "sigs/$name"
           done
           node apps/mail/scripts/write-update-manifest.cjs "$VERSION" \
-            "https://github.com/$GH_REPO/releases/download/$tag" sigs > latest.json
+            "https://github.com/$GH_REPO/releases/download/$tag" sigs apps/mail/RELEASE_NOTES.md > latest.json
           cat latest.json
           gh release upload "$tag" latest.json --clobber

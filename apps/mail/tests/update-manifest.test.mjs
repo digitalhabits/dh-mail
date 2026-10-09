@@ -7,10 +7,14 @@
  * there. File names are invented, in the shape the build scripts write.
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import manifestTool from "../scripts/write-update-manifest.cjs";
 import { check, suite } from "./harness.mjs";
 
-const { platformsFor } = manifestTool;
+const { platformsFor, manifest } = manifestTool;
 
 const BASE = "https://example.test/releases/download/v1.2.3";
 const sig = (file) => `sig of ${file}\n`;
@@ -54,4 +58,10 @@ suite(async () => {
     ...both("Digital Habits Mail (Internal)_1.2.3_universal.app.tar.gz"),
   ], sig);
   check("the internal app's update file never goes in", Object.keys(internal).length === 0);
+
+  // The release's notes go in, or the name alone when there are none.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manifest-"));
+  for (const name of both("Digital-Habits-Mail_1.2.3_x64-setup.exe")) fs.writeFileSync(path.join(dir, name), "sig");
+  check("the notes are the release's own", manifest("1.2.3", BASE, dir, new Date(0), "## What is new\n- A thing\n").notes === "## What is new\n- A thing");
+  check("with no notes, the name alone", manifest("1.2.3", BASE, dir, new Date(0)).notes === "Digital Habits: Mail 1.2.3");
 });

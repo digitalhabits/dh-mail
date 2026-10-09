@@ -922,8 +922,6 @@ export const en = {
   searchingMailbox: "Searching 1 mailbox…",
   searchingHint:
     "Each one is asked on its own, so more results can still land. Scroll to the end for Load more.",
-  connectIntro:
-    "Your mail stays in Gmail or Outlook. This app reads from those accounts — about the latest 100 conversations per mailbox to browse, with search and open-thread pulling more from the provider as needed.",
   connectKeychainHint:
     "macOS may ask for your login password. This app keeps mailbox access in the Keychain, not in its own files. macOS can ask again after an update, or the first time the other Digital Habits app uses this mailbox.",
   noMailboxHint:
@@ -1007,6 +1005,7 @@ export const en = {
   loadingFolderHint: "A big folder can take a few seconds to come back.",
   loadingFolders: "Loading folders…",
   connectToStart: "Connect an account to get started",
+  mailboxesHiddenTitle: "Your mailboxes are hidden for now",
   connectFromSettings: "Connect an account from Display & accounts",
   noMailboxConnected: "No mailbox connected yet",
   cancelSnooze: "Cancel snooze",
@@ -1081,14 +1080,6 @@ export const en = {
   exchangeUsername: "Username",
   exchangeUsernameHelp: "The name you sign in with. It can be different from the email address.",
   exchangePassword: "Password",
-  exchangeAccessCode: "Access code",
-  exchangeCodeIntro:
-    "Exchange mailboxes are open to invited people only for now. Enter the access code that Centre for Digital Habits gave you. Then you can enter your mailbox's details.",
-  exchangeContinue: "Continue",
-  exchangeCodeChecking: "Checking…",
-  exchangeCodeWrong: "This access code is not right. Check it and try again.",
-  exchangeCodeTooMany: "Too many tries. Wait 10 minutes and try again.",
-  exchangeCodeUnchecked: "The access code could not be checked. Check your connection and try again.",
   exchangeAdvanced: "Advanced",
   exchangeServerLeaveEmpty: "Leave it empty, and the app finds your server when you connect.",
   exchangeFindingServer: "Looking for your server…",

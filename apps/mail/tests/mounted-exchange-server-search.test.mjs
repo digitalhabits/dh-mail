@@ -2,7 +2,7 @@
  * The server search of the Exchange connect form (Autodiscover, section
  * 16.7 of docs/mail-exchange-ews.md).
  *
- * The access code still comes first. For a domain the app knows (ku.dk),
+ * For a domain the app knows (ku.dk),
  * the server field fills itself and nothing is searched. For another
  * domain, "Find server" and Connect with an empty field search, and the
  * field fills from the answer. What the person typed wins. A host outside

@@ -931,6 +931,21 @@ async function main() {
     assert.equal(subjectFields().length, 1, "Edit subject opens it");
     pass("Edit subject, under the box, opens the subject of a reply");
 
+    /* The history that goes with the reply, folded under the box. */
+    const historyBox = () => document.querySelector("[data-reply-history]");
+    assert(historyBox(), "a reply shows the quoted history under the box");
+    const showQuoted = [...historyBox().querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Show quoted text");
+    assert(showQuoted, "folded, with Show quoted text");
+    clickEl(showQuoted);
+    await sleep(300);
+    assert(
+      [...historyBox().querySelectorAll("button")].some((b) => (b.textContent || "").trim() === "Hide quoted text"),
+      "opened, it offers Hide quoted text"
+    );
+    clickEl([...historyBox().querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Hide quoted text"));
+    await sleep(200);
+    pass("a reply shows its quoted history under the box, folded, as a forward shows its message");
+
     /* Preview first, from the Send options, and back. */
     writeReply("<p>Paint first, then the bench.</p>");
     await sleep(300);

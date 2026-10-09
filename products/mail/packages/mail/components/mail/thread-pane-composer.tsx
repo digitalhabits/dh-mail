@@ -388,6 +388,12 @@ export function ThreadComposerBand({
               ) : null}
               {/* Under the note, where the recipient will see it. */}
               {forwarding && forwardSource ? <ForwardSourceQuote m={m} /> : null}
+              {/* The same for a reply: the history that goes with it, as it
+                  will be sent. Not when nothing is quoted: chat style, or a
+                  reply to one picked message, which shows its own card. */}
+              {!forwarding && !chatStyle && !m.quoteMessageId && m.historyAppendix ? (
+                <ReplyHistoryQuote m={m} html={m.historyAppendix.html} />
+              ) : null}
               </div>
             <ComposerSendBar key={editorKey} m={m} barRef={sendBarRef} overText={moreBelow} />
           </div>
@@ -606,6 +612,54 @@ function ForwardSourceQuote({
             {t("showMore")}
           </button>
         </span>
+      )}
+    </div>
+  );
+}
+
+const HISTORY_OPEN_KEY = "dh-mail-reply-history-open";
+
+function readHistoryOpen(): boolean {
+  try {
+    return window.localStorage.getItem(HISTORY_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The quoted history under a reply, as the recipient will get it.
+ *
+ * A forward always showed the message it carries. A reply sent up to 25
+ * earlier messages with nothing on screen to say so. Folded by default, as
+ * the history is long; the choice is kept, as the forward's is.
+ */
+function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
+  const { t, zoom } = m;
+  const [open, setOpenState] = React.useState(readHistoryOpen);
+  const [loadImagesByDefault] = useLoadImagesByDefault();
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    try {
+      window.localStorage.setItem(HISTORY_OPEN_KEY, next ? "1" : "0");
+    } catch {
+      /* not kept: the choice holds for this reply */
+    }
+  };
+  const link = "whitespace-nowrap text-teal-700 underline-offset-2 hover:underline";
+  return (
+    <div data-reply-history="" className="mx-3 mb-3 border-l-2 border-stone-200 pl-3 text-[13px] text-stone-600">
+      {open ? (
+        <>
+          <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} />
+          <button type="button" className={cn(link, "mt-1")} onClick={() => setOpen(false)}>
+            {t("hideQuotedText")}
+          </button>
+        </>
+      ) : (
+        <button type="button" className={link} onClick={() => setOpen(true)}>
+          {t("showQuotedText")}
+        </button>
       )}
     </div>
   );

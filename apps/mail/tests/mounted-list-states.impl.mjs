@@ -56,6 +56,8 @@ async function main() {
   try {
     let root = await mount([]);
     assert(text().includes("Connect an account to get started"), "no mailbox: how to connect one");
+    assert(!/mail stays in Gmail|Keychain/.test(text()), "the title and the buttons, no explanation under it");
+    assert(/Connect Gmail/.test(text()) && /Connect Outlook/.test(text()), "with a button for each provider");
     pass("with no mailbox connected, the list says how to connect one");
     root.unmount();
 

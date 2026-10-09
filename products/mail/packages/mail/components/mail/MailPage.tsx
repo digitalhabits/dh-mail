@@ -153,7 +153,7 @@ export function MailPage(props: MailPageProps) {
   /** Display & accounts, with Settings, shortcuts and contact sources in it. */
   const layoutMenu = <LayoutMenu m={m} />;
   /** The rows, with the banners over them and the load-more under them. */
-  const threadListColumn = <ThreadListColumn m={m} listTabsOrFolder={listTabsOrFolder} />;
+  const threadListColumn = <ThreadListColumn m={m} listTabsOrFolder={listTabsOrFolder} hide={mailboxHide} />;
   /** What the reading pane holds: a composer, a thread, a person, or the rest picture. */
   const readingPaneContent = <ReadingPaneContent m={m} />;
   /* The team layer's host, for whichever pane asked. Here and not in the

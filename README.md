@@ -102,8 +102,7 @@ count that you can turn off (see [SECURITY.md](SECURITY.md)).
 - **Outlook** is read and sent through Microsoft Graph.
 - **Microsoft Exchange** (an organisation's own Exchange server) is read and
   sent over Exchange Web Services (EWS), at the server's `https://` address
-  only. You sign in with your username and password. For now, connecting an
-  Exchange account needs an access code from us. See `ews.rs` and
+  only. You sign in with your username and password. See `ews.rs` and
   `ntlm.rs` in the same crate.
 - The app keeps a local copy of each mailbox in a SQLite file on your machine.
 - Refresh tokens, and an Exchange password, are kept in the operating

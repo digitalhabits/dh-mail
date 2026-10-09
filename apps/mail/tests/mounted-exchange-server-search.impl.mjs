@@ -36,7 +36,6 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 setMailApiTransport(async () => new Response(JSON.stringify({ accounts: [] }), { status: 200 }));
-globalThis.fetch = async () => new Response(null, { status: 204 });
 
 const text = () => document.body.textContent || "";
 function input(label) {
@@ -53,14 +52,11 @@ const button = (name) => [...document.querySelectorAll("button")].find((b) => (b
 const submit = () => document.querySelector("form").requestSubmit();
 const ews = (cmd) => calls.filter((c) => c.cmd === cmd);
 
-/** A new form, past the access code, with these fields typed. */
+/** A new form, with these fields typed. */
 async function openForm(email, password = "correct horse") {
   document.body.innerHTML = '<div id="r"></div>';
   const root = createRoot(document.getElementById("r"));
   await act(() => root.render(React.createElement(ExchangeConnectForm, { request: { done: () => {} }, onClose: () => {} })));
-  assert(!text().includes("Server (EWS address)"), "the access code comes first");
-  await act(() => type(document.querySelector("input"), "good-code-1"));
-  await act(() => submit());
   await act(() => type(input("Email address"), email));
   await act(() => type(input("Username"), "sam"));
   await act(() => type(input("Password"), password));

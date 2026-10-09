@@ -57,8 +57,7 @@ import { onMailRefresh } from "./seams/mail-router";
 const OWNER_ID = "local";
 
 /*
-  Exchange (EWS) is in both builds since 2026-09-28. A new connect needs an
-  access code (section 18, item 5 of docs/mail-exchange-ews.md).
+  Exchange (EWS) is in both builds since 2026-09-28.
 */
 const PROVIDERS: MailStoreProvider[] = ["gmail", "outlook", "exchange"];
 

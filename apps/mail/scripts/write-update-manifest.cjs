@@ -55,7 +55,7 @@ function platformsFor(version, baseUrl, files, readSig) {
   return platforms;
 }
 
-function manifest(version, baseUrl, dir, now = new Date()) {
+function manifest(version, baseUrl, dir, now = new Date(), notes = "") {
   const files = fs.readdirSync(dir);
   const platforms = platformsFor(version, baseUrl, files, (f) =>
     fs.readFileSync(path.join(dir, f), "utf8")
@@ -65,7 +65,8 @@ function manifest(version, baseUrl, dir, now = new Date()) {
   }
   return {
     version,
-    notes: `Digital Habits: Mail ${version}`,
+    // The release's own notes (RELEASE_NOTES.md), or the name alone.
+    notes: notes.trim() || `Digital Habits: Mail ${version}`,
     pub_date: now.toISOString(),
     platforms,
   };
@@ -74,13 +75,14 @@ function manifest(version, baseUrl, dir, now = new Date()) {
 module.exports = { platformsFor, manifest };
 
 if (require.main === module) {
-  const [version, baseUrl, dir] = process.argv.slice(2);
+  const [version, baseUrl, dir, notesFile] = process.argv.slice(2);
   if (!version || !baseUrl || !dir) {
     console.error("usage: write-update-manifest.cjs <version> <download-base-url> <directory>");
     process.exit(1);
   }
   try {
-    process.stdout.write(`${JSON.stringify(manifest(version, baseUrl, dir), null, 2)}\n`);
+    const notes = notesFile && fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8") : "";
+    process.stdout.write(`${JSON.stringify(manifest(version, baseUrl, dir, new Date(), notes), null, 2)}\n`);
   } catch (err) {
     console.error(err.message);
     process.exit(1);

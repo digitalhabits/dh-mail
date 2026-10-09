@@ -1,8 +1,8 @@
 /**
  * The public app has Exchange accounts, in the desktop app only.
  *
- * Since 2026-09-28 both builds have Exchange (EWS); a new connect needs an
- * access code (section 18, item 5 of docs/mail-exchange-ews.md). This suite
+ * Since 2026-09-28 both builds have Exchange (EWS); since 2026-10-09 a new
+ * connect needs no access code (docs/mail-exchange-ews.md). This suite
  * is built as the public app. With a desktop shell, the calls reach the
  * shell's EWS commands. With no shell (a browser), each call refuses before
  * it asks. The debug command stays out of the public app.

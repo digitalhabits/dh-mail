@@ -20,8 +20,7 @@
 //! those lock the account on the server. Only a new connect opens it again.
 //!
 //! The commands exist only with the `exchange` feature. The standalone app
-//! turns it on by default, the public build included (since 2026-09-28):
-//! connecting a new account needs an access code (`exchange-access.ts`).
+//! turns it on by default, the public build included (since 2026-09-28).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

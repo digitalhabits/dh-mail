@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * The Exchange (EWS) connect form: email address, username, password,
- * server, and, for a new mailbox, the access code (section 18, item 5). The
- * code is checked with the Digital Habits server before any call to the
- * Exchange server.
+ * The Exchange (EWS) connect form: email address, username, password and
+ * server. It asks the Exchange server only: no other server is told about
+ * the connect.
  *
  * It answers a request (`requestExchangeConnect`): the Connect button in
  * Settings, or a Reconnect for an Exchange mailbox whose password the server
@@ -35,25 +34,16 @@ import {
   type ExchangeConnectRequest,
 } from "@/lib/mail/exchange-connect";
 import { SettingsPane } from "@/components/mail/settings-ui";
-import { AccessCodeError, checkExchangeAccessCode, connectExchangeWithCode } from "@/lib/mail/exchange-access";
 import { needsSearch } from "@/lib/mail/exchange-autodiscover";
 import { useServerSearch } from "@/components/mail/use-exchange-server-search";
-import { hasExchangeAccount } from "@/lib/mail/exchange-accounts";
-import { exchangeErrorCode } from "@/lib/mail/exchange-native";
+import { connectExchange, exchangeErrorCode } from "@/lib/mail/exchange-native";
 import { useMailT } from "@/lib/mail/i18n";
 import { toast } from "@/lib/mail/toast";
 import { forgetMailProviderLists } from "@/lib/mail/use-outlook-accounts";
 
-type Fields = { email: string; username: string; password: string; url: string; code: string };
+type Fields = { email: string; username: string; password: string; url: string };
 
-const EMPTY: Fields = { email: "", username: "", password: "", url: "", code: "" };
-
-/** What the form says when the access code stopped the connect. */
-const ACCESS_TEXT = {
-  refused: "exchangeCodeWrong",
-  limited: "exchangeCodeTooMany",
-  unchecked: "exchangeCodeUnchecked",
-} as const;
+const EMPTY: Fields = { email: "", username: "", password: "", url: "" };
 
 /**
  * The request a form in this window is answering, or null.
@@ -126,20 +116,10 @@ function useExchangeForm(request: ExchangeConnectRequest, onClose: () => void) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const serverTouched = React.useRef(false);
-  /*
-    A new mailbox starts at the access code, and the mailbox's own fields
-    come only when the server has said yes: the code is the gate to this
-    form, not a setting of the mailbox. A mailbox connected already goes
-    straight to its fields. null: not known yet.
-  */
-  const [step, setStep] = React.useState<"code" | "details" | null>(request.email ? null : "code");
 
   React.useEffect(() => {
     if (!request.email) return;
     void storedSettings(request.email).then((stored) => setFields((f) => ({ ...f, ...stored })));
-    void hasExchangeAccount(request.email.trim().toLowerCase())
-      .catch(() => false)
-      .then((known) => setStep(known ? "details" : "code"));
   }, [request.email]);
 
   const set = (name: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,18 +135,6 @@ function useExchangeForm(request: ExchangeConnectRequest, onClose: () => void) {
   const finish = (connected: string | null) => {
     request.done(connected);
     onClose();
-  };
-
-  /** The first step: ask the Digital Habits server about the code. */
-  const checkCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    const answer = await checkExchangeAccessCode(fields.code);
-    setBusy(false);
-    if (answer === "ok") setStep("details");
-    else setError(t(ACCESS_TEXT[answer]));
   };
 
   const server = useServerSearch(setFields, serverTouched, t);
@@ -187,7 +155,7 @@ function useExchangeForm(request: ExchangeConnectRequest, onClose: () => void) {
     setError("");
     try {
       const email = fields.email.trim().toLowerCase();
-      const { code, ...input } = fields;
+      const input = { ...fields };
       // An empty server field, for a domain the app does not know: search
       // first (section 16.7). What the person typed is never searched over.
       if (needsSearch(fields)) {
@@ -201,21 +169,18 @@ function useExchangeForm(request: ExchangeConnectRequest, onClose: () => void) {
         }
         input.url = end.url;
       }
-      // The fields show only after the code was taken, or for a mailbox
-      // connected already, so the code is not asked about again.
-      await connectExchangeWithCode({ ...input, email }, { code, again: true });
+      await connectExchange({ ...input, email });
       forgetMailProviderLists();
       toast.success(t("exchangeConnected", { account: email }));
       finish(email);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // No second try by itself: a wrong password tried again can lock the account.
-      if (err instanceof AccessCodeError) setError(t(ACCESS_TEXT[err.answer]));
-      else setError(exchangeErrorCode(message) === "ews:refused" ? t("exchangeRefused") : message);
+      setError(exchangeErrorCode(message) === "ews:refused" ? t("exchangeRefused") : message);
       setBusy(false);
     }
   };
-  return { fields, set, busy, error, finish, submit, step, checkCode, server, advanced, setAdvanced };
+  return { fields, set, busy, error, finish, submit, server, advanced, setAdvanced };
 }
 
 /**
@@ -246,15 +211,14 @@ export function ExchangeSettingsPane({
  */
 export function ExchangeConnectForm({ request, onClose }: { request: ExchangeConnectRequest; onClose: () => void }) {
   const title = useExchangeFormTitle(request);
-  const { fields, set, busy, error, finish, submit, step, checkCode, server, advanced, setAdvanced } = useExchangeForm(
+  const { fields, set, busy, error, finish, submit, server, advanced, setAdvanced } = useExchangeForm(
     request,
     onClose
   );
-  if (!step) return null;
   return (
     <form
       aria-label={title}
-      onSubmit={(e) => void (step === "code" ? checkCode(e) : submit(e))}
+      onSubmit={(e) => void submit(e)}
       onKeyDown={(e) => {
         // Escape answers "no". In Settings, the popover may also close.
         if (e.key === "Escape" && !busy) {
@@ -264,10 +228,7 @@ export function ExchangeConnectForm({ request, onClose }: { request: ExchangeCon
       }}
       className="max-w-md text-stone-800"
     >
-      {step === "code" ? (
-        <AccessCodeField fields={fields} set={set} busy={busy} />
-      ) : (
-        <>
+      <>
           <ExchangeFields
             fields={fields}
             set={set}
@@ -284,14 +245,13 @@ export function ExchangeConnectForm({ request, onClose }: { request: ExchangeCon
             onAllow={(host) => void submit(undefined, host)}
             onDeny={server.dismissAsk}
           />
-        </>
-      )}
+      </>
       {error ? (
         <p role="alert" className="mt-3 text-sm leading-relaxed text-red-700">
           {error}
         </p>
       ) : null}
-      <ExchangeFormButtons fields={fields} step={step} busy={busy} onCancel={() => finish(null)} />
+      <ExchangeFormButtons fields={fields} busy={busy} onCancel={() => finish(null)} />
     </form>
   );
 }
@@ -363,35 +323,6 @@ function ExchangeFields({
   );
 }
 
-/** The first step of a new connect: the access code, and what it is for. */
-function AccessCodeField({
-  fields,
-  set,
-  busy,
-}: {
-  fields: Fields;
-  set: (name: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement>) => void;
-  busy: boolean;
-}) {
-  const t = useMailT();
-  return (
-    <div className="flex flex-col gap-3 text-sm">
-      <p className="leading-relaxed text-stone-600">{t("exchangeCodeIntro")}</p>
-      <label>
-        {t("exchangeAccessCode")}
-        <input
-          className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
-          autoComplete="off"
-          value={fields.code}
-          onChange={set("code")}
-          disabled={busy}
-          autoFocus
-        />
-      </label>
-    </div>
-  );
-}
-
 /**
  * Under the server field: for a domain the app does not know, that Connect
  * finds the server; what the search is doing; and the question when it
@@ -440,12 +371,10 @@ function ServerSearchLine({
 
 function ExchangeFormButtons({
   fields,
-  step,
   busy,
   onCancel,
 }: {
   fields: Fields;
-  step: "code" | "details";
   busy: boolean;
   onCancel: () => void;
 }) {
@@ -456,20 +385,15 @@ function ExchangeFormButtons({
         type="submit"
         disabled={
           busy ||
-          (step === "code"
-            ? !fields.code.trim()
-            : // An empty server is searched for, unless the domain is known.
-              !fields.email || !fields.username || !fields.password || (!fields.url && !needsSearch(fields)))
+          // An empty server is searched for, unless the domain is known.
+          !fields.email ||
+          !fields.username ||
+          !fields.password ||
+          (!fields.url && !needsSearch(fields))
         }
         className="rounded-full bg-stone-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-900 disabled:opacity-50"
       >
-        {step === "code"
-          ? busy
-            ? t("exchangeCodeChecking")
-            : t("exchangeContinue")
-          : busy
-            ? t("exchangeConnecting")
-            : t("exchangeConnect")}
+        {busy ? t("exchangeConnecting") : t("exchangeConnect")}
       </button>
       <button
         type="button"

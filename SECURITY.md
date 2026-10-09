@@ -26,7 +26,7 @@ The app talks to these hosts:
 | Your Exchange server, at the address you give | Exchange: mail, folders, the address book and the out-of-office reply, over EWS. Only an `https://` address is accepted | [`ews.rs`](/products/mail/crates/mail-native/src/ews.rs), [`ntlm.rs`](/products/mail/crates/mail-native/src/ntlm.rs) |
 | Your organisation's Autodiscover addresses, and its DNS | Only when you connect an Exchange account and the app does not know the server: finding the server's address — see "Exchange is different" below | [`ews_autodiscover.rs`](/products/mail/crates/mail-native/src/ews_autodiscover.rs), [`ews_srv.rs`](/products/mail/crates/mail-native/src/ews_srv.rs) |
 | `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com` | Sign-in, and every token refresh after it | [`oauth.rs`](/products/mail/crates/mail-native/src/oauth.rs), [`oauth-config.ts`](/apps/mail/src/oauth-config.ts) |
-| `plan.digitalhabits.org` | The anonymous daily usage count — see below. Off in Settings > General. And, only when you connect an Exchange account, a check of its access code — see below | [`usage-ping.ts`](/apps/mail/src/usage-ping.ts), [`exchange-access.ts`](/products/mail/packages/mail/lib/mail/exchange-access.ts) |
+| `plan.digitalhabits.org` | The anonymous daily usage count — see below. Off in Settings > General | [`usage-ping.ts`](/apps/mail/src/usage-ping.ts) |
 | `github.com`, and GitHub's download servers | Checking for a new version and downloading it. The direct downloads only — see below | [`team_update.rs`](/products/mail/crates/mail-native/src/team_update.rs) |
 | Whatever host a sender put an image on | Remote images in HTML mail — see "Reading a message safely" below. On by default; off in Settings | [`images.rs`](/products/mail/crates/mail-native/src/images.rs) |
 
@@ -65,13 +65,6 @@ background and installed only if it is signed with the key built into the
 app; you choose when to restart, or it is installed when you quit. The
 Microsoft Store version has no updater: the store updates it. See
 [`team_update.rs`](/products/mail/crates/mail-native/src/team_update.rs).
-
-**The Exchange access code.** For now, connecting an Exchange account needs
-an access code from us. When you connect one, the app sends the code, and
-nothing else, to `plan.digitalhabits.org/api/mail/exchange-access`, and
-signs in to your Exchange server only if the answer is yes. Nothing about
-your account or your mail goes with it, and a reconnect does not ask again.
-See [`exchange-access.ts`](/products/mail/packages/mail/lib/mail/exchange-access.ts).
 
 You can check the rest: there is no analytics SDK in the dependency lists
 (`apps/mail/package.json`, `apps/mail/src-tauri/Cargo.toml`,

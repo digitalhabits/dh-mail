@@ -911,8 +911,6 @@ export const da: Record<keyof typeof en, string> = {
   searchingMailbox: "Søger i 1 postkasse…",
   searchingHint:
     "Hver postkasse bliver spurgt for sig, så der kan komme flere resultater. Rul til slutningen for at hente flere.",
-  connectIntro:
-    "Din post bliver i Gmail eller Outlook. Dette program læser fra de konti — omkring de nyeste 100 samtaler pr. postkasse. Søgning og åbne samtaler henter mere fra udbyderen efter behov.",
   connectKeychainHint:
     "macOS kan bede om din adgangskode. Dette program gemmer adgangen til postkassen i nøgleringen, ikke i sine egne filer. macOS kan spørge igen efter en opdatering, eller første gang det andet Digital Habits-program bruger denne postkasse.",
   noMailboxHint:
@@ -995,6 +993,7 @@ export const da: Record<keyof typeof en, string> = {
   loadingFolderHint: "En stor mappe kan tage nogle sekunder.",
   loadingFolders: "Henter mapper…",
   connectToStart: "Forbind en konto for at komme i gang",
+  mailboxesHiddenTitle: "Dine postkasser er skjult lige nu",
   connectFromSettings: "Forbind en konto under Visning og konti",
   noMailboxConnected: "Ingen postkasse er forbundet endnu",
   cancelSnooze: "Annuller udsættelsen",
@@ -1068,14 +1067,6 @@ export const da: Record<keyof typeof en, string> = {
   exchangeUsername: "Brugernavn",
   exchangeUsernameHelp: "Det navn, du logger ind med. Det kan være et andet end e-mailadressen.",
   exchangePassword: "Adgangskode",
-  exchangeAccessCode: "Adgangskode",
-  exchangeCodeIntro:
-    "Exchange-postkasser er indtil videre kun åbne for inviterede. Skriv den adgangskode, som Centre for Digital Habits gav dig. Derefter kan du skrive din postkasses oplysninger.",
-  exchangeContinue: "Fortsæt",
-  exchangeCodeChecking: "Tjekker…",
-  exchangeCodeWrong: "Adgangskoden er ikke rigtig. Tjek den, og prøv igen.",
-  exchangeCodeTooMany: "For mange forsøg. Vent 10 minutter, og prøv igen.",
-  exchangeCodeUnchecked: "Adgangskoden kunne ikke tjekkes. Tjek din forbindelse, og prøv igen.",
   exchangeAdvanced: "Avanceret",
   exchangeServerLeaveEmpty: "Lad feltet være tomt, så finder appen din server, når du tilknytter.",
   exchangeFindingServer: "Leder efter din server…",

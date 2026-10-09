@@ -173,6 +173,21 @@ async function main() {
     hiddenMailboxes.clear();
     pass("with two mailboxes connected and one hidden, the mailbox row stays");
 
+    // Both hidden: the list says they are hidden, and how to show one,
+    // not "Connect an account".
+    hiddenMailboxes.add(ULLA);
+    hiddenMailboxes.add(TEA);
+    root = await mount([], () => text().includes("hidden for now"));
+    assert(!text().includes("Connect an account"), "not the connect notice");
+    assert(text().includes(ULLA) && text().includes(TEA), "each hidden mailbox is named");
+    assert(
+      [...document.querySelectorAll("button")].filter((b) => (b.textContent || "").trim() === "Show in Mail now").length === 2,
+      "with Show in Mail now for each"
+    );
+    root.unmount();
+    hiddenMailboxes.clear();
+    pass("with every mailbox hidden, the list says so and offers to show one");
+
     process.exit(0);
   } catch (err) {
     console.error("the two mailboxes walk failed:", err);
