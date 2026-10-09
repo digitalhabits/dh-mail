@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The app runs under the Hardened Runtime, which refuses a protected
+	  resource to any app that does not name it here. Contacts is one of those
+	  resources: without this key macOS denies the request and shows the reader
+	  nothing, which reads exactly like a bug.
+
+	  A usage description is the other half. It is in Info.plist, and macOS
+	  needs both.
+	-->
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+</dict>
+</plist>

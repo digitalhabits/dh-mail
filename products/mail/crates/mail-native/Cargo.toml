@@ -1,0 +1,119 @@
+[package]
+name = "mail-native"
+version = "0.1.0"
+description = "The native side of Digital Habits Mail: SQLite store, keychain, OAuth loopback, images, attachments, printing."
+edition = "2021"
+rust-version = "1.77.2"
+license = ""
+publish = false
+
+[lib]
+name = "mail_native"
+crate-type = ["rlib"]
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.3", features = ["macos-private-api"] }
+# Local store. Bundled so no system SQLite is needed.
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Fetching remote images for the message view, where a webview cannot.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# The IMAP client speaks TLS on a plain socket. The same rustls and roots
+# reqwest already brought in, on the ring provider, so nothing is doubled.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+base64 = "0.22"
+# Every charset a message may name, by the labels browsers accept.
+encoding_rs = "0.8"
+# Loopback listener for the OAuth redirect.
+tiny_http = "0.12"
+url = "2.5"
+urlencoding = "2.1"
+tauri-plugin-opener = "2.5.4"
+# NTLMv2 for Exchange Web Services. See ntlm.rs. Only with `exchange`.
+md4 = { version = "0.10", optional = true }
+md-5 = { version = "0.10", optional = true }
+hmac = { version = "0.12", optional = true }
+getrandom = { version = "0.2", optional = true }
+# The EWS request and answer types, from Thunderbird (MPL-2.0, used as is).
+# See ews_ops.rs. Only with `exchange`.
+ews = { version = "0.1.1", optional = true }
+# The public app's direct downloads update themselves from GitHub. See
+# team_update.rs. Only with `public-updater` (or `team-updater`): a store
+# build must not carry an updater at all.
+tauri-plugin-updater = { version = "2", optional = true }
+
+[features]
+# Exchange Server on-prem over EWS (ews.rs, ntlm.rs). The standalone Mail
+# app turns it on by default.
+exchange = ["dep:md4", "dep:md-5", "dep:hmac", "dep:getrandom", "dep:ews"]
+# A team build's session with its own server. The public app is built
+# without it.
+team = []
+# Self-update for a team build, through that session.
+team-updater = ["dep:tauri-plugin-updater", "team"]
+# Self-update for the public Mail app's direct downloads (the .dmg and the
+# Windows .exe), from its GitHub releases. Never in a store package: the
+# stores update those.
+public-updater = ["dep:tauri-plugin-updater"]
+
+# Secrets live in the OS keychain, never in the SQLite file. See secrets.rs:
+# on macOS the data-protection keychain through `SecItem*` directly, with
+# `keyring` (the login keychain) as the fallback and the thing to migrate
+# from; on Windows `keyring` is the Credential Manager.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+# The chat popout is a non-activating panel, so clicking it does not bring
+# this app to the front and take the front from whatever is behind it — a
+# slideshow, a call. Only an NSPanel can carry that style bit, and only this
+# crate reclasses the window.
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+security-framework-sys = "2"
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
+  "NSEvent",
+  # The installed fonts, for the composer's font list. See fonts.rs.
+  "NSFontManager",
+  # "Paste without Formatting" in the right-click menu. See paste_plain_menu.rs.
+  "NSMenu",
+  "NSMenuItem",
+  "NSUserInterfaceItemIdentification",
+  "NSPasteboard",
+  "NSPrintInfo",
+  "NSPrintOperation",
+  "NSResponder",
+  "NSView",
+  "NSWindow",
+  "block2",
+] }
+# The Mac address book, as a read-only contact source. See contacts.rs.
+objc2-contacts = { version = "0.3", features = [
+  "CNContact",
+  "CNContactFetchRequest",
+  "CNContactStore",
+  "CNFetchRequest",
+  "block2",
+] }
+objc2-foundation = { version = "0.3", features = [
+  "NSArray",
+  "NSString",
+  "NSError",
+  "NSGeometry",
+  "NSLocale",
+] }
+drag = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+# On iOS the same crate reaches the app's keychain. Android has no keychain
+# it can reach, so there the secrets go to a file in the app's private data
+# directory — see the `file` module in secrets.rs.
+[target.'cfg(target_os = "ios")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }

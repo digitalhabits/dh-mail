@@ -1,0 +1,54 @@
+[package]
+name = "digital-habits-mail"
+# Not the version the app shows: Tauri takes that from tauri.conf.json, which
+# reads ../package.json. Kept in step by scripts/check-version.sh.
+version = "0.11.10"
+description = "Digital Habits: Mail — Mac desktop app"
+authors = ["Digital Habits"]
+license = ""
+repository = "https://github.com/digitalhabits/dh-mail"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.3", features = ["macos-private-api"] }
+urlencoding = "2.1"
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2.5.4"
+# The native side of mail (SQLite store, keychain, OAuth loopback, images,
+# attachments, printing).
+mail-native = { path = "../../../products/mail/crates/mail-native" }
+
+[features]
+# Exchange on-prem over EWS. On by default, so every build has it: the
+# public app too since 2026-09-28. A new connect needs an access code
+# (docs/mail-exchange-ews.md, section 18, item 5).
+default = ["exchange"]
+exchange = ["mail-native/exchange"]
+# A team build's own commands and updater. The public app is built
+# without these.
+team-updater = ["mail-native/team-updater", "team"]
+team = ["mail-native/team"]
+# Self-update from the public GitHub releases. The public app's direct
+# downloads only: build-standalone.sh (the .dmg) and build-win.ps1 (the .exe)
+# turn it on. build-win-store.ps1 does not: a store package must not carry an
+# updater, because the store updates it.
+public-updater = ["mail-native/public-updater"]
+
+[dev-dependencies]
+url = "2.5"
+
+# The chat popout is reclassed into a non-activating panel by mail-native;
+# the plugin that does it has to be registered by the app that hosts it.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

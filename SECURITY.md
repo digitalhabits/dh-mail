@@ -1,0 +1,265 @@
+# Security and privacy
+
+Digital Habits: Mail is a desktop app for Mac and Windows that reads your
+mail directly from Gmail, Outlook or your organisation's Exchange server. This page says what it asks for, where
+it keeps things, and what leaves the machine — with the file to read for
+each, so none of it has to be taken on trust.
+
+It describes the **standalone app**, the one distributed as a `.dmg` or a
+Windows installer.
+
+## What leaves your machine
+
+Your mail goes between your computer and your provider, and nowhere else.
+There is no server of ours in the path — nothing to run, nothing to breach,
+and no copy of your mail anywhere we could read it.
+
+The app talks to these hosts:
+
+| Host | What for | Where |
+| --- | --- | --- |
+| `imap.gmail.com` | Reading Gmail, and filing, archiving and deleting | [`sync.rs`](/products/mail/crates/mail-native/src/sync.rs), [`imap.rs`](/products/mail/crates/mail-native/src/imap.rs) |
+| `smtp.gmail.com` | Sending Gmail | [`smtp.rs`](/products/mail/crates/mail-native/src/smtp.rs) |
+| `gmail.googleapis.com` | Out-of-office reply, the send-as name, and a mailbox whose local copy is not yet complete | [`lib/gmail/api.ts`](/products/mail/packages/mail/lib/gmail/api.ts) |
+| `people.googleapis.com` | Google Contacts, for the address book | [`contact-sources.ts`](/products/mail/packages/mail/lib/mail/contact-sources.ts) |
+| `graph.microsoft.com` | Outlook: mail, contacts and settings | [`lib/outlook/api.ts`](/products/mail/packages/mail/lib/outlook/api.ts) |
+| Your Exchange server, at the address you give | Exchange: mail, folders, the address book and the out-of-office reply, over EWS. Only an `https://` address is accepted | [`ews.rs`](/products/mail/crates/mail-native/src/ews.rs), [`ntlm.rs`](/products/mail/crates/mail-native/src/ntlm.rs) |
+| Your organisation's Autodiscover addresses, and its DNS | Only when you connect an Exchange account and the app does not know the server: finding the server's address — see "Exchange is different" below | [`ews_autodiscover.rs`](/products/mail/crates/mail-native/src/ews_autodiscover.rs), [`ews_srv.rs`](/products/mail/crates/mail-native/src/ews_srv.rs) |
+| `accounts.google.com`, `oauth2.googleapis.com`, `login.microsoftonline.com` | Sign-in, and every token refresh after it | [`oauth.rs`](/products/mail/crates/mail-native/src/oauth.rs), [`oauth-config.ts`](/apps/mail/src/oauth-config.ts) |
+| `plan.digitalhabits.org` | The anonymous daily usage count — see below. Off in Settings > General. And, only when you connect an Exchange account, a check of its access code — see below | [`usage-ping.ts`](/apps/mail/src/usage-ping.ts), [`exchange-access.ts`](/products/mail/packages/mail/lib/mail/exchange-access.ts) |
+| `github.com`, and GitHub's download servers | Checking for a new version and downloading it. The direct downloads only — see below | [`team_update.rs`](/products/mail/crates/mail-native/src/team_update.rs) |
+| Whatever host a sender put an image on | Remote images in HTML mail — see "Reading a message safely" below. On by default; off in Settings | [`images.rs`](/products/mail/crates/mail-native/src/images.rs) |
+
+That is the whole list. Links in mail, calendar invites and the Help menu
+open in your browser, not in the app.
+
+The window's Content-Security-Policy in
+[`tauri.conf.json`](/apps/mail/src-tauri/tauri.conf.json) is what enforces
+this: the page cannot reach a host the policy does not name, and
+[`app-csp.test.mjs`](/apps/mail/tests/app-csp.test.mjs) checks the policy on
+every build. It also names `www.googleapis.com` and `docs.googleapis.com`,
+which this app never calls — another build of the same interface uses
+them, and the two builds share one policy. Nothing here asks for a Calendar or Docs scope, so a token from
+this app could not read either.
+
+**There is no analytics and no crash reporting.** Nothing records what you
+do in the app or reports it anywhere.
+
+The one thing the app sends to us is an anonymous usage count, so we know
+roughly how many people use it. Only the release builds send it (the Mac
+and Windows downloads and the Microsoft Store app), at most once a day and
+only on days you use the app, and never before you accept the welcome
+screen. It sends three things to `plan.digitalhabits.org/api/ping`: the
+word `mail`, the system (`mac` or `windows`), and a random id that the app
+makes again at the start of each month, so two months of one install cannot
+be joined. Nothing about your mail, your mailboxes, your contacts or your
+accounts goes with it, and our server keeps no address and no user agent
+beside it. Turn it off in Settings > General, "Send anonymous usage count";
+with it off, nothing is sent. The code is [`usage-ping.ts`](/apps/mail/src/usage-ping.ts).
+
+**Updates.** The direct downloads (the `.dmg` and the Windows installer)
+look for a new version a short while after they start, and then every two
+hours. They read `latest.json` from the newest release of this repository,
+with no key and nothing about you. A new version is downloaded in the
+background and installed only if it is signed with the key built into the
+app; you choose when to restart, or it is installed when you quit. The
+Microsoft Store version has no updater: the store updates it. See
+[`team_update.rs`](/products/mail/crates/mail-native/src/team_update.rs).
+
+**The Exchange access code.** For now, connecting an Exchange account needs
+an access code from us. When you connect one, the app sends the code, and
+nothing else, to `plan.digitalhabits.org/api/mail/exchange-access`, and
+signs in to your Exchange server only if the answer is yes. Nothing about
+your account or your mail goes with it, and a reconnect does not ask again.
+See [`exchange-access.ts`](/products/mail/packages/mail/lib/mail/exchange-access.ts).
+
+You can check the rest: there is no analytics SDK in the dependency lists
+(`apps/mail/package.json`, `apps/mail/src-tauri/Cargo.toml`,
+`products/mail/crates/mail-native/Cargo.toml`), and nothing in
+`apps/mail/src`, `apps/mail/lib`, `packages/shared`,
+`products/mail/packages/mail` or `products/mail/crates/mail-native/src`
+contacts any host but the ones above.
+
+## What it asks your provider for
+
+### Google
+
+| Scope | Why |
+| --- | --- |
+| `https://mail.google.com/` | The full-mailbox scope. It is the only scope Gmail's IMAP and SMTP servers accept, and the app reads and sends over IMAP and SMTP so that a local copy of the mailbox can be kept without a request budget. Google describes it as read, compose, send and permanently delete. The app deletes mail for good in two cases only ([`actions.rs`](/products/mail/crates/mail-native/src/actions.rs)). One is a draft that you discard. The other is "Delete forever": in Trash or in Junk, you pick one conversation or select several, and the app asks before it deletes them. After you confirm, it waits eight seconds with an Undo before it tells the server. That call is not possible with a narrower scope. "Delete" everywhere else moves mail to Trash, which Gmail empties on its own schedule. The app has no "Empty Trash", on purpose: it never deletes a folder, only the conversations you picked. |
+| `openid`, `email` | Sign-in only: so Google returns an ID token naming the account. Added in [`connect-mailbox.ts`](/apps/mail/src/connect-mailbox.ts). |
+| `gmail.settings.basic` | Read and **set** your out-of-office reply. Setting it accepts only this scope. The same scope reads the name Gmail puts on mail you send; the app only reads that, never changes it. |
+| `contacts.readonly` | Read your Google Contacts, so a name completes to an address |
+
+Not requested: `gmail.modify` and `gmail.send`, which the full-mailbox scope
+already contains; nor Drive, Calendar, Docs, or any scope outside mail and
+contacts.
+
+### Microsoft
+
+`User.Read`, `Mail.ReadWrite`, `Mail.Send`, `Contacts.Read`,
+`MailboxSettings.ReadWrite`, plus `openid`, `profile`, `email` and
+`offline_access` for sign-in and refresh.
+
+Both lists are in [`oauth-config.ts`](/apps/mail/src/oauth-config.ts);
+[`connect-mailbox.ts`](/apps/mail/src/connect-mailbox.ts) adds `openid` and
+`email` to the Google request. Nothing else asks for a scope.
+
+## Where things are kept
+
+**Refresh tokens go in the operating system's credential store**, not in
+the app's own files — the macOS keychain, or Windows Credential Manager —
+under the service `org.digitalhabits.mail`. See
+[`secrets.rs`](/products/mail/crates/mail-native/src/secrets.rs). The
+database holds no token, so a copy of it cannot be used to sign in as you.
+
+**An Exchange password is kept the same way**, in the credential store and
+nowhere else. Only the app's Rust core reads it, to sign in; it never goes
+back to the window. See [`ews.rs`](/products/mail/crates/mail-native/src/ews.rs).
+
+On a Mac, a build that carries a provisioning profile uses the
+data-protection keychain, where access is decided by the app's entitlement
+and macOS never asks the user. A build without one uses the login keychain,
+where macOS may ask once per item with a password dialog — choose "Always
+Allow". See [`KEYCHAIN.md`](/products/mail/crates/mail-native/KEYCHAIN.md).
+
+**Mail is kept in a local SQLite file**, `mail.sqlite3`, in the app's data
+directory (`database_path` in
+[`db.rs`](/products/mail/crates/mail-native/src/db.rs)). It holds a copy of
+every message's headers, the bodies of recent mail and of mail you have
+opened, and your contacts. Attachments are fetched only when you open them,
+and are not kept; one you save goes to your Downloads folder. The file is
+not encrypted: anyone who can read your user account's files can read the
+mail in it, as with Apple Mail or Outlook.
+
+Disconnecting an account in Settings removes its token from the credential
+store and its messages, bodies and sync state from the file
+([`db.rs`](/products/mail/crates/mail-native/src/db.rs) `accounts_remove`,
+[`messages.rs`](/products/mail/crates/mail-native/src/messages.rs)
+`messages_clear_account`). A few smaller tables — contacts, snoozes, queued
+actions, the outbox — keep their rows until the app's data directory is
+deleted, which removes everything.
+
+**Settings stay on the machine** — in `localStorage` for the interface, and
+in the SQLite file for accounts. `localStorage` also holds a cache of the
+thread list (senders, subjects, snippets) so the list draws before the
+database answers ([`list-cache.ts`](/products/mail/packages/mail/lib/mail/list-cache.ts)).
+
+**A log file** in the operating system's log folder records what the sync
+worker did. It names the account, and for mail you send, the subject and
+the recipients. It never contains a message body.
+
+## How sign-in works
+
+The app opens your browser, you sign in with Google or Microsoft, and the
+answer comes back to a loopback listener on `127.0.0.1` — see
+[`oauth.rs`](/products/mail/crates/mail-native/src/oauth.rs) and
+[`connect-mailbox.ts`](/apps/mail/src/connect-mailbox.ts).
+
+**For Gmail and Outlook, you never type your mail password into this app.**
+It never sees one.
+
+The flow uses PKCE. The Google client secret is compiled into the app, which
+Google documents as not confidential for an installed app — PKCE is the
+protection, not the secret.
+
+**Exchange is different.** Exchange Web Services has no sign-in through the
+browser, so you type your username and password into the app. The app's
+Rust core signs in with NTLM, or with Basic only when the server offers
+nothing else, and always over `https://`: it refuses an `http://` address,
+so the password never travels unencrypted. After one refused password the
+account stops and asks you again, because each retry with a wrong password
+counts against you, and enough of them lock the account on the server. See
+[`ews.rs`](/products/mail/crates/mail-native/src/ews.rs) and
+[`ntlm.rs`](/products/mail/crates/mail-native/src/ntlm.rs).
+
+**Finding the server.** For a University of Copenhagen address the server is
+filled in. For another organisation, the app can find it the way Thunderbird
+does (Autodiscover): it asks `autodiscover.<your domain>` and then your
+domain itself, signing in to each over `https://` only, and then the DNS
+record `_autodiscover._tcp.<your domain>`. It asks one place at a time and
+signs in at most once at each. It gives your password to no host outside
+your email's own domain unless you agree first, and it stops at the first
+refused password, so that no other host gets it. See
+[`ews_autodiscover.rs`](/products/mail/crates/mail-native/src/ews_autodiscover.rs).
+
+## Reading a message safely
+
+The app never draws a sender's HTML into its own page. It shows each message
+in an iframe of its own. That iframe carries a Content-Security-Policy that
+lets no script run, except one hash-pinned helper of ours. Before the
+message reaches the iframe, it loses its scripts, forms, embeds and event
+handlers. The iframe also keeps the sender's CSS away from the app — see
+[`EmailHtmlView.tsx`](/products/mail/packages/mail/components/mail/EmailHtmlView.tsx).
+
+Three views show a message this way, because each one can hold words that
+somebody else wrote:
+
+- The reading pane.
+- The preview of a message before you send it. It shows the original you
+  quote, and it shows your own text, which starts as an older message when
+  you write from one.
+- The printed document, which names no script source at all — see
+  [`print-document.ts`](/products/mail/packages/mail/components/mail/print-document.ts).
+
+**The app's own page has a policy as well.** Scripts can run only from the
+app itself, and the page can connect only to the hosts in the table above.
+It is the second guard, for the case where something gets past the first.
+See `csp` in
+[`tauri.conf.json`](/apps/mail/src-tauri/tauri.conf.json).
+
+**Remote images load by default**, as they do in Apple Mail and Outlook. An
+image fetched from a sender's server can tell them that you opened their
+mail, and roughly where you are. We accept that trade so mail looks the way
+it was sent. To change this behaviour, turn off "Load images by default" in
+Settings. The app then blocks remote images, and you allow them per sender.
+Pictures carried inside the message are always shown, because fetching
+those tells nobody anything. A remote image is fetched by the app itself,
+with no cookies and no referrer, never by the page — see
+[`images.rs`](/products/mail/crates/mail-native/src/images.rs).
+
+## Checking the app you install
+
+**Mac.** Every release is signed with an Apple Developer ID and notarised by
+Apple — both the app and the disk image, because Gatekeeper judges the image
+you open. To check a copy before installing it:
+
+```bash
+spctl -a -vvv -t install "Digital Habits Mail_<version>_universal.dmg"
+```
+
+`accepted` and `source=Notarized Developer ID` mean it is the build we
+signed.
+
+**Windows.** Every installer is signed with Azure Trusted Signing. To check
+a copy, in PowerShell:
+
+```
+Get-AuthenticodeSignature .\Digital-Habits-Mail_<version>_x64-setup.exe |
+  Format-List Status, @{n='Subject';e={$_.SignerCertificate.Subject}}
+```
+
+`Status: Valid` and a subject of `CN=Reduce Digital Distraction Ltd` mean it
+is the build we signed. The Microsoft Store copy is re-signed by Microsoft
+and lists `Centre for Digital Habits` as the publisher; both names are ours.
+
+The build writes a SHA-256 checksum beside every installer, and we
+publish it with the download, so you can confirm the file you downloaded
+is the file we built.
+
+The version the app is running is shown in **Settings** on both platforms,
+and in the **Help** menu on a Mac, so a report can say which build it came
+from.
+
+## This repository
+
+The code here is a snapshot of each release, exported whole from the private
+repository the app is developed in. One commit is one version. Releases are
+tagged `mail-v<version>`, so `git diff mail-v0.3.3 mail-v0.3.4` shows
+everything that changed between two builds.
+
+## Reporting something
+
+Please open an issue: <https://github.com/digitalhabits/dh-mail/issues>.
+For anything you would rather not post in public, write to
+team@digitalhabits.org.

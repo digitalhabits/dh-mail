@@ -1,0 +1,11 @@
+# Run the development binary through the signer first. See sign-dev.sh: cargo
+# signs a debug build ad-hoc, the signature changes on every rebuild, and the
+# keychain then treats each build as a new app and asks for a password again.
+#
+# Both architectures, so this holds on an Intel Mac too.
+
+[target.aarch64-apple-darwin]
+runner = "./sign-dev.sh"
+
+[target.x86_64-apple-darwin]
+runner = "./sign-dev.sh"

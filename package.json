@@ -1,0 +1,48 @@
+{
+  "name": "digital-habits-mail",
+  "private": true,
+  "packageManager": "pnpm@9.14.4",
+  "scripts": {
+    "dev": "pnpm --dir apps/mail app:dev",
+    "build": "pnpm --dir apps/mail app:build",
+    "typecheck": "pnpm --dir apps/mail typecheck",
+    "test": "pnpm --dir apps/mail test"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@lexical/rich-text": "0.48.0",
+    "@lexical/selection": "0.48.0",
+    "@mdxeditor/editor": "^4.1.1",
+    "@radix-ui/react-dialog": "1.1.15",
+    "@radix-ui/react-popover": "^1.1.5",
+    "@radix-ui/react-slot": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lexical": "0.48.0",
+    "lucide-react": "^1.27.0",
+    "pdfjs-dist": "^5.7.284",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-quill-new": "^3.7.0",
+    "server-only": "^0.0.1",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^20",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.25.0",
+    "happy-dom": "^20.12.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5",
+    "vite": "^6.0.7"
+  }
+}

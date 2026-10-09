@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  macOS shows this line in the permission prompt, and refuses to show a
+	  prompt at all without it. Say what Mail does with the address book, in
+	  the reader's terms.
+	-->
+	<key>NSContactsUsageDescription</key>
+	<string>Digital Habits: Mail reads your contacts to complete names and addresses when you write a message. It never changes them.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Digital Habits: Mail uses the microphone when you dictate a note or a message.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Digital Habits: Mail turns your dictation into text. Speech is processed by Apple's speech recognition.</string>
+</dict>
+</plist>

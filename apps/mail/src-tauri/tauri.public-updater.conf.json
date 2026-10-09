@@ -1,0 +1,8 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzNzEyNTE5OTU5QkYyQQpSV1FxdjFtWlVSSTNDQ0Q1dGtYYzJ3aFlYcWhYZ1VkUzZ6VUEzdUVLZGVjd3d2ZXBETE52VWpVUwo="
+    }
+  }
+}

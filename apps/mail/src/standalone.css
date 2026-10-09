@@ -1,0 +1,187 @@
+/* Window chrome for the standalone app. Tailwind and the brand variables come
+   from styles/globals.css, which this build imports too. What is left is the
+   full-height frame that a host shell would otherwise provide. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The document under the interface. `main.tsx` copies the resolved theme here
+   so the window does not flash white before the shell paints. */
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  color-scheme: dark;
+  background: #14202c;
+  color: #f5f0e8;
+}
+
+/* The window has an overlay title bar: no system chrome, and the traffic
+   lights float over the page at (16, 21). Nothing is draggable unless the page
+   says so, which is why the window could not be moved.
+
+   The strip reserves that height rather than sitting over the content, so it
+   cannot swallow a click meant for the interface underneath. */
+.dh-titlebar {
+  flex: none;
+  height: 44px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* On Windows the window has no system title bar either (see
+   tauri.windows.conf.json). The window buttons sit at the right, over the
+   strip (see WindowControls.tsx), so the row stops short of them. `main.tsx`
+   sets the attribute; MailPage reads the variables. */
+html[data-dh-os="windows"] {
+  --mail-titlebar-right: 150px;
+}
+
+/* The search box goes first on Windows, and the buttons follow it. On a Mac
+   the buttons come first, because the left edge there belongs to the traffic
+   lights and the reader's eye starts to the right of them. There are no
+   traffic lights here, and a search box at the head of the row is what
+   Windows itself does (File Explorer, Settings, the Start menu). */
+html[data-dh-os="windows"] .mail-titlebar-search {
+  order: -1;
+}
+
+/* And the row stands in the same column as New email, rather than out over
+   the folders: the search box and the button under it are the two things
+   the reader reaches for first, and a column is easier to come back to than
+   a corner. MailPage stands the row there itself now; what this says is
+   only that there are no traffic lights here to keep out from under. */
+html[data-dh-os="windows"] .mail-shell {
+  --mail-titlebar-left: var(--mail-list-controls-left, 12px);
+}
+
+/* Following it at the speed of the rail, rather than jumping to the new
+   place while the rail is still sliding to it. */
+html[data-dh-os="windows"] .mail-titlebar {
+  transition: padding-left var(--mail-rail-slide, 0ms) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-dh-os="windows"] .mail-titlebar {
+    transition: none;
+  }
+}
+
+/* Scrollbars that keep out of the way, as they do on a Mac.
+
+   WKWebView draws the system's overlay scrollbars: they lie over the
+   content and fade away when nothing is moving. WebView2 is Chromium, and
+   draws the classic kind — a bar that stands there for as long as there is
+   anything to scroll, in a gutter of its own. That is why the folder rail
+   and the thread list each carried a pale rule down the right.
+
+   The gutter stays; only the bar in it is hidden. Keeping the gutter is
+   what stops a list from reflowing every time a bar arrives. `scrollbars.ts`
+   marks whatever is being scrolled, and unmarks it a moment after it stops.
+
+   Every element, not only the ones in the mail shell, so that a menu or a
+   dialog drawn into a portal is held to the same rule.
+
+   Windows only. On a Mac, asking for a scrollbar colour at all is what
+   turns an overlay scrollbar into a classic one, which is the thing this
+   rule exists to undo. */
+html[data-dh-os="windows"],
+html[data-dh-os="windows"] * {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* The fallback is for a scroller outside the mail shell, where the chrome
+   tokens are not in scope: a grey that carries on either theme. */
+html[data-dh-os="windows"] [data-dh-scrolling] {
+  scrollbar-color: var(--mail-chrome-faint, rgba(140, 140, 140, 0.7))
+    transparent;
+}
+
+.dh-window-controls,
+.dh-window-controls button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* The window buttons are drawn in the colour of the strip they stand on.
+
+   They have to be told it. The buttons are a sibling of the interface, not
+   a part of it — they are fixed over the top of the whole page — so they
+   are outside `.mail-shell`, which is where the chrome colours are set.
+   Asking for `--mail-chrome-fg` out here got the fallback every time: a
+   near-black glyph, which is right on the cream chrome and all but
+   invisible on the navy one.
+
+   The same two values as the dark chrome in products/mail/.../mail.css.
+   `main.tsx` keeps `data-theme` on <html> in step with the setting. */
+.dh-window-controls {
+  --mail-chrome-fg: #1c1917;
+  --mail-chrome-hover: rgb(244 241 236);
+  --mail-chrome-active: rgb(231 229 228);
+}
+
+html[data-theme="dark"] .dh-window-controls {
+  --mail-chrome-fg: #f5f0e8;
+  --mail-chrome-hover: rgba(255, 255, 255, 0.06);
+  --mail-chrome-active: rgba(255, 255, 255, 0.12);
+}
+
+/* A control inside the strip must still be clickable. */
+.dh-titlebar button,
+.dh-titlebar a,
+.dh-titlebar input,
+.dh-titlebar label {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* A popped-out thread. The window is transparent and the card inside draws its
+   own rounded edges and shadow, so the page behind it must paint nothing —
+   otherwise the card sits on an opaque rectangle with square corners. */
+html.dh-popout,
+html.dh-popout body,
+html.dh-popout #root {
+  background: transparent;
+}
+
+/* Banners above the mail interface sit in the window's own top row, where
+   the traffic lights (mac, left) or the window buttons (Windows, right)
+   float over the page. Their content keeps clear of both — a Reconnect
+   button the window's close button sits on cannot be pressed. */
+.dh-top-banner {
+  padding-left: calc(1rem + var(--dh-banner-inset-left, 0px));
+  padding-right: calc(1rem + var(--dh-banner-inset-right, 0px));
+}
+
+html:not([data-dh-os="windows"]) {
+  --dh-banner-inset-left: 64px;
+}
+
+html[data-dh-os="windows"] {
+  --dh-banner-inset-right: 150px;
+}
+
+/* A phone. There is no title strip to drag a window by and no traffic
+   lights to keep clear of; what the top of the page keeps clear of is the
+   notch, which the safe-area inset measures. `main.tsx` sets the attribute
+   — see `lib/mail/host-form.ts`. */
+html[data-dh-form="phone"] .dh-titlebar {
+  height: env(safe-area-inset-top, 0px);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+html[data-dh-form="phone"] {
+  --dh-banner-inset-left: 0px;
+  --dh-banner-inset-right: 0px;
+}
+html[data-dh-form="phone"] .dh-top-banner {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+}

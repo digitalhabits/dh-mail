@@ -1,0 +1,92 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    // See the note in the root tsconfig: the typecheck is the only thing in
+    // this repo that catches an unused import, and CI runs it.
+    "noUnusedLocals": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "paths": {
+      "next/dynamic": [
+        "./src/seams/next-dynamic.tsx"
+      ],
+      "@/lib/mail/store/types": [
+        "../../products/mail/packages/mail/lib/mail/store/types.ts"
+      ],
+      "@/lib/mail/store/tauri": [
+        "../../products/mail/packages/mail/lib/mail/store/tauri/index.ts"
+      ],
+      "@/lib/mail/store": [
+        "./src/seams/store.ts"
+      ],
+      "@/lib/mail/connect-mailbox": [
+        "./src/seams/connect-mailbox.ts"
+      ],
+      "@/lib/mail/attachment-source": [
+        "./src/seams/attachment-source.ts"
+      ],
+      "@/lib/mail/attachment-text": [
+        "./src/seams/attachment-text.ts"
+      ],
+      "@/lib/mail/image-proxy": [
+        "./src/seams/image-proxy.ts"
+      ],
+      "@/lib/mail-router": [
+        "./src/seams/mail-router.ts"
+      ],
+      "@/lib/page-snapshot-cache": [
+        "./src/seams/page-snapshot-cache.ts"
+      ],
+      "@/lib/gmail/oauth": [
+        "./src/seams/gmail-oauth.ts"
+      ],
+      "@/lib/outlook/oauth": [
+        "./src/seams/outlook-oauth.ts"
+      ],
+      "@/lib/mail/team-records": [
+        "./src/seams/no-team-records.ts"
+      ],
+      "@/components/mail/team-layer": [
+        "./src/seams/no-team-layer.tsx"
+      ],
+      "@/team-shell": [
+        "./src/seams/no-team-shell.ts"
+      ],
+      "@/lib/mail/i18n-team": [
+        "./src/seams/no-i18n-team.ts"
+      ],
+      "@/lib/native-shell": [
+        "./lib/native-shell.ts"
+      ],
+      "server-only": [
+        "./src/seams/server-only.ts"
+      ],
+      "@/*": [
+        "./*",
+        "../../packages/shared/*",
+        "../../products/mail/packages/mail/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

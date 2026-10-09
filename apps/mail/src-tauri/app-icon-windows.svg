@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The same icon as app-icon.svg, drawn edge to edge.
+
+       Two sources, because the two systems reserve different room. macOS
+       gives every icon one slot and expects the tile inside Apple's
+       template - 824 px on a 1024 canvas - so app-icon.svg keeps that
+       margin, and without it ours sat in the Dock a fifth larger than its
+       neighbours. Windows reserves nothing: it draws the icon it is given
+       at the size of the slot. Handed the Mac tile, it drew the margin too,
+       and the app sat in the Start menu a fifth smaller than everything
+       round it.
+
+       So this one is the artwork with the wrapping transform taken off.
+
+       The envelope is drawn larger here as well. On a Mac the tile is what
+       the eye measures, and every icon beside it has the same tile, so a
+       mark at three fifths of it looks the size of its neighbours. Windows
+       has no tile: it sets the icon straight down on the taskbar, where our
+       cream is all but the colour of the bar itself, so the only thing seen
+       is the envelope - and at 63 per cent of the square it sat small
+       beside Outlook and Chrome, whose marks fill theirs. Scaled from 34 to
+       42.5 it reaches about 80 per cent, and stays centred: the ink is
+       centred on (12,12) in these units, so the offset is 512 - 12 x 42.5.
+
+       Regenerate the Windows set from here:
+         pnpm tauri icon src-tauri/app-icon-windows.svg -o <somewhere>
+       and copy icon.ico, the Square*Logo set and StoreLogo.png out of it.
+       icon.icns comes from app-icon.svg and must not be taken from here. -->
+  <rect width="1024" height="1024" rx="230" fill="#f1eee9"></rect>
+  <g fill="none" stroke="#1e2d3e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,2) scale(42.5)">
+    <rect x="3" y="5.5" width="18" height="13" rx="2.2"></rect>
+    <path d="M3.5 7l8.5 6 8.5-6"></path>
+  </g>
+</svg>

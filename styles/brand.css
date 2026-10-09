@@ -1,0 +1,8 @@
+/*
+ * Digital Habits brand surface colors.
+ * Edit hex values here only — other stylesheets and Tailwind read these variables.
+ */
+:root {
+  /* Darker cream — section panels, warm grey, muted chrome */
+  --cream-section: #F1EEEA;
+}

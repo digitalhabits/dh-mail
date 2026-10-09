@@ -1,0 +1,1355 @@
+/*
+ * Shared mail-client styles (composer, bubbles, chrome themes) for every app
+ * embedding @dh/mail. Import AFTER the app's globals; apps theme via
+ * .mail-shell variable overrides in a later-imported app-level stylesheet.
+ */
+
+/* Mail composers type at ~17px for comfortable reading; mail still sends at
+   12pt via the server wrapper. */
+/* The account's default font and size (see lib/mail/text-style), set on
+   the box round the editor, so what is written looks as it will be sent.
+   Text given another font or size in Aa carries its own. */
+.rich-text-editor.mail-message-editor .ql-editor {
+  font-family: var(--mail-text-font, inherit);
+  font-size: var(--mail-text-size, 17px);
+  line-height: 1.55;
+}
+
+/* A picture written into the message shows no wider than the box. What is
+   sent is already capped the same way — see client-email-html — so the box
+   it was dropped into was the one place still showing it full size. */
+.rich-text-editor.mail-message-editor .ql-editor img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Signature editor: signatures send at 13px with tight lines, so edit them
+   the same way. */
+.rich-text-editor.signature-editor .ql-editor {
+  font-size: 13px;
+  color: #444;
+}
+/* And links the same way too. Quill's own theme paints them #06c, which
+   is neither what the composer shows nor what the mail sends. */
+.rich-text-editor.signature-editor .ql-editor a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgb(214 211 209);
+  text-underline-offset: 2px;
+}
+.rich-text-editor.signature-editor .ql-editor a:hover {
+  text-decoration: none;
+}
+.rich-text-editor.signature-editor .ql-editor p {
+  margin: 0;
+}
+
+/*
+ * The subject stays put while the thread scrolls under it.
+ *
+ * A shadow rather than a rule, and a short one — about ten pixels, which
+ * lifts the header off what is moving beneath it without reading as a bar
+ * in its own right.
+ *
+ * Its own class rather than a Tailwind shadow because the two themes need
+ * two different ones: a tenth of black is invisible on the dark theme's
+ * near-black thread surface.
+ */
+.mail-thread-header {
+  box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.1);
+}
+/* The card a message is, lifted off the surface behind it. Its own rule
+   because the two themes want two shadows — a quarter of black is nothing
+   on cream and is the whole lift on navy. */
+.mail-shell[data-theme="dark"] .mail-bubble-card {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.mail-shell[data-theme="dark"] .mail-thread-header {
+  box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * How much of the pane one side of the conversation may take.
+ *
+ * Three quarters, which leaves a quarter as the gutter on the side the
+ * message is not on. A chat app reads this way — the eye gets who said
+ * what from the shape of the column before it reads a word — and the
+ * gutter was a fixed 40px, which is that shape on a narrow pane and a
+ * hairline on a wide one. A third of the pane was tried first and read as
+ * more empty than a message.
+ *
+ * But a share of the pane is the wrong question once the pane is large.
+ * Three quarters of a wide reader is a line nobody wants to read: the eye
+ * loses its place coming back for the next one. So the share is held under
+ * 640px, which is about eighty characters at this size, and which is also
+ * about the width mail is designed to — so a newsletter that can reflow
+ * sits at its own width rather than being stretched past it.
+ *
+ * Four limits hold it either side of that.
+ *
+ * The floor is 340px, so a narrow pane keeps a bubble wide enough to read
+ * a sentence in. Two thirds of 400px is 270px, which wraps an address and
+ * a date into three lines each.
+ *
+ * `--mail-bubble-fixed` is the third floor, and it is only ever set on a
+ * mail that cannot reflow: the frame measures its `min-content` and puts
+ * the answer here (see EmailHtmlView). A mail of paragraphs asks for
+ * nothing — its `min-content` is about one word — so the share above
+ * stands, and the measure stays readable. A newsletter built on a fixed
+ * 600px table asks for 600px, because the alternative is not a narrower
+ * newsletter but a clipped one. Nothing guesses from the markup; the
+ * document is asked.
+ *
+ * The ceiling is the pane less 14px, and it is above every floor on
+ * purpose: a mail wider than the pane is held to the pane and scaled to
+ * fit inside its own frame rather than allowed to push past it.
+ *
+ * All of it in one declaration, so the pane's own width answers for it.
+ * A pane is one of three resizable things in the window, so its width is
+ * nothing a media query knows.
+ */
+.mail-bubble-column {
+  max-width: min(
+    calc(100% - 14px),
+    max(340px, min(75%, 640px), var(--mail-bubble-fixed, 0px))
+  );
+}
+
+/*
+ * Chat pop-out box.
+ *
+ * The editor is dressed as the single rounded box it replaced: one border,
+ * a floor of one line and a ceiling of about five, after which it scrolls
+ * itself. The room on the right is for the emoji button, which sits inside
+ * the box in the corner.
+ */
+.rich-text-editor.mail-chat-input .ql-container {
+  border: 1px solid rgb(231 229 228);
+  border-radius: 0.75rem;
+  background: var(--mail-compose-surface);
+}
+.rich-text-editor.mail-chat-input:focus-within .ql-container {
+  border-color: rgb(214 211 209);
+}
+.rich-text-editor.mail-chat-input .ql-editor {
+  max-height: 160px;
+  padding: 9px 40px 9px 14px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+/* Lines, not paragraphs: a chat message is short and its own block spacing
+   would put a gap in the middle of one. */
+.rich-text-editor.mail-chat-input .ql-editor p {
+  margin: 0;
+}
+.rich-text-editor.mail-chat-input .ql-editor.ql-blank::before {
+  left: 14px;
+  right: 40px;
+  color: rgb(168 162 158);
+  font-style: normal;
+}
+
+/* A list sits nearer its own margin than Quill puts it.
+ *
+ * The shared editor indents the list by 18px and Quill indents each line
+ * another 1.5em inside that, so a bullet in a reply started about forty
+ * pixels in — a paragraph's worth of white before the first word, in a box
+ * that is already narrow. Both halved: the bullet keeps a step of its own
+ * and the words start where the eye is already looking.
+ *
+ * Only the mail boxes. The same editor writes notes and task descriptions
+ * elsewhere, and those have the room. */
+.rich-text-editor.mail-message-editor .ql-editor ul,
+.rich-text-editor.mail-message-editor .ql-editor ol {
+  margin-left: 6px;
+}
+.rich-text-editor.mail-message-editor .ql-editor li {
+  padding-left: 1em;
+  /*
+   * A bullet is a line, the same as a paragraph is.
+   *
+   * The editor puts eight pixels under every list item, which is right for
+   * a note or a task description and wrong for mail: two bullets read as
+   * two bullets with a blank line between them, and the mail that goes out
+   * has no such gap — `<li>` is written bare, and the client reading it
+   * puts its items on consecutive lines. So the box was showing a letter
+   * nobody would receive. See client-email-html, which builds the lists.
+   */
+  margin: 0;
+}
+
+/* Reply composer card: the editor and its footer controls share the card's
+   single border, and Quill's toolbar lives inline in the footer row. */
+.mail-composer-card .ql-container.ql-snow {
+  border: none;
+}
+
+/* The reply box grows with what you write, but not past half the pane.
+   Without a ceiling a long draft — an imported one especially — pushed the
+   thread off the top and took the send buttons with it. `.ql-editor` already
+   scrolls itself, so a max-height is the whole fix. Focus mode is exempt:
+   filling the pane is the point of it.
+
+   The ceiling comes in as a variable because the card is zoomed. A `vh` is
+   measured before the zoom and drawn after it, so a flat 45vh was 45% of the
+   pane at 100% and 63% at 140% — which is how the send buttons went missing
+   again for anybody reading at a comfortable size. ThreadPane divides the
+   share it wants by the zoom; this is only the fallback. */
+.mail-composer-card:not(.mail-composer-card-focus)
+  .mail-message-editor
+  .ql-editor {
+  max-height: var(--mail-compose-cap, 45vh);
+}
+
+/*
+ * Where a composer keeps the message, the signature and the files in one
+ * box, that box is what stops and scrolls — not the editor inside it.
+ *
+ * The signature is the end of the letter. Under an editor that scrolled by
+ * itself it was a lid: the words stopped mid-sentence at the ceiling and
+ * the signature began underneath, and no amount of scrolling moved it, so
+ * the reply looked cut in half. Scrolling the whole box reads the way the
+ * letter does — body, then name.
+ *
+ * The ceiling has no fallback here on purpose: unset, the declaration is
+ * dropped and the box has no ceiling at all, which is what a composer with
+ * a height of its own already wants.
+ */
+.mail-composer-card:not(.mail-composer-card-focus) .mail-composer-scroll {
+  /* The band above holds the ceiling now — see ThreadPane, where it is set.
+     This takes whatever the rows that cannot shrink have left. */
+  overflow-y: auto;
+}
+
+/*
+ * The link editor is not let out of the box by these rules any more.
+ *
+ * The scrolling box and the bands around it used to switch to
+ * `overflow: visible` while it was open, so the box was not cut off. A box
+ * that stops scrolling drops its scroll offset, so the words jumped down
+ * and the link editor stood away from them. The link editor is pinned to
+ * the window instead (RichTextEditor, `rescale`), which no box clips.
+ */
+
+/*
+ * The menu of people a recipient field offers.
+ *
+ * Near the foot of the window it opens upwards, out of the top of the band
+ * — and the band cut it off there, so the names nearest the field were
+ * the only ones left, under a sliver of the rest. The list editor that
+ * opens in its place hangs the same way. Both bands stand aside while
+ * either is open.
+ */
+.mail-composer-region:has([data-recipient-menu]),
+.mail-composer-column:has([data-recipient-menu]) {
+  overflow: visible;
+}
+
+/* And then the editor grows to its words, because the box above holds the
+   ceiling for both of them. Same weight as the rule above it, and after it,
+   which is what decides this. */
+.mail-composer-card .mail-composer-scroll .mail-message-editor .ql-editor {
+  max-height: none;
+}
+
+/*
+ * Reply focus mode: the box is the pane, and the letter scrolls in it.
+ *
+ * The chain below is react-quill's wrapper included — the `.quill` div has
+ * no flex of its own, and without it the editor stays at its minimum height
+ * however tall the pane is.
+ *
+ * `1 0 auto`, not `1 1 0`: grow into whatever room is spare, and never
+ * shrink below the words. So a short reply fills the pane — press anywhere
+ * and the caret lands in it — and a long one keeps its full height and the
+ * box above scrolls, carrying the signature at the end of it where it
+ * belongs. Scrolling the editor instead is what left the signature parked
+ * over the last line of a letter that was still going.
+ */
+.mail-composer-card-focus .mail-composer-scroll {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.mail-composer-card-focus .mail-message-editor,
+.mail-composer-card-focus .mail-message-editor > .quill {
+  display: flex;
+  min-height: 0;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.mail-composer-card-focus .mail-message-editor .ql-container {
+  display: flex;
+  min-height: 0;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.mail-composer-card-focus .mail-message-editor .ql-editor {
+  flex: 1 0 auto;
+  /* The box above does the scrolling now, so this must not clip. */
+  max-height: none;
+  overflow: visible;
+}
+/*
+ * The formatting row, wherever a message is written.
+ *
+ * Keyed off the row itself rather than off the composer card it used to sit
+ * in, because it sits in three places now — the composer, the reply, and the
+ * out-of-office card — and a bold button that is one size in one of them and
+ * another size in the next is the sort of difference nobody chose.
+ *
+ * Quill puts `ql-toolbar ql-snow` on whatever element it is given, so these
+ * undo the bar the snow theme would otherwise draw.
+ */
+.mail-composer-toolbar.ql-snow {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.mail-composer-toolbar.ql-snow .ql-formats {
+  margin-right: 0;
+  display: inline-flex;
+  align-items: center;
+  /* The buttons carry their own padding, which is the air between two
+     glyphs. A gap on top of that read as a gap between separate controls
+     rather than one row of them. */
+  gap: 0;
+}
+.mail-composer-toolbar.ql-snow button {
+  width: 24px;
+  height: 26px;
+  padding: 3px 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mail-composer-toolbar.ql-snow button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Brief pulse when opening a thread at a search hit. */
+@keyframes mail-search-hit-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(180, 140, 80, 0.45);
+    background-color: rgba(250, 240, 220, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(180, 140, 80, 0);
+    background-color: transparent;
+  }
+}
+.mail-search-hit {
+  animation: mail-search-hit-pulse 1.8s ease-out 1;
+}
+
+/* Optimistic send: pending outline → confirmed fill (~200ms). */
+@keyframes mail-sent-confirm {
+  from {
+    opacity: 0.92;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.mail-sent-confirm {
+  animation: mail-sent-confirm 200ms ease-out 1;
+}
+
+/*
+ * Mail shell themes.
+ *
+ * Light restores the cream list and the white reading pane. Dark uses the same
+ * Digital Habits navy palette as the To-Do app, on three steps: #14202c is the reading
+ * pane, #1a2735 is the chrome around it, and #1e2d3e is a card on either of
+ * them. Teal #4ec0b0 is the accent.
+ *
+ * The reading pane is the darkest, not the chrome. Mail is read on that pane
+ * for hours, and a near-black behind the text is quieter to sit in front of.
+ *
+ * `data-theme` on `.mail-shell` selects the theme. The interface writes the
+ * resolved value there — see `lib/mail/theme.ts`. `system` is resolved before
+ * it arrives, so only `light` and `dark` appear in this file.
+ *
+ * One rule decides what goes dark: app chrome goes dark, and anything that
+ * shows or becomes real email HTML stays light. A sender writes dark text on
+ * white and cannot be recolored safely; what you write is sent the same way
+ * and should look while you write it as it will look when it lands. So the
+ * light islands are the sheet a message is on — a bubble holding a sender's
+ * HTML, the box you type in, the send preview — and nothing else. They carry
+ * `.mail-light-surface` or `.mail-bubble-surface`, which put the light values
+ * back for their subtree.
+ *
+ * Words we set ourselves are not on a sheet. A plain-text message, the row of
+ * reply actions, the card around a composer: we choose those colors, so they
+ * go dark with the rest of the chrome.
+ */
+.mail-shell {
+  --mail-chrome: #faf8f5;
+  --mail-chrome-border: rgb(231 229 228);
+  --mail-chrome-fg: #1c1917;
+  --mail-chrome-muted: rgb(87 83 78);
+  --mail-chrome-faint: rgb(168 162 158);
+  --mail-chrome-hover: rgb(244 241 236);
+  --mail-chrome-selected: var(--cream-section);
+  --mail-chrome-chip-border: rgb(214 211 209);
+  --mail-chrome-chip-active-bg: var(--cream-section);
+  --mail-chrome-chip-active-fg: #1c1917;
+  /* A chrome control that is switched on and stays on — the folder rail's
+     toggle. Navy on the cream chrome, and the other way round on the navy
+     chrome below, because "on" has to be the thing the bar is not. */
+  --mail-chrome-pinned: #1a2735;
+  --mail-chrome-pinned-fg: #faf8f5;
+  --mail-tab-active: #1c1917;
+  --mail-pane: #ffffff;
+  /*
+   * The reader is a room; a message is a sheet of paper in it.
+   *
+   * So the room takes the cream the rest of the chrome is in — header, the
+   * canvas behind the messages, the bar of actions at the foot — and white
+   * is kept for the messages themselves. It was the other way round, which
+   * put the brightest surface behind the message and a tint on the message,
+   * and read as though the paper were the thing that had been colored in.
+   */
+  --mail-thread: #faf8f5;
+  --mail-thread-fg: #1c1917;
+  --mail-thread-muted: rgb(120 113 108);
+  /*
+   * The line under the subject: who the thread is with, how many messages,
+   * when, and which mailbox took them in.
+   *
+   * Darker than the muted grey around it, because it is small type on cream
+   * and it is the one line in the header anybody reads out. Its own token
+   * rather than a stone class, because the two themes want two answers: on
+   * navy the muted colour is already easy to read, and the same step there
+   * would make this as loud as the subject above it.
+   */
+  --mail-thread-meta: #3f3a36;
+  /* The chrome, which is what the mailbox list is painted in — see the
+     dark block, which says the same thing in its own colours. */
+  --mail-thread-chrome: var(--mail-chrome);
+  --mail-thread-chrome-line: rgb(231 229 228);
+  --mail-bubble-other: #ffffff;
+  --mail-bubble-other-border: rgb(231 229 228);
+  --mail-bubble-own: #f0fdfa;
+  /* A desaturated mint: darker than the fill but nowhere near teal. The
+     saturated edge read as an outline drawn round the words, and a shade of
+     the fill alone was too faint to hold the shape at all. */
+  --mail-bubble-own-border: rgb(183 222 211);
+  /* The box you type into, a paler cast of the bubble the words become. It
+     is not white and it is barely teal: enough to lift the box off the card
+     and to say the message being written is yours. */
+  --mail-compose-surface: #f7fefd;
+  --mail-fade-from: #faf8f5;
+  --mail-title-search-ring: rgb(214 211 209);
+  /*
+   * The buttons that do the thing: New mail, and Reply / Reply all /
+   * Forward under a thread.
+   *
+   * Light keeps what they always were — a white card with a hairline. It is
+   * dark that needed naming: white there is too big a jump from the page to
+   * make with a button, so the dark values below lift a slate surface off
+   * the chrome instead of punching a hole in it.
+   */
+  --mail-action: #ffffff;
+  --mail-action-border: rgb(231 229 228);
+  --mail-action-fg: #1c1917;
+  --mail-action-hover: #fafaf9;
+  /*
+   * The second rank: Forward beside Reply, and the buttons that are only
+   * an icon. Light has always drawn these the same as the first rank; it
+   * is dark that tells them apart, by giving the first a surface and
+   * leaving the second an outline.
+   */
+  --mail-action-2: #ffffff;
+  --mail-action-2-border: rgb(231 229 228);
+  --mail-action-2-fg: #1c1917;
+  --mail-action-2-icon: rgb(120 113 108);
+  --mail-action-2-hover: #fafaf9;
+
+  /* A row of choices where one is on: the mailbox tabs, the mail/people
+     switch in the title bar. */
+  --mail-segment-track: var(--cream-section);
+  --mail-segment-track-strong: var(--cream-section);
+  --mail-segment-active: #ffffff;
+  /*
+   * The mark a mailbox wears while it answers on its own.
+   *
+   * A slate blue out of the chrome's own navy family, not the rust it wore
+   * first: an auto-reply is a thing the reader switched on and means to
+   * have running, so the mark reports it. Red asked to be dealt with, three
+   * times over in a row of four mailboxes.
+   */
+  --mail-autoreply: #5c7186;
+  /* What the arrow inside the badge is drawn in — dark panel and light want
+     opposite ends of it, and the badge is small enough that a weak pair is
+     no arrow at all. */
+  --mail-autoreply-fg: #ffffff;
+  --mail-segment-active-fg: #1c1917;
+  --mail-segment-fg: rgb(87 83 78);
+
+  /* Boxes that hold something rather than do something. */
+  --mail-field-border: rgb(214 211 209);
+  --mail-field-border-soft: rgb(231 229 228);
+  --mail-field-bg: #ffffff;
+  --mail-placeholder: rgb(168 162 158);
+
+  /* The one colour that is the same in both themes, and the link text,
+     which is not: on navy the same teal is too dark to read. */
+  --mail-accent: #2a9d8f;
+  --mail-link: #2a9d8f;
+  --mail-row-selected: #ffffff;
+  --mail-row-selected-solid: #ffffff;
+  /* The chrome's hover, so a row in the list and a row in the folders can
+     never drift apart. They are the same colour on this theme already. */
+  --mail-row-hover: var(--mail-chrome-hover);
+
+  /* A person or a list, as a chip in an address field. */
+  --mail-chip: var(--cream-section);
+  --mail-chip-fg: #1c1917;
+  --mail-chip-muted: rgb(120 113 108);
+}
+
+.mail-shell[data-theme="dark"] {
+  color-scheme: dark;
+
+  --mail-chrome: #1a2735;
+  --mail-chrome-border: rgba(255, 255, 255, 0.1);
+  --mail-chrome-fg: #f5f0e8;
+  --mail-chrome-muted: #c9c5bc;
+  --mail-chrome-faint: #9aa3b0;
+  /*
+   * One hover, everywhere a row is hovered: the folders, the thread list
+   * and every menu row all come up in this. It used to be a six per cent
+   * white wash, which landed a shade under the list's own hover and made
+   * the rail and the list look like two different surfaces.
+   *
+   * Opaque rather than a wash, because the wash was mixing with whatever
+   * was under it — and on this theme that is three or four different navies.
+   */
+  --mail-chrome-hover: #2b3c53;
+  --mail-chrome-selected: rgba(255, 255, 255, 0.1);
+  --mail-chrome-chip-border: rgba(255, 255, 255, 0.16);
+  --mail-chrome-chip-active-bg: rgba(255, 255, 255, 0.12);
+  --mail-chrome-chip-active-fg: #f5f0e8;
+  --mail-chrome-pinned: #f5f0e8;
+  --mail-chrome-pinned-fg: #1a2735;
+  --mail-tab-active: #4ec0b0;
+  --mail-pane: #14202c;
+  /*
+   * The reader, back to front: the surface behind the messages, then the
+   * card a message is. `--mail-thread-fg` is what a plain message is
+   * written in, on that card; mail that paints its own page keeps its own
+   * background and is unaffected by either.
+   *
+   * The surface is the chrome, which is what the mail list beside it is
+   * painted in — the same as light, where both are the one cream. It was a
+   * step lighter here, and that made a seam down the window that the light
+   * theme does not have. The card is what should stand out against it, and
+   * it still does; two backgrounds a shade apart only look like a mistake.
+   */
+  --mail-thread: var(--mail-chrome);
+  --mail-thread-fg: #e2e9f0;
+  --mail-thread-muted: #9fb2c4;
+  /* Already legible on navy — see the light block. */
+  --mail-thread-meta: var(--mail-u-fg-muted, #c9c5bc);
+  /*
+   * The toolbar, the subject header, the bar the reply buttons sit on.
+   *
+   * The chrome, which is what the mailbox list beside them is painted in —
+   * the same as light, where all of it is the one cream. They are the
+   * frame around the reader rather than part of it, and a frame that
+   * matches on one theme and not the other is two designs.
+   *
+   * The line is a step down from both, so the join reads as a join.
+   */
+  --mail-thread-chrome: var(--mail-chrome);
+  --mail-thread-chrome-line: #101922;
+  /*
+   * A bubble holding words we set ourselves goes dark like everything else.
+   * A bubble holding a sender's HTML cannot: their text is written dark on
+   * an assumed white, and no rule of ours can recolor it safely. Those
+   * bubbles carry `.mail-bubble-surface`, which puts the light values back
+   * (below) — so the sheet is the message, and the pane around it is dark.
+   */
+  --mail-bubble-other: #293a4d;
+  --mail-bubble-other-border: #3c5066;
+  /* Teal-tinted, and a different hue from the navy card, so "mine" is still
+     said by the fill and not only by which side the bubble is on. */
+  --mail-bubble-own: #1b3a35;
+  --mail-bubble-own-border: rgba(45, 212, 191, 0.35);
+  /* Dark keeps the surface the rest of the chrome uses: a pale tint here
+     would glare, and the bubbles stay light for the mail inside them. */
+  --mail-compose-surface: #1e2d3e;
+  --mail-fade-from: #1a2735;
+  --mail-title-search-ring: rgba(78, 192, 176, 0.55);
+  /* Lifted off the chrome, not cut out of it — see the light block. */
+  --mail-action: #3d5570;
+  --mail-action-border: #64809d;
+  --mail-action-fg: #f3f6fa;
+  --mail-action-hover: #46607d;
+
+  --mail-action-2: transparent;
+  --mail-action-2-border: #3c5066;
+  --mail-action-2-fg: #e2e9f0;
+  --mail-action-2-icon: #9fb2c4;
+  --mail-action-2-hover: rgba(255, 255, 255, 0.06);
+
+  --mail-segment-track: #18222e;
+  --mail-segment-track-strong: #0f1822;
+  --mail-autoreply: #8199ad;
+  --mail-autoreply-fg: #16202b;
+  --mail-segment-active: #33465c;
+  --mail-segment-active-fg: #f3f6fa;
+  --mail-segment-fg: #9fb2c4;
+
+  --mail-field-border: #33465c;
+  --mail-field-border-soft: #2b3c4f;
+  --mail-field-bg: #141e2a;
+  --mail-placeholder: #7189a1;
+
+  --mail-accent: #2a9d8f;
+  --mail-link: #5fc2b4;
+  /* Colour marks the open thread, grey marks the one under the pointer, so
+     the two are never mistaken for each other. */
+  --mail-row-selected: rgba(42, 157, 143, 0.1);
+  /* The same tint as a solid colour, for a ring drawn over the row. */
+  --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 10%, #1a2735);
+  --mail-row-hover: var(--mail-chrome-hover);
+
+  /*
+   * A chip in an address field.
+   *
+   * It was the light cream in both themes with `text-stone-700` on it, and
+   * dark rewrites that text to a light colour — so the name of the person
+   * you were about to write to was light type on a light pill.
+   */
+  --mail-chip: #33465c;
+  --mail-chip-fg: #f3f6fa;
+  --mail-chip-muted: #9fb2c4;
+}
+
+/*
+ * Utility tokens.
+ *
+ * Most of the interface is Tailwind stone and teal classes, written for the
+ * light theme. The dark rules below read these variables instead of naming a
+ * color, so a light island only has to declare the light values again. A
+ * custom property inherits, which is what makes that work for a whole subtree
+ * without a specificity fight.
+ */
+.mail-shell[data-theme="dark"] {
+  --mail-u-surface: #1e2d3e;
+  --mail-u-subtle: #1a2735;
+  --mail-u-hover: rgba(255, 255, 255, 0.06);
+  --mail-u-active: rgba(255, 255, 255, 0.12);
+  --mail-u-fg: #f5f0e8;
+  --mail-u-fg-muted: #c9c5bc;
+  --mail-u-fg-faint: #9aa3b0;
+  --mail-u-border: rgba(255, 255, 255, 0.1);
+  --mail-u-border-strong: rgba(255, 255, 255, 0.28);
+  --mail-u-accent: #4ec0b0;
+  --mail-u-accent-soft: rgba(78, 192, 176, 0.14);
+  /* The accent, lightened for navy — the same family as everything else
+     the app draws, where a blue was a colour from nowhere. */
+  --mail-u-link: var(--mail-link);
+  --mail-u-danger: #e07b75;
+  --mail-u-danger-soft: rgba(212, 96, 90, 0.16);
+  --mail-u-warning: #f3b562;
+  --mail-u-warning-soft: rgba(243, 181, 98, 0.16);
+}
+
+/*
+ * The list a native menu drops down.
+ *
+ * A `<select>` is drawn by the platform, and the platform reads the colors
+ * off the `<option>`s rather than off the page around them. In the dark
+ * theme the options had our foreground — the text inherits — and no
+ * background of their own, so Chromium painted the list on its own white
+ * and put cream words on it. On the theme menu that left two of the three
+ * choices all but invisible; only the highlighted row could be read.
+ *
+ * So the options are told both colors, the same raised surface the closed
+ * control stands in. macOS draws its own menu and ignores this, which is
+ * why the fault only showed on Windows.
+ */
+.mail-shell[data-theme="dark"] option {
+  background-color: var(--mail-u-surface);
+  color: var(--mail-u-fg);
+}
+
+.mail-shell[data-theme="dark"] .mail-light-surface,
+.mail-shell[data-theme="dark"] .mail-bubble-surface {
+  color-scheme: light;
+  color: #1c1917;
+
+  --mail-u-surface: #ffffff;
+  --mail-u-subtle: #fafaf9;
+  --mail-u-hover: #f5f5f4;
+  --mail-u-active: #e7e5e4;
+  --mail-u-fg: #1c1917;
+  --mail-u-fg-muted: #57534e;
+  --mail-u-fg-faint: #a8a29e;
+  --mail-u-border: #e7e5e4;
+  --mail-u-border-strong: #d6d3d1;
+  --mail-u-accent: #0f766e;
+  --mail-u-accent-soft: #f0fdfa;
+  --mail-u-link: #2563eb;
+  --mail-u-danger: #dc2626;
+  --mail-u-danger-soft: #fef2f2;
+  --mail-u-warning: #b45309;
+  --mail-u-warning-soft: #fffbeb;
+}
+
+/*
+ * The sheet a sender's HTML lands on.
+ *
+ * The theme's bubble colors are dark (see above); this puts the light ones
+ * back for the bubbles that carry a message we did not write. Declared on
+ * the bubble itself, which is also the element that reads them, so the
+ * fill, the border and the fade at a clamped message all follow together.
+ *
+ * Only a message that paints its own page gets this — see `wordsInTheDark`
+ * in MailBubble. A plain message, or one with no background of its own, is
+ * drawn dark like everything else; it is the newsletter with its own white
+ * tables that cannot be, because our light words would land on its white.
+ *
+ * Cream, not white. On a dark page the sheet is the brightest thing on the
+ * screen and a stark white one glares — the reader turned the lights off
+ * for a reason. Cream is the same paper the light theme uses, so nothing a
+ * sender wrote is any harder to read on it.
+ */
+.mail-shell[data-theme="dark"] .mail-bubble-surface {
+  --mail-bubble-other: #faf8f5;
+  --mail-bubble-other-border: rgb(231 229 228);
+  --mail-bubble-own: #ccfbf1;
+  --mail-bubble-own-border: rgb(183 222 211);
+}
+
+/* Backgrounds */
+.mail-shell[data-theme="dark"] .bg-white,
+.mail-shell[data-theme="dark"] .focus\:bg-white:focus {
+  background-color: var(--mail-u-surface);
+}
+
+.mail-shell[data-theme="dark"] .bg-stone-50,
+.mail-shell[data-theme="dark"] .bg-stone-50\/50 {
+  background-color: var(--mail-u-subtle);
+}
+
+.mail-shell[data-theme="dark"] .bg-stone-100,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-50:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-100:hover {
+  background-color: var(--mail-u-hover);
+}
+
+.mail-shell[data-theme="dark"] .bg-stone-200,
+.mail-shell[data-theme="dark"] .bg-stone-200\/60,
+.mail-shell[data-theme="dark"] .bg-stone-200\/70,
+.mail-shell[data-theme="dark"] .bg-stone-300,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-200:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-200\/50:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-200\/60:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-200\/70:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-stone-300\/50:hover {
+  background-color: var(--mail-u-active);
+}
+
+/* Text */
+.mail-shell[data-theme="dark"] .text-stone-900,
+.mail-shell[data-theme="dark"] .text-stone-800,
+.mail-shell[data-theme="dark"] .text-stone-700,
+.mail-shell[data-theme="dark"] .hover\:text-stone-700:hover,
+.mail-shell[data-theme="dark"] .hover\:text-stone-800:hover,
+.mail-shell[data-theme="dark"] .hover\:text-stone-900:hover {
+  color: var(--mail-u-fg);
+}
+
+.mail-shell[data-theme="dark"] .text-stone-600,
+.mail-shell[data-theme="dark"] .text-stone-500,
+.mail-shell[data-theme="dark"] .text-muted-foreground,
+.mail-shell[data-theme="dark"] .hover\:text-stone-500:hover,
+.mail-shell[data-theme="dark"] .hover\:text-stone-600:hover {
+  color: var(--mail-u-fg-muted);
+}
+
+.mail-shell[data-theme="dark"] .text-stone-400,
+.mail-shell[data-theme="dark"] .text-stone-300,
+.mail-shell[data-theme="dark"] .disabled\:text-stone-400:disabled {
+  color: var(--mail-u-fg-faint);
+}
+
+/*
+ * The shared Button's own palette, which is not stone.
+ *
+ * `variant="outline"` is `bg-white text-foreground border-input`: the first
+ * of those is mapped above, and the other two are shadcn tokens the app
+ * declares once, for light. On the dark chrome that left Connect Gmail as
+ * an outline with nothing readable in it — the words were there, in navy,
+ * on navy.
+ */
+.mail-shell[data-theme="dark"] .text-foreground {
+  color: var(--mail-u-fg);
+}
+.mail-shell[data-theme="dark"] .border-input {
+  border-color: var(--mail-u-border-strong);
+}
+.mail-shell[data-theme="dark"] .hover\:bg-accent:hover {
+  background-color: var(--mail-u-hover);
+}
+.mail-shell[data-theme="dark"] .hover\:text-accent-foreground:hover {
+  color: var(--mail-u-fg);
+}
+
+.mail-shell[data-theme="dark"] .placeholder\:text-stone-400::placeholder {
+  color: var(--mail-u-fg-faint);
+}
+
+.mail-shell[data-theme="dark"] .decoration-stone-400 {
+  text-decoration-color: var(--mail-u-fg-faint);
+}
+
+/* Borders */
+.mail-shell[data-theme="dark"] .border-stone-100,
+.mail-shell[data-theme="dark"] .border-stone-200,
+.mail-shell[data-theme="dark"] .border-stone-300 {
+  border-color: var(--mail-u-border);
+}
+
+.mail-shell[data-theme="dark"]
+  .divide-stone-100
+  > :not([hidden])
+  ~ :not([hidden]),
+.mail-shell[data-theme="dark"]
+  .divide-stone-200
+  > :not([hidden])
+  ~ :not([hidden]) {
+  border-color: var(--mail-u-border);
+}
+
+.mail-shell[data-theme="dark"] .focus\:border-stone-300:focus,
+.mail-shell[data-theme="dark"] .focus\:border-stone-400:focus,
+.mail-shell[data-theme="dark"] .focus-within\:border-stone-300:focus-within,
+.mail-shell[data-theme="dark"] .hover\:border-stone-300:hover,
+.mail-shell[data-theme="dark"] .hover\:border-stone-400:hover {
+  border-color: var(--mail-u-border-strong);
+}
+
+.mail-shell[data-theme="dark"] .ring-stone-200,
+.mail-shell[data-theme="dark"] .ring-stone-300,
+.mail-shell[data-theme="dark"] .ring-stone-400 {
+  --tw-ring-color: var(--mail-u-border-strong);
+}
+
+/*
+ * Accent and status.
+ *
+ * Teal on cream is dark enough to read; on navy it is not. The solid teal
+ * buttons keep their own color, because white on teal-600 reads in both
+ * themes — only the tinted and text-only teals move.
+ */
+.mail-shell[data-theme="dark"] .text-teal-600,
+.mail-shell[data-theme="dark"] .text-teal-700,
+.mail-shell[data-theme="dark"] .text-teal-800,
+.mail-shell[data-theme="dark"] .text-teal-900,
+.mail-shell[data-theme="dark"] .text-teal-700\/90,
+.mail-shell[data-theme="dark"] .text-teal-700\/80,
+.mail-shell[data-theme="dark"] .text-teal-700\/70,
+.mail-shell[data-theme="dark"] .hover\:text-teal-700:hover,
+.mail-shell[data-theme="dark"] .hover\:text-teal-800:hover,
+.mail-shell[data-theme="dark"] .hover\:text-teal-900:hover {
+  color: var(--mail-u-accent);
+}
+
+/* The time in the corner of one of your own messages. Dark teal on pale
+   mint was the quiet way to say it; on the dark bubble the same words have
+   to be the pale one. Still held back, because it is a timestamp. */
+.mail-shell[data-theme="dark"] .text-teal-800\/60 {
+  color: rgba(78, 192, 176, 0.7);
+}
+
+.mail-shell[data-theme="dark"] .bg-teal-50,
+.mail-shell[data-theme="dark"] .bg-teal-50\/40,
+.mail-shell[data-theme="dark"] .bg-teal-50\/50,
+.mail-shell[data-theme="dark"] .bg-teal-50\/90,
+.mail-shell[data-theme="dark"] .bg-teal-100,
+.mail-shell[data-theme="dark"] .hover\:bg-teal-50:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-teal-100:hover {
+  background-color: var(--mail-u-accent-soft);
+}
+
+.mail-shell[data-theme="dark"] .text-blue-600,
+.mail-shell[data-theme="dark"] .text-blue-700 {
+  color: var(--mail-u-link);
+}
+
+.mail-shell[data-theme="dark"] .text-red-600,
+.mail-shell[data-theme="dark"] .text-red-600\/90,
+.mail-shell[data-theme="dark"] .text-red-700,
+.mail-shell[data-theme="dark"] .text-rose-600,
+.mail-shell[data-theme="dark"] .text-rose-700,
+.mail-shell[data-theme="dark"] .text-rose-800,
+.mail-shell[data-theme="dark"] .hover\:text-red-600:hover,
+.mail-shell[data-theme="dark"] .hover\:text-rose-700:hover,
+.mail-shell[data-theme="dark"] .hover\:text-red-700:hover {
+  color: var(--mail-u-danger);
+}
+
+.mail-shell[data-theme="dark"] .bg-red-50,
+.mail-shell[data-theme="dark"] .bg-red-50\/40,
+.mail-shell[data-theme="dark"] .bg-red-50\/50,
+.mail-shell[data-theme="dark"] .bg-rose-100,
+.mail-shell[data-theme="dark"] .hover\:bg-red-50:hover {
+  background-color: var(--mail-u-danger-soft);
+}
+
+.mail-shell[data-theme="dark"] .border-red-200,
+.mail-shell[data-theme="dark"] .border-red-300 {
+  border-color: var(--mail-u-danger);
+}
+
+.mail-shell[data-theme="dark"] .text-amber-700,
+.mail-shell[data-theme="dark"] .text-amber-800,
+.mail-shell[data-theme="dark"] .text-amber-900,
+.mail-shell[data-theme="dark"] .text-orange-800 {
+  color: var(--mail-u-warning);
+}
+
+.mail-shell[data-theme="dark"] .bg-amber-50,
+.mail-shell[data-theme="dark"] .bg-amber-100,
+.mail-shell[data-theme="dark"] .bg-orange-100 {
+  background-color: var(--mail-u-warning-soft);
+}
+
+.mail-shell[data-theme="dark"] .border-amber-200 {
+  border-color: var(--mail-u-warning);
+}
+
+/*
+ * Cards that are the shell.
+ *
+ * The rules above all match a descendant, so an element that carries
+ * `.mail-shell` itself is not reached by them. Two do: a menu, which
+ * `MailPopoverContent` puts the shell class on because Radix mounts it in a
+ * portal on <body>, and the popped-out thread card.
+ */
+.mail-shell[data-theme="dark"].mail-popover,
+.mail-shell[data-theme="dark"].mail-surface-root {
+  background-color: var(--mail-u-surface);
+  border-color: var(--mail-u-border);
+  color: var(--mail-u-fg);
+}
+
+/* The dark thread pane sets its own text color for anything unclassed. */
+.mail-shell[data-theme="dark"] .mail-thread-surface {
+  color: var(--mail-thread-fg);
+}
+
+/*
+ * The email itself: bubbles, the composer, and the send preview. The class can
+ * sit on the element that also carries a stone utility, so match both.
+ */
+.mail-shell[data-theme="dark"] .mail-light-surface.bg-white,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.bg-white {
+  background-color: #ffffff;
+}
+
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-900,
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-800,
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-700,
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-600,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-900,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-800,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-700,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-600 {
+  color: #1c1917;
+}
+
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-500,
+.mail-shell[data-theme="dark"] .mail-light-surface.text-stone-400,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-500,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.text-stone-400 {
+  color: rgb(120 113 108);
+}
+
+.mail-shell[data-theme="dark"] .mail-light-surface.border-stone-200,
+.mail-shell[data-theme="dark"] .mail-bubble-surface.border-stone-200 {
+  border-color: rgb(231 229 228);
+}
+
+/*
+ * Writing in the dark.
+ *
+ * Quill paints its text #222, for a box it expects to be white. The boxes
+ * are not white any more — a message is shown in the thread on a dark
+ * bubble, so writing it on a white one would be the odd half of the pair —
+ * and #222 on navy is a box you cannot see what you type in.
+ *
+ * Every editor in the shell, not only the composers: the signature editor
+ * and the out-of-office one sit in dialogs, and those went dark too.
+ */
+.mail-shell[data-theme="dark"] .rich-text-editor .ql-editor {
+  color: var(--mail-u-fg);
+}
+.mail-shell[data-theme="dark"] .rich-text-editor .ql-editor.ql-blank::before {
+  color: var(--mail-u-fg-faint);
+}
+/* The signature, shown under what you are writing — its own view rather
+   than an editor, and its own grey. */
+.mail-shell[data-theme="dark"] .text-\[\#444\] {
+  color: var(--mail-u-fg-muted);
+}
+
+/*
+ * The composers' formatting buttons, on footers that are now dark.
+ *
+ * `toolbarId` hands Quill a toolbar of our own placing, so B, I, U and the
+ * lists sit in the footer row rather than on a strip of Quill's. Quill
+ * paints their icons #444 either way, which is a row of shapes nobody can
+ * see against navy. Both composers are here: the new message and the reply
+ * under a thread.
+ */
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke,
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke-miter {
+  stroke: var(--mail-u-fg-muted);
+}
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-fill,
+.mail-shell[data-theme="dark"] .mail-composer-toolbar .ql-stroke.ql-fill {
+  fill: var(--mail-u-fg-muted);
+}
+/*
+ * Touched or turned on, a formatting button wears the accent.
+ *
+ * Quill answers all three states in its own blue, which belongs to no
+ * other control in this app. Not scoped to a theme: the blue was as
+ * foreign on white as it was on navy, and the accent is defined for both.
+ */
+.mail-shell .mail-composer-toolbar button:hover,
+.mail-shell .mail-composer-toolbar button:focus,
+.mail-shell .mail-composer-toolbar button.ql-active {
+  color: var(--mail-u-accent, #0d9488);
+}
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke,
+.mail-shell .mail-composer-toolbar button:focus .ql-stroke,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke,
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke-miter,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke-miter {
+  stroke: var(--mail-u-accent, #0d9488);
+}
+/*
+ * The bin turns red under the pointer, where the rest of the row turns
+ * teal. Throwing the message away is the one thing here that cannot be
+ * pressed a second time to undo it, so it is the one thing that does not
+ * answer in the colour of the others.
+ */
+/* Named through the shell, and placed after the theme's own stone rules,
+   because `[data-theme] .text-stone-400` outweighs a lone class and was
+   holding the bin grey under the pointer on the dark theme. */
+.mail-shell .mail-composer-discard:hover {
+  color: var(--mail-u-danger, #dc2626);
+}
+
+.mail-shell .mail-composer-toolbar button:hover .ql-fill,
+.mail-shell .mail-composer-toolbar button:focus .ql-fill,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-fill,
+.mail-shell .mail-composer-toolbar button:hover .ql-stroke.ql-fill,
+.mail-shell .mail-composer-toolbar button.ql-active .ql-stroke.ql-fill {
+  fill: var(--mail-u-accent, #0d9488);
+}
+
+/*
+ * Chrome is pointed at, not read.
+ *
+ * A double click on a strip of controls means something on a Mac: at the top
+ * of the window it zooms the window, and on the reader's action strip it
+ * opens the thread full width. WebKit answers it a second time by selecting
+ * the word under the pointer — and on a toolbar there is no word to select,
+ * so it took whichever nearby glyph happens to be written as text rather
+ * than drawn: the − in the zoom pill, or the grey placeholder in the search
+ * box, which then sat there highlighted with nothing to copy.
+ *
+ * The prefixed property is the one this webview reads. Tailwind's
+ * `select-none` writes the unprefixed one alone, which is why this is here
+ * and not a class on the row.
+ *
+ * A field keeps its own selection: what is typed into one is text, and the
+ * reader is going to want to correct it.
+ */
+.mail-chrome-strip {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.mail-chrome-strip input,
+.mail-chrome-strip textarea,
+.mail-chrome-strip [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * A row in the list is a thing to open, not text to copy.
+ *
+ * A double click opens a conversation, and WebKit selected the word under the
+ * pointer as well. That stray selection is what macOS Services act on: with
+ * text selected, ⇧⌘A is "Search man Page Index in Terminal", so the next
+ * Archive opened Terminal instead of archiving. A row holds no selection now,
+ * so the key reaches the list. (Text selected in a message still takes it.)
+ */
+[data-thread-key],
+[data-person-key] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-thread-key] input,
+[data-person-key] input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * The empty reader, with its picture, is not text to copy.
+ *
+ * A double click beside the picture selected it, and it sat there tinted
+ * blue. The prefixed property is the one WebKit reads, as above. The caption
+ * keeps its selection while it is being written.
+ */
+.mail-rest-panel {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.mail-rest-panel [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * The row a menu is about to act on.
+ *
+ * Under the pointer it is the wash a thread comes up with in the list. The
+ * gesture is the same one — running down a column of things and stopping on
+ * one — and a menu that answered it with a different colour than the list
+ * two inches away read as a different kind of surface.
+ *
+ * Under the keyboard it is the strong fill, the navy the rail marks an open
+ * folder with, and cream on navy in the dark theme. Nothing is following
+ * the arrow keys but this, so it has to be unmistakable; the pointer has
+ * itself to say where it is.
+ *
+ * The children are told to inherit, because each carries its own colour —
+ * a label in near-black, a time in grey, an icon in teal — and all three
+ * have to give way to the fill. Plain descendant selectors, not `:where`,
+ * which would drop the weight below the class it has to beat.
+ *
+ * The class is named twice on purpose, here and on the children. What it
+ * has to beat in the dark theme is the blanket rewrite of the stone
+ * utilities above — `.mail-shell[data-theme="dark"] .text-stone-800` is a
+ * class heavier than this rule was, and the row carries `text-stone-800`
+ * itself. So the fill arrived and the writing on it did not: a cream row
+ * with its label in the same cream, and nothing on it but the time. Telling
+ * the children to inherit only spread it, because what they inherited was
+ * the rewritten colour of the row.
+ *
+ * These rules must stay after that rewrite: they are level with it on
+ * weight, and order is what settles a tie.
+ */
+.mail-menu-pick.mail-menu-pick:hover {
+  background-color: var(--mail-row-hover);
+}
+
+.mail-menu-pick.mail-menu-pick:focus-visible,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] {
+  background-color: var(--mail-chrome-pinned);
+  color: var(--mail-chrome-pinned-fg);
+}
+
+.mail-menu-pick.mail-menu-pick:focus-visible span,
+.mail-menu-pick.mail-menu-pick:focus-visible svg,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] span,
+.mail-menu-pick.mail-menu-pick[data-picked="true"] svg {
+  color: inherit;
+}
+
+/*
+ * The shape that stands in for the mail while it loads.
+ *
+ * `globals.css` draws a skeleton as two stone greys with a shimmer between
+ * them, which is a shade of the surface on a cream page and a bar of white
+ * on a dark one. On the dark theme it is the mail's own greys instead — the
+ * hover wash and the line above it, which are what a row is made of here.
+ *
+ * Keyed on the shell rather than on a host's theme: the mailbox is
+ * dark or light by its own setting, whatever the app around it is doing.
+ */
+.mail-shell[data-theme="dark"] .animate-skeleton-shimmer {
+  background-color: var(--mail-chrome-hover);
+  background-image: linear-gradient(
+    90deg,
+    var(--mail-chrome-hover) 0%,
+    #35485f 42%,
+    var(--mail-chrome-hover) 84%
+  );
+  border-color: var(--mail-chrome-border);
+}
+
+/*
+ * "Download all" under a message's files.
+ *
+ * The button is tile-sized so it rides in the gap the last row of tiles
+ * leaves. In a box too narrow for two tiles — the pop-out chat — the
+ * files stack in one column, there is no gap to ride, and a tile of
+ * empty air stood where a line would do. The grid is a size container,
+ * and under one-column width the button folds to a compact row.
+ */
+/*
+ * The column of bubbles is the size container, not the grid. A grid that
+ * was one told the bubble nothing about how wide it would like to be — a
+ * size container has no intrinsic width — so a short note with five files
+ * had a bubble the width of the note and the files in one long column.
+ * The column is always the pane's width, so it can be measured, and it is
+ * the width the bubble may grow to, which is what the fold below asks.
+ */
+.mail-bubble-column {
+  container-type: inline-size;
+}
+
+/*
+ * Two abreast in a narrow column too. A bubble may take three quarters
+ * of the pane, and in a small window that is under the 376px two fixed
+ * tiles need — so there the tiles give up their fixed width for half the
+ * row each, and five files are still three rows, not five.
+ */
+@container (max-width: 400px) {
+  .mail-attachment-grid > .mail-light-surface {
+    width: calc(50% - 4px);
+    min-width: 140px;
+  }
+}
+
+/* Two 184px tiles and the 8px gap between them need 376px. */
+@container (max-width: 380px) {
+  .mail-download-all-tile {
+    height: auto;
+    width: auto;
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 12px;
+  }
+
+  .mail-download-all-tile svg {
+    height: 16px;
+    width: 16px;
+  }
+}
+
+/*
+ * The out-of-office writes into a bordered card, so its formatting row is
+ * the top of that card: a rule under it, and air around it. The composers
+ * need none of this — theirs sits in a footer that already has both.
+ */
+.mail-autoreply-card .mail-composer-toolbar.ql-snow {
+  display: flex;
+  border-bottom: 1px solid var(--mail-border, #e7e5e4);
+  padding: 6px 10px;
+}
+
+/*
+ * ---------------------------------------------------------------- the phone
+ *
+ * One list, the reader over it, the folders in a drawer from the left. The
+ * frame is MailPhoneShell; what follows is what only a stylesheet can say —
+ * the safe areas under the notch and the home bar, the slide of a page
+ * coming in, and the way a finger differs from a pointer on a row.
+ */
+.mail-phone .mail-phone-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.mail-phone .mail-phone-footer {
+  height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* New email at the thumb: a circle on iOS, and the rounder square Material
+   draws on Android. */
+.mail-phone .mail-phone-fab {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 9999px;
+}
+html[data-dh-os="android"] .mail-phone .mail-phone-fab {
+  border-radius: 1rem;
+}
+.mail-phone .mail-phone-back {
+  height: calc(2.75rem + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.mail-phone .mail-phone-drawer {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* A thread slides in from the right, the way a page does; the composer
+   rises from the foot, the way a sheet does. */
+.mail-phone .mail-phone-detail {
+  animation: mail-phone-page-in 200ms ease-out;
+}
+.mail-phone[data-phone-detail="compose"] .mail-phone-detail {
+  animation: mail-phone-sheet-up 220ms ease-out;
+}
+@keyframes mail-phone-page-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes mail-phone-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-phone .mail-phone-detail,
+  .mail-phone[data-phone-detail="compose"] .mail-phone-detail {
+    animation: none;
+  }
+}
+/* A row under a finger. No callout and no selection on a long press — the
+   press opens the row's menu, see MailPhoneShell — and a pan across the
+   row is the row's swipe, while a pan down it is still the list's scroll. */
+.mail-phone [data-thread-key],
+.mail-phone [data-person-key] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+  cursor: default;
+}
+/* The reader's header keeps a gutter for the desktop's list divider. There
+   is no divider here. */
+.mail-phone .mail-thread-header {
+  padding-left: 1rem;
+}
+/* Scrollers that show no bar: the chips and the scope pills. */
+.mail-phone .mail-phone-chips [scrollbar-width\:thin],
+.mail-phone .mail-phone-tabs [scrollbar-width\:thin] {
+  scrollbar-width: none;
+}
+.mail-phone .mail-phone-scopes::-webkit-scrollbar,
+.mail-phone .mail-phone-chips ::-webkit-scrollbar,
+.mail-phone .mail-phone-tabs ::-webkit-scrollbar {
+  display: none;
+}
+/* Fields on iOS: 16px, or the page zooms in when one is focused. */
+.mail-phone input,
+.mail-phone textarea {
+  font-size: max(16px, 1em);
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Apple's app-icon template: the tile is 824 px on a 1024 canvas, with a
+       transparent margin of 100 px round it. Drawn edge to edge, the icon
+       sat in the Dock a fifth larger than every icon beside it. -->
+  <g transform="translate(100,100) scale(0.8046875)">
+    <rect width="1024" height="1024" rx="230" fill="#f1eee9"></rect>
+    <g fill="none" stroke="#1e2d3e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" transform="translate(104,104) scale(34)">
+      <rect x="3" y="5.5" width="18" height="13" rx="2.2"></rect>
+      <path d="M3.5 7l8.5 6 8.5-6"></path>
+    </g>
+  </g>
+</svg>
