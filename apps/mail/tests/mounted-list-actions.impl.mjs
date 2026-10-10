@@ -652,6 +652,58 @@ async function commandClickSelection() {
   pass("Backspace deletes the selection and opens the row after it");
 }
 
+/**
+ * A right-click on a selected row acts on the whole selection; on a row
+ * outside it, on that row alone.
+ */
+async function rightClickSelection() {
+  await mount();
+  await open(CHOIR);
+  clickEl(rowEl(BIKE), { metaKey: true });
+  await sleep(300);
+  const rightClick = async (el) => {
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    await sleep(300);
+    return [...document.querySelectorAll("[role=menuitem]")].map((b) => (b.textContent || "").trim());
+  };
+  const items = await rightClick(rowEl(BIKE));
+  assert(items.includes("Archive all 2") && items.includes("Delete all 2"), items.join(","));
+  assert(items.includes("Snooze all 2…") && items.includes("Pin to the top"), items.join(","));
+  pass("a right-click on a selected row offers the selection's menu, and each line says it takes all");
+
+  // Snooze all: the times come up, and the one picked snoozes both.
+  const before = postsOf("/api/mail/snooze").length;
+  clickEl([...document.querySelectorAll("[role=menuitem]")].find((b) => (b.textContent || "").trim() === "Snooze all 2…"));
+  await sleep(500);
+  const tomorrow = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Tomorrow"));
+  assert(tomorrow, "the snooze times are up");
+  clickEl(tomorrow);
+  await sleep(700);
+  const snoozed = postsOf("/api/mail/snooze").slice(before).map((p) => p.body.threadId).sort();
+  assert.deepEqual(snoozed, ["bike-1", "choir-1"]);
+  pass("Snooze all snoozes every selected conversation");
+
+  // Back, and selected again, for Archive all.
+  await mount();
+  await open(CHOIR);
+  clickEl(rowEl(BIKE), { metaKey: true });
+  await sleep(300);
+  await rightClick(rowEl(BIKE));
+  const archiveAll = [...document.querySelectorAll("[role=menuitem]")].find((b) => (b.textContent || "").trim() === "Archive all 2");
+  clickEl(archiveAll);
+  await sleep(700);
+  assert.deepEqual([...server.postsTo("/api/mail/archive")].sort(), ["bike-1", "choir-1"]);
+  assert(!inList(CHOIR) && !inList(BIKE), "both left the list");
+  pass("and Archive all archives every selected conversation");
+
+  // Outside a selection, a row's own menu, about that row.
+  const own = await rightClick(rowEl(GARDEN));
+  assert(!own.some((i) => /all \d/.test(i)), own.join(","));
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await sleep(200);
+  pass("a right-click on a row outside the selection is about that row");
+}
+
 /** A reply the provider could not send, waiting in the Outbox. */
 const FAILED = {
   id: "held-1",
@@ -938,7 +990,10 @@ async function personMenuAndSearch() {
   pass("the person menu pins a person to the top, and unpins");
 
   await personMenu("Asta Holm");
-  clickEl(menuItem("Snooze…"));
+  // A pile's line says it takes all of them, with the number.
+  const snoozeAll = [...document.querySelectorAll("[role=menuitem]")].find((b) => /^Snooze all \d+…$/.test((b.textContent || "").trim()));
+  assert(snoozeAll, "the person menu says Snooze all, with the number");
+  clickEl(snoozeAll);
   await sleep(500);
   assert(
     (document.body.textContent || "").includes("Tomorrow"),
@@ -951,7 +1006,21 @@ async function personMenuAndSearch() {
   await sleep(300);
   assert(!(document.body.textContent || "").includes("Tomorrow"), "Escape closes them");
   assert.equal(anchors(), 0, "and the picker is gone, not only hidden");
-  pass("Snooze… in the person menu opens the snooze times, and Escape takes them away");
+  pass("Snooze all in the person menu opens the snooze times, and Escape takes them away");
+
+  // And a time picked snoozes every conversation with them, not the newest.
+  const snoozesBefore = postsOf("/api/mail/snooze").length;
+  await personMenu("Asta Holm");
+  const many = Number(
+    ((document.querySelector("[role=menu]")?.textContent || "").match(/Snooze all (\d+)…/) || [])[1]
+  );
+  clickEl([...document.querySelectorAll("[role=menuitem]")].find((b) => /^Snooze all/.test((b.textContent || "").trim())));
+  await sleep(500);
+  clickEl([...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Tomorrow")));
+  await sleep(700);
+  const pileSnoozed = new Set(postsOf("/api/mail/snooze").slice(snoozesBefore).map((p) => p.body.threadId));
+  assert(many >= 2 && pileSnoozed.size === many, `${pileSnoozed.size} of ${many} snoozed`);
+  pass("Snooze all on a person snoozes every conversation with them");
 
   const field = [...document.querySelectorAll("input")].find(
     (i) => i.getAttribute("placeholder") === "Search all mail"
@@ -1288,6 +1357,7 @@ async function main() {
     await aSearchShowsTheHiddenList();
     await rangeSelectionArchive();
     await commandClickSelection();
+    await rightClickSelection();
     await archiveAPersonThenCommandZ();
     await commandNOpensANewMessage();
     await autoReplyLineAndManage();

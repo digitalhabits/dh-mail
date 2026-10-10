@@ -25,10 +25,10 @@ import {
 } from "lucide-react";
 
 import {
-  ComposerSignature,
   SentPreview,
   SignatureMetaControls,
 } from "@/components/mail/composer-preview";
+import { EditableSignature } from "@/components/mail/editable-signature";
 import {
   AttachToolbarButton,
   ComposerDropOverlay,
@@ -125,6 +125,7 @@ export function ComposeView(props: ComposeViewProps) {
     setShowPreview,
     setSigDialogOpen,
     setSigSettings,
+    setSignatureHtml,
     setSubject,
     setToList,
     shortcuts,
@@ -134,6 +135,7 @@ export function ComposeView(props: ComposeViewProps) {
     sigDialogOpen,
     sigSettings,
     sigTouchedRef,
+    signatureHtml,
     startCardResize,
     stopDraft,
     subject,
@@ -511,7 +513,13 @@ export function ComposeView(props: ComposeViewProps) {
               />
               </div>
               {includeSignature && sigSettings?.signature ? (
-                <ComposerSignature signature={sigSettings.signature} />
+                <EditableSignature
+                  saved={sigSettings.signature}
+                  copy={signatureHtml}
+                  onChange={setSignatureHtml}
+                  editorKey={editorKey}
+                  bodyHandle={editorHandle}
+                />
               ) : null}
             </div>
 
@@ -647,6 +655,7 @@ export function ComposeView(props: ComposeViewProps) {
             includeSignature={Boolean(
               includeSignature && sigSettings?.signature
             )}
+            signatureCopy={signatureHtml}
             zoom={zoom}
             recipientName={
               toList[0]?.kind === "list"

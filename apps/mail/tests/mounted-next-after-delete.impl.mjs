@@ -86,6 +86,10 @@ async function main() {
 
     await act(async () => page.openThread(page.threads[0]));
     assert.equal(unread("t1"), false, "the clicked row is read");
+    // The store is told a moment later, so the thread can still see which
+    // of its messages are new when it opens on the first of them.
+    assert.deepEqual(reads, [], "and the store is not told at the click");
+    await sleep(3200);
     assert.deepEqual(reads, ["t1"], "and the server is told once");
     pass("a click marks the thread read, once");
 
@@ -95,6 +99,7 @@ async function main() {
       page.setSelected({ account: ACCOUNT, threadId: "t2", inPeople: false });
     });
     assert.equal(unread("t2"), false, "the next row is read");
+    await sleep(3200);
     assert.deepEqual(reads, ["t1", "t2"], "and the server is told");
     pass("the thread opened after a delete is marked read");
 
@@ -104,8 +109,18 @@ async function main() {
       page.setSelected({ account: ACCOUNT, threadId: "t2", inPeople: false });
     });
     assert.equal(unread("t2"), true, "it stays unread");
+    await sleep(3200);
     assert.deepEqual(reads, ["t1", "t2"], "and nothing more is sent");
     pass("Mark as unread on the open thread stays unread");
+
+    // Opened, and marked unread again before the store was told: it stays unread.
+    await act(async () => page.openThread(page.threads.find((t) => t.threadId === "t2")));
+    await act(async () => {
+      page.setThreads((current) => current.map((t) => (t.threadId === "t2" ? { ...t, unread: true } : t)));
+    });
+    await sleep(3200);
+    assert.deepEqual(reads, ["t1", "t2"], "the late word to the store is not sent");
+    pass("marked unread again within the moment, the thread is not marked read behind the reader");
   } catch (err) {
     console.error("FAIL ", err?.message || err);
     process.exitCode = 1;

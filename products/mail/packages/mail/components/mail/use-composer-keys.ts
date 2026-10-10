@@ -44,6 +44,7 @@ export function useComposerKeys({
     bccList: MailRecipient[];
     editRecipients: boolean;
     includeSignature: boolean;
+    signatureHtml: string | null;
     fromAccount: string;
     replyFocus: boolean;
     attachItems: DraftAttachment[];

@@ -135,6 +135,8 @@ type SendInput = {
   inReplyTo?: string;
   references?: string;
   includeSignature?: boolean;
+  /** This message's own copy of the signature. Absent: the saved one. */
+  signatureHtml?: string;
   messageCount?: number;
   noQuote?: boolean;
   chatMode?: boolean;
@@ -500,6 +502,7 @@ async function outlookDraft({ body }: RouteContext): Promise<Response> {
     body: input.body,
     html: input.html,
     includeSignature: input.includeSignature,
+    signatureHtml: input.signatureHtml,
     threadId: input.threadId,
     appendix: input.appendix,
     attachments: input.attachments,
@@ -606,6 +609,7 @@ async function send({ body }: RouteContext): Promise<Response> {
     // signature off here, which quietly undid the composer's own
     // choice: leaving the history out says nothing about signing.
     includeSignature: input.includeSignature,
+    signatureHtml: input.signatureHtml,
       });
       const bindThreadId = sent.threadId || prep.sendThreadId;
       if (!bindThreadId) {
@@ -649,6 +653,7 @@ async function send({ body }: RouteContext): Promise<Response> {
     quote: wantNoQuote ? undefined : input.quote,
     appendix: wantNoQuote ? undefined : input.appendix,
     includeSignature: input.includeSignature,
+    signatureHtml: input.signatureHtml,
     sendAt: input.sendAt,
   });
   // A build with a team layer can answer something more about a send

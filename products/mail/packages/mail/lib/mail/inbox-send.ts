@@ -33,7 +33,7 @@ import {
   signaturePlainText,
 } from "@/lib/mail/signature-html";
 import { formatFromHeader } from "@/lib/mail/sender-name";
-import { getMailSignatureSettings } from "@/lib/mail/settings";
+import { outgoingSignature } from "@/lib/mail/outgoing-signature";
 import { bodyWrapperStyle, getTextStyleDefault } from "@/lib/mail/text-style";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
 import { PlanError } from "@/lib/plan/errors";
@@ -375,6 +375,8 @@ export async function draftMailInOutlook(input: {
   body: string;
   html?: string;
   includeSignature?: boolean;
+  /** This message's own copy of the signature. See `outgoingSignature`. */
+  signatureHtml?: string;
   threadId?: string;
   forward?: ForwardedMessage;
   quote?: QuotedMessage;
@@ -416,6 +418,7 @@ export async function draftMailInOutlook(input: {
     body: input.body,
     html: lifted.html,
     includeSignature: input.includeSignature,
+    signatureHtml: input.signatureHtml,
     threadId: input.threadId,
     attachments,
     appendixHtml: appendix || undefined,
@@ -599,10 +602,7 @@ type OutgoingMail = Parameters<typeof sendMailMessage>[0];
  * files. `senderName` goes on the `From` header ("" for the address alone).
  */
 async function buildOutgoingMime(input: OutgoingMail, senderName: string): Promise<string> {
-  const signature =
-    input.includeSignature === false
-      ? ""
-      : (await getMailSignatureSettings(input.account)).signature;
+  const signature = await outgoingSignature(input);
   const noteWithSignature = signature
     ? `${input.body.replace(/\s+$/, "")}\n\n${signaturePlainText(signature)}`
     : input.body;
@@ -680,6 +680,11 @@ export async function sendMailMessage(input: {
   html?: string;
   /** Append the shared signature (default true). */
   includeSignature?: boolean;
+  /**
+   * This message's own copy of the signature, which the writer changed for
+   * this message only. Absent: the saved signature. See `outgoingSignature`.
+   */
+  signatureHtml?: string;
   threadId?: string;
   inReplyTo?: string;
   references?: string;
@@ -764,6 +769,7 @@ export async function sendMailMessage(input: {
       body: input.body,
       html: input.html,
       includeSignature: input.includeSignature,
+      signatureHtml: input.signatureHtml,
       threadId: input.threadId,
       sendAt: input.sendAt,
       attachments: input.attachments,

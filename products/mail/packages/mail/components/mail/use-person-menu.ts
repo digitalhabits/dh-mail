@@ -38,6 +38,8 @@ export function usePersonMenu() {
    */
   const [personSnooze, setPersonSnooze] = React.useState<{
     thread: MailThreadSummary;
+    /** Every thread the times apply to: a pile's or a selection's. */
+    threads: MailThreadSummary[];
     x: number;
     y: number;
   } | null>(null);
@@ -51,9 +53,9 @@ export function usePersonMenu() {
    */
   const personSnoozeShown = React.useRef(false);
   const askPersonSnooze = React.useCallback(
-    (thread: MailThreadSummary, x: number, y: number) => {
+    (thread: MailThreadSummary, x: number, y: number, threads: MailThreadSummary[] = [thread]) => {
       personSnoozeShown.current = false;
-      setPersonSnooze({ thread, x, y });
+      setPersonSnooze({ thread, threads, x, y });
       setPersonSnoozeSignal((n) => n + 1);
     },
     []

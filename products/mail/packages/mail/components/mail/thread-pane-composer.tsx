@@ -13,7 +13,7 @@ import { ChevronDown, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } 
 
 import { DraftAssistNotes } from "@/components/mail/team-layer";
 import { COMPOSER_MAX_SHARE } from "@/components/mail/use-thread-pane-geometry";
-import { ComposerSignature } from "@/components/mail/composer-preview";
+import { EditableSignature } from "@/components/mail/editable-signature";
 import {
   AttachToolbarButton,
   ComposerDropOverlay,
@@ -384,7 +384,13 @@ export function ThreadComposerBand({
               />
               </div>
               {includeSignature && sigSettings?.signature ? (
-                <ComposerSignature signature={sigSettings.signature} />
+                <EditableSignature
+                  saved={sigSettings.signature}
+                  copy={m.composer.signatureHtml}
+                  onChange={m.composer.setSignatureHtml}
+                  editorKey={editorKey}
+                  bodyHandle={replyEditorHandle}
+                />
               ) : null}
               {/* Under the note, where the recipient will see it. */}
               {forwarding && forwardSource ? <ForwardSourceQuote m={m} /> : null}

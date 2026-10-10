@@ -34,6 +34,7 @@ import { ConfirmPurgeDialog } from "@/components/mail/ConfirmPurgeDialog";
 import { OutboxRowMenu, type OutboxMenuAt } from "@/components/mail/OutboxRowMenu";
 import type { MailScheduledMessage } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
+import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonThreadsBadge } from "@/components/mail/person-threads-badge";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 
@@ -73,6 +74,7 @@ export function ThreadRows({
     trash,
     unsnooze,
   } = m;
+  const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
   return (
     <>
       <>
@@ -129,6 +131,11 @@ export function ThreadRows({
                     {...rowMenuActions(t)}
                     dragKind="pin"
                     touch={phone}
+                    onSelectionMenu={
+                      rowInSelection(m, threadKey(t))
+                        ? (x, y) => setSelectionMenu({ x, y })
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -217,12 +224,18 @@ export function ThreadRows({
                     {...rowMenuActions(t)}
                     dragKind="folder"
                     touch={phone}
+                    onSelectionMenu={
+                      rowInSelection(m, threadKey(t))
+                        ? (x, y) => setSelectionMenu({ x, y })
+                        : undefined
+                    }
                   />
                 ))}
               </div>
             ))}
         </div>
       </>
+      <SelectionRowMenu m={m} at={selectionMenu} onClose={() => setSelectionMenu(null)} />
     </>
   );
 }
@@ -273,6 +286,7 @@ export function PeopleRows({
     trashPerson,
     unsnooze,
   } = m;
+  const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -375,6 +389,11 @@ export function PeopleRows({
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  // One of a selection: the menu acts on all of it.
+                  if (rowInSelection(m, row.key)) {
+                    setSelectionMenu({ x: e.clientX, y: e.clientY });
+                    return;
+                  }
                   setPersonMenuAt({
                     key: row.key,
                     x: e.clientX,
@@ -584,16 +603,15 @@ export function PeopleRows({
               count={row.threads.length}
               unread={row.threads.some((th) => th.unread)}
               pinned={isMailPersonPinned(row.key)}
-              snoozed={Boolean(newest.snoozedUntil)}
+              snoozed={row.threads.some((th) => th.snoozedUntil)}
               onToggleRead={() => void toggleRead(row.threads, row.name)}
-              // The newest is the one the row is showing and the one
-              // the reader means by "this".
+              // Every conversation in the pile, as the line says.
               onSnooze={() =>
-                askPersonSnooze(newest, personMenuAt.x, personMenuAt.y)
+                askPersonSnooze(newest, personMenuAt.x, personMenuAt.y, row.threads)
               }
-              onCancelSnooze={
-                newest.snoozedUntil ? () => void unsnooze(newest) : undefined
-              }
+              onCancelSnooze={() => {
+                for (const th of row.threads) if (th.snoozedUntil) void unsnooze(th);
+              }}
               onTogglePin={() => togglePersonPin(row)}
               onPopOut={() => rowMenuActions(newest).onAction("popOut")}
               // In Trash the mail is deleted already: only "forever" is left.
@@ -621,18 +639,19 @@ export function PeopleRows({
           <SnoozeMenu
             key={threadKey(personSnooze.thread)}
             onSnooze={(untilIso) => {
-              void snooze(personSnooze.thread, untilIso);
+              for (const th of personSnooze.threads) void snooze(th, untilIso);
               setPersonSnooze(null);
             }}
             onCancelSnooze={
-              personSnooze.thread.snoozedUntil
+              personSnooze.threads.some((th) => th.snoozedUntil)
                 ? () => {
-                    void unsnooze(personSnooze.thread);
+                    for (const th of personSnooze.threads) if (th.snoozedUntil) void unsnooze(th);
                     setPersonSnooze(null);
                   }
                 : undefined
             }
-            currentUntil={personSnooze.thread.snoozedUntil}
+            // One time to show only when there is one conversation.
+            currentUntil={personSnooze.threads.length === 1 ? personSnooze.thread.snoozedUntil : undefined}
             openSignal={personSnoozeSignal}
             onOpenChange={onPersonSnoozeOpenChange}
             trigger={
@@ -645,6 +664,7 @@ export function PeopleRows({
           />
         ) : null}
       </div>
+      <SelectionRowMenu m={m} at={selectionMenu} onClose={() => setSelectionMenu(null)} />
     </>
   );
 }

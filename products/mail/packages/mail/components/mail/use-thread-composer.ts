@@ -94,6 +94,7 @@ export function useThreadComposerState(account: string) {
       setShowBcc: setterFor("showBcc"),
       setEditRecipients: setterFor("editRecipients"),
       setIncludeSignature: setterFor("includeSignature"),
+      setSignatureHtml: setterFor("signatureHtml"),
       setFromAccount: setterFor("fromAccount"),
       setReplyFocus: setterFor("replyFocus"),
       setQuoteMessageId: setterFor("quoteMessageId"),
@@ -122,6 +123,7 @@ export function useThreadComposerState(account: string) {
     showBcc,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     quoteMessageId,
@@ -143,6 +145,7 @@ export function useThreadComposerState(account: string) {
     showBcc,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     quoteMessageId,
@@ -186,6 +189,7 @@ export function useThreadComposer(
     bccList,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     quoteMessageId,
@@ -283,6 +287,7 @@ export function useThreadComposer(
     bccList,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     attachItems,
@@ -298,6 +303,7 @@ export function useThreadComposer(
     bccList,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     attachItems,
@@ -348,6 +354,9 @@ export function useThreadComposer(
         ...(snapshot.bccList.length ? { bccList: snapshot.bccList } : null),
         editRecipients: snapshot.editRecipients,
         includeSignature: snapshot.includeSignature,
+        ...(snapshot.signatureHtml != null
+          ? { signatureHtml: snapshot.signatureHtml }
+          : null),
         fromAccount: snapshot.fromAccount,
         replyFocus: snapshot.replyFocus,
         attachments: readyAttachmentsForDraft(snapshot.attachItems),
@@ -419,6 +428,7 @@ export function useThreadComposer(
             bccList: raw.bccList ?? [],
             editRecipients: raw.editRecipients,
             includeSignature: raw.includeSignature,
+            signatureHtml: raw.signatureHtml,
             fromAccount: raw.fromAccount,
             replyFocus: raw.replyFocus,
             quoteMessageId: raw.quoteMessageId ?? null,
@@ -514,6 +524,7 @@ export function useThreadComposer(
     bccList,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     replyFocus,
     attachItems,
@@ -577,6 +588,8 @@ export function useThreadComposer(
       // a conversation that has gone.
       subjectDraft: "",
       subjectOpen: false,
+      // And the copy of the signature, which was this message's alone.
+      signatureHtml: null,
     });
     clearAttachments();
   }, [account, threadId, patchComposer, clearAttachments]);
@@ -629,6 +642,8 @@ export function useThreadComposer(
         editRecipients: false,
         showCc: false,
         confirmDiscard: false,
+        // The card has the copy now, in the stored draft.
+        signatureHtml: null,
       });
       clearAttachments();
     },

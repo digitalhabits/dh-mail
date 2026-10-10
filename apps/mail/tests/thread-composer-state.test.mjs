@@ -153,4 +153,23 @@ suite(async () => {
     "and leaves the fill and the pick that it did not name",
     restored.replyFocus === true && restored.quoteMessageId === "p1"
   );
+
+  // The copy of the signature belongs to one message. A restore that does
+  // not name one puts the saved signature back; one that does keeps it.
+  const withCopy = { ...closed, signatureHtml: "<p>Chair of the board</p>" };
+  check(
+    "a closed composer has no copy of the signature",
+    initialComposerState("ulla@aavang.example").signatureHtml === null
+  );
+  check(
+    "a restore without a copy of the signature drops the old one",
+    composerReducer(withCopy, { type: "patch", patch: plain }).signatureHtml === null
+  );
+  check(
+    "a restore with a copy puts that copy in",
+    composerReducer(closed, {
+      type: "patch",
+      patch: snapshotPatch({ ...message, signatureHtml: "<p>Chair of the board</p>" }),
+    }).signatureHtml === "<p>Chair of the board</p>"
+  );
 });

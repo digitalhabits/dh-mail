@@ -11,6 +11,10 @@
 import * as React from "react";
 
 import { paintSearchHits } from "@/lib/mail/search-highlight";
+import { applyStoredBubbleWidth } from "@/lib/mail/bubble-width";
+import { BubbleWidthHandle } from "@/components/mail/bubble-width-handle";
+
+applyStoredBubbleWidth();
 import { Clock } from "lucide-react";
 import {
   MessageContextMenu,
@@ -708,6 +712,8 @@ export function MailBubble({
           "w-fit max-w-full"
         )}
       >
+      {/* Not in a chat window: there the window's own width is the measure. */}
+      {showMeta ? <BubbleWidthHandle own={message.own} zoom={zoom} boxRef={bubbleRef} /> : null}
       <MessageHoverActions
         own={message.own}
         onReact={reactAction}

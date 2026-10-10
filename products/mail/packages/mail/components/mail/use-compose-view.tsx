@@ -320,6 +320,7 @@ export function useComposeView(props: ComposeViewProps) {
           // The signature belongs to the mailbox it is sent from, and that
           // mailbox will add its own.
           includeSignature: outlookElsewhere ? false : includeSignature,
+          signatureHtml: outlookElsewhere ? undefined : (signatureHtml ?? undefined),
           attachments: attachments.length ? attachments : undefined,
         }),
       });
@@ -384,6 +385,8 @@ export function useComposeView(props: ComposeViewProps) {
   const [body, setBody] = React.useState("");
   const [editorKey, setEditorKey] = React.useState(0);
   const [includeSignature, setIncludeSignature] = React.useState(true);
+  /** This message's own copy of the signature; null until it is changed. */
+  const [signatureHtml, setSignatureHtml] = React.useState<string | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [sigSettings, setSigSettings] = React.useState<SignatureSettings | null>(
@@ -472,6 +475,7 @@ export function useComposeView(props: ComposeViewProps) {
     subject,
     body,
     includeSignature,
+    signatureHtml,
     attachItems,
   });
   composeSnapshotRef.current = {
@@ -484,6 +488,7 @@ export function useComposeView(props: ComposeViewProps) {
     subject,
     body,
     includeSignature,
+    signatureHtml,
     attachItems,
   };
   const persistComposeDraft = React.useCallback(
@@ -501,6 +506,9 @@ export function useComposeView(props: ComposeViewProps) {
         showCc: snapshot.showCc,
         showBcc: snapshot.showBcc,
         includeSignature: snapshot.includeSignature,
+        ...(snapshot.signatureHtml != null
+          ? { signatureHtml: snapshot.signatureHtml }
+          : null),
         attachments: readyAttachmentsForDraft(snapshot.attachItems),
         updatedAt: Date.now(),
       };
@@ -618,6 +626,7 @@ export function useComposeView(props: ComposeViewProps) {
         setSubject(raw.subject);
         setBody(raw.body);
         setIncludeSignature(raw.includeSignature);
+        setSignatureHtml(raw.signatureHtml ?? null);
         replaceAttachments(raw.attachments);
         setEditorKey((k) => k + 1);
         sigTouchedRef.current = true;
@@ -661,6 +670,7 @@ export function useComposeView(props: ComposeViewProps) {
     subject,
     body,
     includeSignature,
+    signatureHtml,
     attachItems,
     persistComposeDraft,
   ]);
@@ -751,6 +761,9 @@ export function useComposeView(props: ComposeViewProps) {
       body: bodyText,
       html: bodyText.trim() ? bodyToEmailHtml(body) : undefined,
       includeSignature,
+      // Only a copy the writer changed. Without one the send uses the saved
+      // signature, and the message is the same as before copies existed.
+      signatureHtml: signatureHtml ?? undefined,
       attachments: attachments.length ? attachments : undefined,
       sendAt,
     });
@@ -1181,6 +1194,7 @@ export function useComposeView(props: ComposeViewProps) {
     setShowPreview,
     setSigDialogOpen,
     setSigSettings,
+    setSignatureHtml,
     setSubject,
     setToList,
     shortcuts,
@@ -1190,6 +1204,7 @@ export function useComposeView(props: ComposeViewProps) {
     sigDialogOpen,
     sigSettings,
     sigTouchedRef,
+    signatureHtml,
     startCardResize,
     stopDraft,
     subject,

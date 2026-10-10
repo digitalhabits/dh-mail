@@ -3,7 +3,8 @@
 /**
  * What a message will look like once it is sent.
  *
- * The signature as it will appear, and the quoted original under a reply. Both
+ * The line under the box that says which signature is on, and the preview
+ * of the whole message with its signature and quoted original. Both
  * the composer and the reply box inside a thread show these, which is the only
  * reason they are a module rather than part of either.
  */
@@ -96,36 +97,6 @@ const PREVIEW_QUOTE_CSS = [
   "blockquote{border-left:1px solid #e7e5e4;padding-left:8px}",
   PREVIEW_LINK_CSS,
 ].join("");
-
-/**
- * The signature as it will send, below the message body.
- *
- * Only the signature. Inside the box is what will be sent, exactly as it
- * sends — the buttons that act on it are chrome, and chrome that appears
- * on hover over content is chrome nobody finds. They are on the meta line
- * under the box now; see `SignatureMetaControls`.
- */
-export function ComposerSignature({ signature }: { signature: string }) {
-  const t = useMailT();
-  return (
-    /*
-      Not part of the editor: it is added as the mail sends. It looked like
-      the words above it, so a reader clicked in to delete a letter, the
-      focus left the editor, and Backspace was the Delete shortcut: the
-      conversation went to the Trash. It takes the focus itself now, and
-      `data-mail-typing` makes every shortcut stand down while it has it.
-      The hover says where it is changed: Signature, under the box.
-    */
-    <div
-      className="cursor-default px-[15px] pb-3 outline-none"
-      tabIndex={-1}
-      data-mail-typing=""
-      title={t("signatureAddedOnSend")}
-    >
-      <SignatureContent signature={signature} />
-    </div>
-  );
-}
 
 const SIGNATURE_META_BUTTON =
   "underline-offset-2 hover:text-stone-800 hover:underline";
@@ -221,6 +192,7 @@ export function SentPreview({
   bodyHtml,
   hasBody,
   includeSignature,
+  signatureCopy = null,
   quote,
   recipientName,
   sending,
@@ -239,6 +211,11 @@ export function SentPreview({
   bodyHtml: string;
   hasBody: boolean;
   includeSignature: boolean;
+  /**
+   * This message's own copy of the signature, when the writer changed it.
+   * Null: the saved signature of `from`, which is what the send uses then.
+   */
+  signatureCopy?: string | null;
   quote?: PreviewQuote;
   recipientName: string;
   sending: boolean;
@@ -327,9 +304,9 @@ export function SentPreview({
           </p>
         )}
 
-        {includeSignature && signature ? (
+        {includeSignature && (signatureCopy ?? signature) ? (
           <div className="mt-4">
-            <SignatureContent signature={signature} />
+            <SignatureContent signature={signatureCopy ?? signature} />
           </div>
         ) : null}
 

@@ -394,7 +394,7 @@ export function PersonRowMenu({
   /** Anything unread in the pile. */
   unread: boolean;
   pinned: boolean;
-  /** The newest thread is asleep. */
+  /** Any of the threads is asleep: Cancel wakes every one. */
   snoozed: boolean;
   onToggleRead: () => void;
   onSnooze: () => void;
@@ -418,18 +418,19 @@ export function PersonRowMenu({
 
   return (
     <RowMenuShell x={x} y={y} label={name} onDismiss={onDismiss}>
+      {/* Each line that takes the whole pile says so, with the number. */}
       <button type="button" role="menuitem" autoFocus className={item} onClick={run(onToggleRead)}>
         <MailDotIcon className={icon} aria-hidden />
-        {unread ? t("markAsRead") : t("markAsUnread")}
+        {unread ? t("markAllAsReadCount", { count }) : t("markAllAsUnreadCount", { count })}
       </button>
       <button type="button" role="menuitem" className={item} onClick={run(onSnooze)}>
         <RotateCwFadingClock className={icon} aria-hidden />
-        {snoozed ? t("changeSnoozeEllipsis") : t("snoozeEllipsis")}
+        {t("snoozeAllCount", { count })}
       </button>
       {snoozed && onCancelSnooze ? (
         <button type="button" role="menuitem" className={item} onClick={run(onCancelSnooze)}>
           <RotateCwFadingClock className={icon} aria-hidden />
-          {t("cancelSnooze")}
+          {t("cancelAllSnoozes")}
         </button>
       ) : null}
       <button type="button" role="menuitem" className={item} onClick={run(onTogglePin)}>
@@ -610,6 +611,7 @@ export function ThreadListRow({
   dragKind,
   highlight,
   touch = false,
+  onSelectionMenu,
 }: {
   thread: MailThreadSummary;
   selected: boolean;
@@ -668,6 +670,8 @@ export function ThreadListRow({
    * MailPhoneShell.
    */
   touch?: boolean;
+  /** This row is one of a selection: a right-click opens the selection's menu. */
+  onSelectionMenu?: (x: number, y: number) => void;
 }) {
   const say = useMailT();
   const rowRef = React.useRef<HTMLDivElement | null>(null);
@@ -865,7 +869,8 @@ export function ThreadListRow({
       }}
       onContextMenu={(e) => {
         e.preventDefault();
-        setMenuAt({ x: e.clientX, y: e.clientY });
+        if (onSelectionMenu) onSelectionMenu(e.clientX, e.clientY);
+        else setMenuAt({ x: e.clientX, y: e.clientY });
       }}
       className={threadRowClass({ narrow, wide, compact, padX, selected })}
     >
@@ -1048,9 +1053,6 @@ export function ThreadListRow({
     </div>
   );
 }
-
-
-
 
 /**
  * Connect affordances. The host decides what a sign-in actually does: a web

@@ -78,6 +78,7 @@ export function ComposerPreview({
           includeSignature={Boolean(
             includeSignature && sigSettings?.signature
           )}
+          signatureCopy={m.composer.signatureHtml}
           zoom={zoom}
           /* The preview is the mail as it will land, so a reply that
              quotes nothing previews with nothing quoted. This used to

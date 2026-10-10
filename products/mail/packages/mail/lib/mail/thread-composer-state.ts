@@ -43,6 +43,12 @@ export type ComposerState = {
    */
   editRecipients: boolean;
   includeSignature: boolean;
+  /**
+   * This message's own copy of the signature, as the editor's HTML. Null
+   * until the writer changes the signature under the message: the saved
+   * signature of `fromAccount` then goes out. See editable-signature.tsx.
+   */
+  signatureHtml: string | null;
   /** Which mailbox the reply goes out from; defaults to the thread's account. */
   fromAccount: string;
   /** Hide the thread and grow the reply/forward composer to fill the pane. */
@@ -116,6 +122,7 @@ export function initialComposerState(fromAccount: string): ComposerState {
     showBcc: false,
     editRecipients: false,
     includeSignature: false,
+    signatureHtml: null,
     fromAccount,
     replyFocus: false,
     quoteMessageId: null,
@@ -145,6 +152,8 @@ export type ComposerSnapshot = {
   showBcc?: boolean;
   editRecipients: boolean;
   includeSignature: boolean;
+  /** None when not named: the saved signature, unchanged. */
+  signatureHtml?: string | null;
   fromAccount: string;
   replyFocus?: boolean;
   quoteMessageId?: string | null;
@@ -159,6 +168,8 @@ export function snapshotPatch(snapshot: ComposerSnapshot): ComposerPatch {
     ...fields,
     // Never carried over from the message before: see the type.
     bccList: snapshot.bccList ?? [],
+    // A copy of the signature belongs to the message it was changed in.
+    signatureHtml: snapshot.signatureHtml ?? null,
     showBcc: snapshot.showBcc ?? Boolean(snapshot.bccList?.length),
     subjectDraft: subject,
     // With the row open, because a subject that is not the thread's is

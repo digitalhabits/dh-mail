@@ -64,7 +64,7 @@ import {
 } from "@/lib/mail/thread-classify";
 import { signatureForSend } from "@/lib/mail/signature-html";
 import { htmlToText } from "@/lib/mail/html-to-text";
-import { getMailSignatureSettings } from "@/lib/mail/settings";
+import { outgoingSignature } from "@/lib/mail/outgoing-signature";
 import { bodyWrapperStyle, getTextStyleDefault } from "@/lib/mail/text-style";
 import { PlanError } from "@/lib/plan/errors";
 import { participantNames } from "@/lib/mail/thread-participants";
@@ -642,6 +642,8 @@ export async function draftOutlookMailMessage(input: {
   body: string;
   html?: string;
   includeSignature?: boolean;
+  /** This message's own copy of the signature. See `outgoingSignature`. */
+  signatureHtml?: string;
   threadId?: string;
   attachments?: {
     filename: string;
@@ -655,10 +657,7 @@ export async function draftOutlookMailMessage(input: {
   if (!input.to.length) throw new PlanError("Add at least one recipient", 400);
   const token = await outlookAccessTokenFor(input.account);
 
-  const signature =
-    input.includeSignature === false
-      ? ""
-      : (await getMailSignatureSettings(input.account)).signature;
+  const signature = await outgoingSignature(input);
 
   const htmlInner =
     input.html ||
@@ -702,6 +701,8 @@ export async function sendOutlookMailMessage(input: {
   body: string;
   html?: string;
   includeSignature?: boolean;
+  /** This message's own copy of the signature. See `outgoingSignature`. */
+  signatureHtml?: string;
   threadId?: string;
   /** ISO 8601 time to hold the message until. Exchange does the waiting. */
   sendAt?: string;
@@ -717,10 +718,7 @@ export async function sendOutlookMailMessage(input: {
   if (!input.to.length) throw new PlanError("Add at least one recipient", 400);
   const token = await outlookAccessTokenFor(input.account);
 
-  const signature =
-    input.includeSignature === false
-      ? ""
-      : (await getMailSignatureSettings(input.account)).signature;
+  const signature = await outgoingSignature(input);
 
   const htmlInner =
     input.html ||

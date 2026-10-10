@@ -56,6 +56,8 @@ export type OutboxEntry = {
   bccList?: MailRecipient[];
   editRecipients: boolean;
   includeSignature: boolean;
+  /** The message's own copy of the signature, so that Undo puts it back. */
+  signatureHtml?: string | null;
   fromAccount: string;
   /**
    * The files that were in the strip, so that Undo can put them back.
@@ -93,6 +95,8 @@ export type OutboxEntry = {
     body: string;
     html?: string;
     includeSignature: boolean;
+    /** The copy of the signature, when the writer changed it. */
+    signatureHtml?: string;
     threadId?: string;
     inReplyTo?: string;
     references?: string;

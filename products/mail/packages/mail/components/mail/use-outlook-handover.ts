@@ -62,6 +62,8 @@ export function useOutlookHandover(input: {
   outlookElsewhere: boolean;
   historyAppendix: { text: string; html: string } | null;
   includeSignature: boolean;
+  /** The message's own copy of the signature; null when it is the saved one. */
+  signatureHtml: string | null;
   quoteMessageId: string | null;
   quotePayload: QuotePayload;
   reply: string;
@@ -90,6 +92,7 @@ export function useOutlookHandover(input: {
     outlookElsewhere,
     historyAppendix,
     includeSignature,
+    signatureHtml,
     quoteMessageId,
     quotePayload,
     reply,
@@ -285,6 +288,8 @@ export function useOutlookHandover(input: {
           // the reader picks it up there — asking for this one's would put
           // a Digital Habits sign-off on a university address.
           includeSignature: outlookElsewhere ? false : includeSignature,
+          // And the copy of it that the writer changed, if they did.
+          signatureHtml: outlookElsewhere ? undefined : (signatureHtml ?? undefined),
           /*
             Threaded only where the conversation exists.
 
@@ -370,6 +375,7 @@ export function useOutlookHandover(input: {
     handingOver,
     historyAppendix,
     includeSignature,
+    signatureHtml,
     quoteMessageId,
     quotePayload,
     reply,

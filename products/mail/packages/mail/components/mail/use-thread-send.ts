@@ -89,6 +89,8 @@ export function useThreadSend(input: {
   bccList: MailRecipient[];
   editRecipients: boolean;
   includeSignature: boolean;
+  /** The message's own copy of the signature; null when it is the saved one. */
+  signatureHtml: string | null;
   fromAccount: string;
   quoteMessageId: string | null;
   updateRecordsAfterSend: boolean;
@@ -140,6 +142,7 @@ export function useThreadSend(input: {
     bccList,
     editRecipients,
     includeSignature,
+    signatureHtml,
     fromAccount,
     quoteMessageId,
     updateRecordsAfterSend,
@@ -238,6 +241,7 @@ export function useThreadSend(input: {
           bccList: entry.bccList ?? [],
           editRecipients: entry.editRecipients,
           includeSignature: entry.includeSignature,
+          signatureHtml: entry.signatureHtml,
           fromAccount: entry.fromAccount,
           updateRecordsAfterSend: Boolean(entry.request.updateCrmNotes),
           // A forward names the message it carries. A reply leaves the pick
@@ -506,6 +510,7 @@ export function useThreadSend(input: {
       bccList,
       editRecipients,
       includeSignature,
+      signatureHtml,
       fromAccount,
       // Taken now: `closeComposer` below empties the strip.
       attachments: readyAttachmentsForDraft(attachItems),
@@ -521,6 +526,8 @@ export function useThreadSend(input: {
         // signature off with it, which made one answer out of two
         // questions: a reply can leave the history out and still be signed.
         includeSignature,
+        // Only a copy the writer changed: see `outgoingSignature`.
+        signatureHtml: signatureHtml ?? undefined,
         threadId: crossAccount || startsNewThread ? undefined : threadId,
         inReplyTo: thread.reply.inReplyTo,
         references: thread.reply.references,
@@ -666,6 +673,7 @@ export function useThreadSend(input: {
     fromAccount,
     threadId,
     includeSignature,
+    signatureHtml,
     quotePayload,
     // The pick, not only the quote. If the picked message is the newest one,
     // the quote is the same object with a pick and without one.
@@ -750,6 +758,7 @@ export function useThreadSend(input: {
       bccList,
       editRecipients,
       includeSignature,
+      signatureHtml,
       fromAccount,
       // Taken now: `closeComposer` below empties the strip.
       attachments: readyAttachmentsForDraft(attachItems),
@@ -768,6 +777,7 @@ export function useThreadSend(input: {
         body: replyText,
         html: replyText.trim() ? bodyToEmailHtml(reply) : undefined,
         includeSignature,
+        signatureHtml: signatureHtml ?? undefined,
         attachments: attachments.length ? attachments : undefined,
         // The message, and the conversation before it newest first: see
         // forward-payload.ts.
@@ -808,6 +818,7 @@ export function useThreadSend(input: {
     reply,
     replyText,
     includeSignature,
+    signatureHtml,
     closeComposer,
     attachmentsReady,
     attachmentPayload,

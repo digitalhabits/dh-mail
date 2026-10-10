@@ -45,6 +45,46 @@
 }
 
 /*
+ * The signature under the message being written: a copy for this message
+ * only (see editable-signature.tsx). It is part of the letter, so it has no
+ * box and no border. It has the face of the signature view it replaced:
+ * the page's font, 14px, and the signature's grey. A faint ring shows
+ * while the caret is in it, so the writer can see where the copy ends.
+ */
+.rich-text-editor.signature-copy-editor .ql-container {
+  min-height: 0;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+}
+.rich-text-editor.signature-copy-editor .ql-editor {
+  min-height: 0;
+  padding: 2px 15px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.625;
+  color: #444;
+  border-radius: 6px;
+}
+.rich-text-editor.signature-copy-editor .ql-editor:focus {
+  box-shadow: inset 0 0 0 1px rgb(231 229 228);
+}
+.rich-text-editor.signature-copy-editor .ql-editor p {
+  margin: 0;
+  line-height: inherit;
+}
+.rich-text-editor.signature-copy-editor .ql-editor a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgb(214 211 209);
+  text-underline-offset: 2px;
+}
+.rich-text-editor.signature-copy-editor .ql-editor img {
+  max-width: 100%;
+  height: auto;
+}
+
+/*
  * The subject stays put while the thread scrolls under it.
  *
  * A shadow rather than a rule, and a short one — about ten pixels, which
@@ -110,9 +150,15 @@
  * nothing a media query knows.
  */
 .mail-bubble-column {
+  /* The reader's own width, when they dragged one (lib/mail/bubble-width),
+     else three quarters of the pane up to 640px. A mail laid out at a fixed
+     width is never cut to less than that width. */
   max-width: min(
     calc(100% - 14px),
-    max(340px, min(75%, 640px), var(--mail-bubble-fixed, 0px))
+    max(
+      var(--mail-bubble-user-width, max(340px, min(75%, 640px))),
+      var(--mail-bubble-fixed, 0px)
+    )
   );
 }
 
@@ -1007,8 +1053,12 @@
 }
 /* The signature, shown under what you are writing — its own view rather
    than an editor, and its own grey. */
-.mail-shell[data-theme="dark"] .text-\[\#444\] {
+.mail-shell[data-theme="dark"] .text-\[\#444\],
+.mail-shell[data-theme="dark"] .rich-text-editor.signature-copy-editor .ql-editor {
   color: var(--mail-u-fg-muted);
+}
+.mail-shell[data-theme="dark"] .rich-text-editor.signature-copy-editor .ql-editor:focus {
+  box-shadow: inset 0 0 0 1px var(--mail-u-fg-faint);
 }
 
 /*

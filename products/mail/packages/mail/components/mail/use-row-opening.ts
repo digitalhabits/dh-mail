@@ -35,6 +35,9 @@ type OpenThread = {
   focusMessageId?: string;
 };
 
+/** How long after an open the store is told the thread is read. */
+const MARK_READ_AFTER_OPEN_MS = 3000;
+
 export function useRowOpening({
   listCacheKey,
   threads,
@@ -92,15 +95,29 @@ export function useRowOpening({
       // Every copy behind the row: a thread cc'd to two mailboxes is one
       // row, unread while either copy is. Marking one read left the row
       // read for a moment and then bold again from the other.
-      for (const c of everyCopy(t, threadsRef.current)) {
-        void apiJson("/api/mail/read", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(c),
-        }).catch((err) => {
-          console.warn("[mail] could not mark the thread read:", err);
-        });
-      }
+      const copies = everyCopy(t, threadsRef.current);
+      /*
+        A moment after the open, not at it. The thread opens on the first
+        of its new, unread messages, and it can only see which those are
+        while they are still unread in the copy. Marked read at the click,
+        the store had cleared them before the thread was read, and a long
+        thread with three new messages opened on the newest of them (a KU
+        tester, 2026-10-10). The row is not bold from the click on: only
+        the word to the store waits.
+      */
+      window.setTimeout(() => {
+        // Marked unread again in the meantime: that is the reader's last word.
+        if (threadsRef.current.some((item) => rowStandsFor(item, t) && item.unread)) return;
+        for (const c of copies) {
+          void apiJson("/api/mail/read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(c),
+          }).catch((err) => {
+            console.warn("[mail] could not mark the thread read:", err);
+          });
+        }
+      }, MARK_READ_AFTER_OPEN_MS);
     }
     setThreads((current) => {
       const next = current.map((item) =>

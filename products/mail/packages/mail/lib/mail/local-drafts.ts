@@ -42,6 +42,12 @@ type DraftBase = {
    * finished from work that left by another door.
    */
   handedOver?: { at: number; account: string };
+  /**
+   * The message's own copy of the signature, as the editor's HTML, when the
+   * writer changed it under the message. Absent: the saved signature of the
+   * sending address, as in drafts saved before copies existed.
+   */
+  signatureHtml?: string;
 };
 
 export type ThreadMailDraft = DraftBase & {
