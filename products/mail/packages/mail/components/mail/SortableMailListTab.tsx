@@ -7,41 +7,29 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
-
-export function chipClass(active: boolean): string {
-  return cn(
-    "shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[13px] font-medium transition-colors",
-    active
-      ? "border-teal-600 bg-teal-600/10 text-[var(--mail-chrome-fg)]"
-      : "border-[var(--mail-chrome-border)] text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
-  );
-}
+import { TabIcon } from "@/lib/mail/tab-icons";
 
 /**
- * A view the list is standing in — Sent, Snoozed, Trash — beside the chips.
- *
- * Still an underline rather than a chip, because it says a different thing:
- * a filter is switched on, and this is a place you are standing. But it has
- * to sit on the same line as the chips do, and it did not. The underline and
- * the padding under it are five pixels the chips have no answer to, and with
- * all five below the words, `items-center` centred the box and left the
- * words riding above every chip in the row. The same five go above, so the
- * words are in the middle of their own box and level with the rest.
- *
- * The chips' size too, which these had never taken.
+ * A list tab, as in To-Do: All, a flavor's own tabs, Other, a list of one's own, and a
+ * view the list is standing in (Sent, Snoozed, Trash). Underlined when it
+ * is the one on screen. The five pixels above the words match the
+ * underline and the padding under them, so the words sit in the middle.
  */
 export function viewTabClass(active: boolean): string {
   return cn(
-    "shrink-0 whitespace-nowrap border-b-[3px] pb-0.5 pt-[5px] text-[13px] font-medium",
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 pb-1 pt-1 text-[14px]",
+    // The one on screen in its weight, on a teal line; the rest lighter,
+    // as in To-Do.
     active
-      ? "border-[var(--mail-tab-active)] text-[var(--mail-chrome-fg)]"
-      : "border-transparent text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
+      ? "border-teal-600 font-medium text-[var(--mail-chrome-fg)]"
+      : "border-transparent font-normal text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
   );
 }
 
 export function SortableMailListTab({
   id,
   label,
+  icon,
   active,
   onSelect,
   onEdit,
@@ -49,6 +37,8 @@ export function SortableMailListTab({
 }: {
   id: MailListTab;
   label: string;
+  /** A Lucide name, from lib/mail/tab-icons. */
+  icon?: string;
   active: boolean;
   onSelect: () => void;
   /** Right-click (custom lists) opens the editor. */
@@ -98,13 +88,14 @@ export function SortableMailListTab({
           : t("listTabHint", { name: label })
       }
       className={cn(
-        // A chip, not an underlined tab: these are filters now, and a filter
-        // is something you switch on rather than a place you are standing.
-        chipClass(active),
+        // An underlined tab, as in To-Do (2026-10-11). They were chips that
+        // could be switched on together, which read as confusing.
+        viewTabClass(active),
         "touch-none",
         isDragging && "z-10 cursor-grabbing opacity-80"
       )}
     >
+      {icon ? <TabIcon id={icon} size={14} className="shrink-0 opacity-80" /> : null}
       {label}
     </button>
   );

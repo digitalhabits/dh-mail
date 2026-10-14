@@ -5,6 +5,7 @@
  * app uses, so callers import from there.
  */
 
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
 import { highlightRanges, searchHighlightTerms } from "@/lib/mail/search-highlight";
@@ -102,7 +103,8 @@ export async function listSnoozedThreads(options: {
       const provider = providerByEmail.get(accountEmail) ?? "gmail";
       try {
         // From the local copy: never a Gmail or Graph read for Exchange.
-        if (provider === "exchange") {
+        // Nor for a Gmail on an app password, which Google's API does not take.
+        if (provider === "exchange" || (provider === "gmail" && (await isAppPasswordGmail(accountEmail)))) {
           return await exchangeSnoozedRow(accountEmail, threadId, snoozedUntil, classifier);
         }
         if (provider === "outlook") {

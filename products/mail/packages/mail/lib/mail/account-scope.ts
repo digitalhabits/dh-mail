@@ -56,3 +56,20 @@ export function filterAccountsForScope<
   }
   return visible;
 }
+
+/**
+ * The addresses a message can go from: the mailboxes shown, then the hidden
+ * ones. Hiding a mailbox takes its mail off the screen, not the address
+ * out of From — a reply from it was otherwise impossible until it was
+ * shown again.
+ */
+export function sendFromAccounts(shown: string[], hidden: string[] = []): string[] {
+  const out = [...shown];
+  const seen = new Set(shown.map((email) => email.toLowerCase()));
+  for (const email of hidden) {
+    if (seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    out.push(email);
+  }
+  return out;
+}

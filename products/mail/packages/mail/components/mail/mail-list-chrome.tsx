@@ -10,10 +10,10 @@
 
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import * as React from "react";
-import { filterIds, filterIsOn as filterIsOnFor, toggleFilter } from "@/lib/mail/filter-set";
+import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
-import { Folder, Funnel, Plus } from "lucide-react";
+import { Folder, Plus } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 
 /**
@@ -33,6 +33,7 @@ import type { MailFolder } from "@/lib/mail/folder-types";
 import { mailSay } from "@/lib/mail/i18n";
 import { MailAccountTabs, MailRowButton } from "@/components/mail/MailAccountTabs";
 import { setTabSchedule } from "@/lib/mail/tab-schedules";
+import { setTabIcon, useTabIcons } from "@/lib/mail/tab-icons";
 import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { MailLayoutMenu } from "@/components/mail/MailListControls";
@@ -454,62 +455,11 @@ export function FoldersButton({
   );
 }
 
-export function FilterButton({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    chromeDark,
-    filterIsOn,
-    filtersShowing,
-    lastFilterRef,
-    setFilterRowOpen,
-    setTab,
-    t,
-    tab,
-    tabOrder,
-  } = m;
-  return (
-    <MailRowButton
-      icon={Funnel}
-      label={t("filterLabel")}
-      // Lit while the filters are showing, and only then. Lighting it
-      // because a filter happened to be on made it look like the chosen
-      // one of a pair of buttons, which it is not.
-      active={filtersShowing}
-      aria-expanded={filtersShowing}
-      onNavy={chromeDark}
-      /*
-        Putting the row away is turning the filter off.
-
-        A filter the reader cannot see is a list that is missing mail for
-        no reason they can point at — so a filter that is on keeps its row
-        on screen, and this button, which used to be able to hide it,
-        takes it back to All instead. With All showing there is nothing to
-        hide, and it folds away as it always did.
-      */
-      onClick={() => {
-        if (!filtersShowing) {
-          setFilterRowOpen(true);
-          // Back to the one that was on when they were last put away —
-          // if it is still there to go back to, and if nothing else has
-          // taken the list over in the meantime. Opening Trash and then
-          // pressing this means "show me the filters", not "leave Trash".
-          const last = lastFilterRef.current;
-          // A set of them, each still there.
-          const ids = last ? filterIds(last, MAIL_OFF_TAB_VIEWS) : [];
-          if (tab === "all" && ids.length && ids.every((id) => tabOrder.includes(id))) setTab(last!);
-          return;
-        }
-        if (filterIsOn) setTab("all");
-        setFilterRowOpen(false);
-      }}
-    />
-  );
-}
-
-/** The filter chips: the built-in lists, the reader's own, and New list. */
+/**
+ * The list tabs, as in To-Do: All, the built-in lists, the reader's own,
+ * and New list. One at a time, underlined. They were chips that could be
+ * switched on together, behind a funnel, and read as confusing.
+ */
 
 export function FilterChips({
   m,
@@ -529,13 +479,14 @@ export function FilterChips({
     tabReorderSensors,
     tabReorderSuppressClick,
   } = m;
+  const tabIcons = useTabIcons();
   return (
       /* The half-rem of padding, and the same again in negative margin, is
          room for a chip's own outline. A scroller clips at its box, and the
          first chip sat exactly on that edge — so the left of its border was
          shaved off, which read as a chip half out of the row. The margin
          puts the row back where it was. */
-      <div className="-mx-0.5 min-w-0 flex-1 overflow-x-auto px-0.5 py-0.5 [scrollbar-width:thin]">
+      <div className="-mx-0.5 min-w-0 flex-1 overflow-x-auto px-0.5 pt-0.5 [scrollbar-width:thin]">
         <DndContext
           sensors={tabReorderSensors}
           collisionDetection={closestCenter}
@@ -561,8 +512,15 @@ export function FilterChips({
             items={tabOrder}
             strategy={horizontalListSortingStrategy}
           >
-            <div className="flex w-max items-center gap-2 py-0.5 pr-2">
-              {/* No chip for All: All is no filter on. */}
+            <div className="flex w-max items-end gap-5 pt-0.5 pr-2">
+              <button
+                type="button"
+                data-list-tab="all"
+                onClick={() => setTab("all")}
+                className={viewTabClass(tab === "all")}
+              >
+                {t("tabAll")}
+              </button>
               {tabOrder.filter((id) => id !== "all").map((id) => {
                 const listId = parseCustomListTabId(id);
                 const custom = listId
@@ -576,14 +534,14 @@ export function FilterChips({
                     key={id}
                     id={id}
                     label={label}
+                    icon={tabIcons[id]}
                     active={filterIsOnFor(tab, id, MAIL_OFF_TAB_VIEWS)}
                     suppressClick={tabReorderSuppressClick}
                     onSelect={() => {
-                      // The folder stays. A filter narrows what is on
+                      // The folder stays. A tab narrows what is on
                       // screen; leaving the folder is what Back is for.
-                      // A press puts the filter on or takes it off; more
-                      // than one can be on (lib/mail/filter-set).
-                      setTab(toggleFilter(tab, id, MAIL_OFF_TAB_VIEWS, tabOrder));
+                      // One tab at a time, as in To-Do.
+                      setTab(id);
                     }}
                     // Right-click opens it: a list of your own whole, a
                     // built-in filter at its schedule, which is all there is
@@ -675,7 +633,7 @@ export function FilterChips({
                   // on the tab scroller would clip a ring's top edge). The
                   // matching space above is what puts the square level with
                   // the words beside it rather than over them.
-                  "flex shrink-0 items-center border-b-[3px] border-transparent pb-0.5 pt-[5px]",
+                  "flex shrink-0 items-center border-b-2 border-transparent pb-1 pt-1",
                   listEditor != null
                     ? "text-teal-700"
                     : "text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
@@ -701,12 +659,10 @@ export function FilterChips({
 
 export function FilterRow({
   m,
-  filterButton,
   filterChips,
   foldersButton,
 }: {
   m: MailPageModel;
-  filterButton: React.ReactNode;
   filterChips: React.ReactNode;
   foldersButton: React.ReactNode;
 }) {
@@ -716,13 +672,18 @@ export function FilterRow({
   } = m;
   return (
     listChromeOnToolbar && !filtersShowing ? null : (
-    <div className="mt-2 flex items-center gap-2">
-      {/* The folders beside the filter: both choose which mail the list
-          holds, and the tab row above is the mailboxes' alone. */}
-      {listChromeOnToolbar ? null : foldersButton}
-      {listChromeOnToolbar ? null : filterButton}
-
+    /* The tabs, then the folders at the right end, under the button that
+       hides the list, as Outlook has Focused and Other. The light line
+       runs the whole width of the list: the row reaches out over the
+       head's padding (px-5) and takes it back. An inset shadow and not a
+       border, so the selected tab's underline is drawn over it. */
+    <div className="-mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
       {filtersShowing ? filterChips : null}
+      {/* Centred under the hide button, which stands 9px out past the
+          edge and is 28px wide; this one is 32px. Level with the tab
+          words: a tab is 30px from its underline up, with the words'
+          middle 16px above the line, which is this button's middle. */}
+      {listChromeOnToolbar ? null : <div className="-mr-[11px] ml-auto shrink-0">{foldersButton}</div>}
     </div>
   )
   );
@@ -807,6 +768,7 @@ export function ListTabsOrFolder({
     tabSchedules,
     threads,
   } = m;
+  const tabIcons = useTabIcons();
   return (
     activeFolder ? (
     <>
@@ -923,6 +885,7 @@ export function ListTabsOrFolder({
           editingBuiltin
             ? {
                 name: editingBuiltin,
+                icon: tabIcons[editingBuiltin] ?? "",
                 members: [],
                 scheduleDefault: Boolean(tabSchedules[editingBuiltin]),
                 scheduleFrom: tabSchedules[editingBuiltin]?.from,
@@ -932,6 +895,7 @@ export function ListTabsOrFolder({
             : editingList
               ? {
                   name: editingList.name,
+                  icon: tabIcons[customListTabId(editingList.id)] ?? "",
                   members: editingList.members,
                   scheduleDefault: editingList.scheduleDefault,
                   scheduleFrom: editingList.scheduleFrom,
@@ -940,8 +904,9 @@ export function ListTabsOrFolder({
                 }
               : undefined
         }
-        onSubmit={(name, members, schedule) => {
+        onSubmit={(name, members, schedule, icon) => {
           if (editingBuiltin) {
+            setTabIcon(editingBuiltin, icon);
             setTabSchedule(editingBuiltin, schedule.enabled ? schedule : null);
             setListEditor(null);
             return;
@@ -952,11 +917,13 @@ export function ListTabsOrFolder({
               members,
               schedule,
             });
+            setTabIcon(customListTabId(editingList.id), icon);
             setListEditor(null);
             return;
           }
           const list = createCustomList(name, members, schedule);
           const tabId = customListTabId(list.id);
+          setTabIcon(tabId, icon);
           setTabOrder([...tabOrder, tabId]);
           setActiveFolder(null);
           setTab(tabId);

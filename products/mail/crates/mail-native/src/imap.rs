@@ -14,6 +14,7 @@
 
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -458,6 +459,9 @@ pub enum IdleEvent {
   Timeout,
 }
 
+/// How often an IDLE that can be woken looks at its wake flag.
+const IDLE_SLICE: Duration = Duration::from_millis(500);
+
 /// How long a read waits for the server outside IDLE. Gmail slows a big
 /// fetch down when a mailbox is being read in full, so this is generous.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -575,11 +579,35 @@ impl Client {
     }
   }
 
+  /// Sign in as the mailbox's credential says: a Google access token, or
+  /// an app password.
+  pub fn sign_in(&mut self, user: &str, credential: &Credential) -> ImapResult<()> {
+    match credential {
+      Credential::OAuth(token) => self.authenticate_xoauth2(user, token),
+      Credential::Password(password) => self.authenticate_plain(user, password),
+    }
+  }
+
+  /// SASL PLAIN with a password: for a Gmail app password, which Gmail
+  /// takes over IMAP with no Google sign-in. Base64 in one line, so a
+  /// password with quotes or spaces needs no IMAP quoting.
+  pub fn authenticate_plain(&mut self, user: &str, password: &str) -> ImapResult<()> {
+    let raw = format!("\u{0}{user}\u{0}{password}");
+    let encoded = base64::engine::general_purpose::STANDARD.encode(raw);
+    let tag = self.send_command(&format!("AUTHENTICATE PLAIN {encoded}"))?;
+    self.finish_authenticate(&tag)
+  }
+
   /// SASL XOAUTH2 with an access token from the mailbox's OAuth grant.
   pub fn authenticate_xoauth2(&mut self, user: &str, access_token: &str) -> ImapResult<()> {
     let raw = format!("user={user}\u{1}auth=Bearer {access_token}\u{1}\u{1}");
     let encoded = base64::engine::general_purpose::STANDARD.encode(raw);
     let tag = self.send_command(&format!("AUTHENTICATE XOAUTH2 {encoded}"))?;
+    self.finish_authenticate(&tag)
+  }
+
+  /// The server's answer to AUTHENTICATE: OK, or its reason for no.
+  fn finish_authenticate(&mut self, tag: &str) -> ImapResult<()> {
     let mut failure: Option<String> = None;
     loop {
       match self.read_response()? {
@@ -748,6 +776,22 @@ impl Client {
 
   /// Wait up to `wait` for the server to speak first.
   pub fn idle(&mut self, wait: Duration) -> ImapResult<IdleEvent> {
+    self.idle_until(wait, None)
+  }
+
+  /*
+    The same wait, which also ends when `wake` is set: the reader archived
+    or moved something, and it should go to the server now, not at the end
+    of the wait. It went at the end: the flag was set and nothing looked at
+    it, so an archive could sit in the queue for a minute while other
+    clients — and a list read from Gmail — still had the thread in the
+    inbox, and quick archives came back into the list and went out again.
+
+    The socket is looked at in short slices. A slice only peeks
+    (`fill_buf` consumes nothing), so one that runs out cannot cut a line
+    in two; a reply that has begun is read whole, with the usual timeout.
+  */
+  pub fn idle_until(&mut self, wait: Duration, wake: Option<&AtomicBool>) -> ImapResult<IdleEvent> {
     let tag = self.send_command("IDLE")?;
     match self.read_response()? {
       Response::Continuation(_) => {}
@@ -756,8 +800,31 @@ impl Client {
       }
       other => return Err(ImapError::Protocol(format!("IDLE answered {other:?}"))),
     }
-    self.set_read_timeout(wait)?;
+    let started = std::time::Instant::now();
     let outcome = loop {
+      if wake.is_some_and(|w| w.load(Ordering::SeqCst)) {
+        break Ok(IdleEvent::Timeout);
+      }
+      let left = wait.saturating_sub(started.elapsed());
+      if left.is_zero() {
+        break Ok(IdleEvent::Timeout);
+      }
+      let slice = if wake.is_some() { left.min(IDLE_SLICE) } else { left };
+      self.set_read_timeout(slice)?;
+      let ready = match self.stream.fill_buf() {
+        Ok(bytes) => {
+          if bytes.is_empty() {
+            break Err(ImapError::Closed);
+          }
+          true
+        }
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => false,
+        Err(e) => break Err(e.into()),
+      };
+      if !ready {
+        continue;
+      }
+      self.set_read_timeout(DEFAULT_TIMEOUT)?;
       match self.read_response() {
         Ok(Response::Untagged(tokens)) => {
           if let Some(event) = untagged_event(&tokens) {
@@ -765,7 +832,6 @@ impl Client {
           }
         }
         Ok(Response::Tagged { .. }) | Ok(Response::Continuation(_)) => {}
-        Err(e) if e.is_timeout() => break Ok(IdleEvent::Timeout),
         Err(e) => break Err(e),
       }
     };
@@ -901,6 +967,24 @@ fn literal_size(line: &[u8]) -> Option<usize> {
   let digits = std::str::from_utf8(&line[open + 1..line.len() - 1]).ok()?;
   let digits = digits.trim_end_matches('+');
   digits.parse().ok()
+}
+
+/// How a Gmail mailbox signs in: a Google OAuth access token, or an app
+/// password the reader made in their Google Account.
+#[derive(Clone)]
+pub enum Credential {
+  OAuth(String),
+  Password(String),
+}
+
+impl std::fmt::Debug for Credential {
+  // Never the secret itself, in a log or a panic.
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(match self {
+      Credential::OAuth(_) => "Credential::OAuth(..)",
+      Credential::Password(_) => "Credential::Password(..)",
+    })
+  }
 }
 
 /// A mailbox name as a quoted string, as SELECT wants it.
@@ -1548,6 +1632,31 @@ mod tests {
   }
 
   #[test]
+  fn an_app_password_signs_in_with_sasl_plain() {
+    // \0vera@example.com\0pw "with" quotes, in base64.
+    let expected = base64::engine::general_purpose::STANDARD.encode("\u{0}vera@example.com\u{0}pw \"with\" quotes");
+    let command: &'static str = Box::leak(format!("AUTHENTICATE PLAIN {expected}").into_boxed_str());
+    let stream = fake_server(vec![(command, "{tag} OK Success\r\n")]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    client
+      .sign_in("vera@example.com", &Credential::Password("pw \"with\" quotes".into()))
+      .unwrap();
+  }
+
+  #[test]
+  fn a_refused_app_password_is_a_refusal_with_the_servers_words() {
+    let stream = fake_server(vec![(
+      "AUTHENTICATE PLAIN",
+      "{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n",
+    )]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    let err = client.sign_in("vera@example.com", &Credential::Password("wrong".into())).unwrap_err();
+    assert!(matches!(err, ImapError::Refused { .. }), "{err}");
+    assert!(err.to_string().contains("Invalid credentials"), "{err}");
+    assert!(!format!("{:?}", Credential::Password("wrong".into())).contains("wrong"));
+  }
+
+  #[test]
   fn a_refused_sign_in_carries_the_servers_reason() {
     let stream = fake_server(vec![(
       "AUTHENTICATE XOAUTH2",
@@ -1571,6 +1680,30 @@ mod tests {
     let mut client = Client::connect_plain(stream).unwrap();
     assert_eq!(client.idle(Duration::from_secs(5)).unwrap(), IdleEvent::Exists(12));
     assert_eq!(client.idle(Duration::from_millis(200)).unwrap(), IdleEvent::Timeout);
+  }
+
+  #[test]
+  fn a_wake_ends_the_idle_at_once_and_a_reply_still_comes_through_whole() {
+    // Reported 2026-10-13: archives waited out the minute-long IDLE.
+    let stream = fake_server(vec![
+      ("IDLE", "+ idling\r\n"),
+      ("DONE", "{tag} OK IDLE terminated\r\n"),
+      ("IDLE", "+ idling\r\n* 7 EXISTS\r\n"),
+      ("DONE", "{tag} OK IDLE terminated\r\n"),
+    ]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    let wake = Arc::new(AtomicBool::new(false));
+    let setter = wake.clone();
+    std::thread::spawn(move || {
+      std::thread::sleep(Duration::from_millis(300));
+      setter.store(true, Ordering::SeqCst);
+    });
+    let started = std::time::Instant::now();
+    assert_eq!(client.idle_until(Duration::from_secs(60), Some(&wake)).unwrap(), IdleEvent::Timeout);
+    assert!(started.elapsed() < Duration::from_secs(3), "woken in {:?}", started.elapsed());
+    // A wait that can be woken still hears the server.
+    let quiet = AtomicBool::new(false);
+    assert_eq!(client.idle_until(Duration::from_secs(5), Some(&quiet)).unwrap(), IdleEvent::Exists(7));
   }
 
   #[test]

@@ -8,10 +8,12 @@
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { HiddenMailboxesNotice } from "@/components/mail/mail-thread-list";
+import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
+import { PersonBackButton } from "@/components/mail/person-back-button";
 import { ComposeView } from "@/components/mail/ComposeView";
 import { ThreadPane } from "@/components/mail/ThreadPane";
 import { SelectionPane } from "@/components/mail/SelectionPane";
-import { ArrowLeft } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { threadKey } from "@/lib/mail/thread-copies";
@@ -42,8 +44,14 @@ import type { MailDraftRow } from "@/lib/mail/types";
 
 export function ReadingPaneContent({
   m,
+  hide,
+  sendFrom,
 }: {
   m: MailPageModel;
+  /** Mailboxes hidden for now: with none showing, the pane says so. */
+  hide?: MailboxHideControls;
+  /** What From offers: every mailbox, the hidden ones too (sendFromAccounts). */
+  sendFrom: string[];
 }) {
   const {
     accountEmails,
@@ -170,7 +178,7 @@ export function ReadingPaneContent({
               What was in the old one is not lost — unmounting writes it.
             */
             key={composeSeed?.draftKey ?? "compose-new"}
-            accounts={accountEmails}
+            accounts={sendFrom}
             scope={mailboxScopeEmails}
             zoom={zoom}
             onZoomAdjust={adjustZoom}
@@ -222,28 +230,25 @@ export function ReadingPaneContent({
           />
         ) : selected ? (
           <>
-            {/* The way back to a list worth going back to. With one thread
-                open there is nothing behind this but the thread itself —
-                which is why that case now opens straight into the reader
-                (see openPerson) — so the row is only in the way. */}
-            {viewMode === "people" &&
-            selectedPerson &&
-            selectedPerson.threads.length > 1 ? (
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="flex items-center gap-1.5 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-8 py-2 text-left text-xs text-[var(--mail-thread-muted)] hover:text-[var(--mail-chrome-fg)]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                {t("allThreadsWith", { name: selectedPerson.name })}
-              </button>
-            ) : null}
             <ThreadPane
               key={`${threadKey(selected)}|${selected.focusMessageId ?? ""}`}
               account={selected.account}
-              accounts={accountEmails}
+              accounts={sendFrom}
               threadId={selected.threadId}
               focusMessageId={selected.focusMessageId}
+              /* The way back to a list worth going back to, first in the
+                 toolbar. With one thread there is nothing behind it but the
+                 thread itself, so there is no button. */
+              toolbarLead={
+                viewMode === "people" && selectedPerson && selectedPerson.threads.length > 1 ? (
+                  <PersonBackButton
+                    row={selectedPerson}
+                    open={selected}
+                    onBack={() => setSelected(null)}
+                    onStep={openThread}
+                  />
+                ) : undefined
+              }
               searchTerms={highlightTerms}
               zoom={zoom}
               onZoomAdjust={adjustZoom}
@@ -416,10 +421,11 @@ export function ReadingPaneContent({
               onFloatReply={
                 phone
                   ? undefined
-                  : () =>
+                  : (opts) =>
                       setFloatingReply({
                         account: selected.account,
                         threadId: selected.threadId,
+                        full: opts?.full,
                       })
               }
               replyFloating={
@@ -518,14 +524,7 @@ export function ReadingPaneContent({
             }
           />
         ) : !accountEmails.length ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-            <p className="text-sm font-medium text-stone-600">
-              {t("noMailboxConnected")}
-            </p>
-            <p className="max-w-sm text-sm text-stone-400">
-              {t("noMailboxHint")}
-            </p>
-          </div>
+          <NoMailboxPane m={m} hide={hide} />
         ) : (
           /*
             No spinner here while the list loads.
@@ -539,5 +538,37 @@ export function ReadingPaneContent({
           */
           <MailRestPanel />
         )
+  );
+}
+
+/**
+ * The reading pane with no mailbox showing.
+ *
+ * Every mailbox can be hidden, by its schedule or by hand. The pane said
+ * "No mailbox connected yet" then, which is false: the mailboxes are there,
+ * and the reader chose when to see them. With the list folded away this was
+ * the only thing on screen. So a hidden mailbox gets the list's own notice,
+ * with its way to show one now, and only none at all gets "connect one".
+ */
+function NoMailboxPane({ m, hide }: { m: MailPageModel; hide?: MailboxHideControls }) {
+  const { t, hideList } = m;
+  if (hide?.hidden.length) {
+    // The list carries the notice when it is out; said twice, it was two
+    // sets of the same buttons side by side.
+    return hideList ? (
+      <div className="flex flex-1 items-center justify-center">
+        <HiddenMailboxesNotice m={m} hide={hide} />
+      </div>
+    ) : (
+      <div className="flex flex-1 items-center justify-center px-6 text-center">
+        <p className="text-sm font-medium text-stone-600">{t("mailboxesHiddenTitle")}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+      <p className="text-sm font-medium text-stone-600">{t("noMailboxConnected")}</p>
+      <p className="max-w-sm text-sm text-stone-400">{t("noMailboxHint")}</p>
+    </div>
   );
 }

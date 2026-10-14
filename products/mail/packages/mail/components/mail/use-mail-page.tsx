@@ -30,7 +30,6 @@ import { useDraggingMailAccount, useMailFolders } from "@/components/mail/MailFo
 import { type MailSystemView } from "@/components/mail/folder-rail-shared";
 import { useFolderRailOpen, useFolderRailWidth } from "@/lib/mail/folder-rail";
 import { accountChipLabels } from "@/lib/mail/account-labels";
-import { getMailFilterRowOpen, setMailFilterRowOpen } from "@/lib/mail/layout";
 import { useMailUndo } from "@/components/mail/use-mail-undo";
 import { useAutoReply } from "@/components/mail/use-auto-reply";
 import { useMailSelection } from "@/components/mail/use-mail-selection";
@@ -39,6 +38,7 @@ import { useHeldMessages } from "@/components/mail/use-held-messages";
 import { useMailWindowKeys } from "@/components/mail/use-mail-window-keys";
 import { useEditAsNew } from "@/components/mail/use-edit-as-new";
 import { useWindowRequests } from "@/components/mail/use-window-requests";
+import { useDraftsInbox } from "@/components/mail/use-drafts-inbox";
 import { useListRows } from "@/components/mail/use-list-rows";
 import { useListLayout } from "@/components/mail/use-list-layout";
 import { useRowOpening } from "@/components/mail/use-row-opening";
@@ -589,12 +589,6 @@ export function useMailPage(props: MailPageProps) {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
     return () => clearTimeout(t);
   }, [search]);
-  const [filterRowOpen, setFilterRowOpenState] = React.useState(false);
-  React.useEffect(() => setFilterRowOpenState(getMailFilterRowOpen()), []);
-  const setFilterRowOpen = React.useCallback((open: boolean) => {
-    setFilterRowOpenState(open);
-    setMailFilterRowOpen(open);
-  }, []);
   const listScrollRef = React.useRef<HTMLDivElement | null>(null);
   // Mailbox menu only filters what we paint — the fetch always loads every
   // connected mailbox so toggling stays instant.
@@ -886,6 +880,8 @@ export function useMailPage(props: MailPageProps) {
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
+  // Drafts another program left in the drafts folder (use-drafts-inbox).
+  useDraftsInbox(accountEmails);
   const { pendingForward, forwardStarted } = useWindowRequests({
     setComposing,
     setSelectedPersonKey,
@@ -1207,22 +1203,9 @@ export function useMailPage(props: MailPageProps) {
    * funnel has nothing to say about them.
    */
   const filterIsOn = !MAIL_OFF_TAB_VIEWS.includes(tab) && tab !== "all";
-  const filtersShowing = filterRowOpen || filterIsOn;
-  /**
-   * The last filter that was on, so the funnel can put it back.
-   *
-   * The button turns filtering off and on, and off and on again should
-   * leave the list where it was: a reader who works in one of their own
-   * lists and looks at everything for a moment is not choosing All, they
-   * are glancing away from Familie.
-   *
-   * Kept for the session only. A filter still on when the app is closed is
-   * still on when it opens, because the chosen tab is stored anyway.
-   */
-  const lastFilterRef = React.useRef<MailListTab | null>(null);
-  React.useEffect(() => {
-    if (filterIsOn) lastFilterRef.current = tab;
-  }, [filterIsOn, tab]);
+  /* The lists are tabs now, as in To-Do, and tabs are always there. The
+     funnel that showed and hid them as chips is gone (2026-10-11). */
+  const filtersShowing = true;
   /**
    * A thread joined the People pile. Not always the thread on screen: the
    * team layer's dialog stays open while the reader opens other mail.
@@ -1316,7 +1299,6 @@ export function useMailPage(props: MailPageProps) {
     inJunkView,
     inTrashView,
     isOutlookAccount,
-    lastFilterRef,
     lastListTabRef,
     listBorderClass,
     listCacheKey,
@@ -1426,7 +1408,6 @@ export function useMailPage(props: MailPageProps) {
     selectedThreadsNow,
     setAccountEmails,
     setActiveFolder,
-    setFilterRowOpen,
     setFloatingCompose,
     setFloatingReply,
     setFollowAllHours,

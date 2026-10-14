@@ -34,24 +34,50 @@ export function useStickyComposerFoot(
     const column = columnRef.current;
     const foot = footRef.current;
     if (!column || !foot) return;
-    const update = () => {
+    const place = () => {
       const footH = foot.offsetHeight;
       const barH = sendBarRef.current?.offsetHeight ?? 0;
       column.style.setProperty("--composer-foot-h", `${footH}px`);
       column.style.scrollPaddingBottom = `${footH + barH}px`;
+    };
+    const report = () =>
       setMore(column.scrollHeight - column.scrollTop - column.clientHeight > 1);
+    const update = () => {
+      place();
+      report();
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(column);
     for (const child of Array.from(column.children)) observer.observe(child);
     column.addEventListener("scroll", update, { passive: true });
-    // Typing grows the card before any observer has a frame to say so.
-    column.addEventListener("input", update);
+    /*
+      Typing grows the card before any observer has a frame to say so.
+
+      The padding is set at once. The shadow waits for the next frame. This
+      listener runs before React reads the same `input` event, and a state
+      change here drew the composer again first: a controlled box (To, Cc,
+      the subject) then got its old text back, and React saw no change.
+      The letter was lost. It was the letter typed just after the
+      suggestions opened, because that is when the shadow came on (Ulrik,
+      2026-10-11).
+    */
+    let frame = 0;
+    const onInput = () => {
+      place();
+      if (!frame) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          report();
+        });
+      }
+    };
+    column.addEventListener("input", onInput);
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(frame);
       column.removeEventListener("scroll", update);
-      column.removeEventListener("input", update);
+      column.removeEventListener("input", onInput);
     };
   }, [columnRef, footRef, sendBarRef, key]);
   return more;

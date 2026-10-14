@@ -53,6 +53,38 @@ function sharedTail(mine: Segments, earlier: Segments): number {
   return n;
 }
 
+/*
+  The sign-off is the writer's, not the signature's.
+
+  "Best, Ulrik" closes most of a person's mail the same way, so it was in
+  the tail the earlier message shared, and went behind the fold with the
+  title and the address. But it is the last thing the writer wrote, and how
+  they closed is part of what they said. So a shared tail that starts with
+  a closing ("Best,", "Thanks!", "Venlig hilsen") keeps that line, and the
+  short line under it that is the name, out of the fold.
+*/
+const CLOSING =
+  /^(best|all the best|best wishes|best regards|kind regards|warm regards|warmest|warmly|regards|cheers|thanks|thank you|many thanks|thanks again|love|yours|sincerely|speak soon|talk soon|take care|venlig hilsen|med venlig hilsen|de bedste hilsner|bedste hilsner|kærlig hilsen|hilsen|mvh|kh)\b/;
+
+function isClosing(segment: string): boolean {
+  return CLOSING.test(segment) && segment.split(" ").length <= 6;
+}
+
+/** A name under a closing: a few words, no address or number. */
+function isName(segment: string): boolean {
+  return segment.split(" ").length <= 3 && !/[@\d]/.test(segment);
+}
+
+/** How many of the `shared` closing segments of `mine` are the signature, the sign-off left out. */
+function signatureLength(mine: Segments, shared: number): number {
+  let start = mine.length - shared;
+  if (shared > 0 && isClosing(mine[start])) {
+    start++;
+    if (start < mine.length && isName(mine[start])) start++;
+  }
+  return mine.length - start;
+}
+
 /**
  * A later plain-text message with the signature taken off, or the text as it
  * was when there is none to take or nothing would be left.
@@ -65,9 +97,10 @@ export function stripRepeatedSignatureText(text: string, earlier: Segments): str
   if (cut < 0) {
     const mine = textSegments(text);
     const shared = sharedTail(mine, earlier);
-    if (shared >= MIN_REPEATED && shared < mine.length) {
-      // The line where the shared tail starts, counting non-blank lines from the end.
-      let left = shared;
+    const signature = signatureLength(mine, shared);
+    if (shared >= MIN_REPEATED && signature > 0 && shared < mine.length) {
+      // The line where the signature starts, counting non-blank lines from the end.
+      let left = signature;
       for (let i = lines.length - 1; i >= 0; i--) {
         if (!normalise(lines[i])) continue;
         left--;
@@ -139,7 +172,8 @@ export function stripRepeatedSignatureHtml(html: string, earlier: Segments): { h
   if (!start) {
     const mine = blocks.map((el) => normalise(el.textContent ?? ""));
     const shared = sharedTail(mine, earlier);
-    if (shared >= MIN_REPEATED && shared < mine.length) start = blocks[blocks.length - shared];
+    const signature = signatureLength(mine, shared);
+    if (shared >= MIN_REPEATED && signature > 0 && shared < mine.length) start = blocks[blocks.length - signature];
   }
   if (!start) return { html, changed: false };
 

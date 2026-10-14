@@ -1,4 +1,6 @@
 import { localStoreServes } from "@/lib/mail/local-store";
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
+import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 
 import { mailStore } from "@/lib/mail/store";
@@ -209,6 +211,9 @@ export async function syncGoogleContactsForAccount(
     await syncGoogleContacts(account);
     return { source: "google", account, ok: true };
   } catch (err) {
+    // Google contacts come from the People API, which an app password does
+    // not open. Not an error to show: there is nothing to sync.
+    if (isGmailAppPasswordError(err)) return { source: "google", account, ok: true };
     const message = friendlyContactSyncError(err);
     await saveState("google", account, { error: message });
     return { source: "google", account, ok: false, error: message };
@@ -387,6 +392,9 @@ async function collectFromLocalCopy(
 async function collectGmailHistory(
   account: string
 ): Promise<Map<string, HistoryEntry>> {
+  // A Gmail on an app password is answered by its copy, once that serves;
+  // Google's API does not take the password.
+  if (await isAppPasswordGmail(account)) return new Map();
   const token = await accessTokenFor(account);
   const ids: string[] = [];
   let pageToken: string | undefined;
@@ -597,6 +605,13 @@ export async function syncAllContactSources(
         await fn();
         results.push({ source, account, ok: true });
       } catch (err) {
+        // A Gmail on an app password has no address book Google's API will
+        // give: nothing to sync, so nothing to show in red.
+        if (isGmailAppPasswordError(err)) {
+          results.push({ source, account, ok: true });
+          onProgress?.(results[results.length - 1]);
+          return;
+        }
         const message = friendlyContactSyncError(err);
         await saveState(source, account, { error: message });
         results.push({ source, account, ok: false, error: message });
@@ -610,6 +625,7 @@ export async function syncAllContactSources(
       // Exchange contacts are not read (section 11.2): no address book call.
       if (account.provider === "exchange") continue;
       if (account.provider === "gmail") {
+        if (await isAppPasswordGmail(account.email)) continue;
         if (!disabled.has(sourceKey("google", account.email))) {
           await run("google", account.email, () =>
             syncGoogleContacts(account.email)

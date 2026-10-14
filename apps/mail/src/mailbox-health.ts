@@ -11,6 +11,7 @@
  * the grant rather than when the network was down.
  */
 
+import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import { accessTokenFor } from "@/lib/mail/inbox";
 import { outlookAccessTokenFor } from "@/lib/mail/outlook-inbox";
 import { exchangeReady } from "@/lib/mail/exchange-native";
@@ -53,7 +54,14 @@ async function checkMailbox(mailbox: MailboxRef): Promise<void> {
     }
     return;
   }
-  await (mailbox.provider === "outlook" ? outlookAccessTokenFor(mailbox.email) : accessTokenFor(mailbox.email));
+  try {
+    await (mailbox.provider === "outlook" ? outlookAccessTokenFor(mailbox.email) : accessTokenFor(mailbox.email));
+  } catch (err) {
+    // A Gmail on an app password has no Google token to test. Its sign-in is
+    // the sync worker's, which pauses the mailbox when Gmail refuses it.
+    if (isGmailAppPasswordError(err)) return;
+    throw err;
+  }
 }
 
 export async function findMailboxProblems(

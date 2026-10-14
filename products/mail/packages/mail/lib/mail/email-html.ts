@@ -414,7 +414,7 @@ const SUBJECT_LABEL_RE = /\b(Subject|Emne|Betreff|Onderwerp|Objet|Asunto)\s*:/i;
 const DIVIDER_TEXT_RE =
   /^-{2,}\s*(Original Message|Forwarded message|Oprindelig meddelelse|Videresendt meddelelse)\s*-{2,}/i;
 /** The line a forward starts with, in the clients and languages we meet. */
-const FORWARD_LINE_RE =
+export const FORWARD_LINE_RE =
   /^(-{2,}\s*(Forwarded message|Videresendt meddelelse|Weitergeleitete Nachricht|Message transféré)\s*-{2,}|Begin forwarded message:|Start på videresendt besked:)/i;
 
 /**
@@ -422,7 +422,7 @@ const FORWARD_LINE_RE =
  * the innermost element that begins with the forward line (Gmail puts it in
  * `.gmail_attr` inside its quote; this app in a div of its own).
  */
-function forwardHeader(marker: Element): Element | null {
+export function forwardHeader(marker: Element): Element | null {
   const all = [marker, ...marker.querySelectorAll("div, p")];
   const hits = all.filter((el) => FORWARD_LINE_RE.test(textWithBreaks(el).trim()));
   return hits.find((el) => !hits.some((other) => other !== el && el.contains(other))) ?? null;
@@ -454,7 +454,7 @@ function textWithBreaks(el: Element): string {
  * after that element and is not around it: the history inside a forward,
  * past its header.
  */
-function findQuoteStart(doc: Document, after?: Element | null): Element | null {
+export function findQuoteStart(doc: Document, after?: Element | null): Element | null {
   const candidates: Element[] = [];
   const counts = (el: Element) =>
     !after ||

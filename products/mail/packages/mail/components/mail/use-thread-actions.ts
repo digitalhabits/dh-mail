@@ -28,6 +28,7 @@ import { invalidateCachedMailThread } from "@/lib/mail/thread-cache";
 import { mailProviderFor, mailProviderLabel, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { hideRow, unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { everyCopy, rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
+import { releaseRead } from "@/lib/mail/held-reads";
 import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
@@ -94,6 +95,8 @@ export function useThreadActions({
 }) {
   const markUnread = React.useCallback(
     async (t: { account: string; threadId: string }) => {
+      // The reader's own word: a read still waiting to be told is dropped.
+      releaseRead(everyCopy(t, threads).map((c) => threadKey(c)));
       try {
         // One copy is enough to make the row bold again; it is the one
         // the reader is looking at.
@@ -116,7 +119,7 @@ export function useThreadActions({
         );
       }
     },
-    [listCacheKey, setThreads, viewerId]
+    [listCacheKey, setThreads, threads, viewerId]
   );
 
   const moveToFolder = React.useCallback(
@@ -389,6 +392,8 @@ export function useThreadActions({
       // Newest first in the list, so the newest thread is the one at the top.
       const newest = rows[0];
       if (!newest) return;
+      // The reader's own word: a read still waiting to be told is dropped.
+      releaseRead(everyCopy(newest, threads).map((c) => threadKey(c)));
       setThreads((current) =>
         current.map((t) =>
           threadKey(t) === threadKey(newest) ? { ...t, unread: true } : t

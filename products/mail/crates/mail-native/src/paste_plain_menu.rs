@@ -10,6 +10,11 @@
 //!
 //! The method is added to the class, not to one view, so every mail window
 //! has the item: the main window, a pop-out and a reader window alike.
+//!
+//! "Link…" goes in the same way, after it, when words are selected: the menu
+//! Outlook shows in a message has it, with its key, and a person looking for
+//! how to make a link looks there. Choosing it sends `insert-link`, and the
+//! editor opens its link box as its link key does.
 
 #![cfg(target_os = "macos")]
 
@@ -25,8 +30,12 @@ use tauri::{AppHandle, Emitter, Manager};
 /// What the page listens for when the item is chosen.
 pub const PASTE_PLAIN_EVENT: &str = "paste-plain";
 
+/// What the page listens for when "Link…" is chosen.
+pub const INSERT_LINK_EVENT: &str = "insert-link";
+
 /// Marks the item, so a menu that is opened twice gets it once.
 const ITEM_TAG: isize = 0x0D4_5E9A;
+const LINK_TAG: isize = 0x0D4_5E9B;
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 /// WebKit's own `willOpenMenu:withEvent:`, called after the item is in.
@@ -66,6 +75,8 @@ pub fn install(app: &AppHandle, webview: *mut c_void) {
     }
     let action: Imp = std::mem::transmute::<Action, Imp>(paste_plain);
     ffi::class_addMethod(class, sel!(dhPastePlain:), action, c"v@:@".as_ptr());
+    let link: Imp = std::mem::transmute::<Action, Imp>(insert_link);
+    ffi::class_addMethod(class, sel!(dhInsertLink:), link, c"v@:@".as_ptr());
   }
 }
 
@@ -110,6 +121,33 @@ fn add_item(target: *mut AnyObject, menu: &NSMenu) {
   // its own menu.
   unsafe { item.setTarget(target.as_ref()) };
   menu.insertItem_atIndex(&item, at + 1);
+
+  // "Link…", with words to make it of: WebKit offers Copy only then.
+  if menu.itemWithTag(LINK_TAG).is_some() || !has_copy(menu) {
+    return;
+  }
+  let link = unsafe {
+    NSMenuItem::initWithTitle_action_keyEquivalent(
+      mtm.alloc(),
+      &NSString::from_str(link_title()),
+      Some(sel!(dhInsertLink:)),
+      // Shown beside it, as Outlook shows it; the page's own key is the
+      // one that acts (insertLink in lib/mail/shortcuts.ts).
+      &NSString::from_str("k"),
+    )
+  };
+  link.setTag(LINK_TAG);
+  unsafe { link.setTarget(target.as_ref()) };
+  menu.insertItem_atIndex(&link, at + 2);
+}
+
+fn has_copy(menu: &NSMenu) -> bool {
+  (0..menu.numberOfItems()).any(|i| {
+    menu.itemAtIndex(i).is_some_and(|item| {
+      item.identifier().is_some_and(|id| id.to_string() == "WKMenuItemIdentifierCopy")
+        || item.action() == Some(sel!(copy:))
+    })
+  })
 }
 
 /// Where Paste is. WebKit names its items by identifier; an older WebKit,
@@ -141,16 +179,29 @@ fn item_title() -> &'static str {
   }
 }
 
+/// "Link…" in English and in Danish alike.
+fn link_title() -> &'static str {
+  "Link…"
+}
+
+unsafe extern "C-unwind" fn insert_link(_this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) {
+  emit_to_front(INSERT_LINK_EVENT);
+}
+
 unsafe extern "C-unwind" fn paste_plain(_this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) {
+  emit_to_front(PASTE_PLAIN_EVENT);
+}
+
+/// To the window in front: the menu was opened in it.
+fn emit_to_front(event: &str) {
   let Some(app) = APP.get() else { return };
-  // To the window in front: the menu was opened in it.
   let focused = app
     .webview_windows()
     .into_iter()
     .find(|(_, window)| window.is_focused().unwrap_or(false));
   if let Some((label, _)) = focused {
-    if let Err(err) = app.emit_to(label.as_str(), PASTE_PLAIN_EVENT, ()) {
-      log::warn!("paste-plain: could not tell the page: {err}");
+    if let Err(err) = app.emit_to(label.as_str(), event, ()) {
+      log::warn!("{event}: could not tell the page: {err}");
     }
   }
 }

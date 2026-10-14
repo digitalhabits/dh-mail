@@ -165,7 +165,6 @@ export function ListResizeHandle({
 export function ListPaneFrame({
   m,
   peek,
-  filterButton,
   foldersButton,
   foldersMenu,
   listTabsOrFolder,
@@ -173,7 +172,6 @@ export function ListPaneFrame({
 }: {
   m: MailPageModel;
   peek: ListPeek;
-  filterButton: React.ReactNode;
   foldersButton: React.ReactNode;
   foldersMenu: (iconOnly: boolean) => React.ReactNode;
   listTabsOrFolder: React.ReactNode;
@@ -363,7 +361,6 @@ export function ListPaneFrame({
           {listChromeOnToolbar ? (
             <div className="-ml-[4px] flex h-11 items-center gap-1">
               {foldersButton}
-              {filterButton}
             </div>
           ) : null}
 

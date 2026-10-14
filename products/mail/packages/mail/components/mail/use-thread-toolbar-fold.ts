@@ -20,6 +20,7 @@ export const THREAD_TOOLBAR_SLOTS = [
   "zoom",
   "print",
   "popOut",
+  "reader",
   "pin",
   "move",
   "records",

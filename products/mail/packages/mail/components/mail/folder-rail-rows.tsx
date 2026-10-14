@@ -35,6 +35,7 @@ import {
 } from "@/components/mail/folder-rail-shared";
 import { type DropState, type FolderDrag, folderParentPath } from "@/lib/mail/folder-drop";
 import { folderRowDropState } from "@/lib/mail/folder-drop";
+import { useShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 
 /** ── the four views at the top ─────────────────────────────────────────── */
 
@@ -322,7 +323,9 @@ export function FolderRow({
         over && takesDrop && !carrying && "bg-teal-500"
       )}
       style={{
-        paddingLeft: depth * 14,
+        // 2px in: a folder's chevron stands in the same column as its
+        // mailbox's, which the heading's pl-1 puts 2px further in.
+        paddingLeft: 2 + depth * 14,
         /**
          * The two properties WebKit actually reads, set where they survive.
          *
@@ -1041,6 +1044,8 @@ function FolderRowTrail({
   active: boolean;
   onToggleFavourite: () => void;
 }) {
+  // Opt-in, in Settings > General (see folder-counts-setting).
+  const showCounts = useShowFolderCounts();
   return (
     <>
       {accountTag ? (
@@ -1070,7 +1075,7 @@ function FolderRowTrail({
           onToggle={onToggleFavourite}
         />
       ) : null}
-      {node.count ? (
+      {showCounts && node.count ? (
         <span
           className={cn(
             "shrink-0 pr-1 tabular-nums text-xs",

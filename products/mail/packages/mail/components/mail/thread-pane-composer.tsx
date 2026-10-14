@@ -9,6 +9,9 @@
  */
 
 import * as React from "react";
+
+import { useComposerRoom } from "@/components/mail/composer-room";
+import { useComposerDrag } from "@/components/mail/composer-drag";
 import { ChevronDown, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
 
 import { DraftAssistNotes } from "@/components/mail/team-layer";
@@ -44,13 +47,45 @@ import { ComposerFieldRows } from "@/components/mail/thread-composer-rows";
 import { useStickyComposerFoot } from "@/components/mail/use-sticky-composer-foot";
 
 
+/**
+ * The band over the end of the thread, with nothing of its own to show:
+ * the email is seen around the card and scrolls under it (composer-room).
+ * Only the card takes the pointer.
+ */
+const BAND_UNDER_CARD = "pointer-events-none absolute inset-x-0 bottom-0 z-20";
+/** The band across the pane: the Reader, the floating card, focus. */
+const BAND_ACROSS = "border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)]";
+/** The reply as a card lifted off the bottom of the pane. */
+const COMPOSER_CARD =
+  "pointer-events-auto cursor-grab [&_.ql-editor]:cursor-text [&_button]:cursor-pointer rounded-2xl border border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-4 pb-3 pt-3 shadow-xl";
+
+/**
+ * A card on the thread's own ground, not a band across the pane. Not in
+ * the Reader, the floating card, or while the reply has the whole pane,
+ * where the box already stands on its own.
+ */
+function composerLook(p: {
+  inReader: boolean;
+  floating?: boolean;
+  bandFills: boolean;
+  replyFocusSliding: boolean;
+}): { band: string; card?: string; floats: boolean } {
+  const floats = !p.inReader && !p.floating && !p.bandFills && !p.replyFocusSliding;
+  return floats
+    ? { band: BAND_UNDER_CARD, card: COMPOSER_CARD, floats }
+    : { band: BAND_ACROSS, floats };
+}
+
 /** The composer band under the thread: the reply, reply-all or forward being written, with its recipients, subject, tools and send. */
 export function ThreadComposerBand({
   m,
   chatStyle,
+  inReader = false,
 }: {
   m: ThreadPaneModel;
   chatStyle: boolean;
+  /** Drawn at the foot of the Reader's column (see reader-composer). */
+  inReader?: boolean;
 }) {
   const {
     draftNotes,
@@ -100,6 +135,13 @@ export function ThreadComposerBand({
   const textDefaults = useTextStyleDefault(fromAccount);
   const footRef = React.useRef<HTMLDivElement | null>(null);
   const sendBarRef = React.useRef<HTMLDivElement | null>(null);
+  /* In the Reader the column is the measure: the box takes all of it, and
+     there are no edges to drag. */
+  const wholeWidth =
+    inReader || compactComposer || fullWidthComposer || card.full || forwarding;
+  const look = composerLook({ inReader, floating, bandFills, replyFocusSliding });
+  useComposerRoom(replyBandRef, Boolean(mode) && look.floats);
+  const drag = useComposerDrag(look.floats, zoom);
   const moreBelow = useStickyComposerFoot(
     composerColumnRef,
     footRef,
@@ -144,7 +186,8 @@ export function ThreadComposerBand({
           ref={replyBandRef}
           onWheel={bandFills ? undefined : scrollComposerFromBand}
           className={cn(
-            "mail-composer-region relative flex min-h-0 flex-col border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-4 pt-3",
+            "mail-composer-region relative flex min-h-0 flex-col pb-4 pt-3",
+            look.band,
             /* Edge to edge at this width, all but the right: the box was
                ending exactly where the window does, and the words in it
                ran up to the glass. The left has the list beside it to
@@ -155,7 +198,9 @@ export function ThreadComposerBand({
                its own, with its own border down both sides and nothing
                beside it to stand off, so the left is given the same eight
                pixels as the right. */
-            compactComposer
+            inReader
+              ? "mail-reader-composer-band rounded-t-xl border-x px-3"
+              : compactComposer
               ? floating
                 ? "px-2"
                 : "pl-0 pr-2"
@@ -216,6 +261,8 @@ export function ThreadComposerBand({
                     maxHeight: composerHeightSet
                       ? `${composerHeight / (zoom || 1)}px`
                       : `${COMPOSER_MAX_SHARE / (zoom || 1)}vh`,
+                    // Where the reply card was dragged (composer-drag).
+                    transform: drag.transform,
                   } as React.CSSProperties)
           }
         >
@@ -248,7 +295,8 @@ export function ThreadComposerBand({
           <div className="flex min-h-0 w-full flex-1 flex-col items-end">
           {/* Width matches own bubbles; right-aligned; drag either edge to resize. */}
           <div
-            className="relative flex min-h-0 flex-1 flex-col"
+            className={cn("relative flex min-h-0 flex-1 flex-col", look.card)}
+            {...drag.handlers}
             // Its dragged width, until there is not enough pane for a
             // width to be worth choosing.
             style={{
@@ -257,7 +305,7 @@ export function ThreadComposerBand({
                    so the box takes it — right-aligned at a share of a pane
                    that wide, it stood with half the dialog empty beside
                    it. */
-                compactComposer || fullWidthComposer || card.full || forwarding
+                wholeWidth
                   ? "100%"
                   : `${composerWidthPct}%`,
               maxWidth: "100%",
@@ -266,7 +314,7 @@ export function ThreadComposerBand({
           {/* No edges to drag while the box is the whole pane: there is
               nowhere for either to go, and a handle that cannot move is a
               handle that reads as broken. */}
-          {compactComposer || fullWidthComposer || card.full || forwarding ? null : (
+          {wholeWidth ? null : (
             <>
               <div
                 role="separator"
@@ -445,7 +493,13 @@ function ComposerHead({ m }: { m: ThreadPaneModel }) {
           <p className="mb-1.5 px-1 text-xs text-stone-500">{t("newSubjectStartsConversation")}</p>
         </>
       ) : null}
-      {editRecipients ? null : <ComposerAddressRow m={m} />}
+      {editRecipients ? (
+        <div className="flex justify-end">
+          <ComposerCardButtons m={m} />
+        </div>
+      ) : (
+        <ComposerAddressRow m={m} />
+      )}
     </>
   );
 }
@@ -854,9 +908,6 @@ function ComposerSendBar({
             as well; those are under the card now, and what is left
             belongs beside the buttons it is one of. */}
         <span className="ml-auto flex items-center gap-1">
-          {/* Pop out and grow, in the row with the tools: they were at the
-              end of the recipient line, which is a row of rows now. */}
-          <ComposerCardButtons m={m} />
           {/* The bin only bins. Escape is what asks first, and
               what it asks with is the dialog at the foot of this
               component — over the whole reader rather than in the

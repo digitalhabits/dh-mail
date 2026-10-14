@@ -9,10 +9,12 @@
  */
 
 import * as React from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, ChevronDown, Clock, Forward, Loader2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, ChevronDown, Clock, Forward, Loader2, Maximize2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
+import { openThreadFullWindow } from "@/components/mail/thread-full-window";
+import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
-import { ThreadAssistMenu, ThreadDiaryDialog } from "@/components/mail/team-layer";
+import { ThreadAssistMenu, ThreadDiaryDialog, useAccountAssist } from "@/components/mail/team-layer";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
   SettingsDialog,
@@ -195,11 +197,17 @@ export function ReplyButtons({
     startReply,
     t,
   } = m;
+  const drag = useReplyTrayDrag();
   return (
     <>
       {!mode && !popoutOpen ? (
         /**
-         * One row, whatever the pane is doing.
+         * One row, whatever the pane is doing, floating over the end of the
+         * thread in a frosted tray. It was a band across the whole pane,
+         * which took its height from the mail being read. The thread keeps
+         * room at its end (`REPLY_TRAY_ROOM`) so the tray never covers the
+         * last lines. It can be dragged anywhere over the thread
+         * (reply-tray-drag).
          *
          * Four words and their icons need about 480px, and below that they
          * used to wrap — a second row of buttons appearing under the first
@@ -212,9 +220,15 @@ export function ReplyButtons({
          * anyway — an icon with a name on hover.
          */
         <div
+          data-reply-tray
+          style={drag.style}
+          onPointerDown={drag.onPointerDown}
+          onClickCapture={drag.onClickCapture}
+          onDoubleClick={drag.onDoubleClick}
           className={cn(
-            "flex items-center justify-end border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] py-3",
-            compactThreadActions ? "gap-2 px-4" : "gap-3 px-8"
+            "mail-thread-reply-tray absolute bottom-4 z-10 flex touch-none select-none items-center rounded-full border border-[var(--mail-thread-chrome-line)] bg-[color-mix(in_srgb,var(--mail-thread)_78%,transparent)] p-1.5 shadow-lg backdrop-blur-md",
+            compactThreadActions ? "right-3 gap-1.5" : "right-6 gap-2",
+            drag.dragging ? "cursor-grabbing shadow-xl" : "cursor-grab [&_button]:cursor-pointer"
           )}
         >
           <button
@@ -282,6 +296,11 @@ export function ReplyButtons({
  */
 const ARROW_ICON_CLASS =
   "[&_svg]:size-[21px] group-data-[tight]/toolbar:[&_svg]:size-[19px]";
+
+/** Room at the end of the thread for the reply tray floating over it. */
+const REPLY_TRAY_ROOM = "pb-24";
+/** Room at the end for the reply card floating over it (composer-room). */
+const COMPOSER_ROOM = "pb-[calc(var(--mail-composer-room,0px)+1.25rem)]";
 
 /** The thread's messages, as bubbles or as mail, with the marks between them. */
 export function ThreadMessages({
@@ -356,14 +375,16 @@ export function ThreadMessages({
         >
         <div
           ref={setScrollNode}
+          data-thread-scroller
           /* Less above than below: the first thing in the stream is nearly
              always a day heading, which brings its own space, and the two
              together left a hole under the subject. */
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-none bg-[var(--mail-thread)] px-4 pb-5 pt-2"
+            "min-h-0 flex-1 overflow-y-auto overscroll-none bg-[var(--mail-thread)] px-4 pt-2",
+            !m.mode && !m.popoutOpen ? REPLY_TRAY_ROOM : COMPOSER_ROOM
           )}
         >
-          <div className="flex flex-col gap-4" style={{ zoom }}>
+          <div className="mail-thread-column flex flex-col gap-4" style={{ zoom }}>
             {headHasOlderInPart ||
             canLoadOlderAcrossParts ||
             loadingOlder ? (
@@ -569,7 +590,9 @@ export function ThreadMessages({
             /* Above the actions that appear beside a message on hover.
                They share this corner when the last message is the one
                under the pointer, and this is the one being aimed at. */
-            "absolute bottom-4 right-5 z-30 flex h-9 w-9 items-center justify-center rounded-full",
+            "absolute right-5 z-30 flex h-9 w-9 items-center justify-center rounded-full",
+            // Over the reply tray while it floats in the same corner.
+            !m.mode && !m.popoutOpen ? "bottom-24" : "bottom-[calc(var(--mail-composer-room,0px)+1rem)]",
             "border border-stone-200 bg-white text-stone-600 shadow-md",
             "transition-opacity hover:bg-stone-50 hover:text-stone-900",
             /* Scrolled up, or looking at a window that does not reach the
@@ -593,6 +616,7 @@ export function ThreadMessages({
 /** The thread's header: its subject and people, and the toolbar of actions. */
 export function ThreadHeader({
   m,
+  toolbarLead,
   chat,
   dateRange,
   headerTitle,
@@ -603,6 +627,7 @@ export function ThreadHeader({
   thread,
 }: {
   m: ThreadPaneModel;
+  toolbarLead?: React.ReactNode;
   chat: MailChatRef | undefined;
   dateRange: string;
   headerTitle: string;
@@ -629,7 +654,7 @@ export function ThreadHeader({
         {/* Cream action strip. Slightly tighter than the New email row.
             Pull left over the w-2 resize gutter so cream meets the list
             border — only this band, not the full-height sidebar chrome. */}
-        <ThreadActionStrip m={m} showReplyAll={showReplyAll} thread={thread} />
+        <ThreadActionStrip m={m} lead={toolbarLead} showReplyAll={showReplyAll} thread={thread} />
         {/* The subject stays while the thread moves under it, and says so
             with a shadow rather than a rule. It reaches about ten pixels
             down: enough to lift the header off what is scrolling beneath,
@@ -897,10 +922,13 @@ function ThreadTitleBlock({
  */
 function ThreadActionStrip({
   m,
+  lead,
   showReplyAll,
   thread,
 }: {
   m: ThreadPaneModel;
+  /** First in the row, with a rule after it: the way back to a list. */
+  lead?: React.ReactNode;
   showReplyAll: boolean;
   thread: MailThreadDetail;
 }) {
@@ -945,6 +973,8 @@ function ThreadActionStrip({
     updateRecordsFromThread,
     updatingRecords,
   } = m;
+  // Off for a mailbox whose owner keeps it private (Settings → Accounts).
+  const assistOn = useAccountAssist(account);
   return (
     <div className="mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-1.5">
       <div
@@ -958,6 +988,12 @@ function ThreadActionStrip({
       {/* min-w-0 and overflow-hidden keep the row as wide as the pane,
           so a shrink-0 button that would leave it can be measured and
           moved behind the ellipsis. */}
+      {lead ? (
+        <>
+          {lead}
+          <span aria-hidden className="mx-2 h-6 w-px shrink-0 bg-[var(--mail-thread-chrome-line)]" />
+        </>
+      ) : null}
       <ThreadAction
         label={`${t("actionReply")} (${formatShortcut(
           shortcuts.reply
@@ -1125,7 +1161,7 @@ function ThreadActionStrip({
       ) : null}
       {hidden.has("print") &&
       hidden.has("popOut") &&
-      (!mailHasTeamRecords() || hidden.has("records")) ? null : (
+      (!mailHasTeamRecords() || !assistOn || hidden.has("records")) ? null : (
         <span
           aria-hidden
           className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)] group-data-[tight]/toolbar:mx-1"
@@ -1149,7 +1185,8 @@ function ThreadActionStrip({
           onClick={popOutThread}
         />
       )}
-      {mailHasTeamRecords() && !hidden.has("records") ? (
+      <ThreadReaderAction m={m} />
+      {mailHasTeamRecords() && assistOn && !hidden.has("records") ? (
         <ThreadAssistMenu
           busy={updatingRecords || diaryBusy}
           onPropose={(hint) => void updateRecordsFromThread(hint)}
@@ -1163,6 +1200,15 @@ function ThreadActionStrip({
       </div>
     </div>
   );
+}
+
+/**
+ * Show the whole thread over the whole window (thread-full-window). On
+ * every thread. Behind the ellipsis when the row is too narrow.
+ */
+function ThreadReaderAction({ m }: { m: ThreadPaneModel }) {
+  if (m.hidden.has("reader") || m.floating) return null;
+  return <ThreadAction label={m.t("readerOpenThread")} icon={Maximize2} onClick={openThreadFullWindow} />;
 }
 
 /**
@@ -1216,6 +1262,7 @@ function ThreadStripEnd({
           onZoomAdjust={adjustZoomFromControls}
           onPrint={hidden.has("print") ? printThread : undefined}
           onPopOut={hidden.has("popOut") ? popOutThread : undefined}
+          onOpenReader={hidden.has("reader") ? openThreadFullWindow : undefined}
           pinned={pinned}
           onTogglePin={hidden.has("pin") ? onTogglePin : undefined}
           unread={unread}

@@ -37,11 +37,11 @@ import {
 import {
   DraftAttachmentPreviewDialog,
 } from "@/components/mail/attachment-preview";
-import { FromAccountMenu } from "@/components/mail/FromAccountMenu";
+import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
 import { writeComposeFrom } from "@/lib/mail/compose-from";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
-import { DraftAssistMenu, DraftAssistNotes } from "@/components/mail/team-layer";
+import { DraftAssistMenu, DraftAssistNotes, useAccountAssist } from "@/components/mail/team-layer";
 import { SignatureDialog } from "@/components/mail/SignatureDialog";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { ZoomControls } from "@/components/mail/ZoomControls";
@@ -384,7 +384,9 @@ export function ComposeView(props: ComposeViewProps) {
                   }}
                 />
               ) : (
-                <span className="text-stone-800">{from}</span>
+                <span className="text-stone-800">
+                  <SendAsAddress account={from} />
+                </span>
               )}
             </div>
 
@@ -757,6 +759,8 @@ function ComposeMetaRow({
   onDraft: (hint: string) => void;
   onStopDraft: () => void;
 }) {
+  // Off for a mailbox whose owner keeps it private (Settings → Accounts).
+  const assistOn = useAccountAssist(account);
   return (
     <div
       className="mx-auto mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5"
@@ -781,7 +785,7 @@ function ComposeMetaRow({
         onEdit={onEditSignature}
         onRemove={onRemoveSignature}
       />
-      {mailHasTeamRecords() ? (
+      {mailHasTeamRecords() && assistOn ? (
         <DraftAssistMenu
           className="ml-auto"
           purpose="compose"

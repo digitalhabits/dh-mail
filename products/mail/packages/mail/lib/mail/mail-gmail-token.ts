@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getAccountStoredToken, recordGrantedScopes } from "@/lib/gmail/accounts";
+import { GmailAppPasswordError, isAppPasswordSecret } from "@/lib/mail/gmail-app-password";
 import {
   missingGoogleFeatures,
   refreshAccessToken,
@@ -55,6 +56,8 @@ export async function accessTokenFor(accountEmail: string): Promise<string> {
   if (cached && cached.expiresAt > Date.now()) return cached.token;
 
   const stored = await getAccountStoredToken(accountEmail);
+  // An app password is never sent to Google as a refresh token.
+  if (isAppPasswordSecret(stored.refreshToken)) throw new GmailAppPasswordError(accountEmail);
   try {
     const { accessToken, grantedScopes } = await refreshAccessToken(
       stored.refreshToken

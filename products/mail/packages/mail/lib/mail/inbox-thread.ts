@@ -6,6 +6,7 @@
  * app uses, so callers import from there.
  */
 
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
 import { threadFromLocalStore } from "@/lib/mail/local-thread";
@@ -107,8 +108,10 @@ export async function getMailThread(
   }
   const stored = await threadFromLocalStore(account, threadId, options);
   if (stored) return stored;
-  // An Exchange thread is in the copy or nowhere. Never the Gmail API.
+  // An Exchange thread is in the copy or nowhere. Never the Gmail API; nor
+  // for a Gmail on an app password, which the API does not take.
   if (provider === "exchange") return emptyThreadDetail(account, threadId);
+  if (await isAppPasswordGmail(account)) return emptyThreadDetail(account, threadId);
 
   return getGmailApiThread(account, threadId, options);
 }

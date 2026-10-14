@@ -34,6 +34,8 @@ type StoredSenderName = {
   provider?: string;
   /** When the provider was last asked, epoch ms. */
   fetchedAt?: number;
+  /** Given by the reader, for a mailbox with no provider to ask. Never asked again. */
+  byHand?: boolean;
 };
 
 function senderNameKey(account: string): string {
@@ -55,6 +57,17 @@ async function writeStored(
   value: StoredSenderName
 ): Promise<void> {
   await mailStore().settings.set(senderNameKey(account), JSON.stringify(value));
+}
+
+/**
+ * The name for a mailbox that has no provider to ask: a Gmail on an app
+ * password, whose name Google's API cannot be asked for. Kept as if Gmail had
+ * said it, and marked, so nothing asks again.
+ */
+export async function keepSenderNameByHand(account: string, name: string): Promise<void> {
+  const cleaned = cleanDisplayName(name);
+  if (!cleaned) return;
+  await writeStored(account, { provider: cleaned, fetchedAt: Date.now(), byHand: true });
 }
 
 export type SenderNameSettings = {
@@ -131,7 +144,7 @@ async function refreshProviderName(
   }
 
   const known = cleanDisplayName(stored.provider);
-  if (!senderNameIsStale(stored.fetchedAt, Date.now())) return known;
+  if (stored.byHand || !senderNameIsStale(stored.fetchedAt, Date.now())) return known;
 
   try {
     // The send path already holds a token; the settings panel does not.

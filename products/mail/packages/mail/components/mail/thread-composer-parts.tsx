@@ -11,10 +11,10 @@
 
 import { forwardSizeWarning } from "@/lib/mail/forward-size";
 import { useSenderProvider } from "@/lib/mail/use-outlook-accounts";
-import { Check, Maximize2, Minimize2, PictureInPicture2 } from "lucide-react";
+import { Check, Expand, Maximize2, Minimize2, PictureInPicture2 } from "lucide-react";
 
-import { DraftAssistMenu } from "@/components/mail/team-layer";
-import { FromAccountMenu } from "@/components/mail/FromAccountMenu";
+import { DraftAssistMenu, SendFollowUpToggle, useAccountAssist } from "@/components/mail/team-layer";
+import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
 import { forwardPayload } from "@/components/mail/forward-payload";
 import { SentPreview, SignatureMetaControls } from "@/components/mail/composer-preview";
 import { formatShortcut } from "@/lib/mail/shortcuts";
@@ -149,6 +149,7 @@ export function ComposerFooter({
     composerSnapshotRef,
     draftReplyWithAssist,
     draftingReply,
+    draftWorking,
     floatReply,
     floating,
     forwardFiles,
@@ -171,8 +172,12 @@ export function ComposerFooter({
     stopDraft,
     subjectOpen,
     t,
+    updateRecordsAfterSend,
+    setUpdateRecordsAfterSend,
   } = m;
   const sizeWarning = forwardSizeWarning(useSenderProvider(fromAccount), attachTotalBytes);
+  // Off for a mailbox whose owner keeps it private (Settings → Accounts).
+  const assistOn = useAccountAssist(fromAccount);
   return (
     <>
       {/* Under the box, outside the card.
@@ -294,17 +299,26 @@ export function ComposerFooter({
           </label>
         ) : null}
         {/* Quiet, on the right: the draft is about the whole mail,
-            the same kind of thing this row already holds. */}
+            the same kind of thing this row already holds. The box
+            before it asks for the records' follow-up when it has gone. */}
         {mailHasTeamRecords() &&
+        assistOn &&
         !forwarding &&
         (mode === "reply" || mode === "replyAll") ? (
-          <DraftAssistMenu
-            className="ml-auto"
-            drafting={draftingReply}
-            disabled={sending}
-            onDraft={(hint) => void draftReplyWithAssist(hint)}
-            onStop={stopDraft}
-          />
+          <span className="ml-auto flex items-center gap-3">
+            <SendFollowUpToggle
+              checked={updateRecordsAfterSend}
+              onChange={setUpdateRecordsAfterSend}
+              disabled={sending}
+            />
+            <DraftAssistMenu
+              drafting={draftingReply}
+              working={draftWorking}
+              disabled={sending}
+              onDraft={(hint) => void draftReplyWithAssist(hint)}
+              onStop={stopDraft}
+            />
+          </span>
         ) : null}
         {/* Providers refuse a mail past their limit: see forward-size.ts. */}
         {forwarding && sizeWarning ? (
@@ -400,22 +414,57 @@ export function ComposerAddressRow({
                  words stop. */
               <FromAccountMenu value={fromAccount} accounts={accounts} onChange={setFromAccount} />
             ) : (
-              <span className="text-stone-700">{account}</span>
+              <span className="text-stone-700">
+                <SendAsAddress account={account} />
+              </span>
             )}
           </span>
         </p>
       </div>
+      {/* Pop out and Fill the window, at the card's top right corner. */}
+      <ComposerCardButtons m={m} />
     </div>
   );
 }
 
 /**
- * Pop out and grow, in the row with Send. The floating card draws neither:
- * it is already out, and it is as big as it is dragged.
+ * Pop out and grow, at the card's top right corner. The floating card
+ * draws neither: it is already out, and its heading has its own.
+ *
+ * Grow is the floating card's "Fill the window": the reply goes into the
+ * card, over the whole window, dimmed around it. Where there is no card to
+ * go to (a phone), it is focus mode, the reply filling the pane.
  */
 export function ComposerCardButtons({ m }: { m: ThreadPaneModel }) {
   const { floatReply, floating, onFloatReply, replyFocus, setReplyFocus, shortcuts, t } = m;
   const button = "shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800";
+  if (floating) return null;
+  if (onFloatReply && !replyFocus) {
+    return (
+      <span className="-mr-1 -mt-0.5 flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          title={`${t("writeWhileYouBrowse")} (${formatShortcut(shortcuts.floatMessage)})`}
+          aria-label={`${t("writeWhileYouBrowse")} (${formatShortcut(shortcuts.floatMessage)})`}
+          className={button}
+          onClick={() => floatReply()}
+        >
+          <PictureInPicture2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          data-composer-fill-window
+          title={t("fullScreen")}
+          aria-label={t("fullScreen")}
+          className={button}
+          onClick={() => floatReply(undefined, true)}
+        >
+          {/* The floating card's own Fill the window icon. */}
+          <Expand className="h-4 w-4" />
+        </button>
+      </span>
+    );
+  }
   return (
     <>
       {onFloatReply && !floating ? (

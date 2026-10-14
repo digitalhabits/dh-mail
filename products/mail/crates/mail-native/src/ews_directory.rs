@@ -115,42 +115,68 @@ pub fn own_request(account: &str) -> EwsResult<String> {
 /// The SMTP addresses of one `Resolution`: the mailbox's own, and each
 /// `smtp:` entry of the contact's `EmailAddresses` (`SMTP:` is the main
 /// one, `smtp:` the others; `X500:`, `SIP:` and the like are not mail).
-fn addresses_of(resolution: &str) -> Vec<String> {
+/// Also the main address: the `SMTP:` entry, else the mailbox's own.
+fn addresses_of(resolution: &str) -> (Option<String>, Vec<String>) {
   let mut out: Vec<String> = Vec::new();
-  let mut add = |raw: &str| {
+  let mut main: Option<String> = None;
+  let mut add = |raw: &str, main: &mut Option<String>| {
     let raw = raw.trim();
-    let email = match raw.split_once(':') {
-      Some((kind, rest)) if kind.eq_ignore_ascii_case("smtp") => rest,
+    let (email, is_main) = match raw.split_once(':') {
+      // Only the upper case `SMTP:` names the main address.
+      Some((kind, rest)) if kind.eq_ignore_ascii_case("smtp") => (rest, kind == "SMTP"),
       Some(_) => return,
-      None => raw,
+      None => (raw, false),
     };
     let email = email.trim().to_lowercase();
-    if email.contains('@') && !out.contains(&email) {
+    if !email.contains('@') {
+      return;
+    }
+    if is_main && main.is_none() {
+      *main = Some(email.clone());
+    }
+    if !out.contains(&email) {
       out.push(email);
     }
   };
+  let mut mailbox_email: Option<String> = None;
   if let Some(mailbox) = inner(resolution, "Mailbox") {
     let smtp = element_text(mailbox, "RoutingType").is_none_or(|r| r.eq_ignore_ascii_case("SMTP"));
     if smtp {
       if let Some(email) = element_text(mailbox, "EmailAddress") {
-        add(&email);
+        add(&email, &mut main);
+        let email = email.trim().to_lowercase();
+        if email.contains('@') {
+          mailbox_email = Some(email);
+        }
       }
     }
   }
   if let Some(list) = inner(resolution, "Contact").and_then(|c| inner(c, "EmailAddresses")) {
     for entry in all_inner(list, "Entry") {
-      add(entry);
+      add(entry, &mut main);
     }
   }
-  out
+  (main.or(mailbox_email), out)
+}
+
+/// What the directory says of the signed-in mailbox.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct OwnAddresses {
+  /// The address the server sends as. It can change after the mailbox was
+  /// connected: a university can give `abc123@dept.uni.example` a new main
+  /// address `kim.example@dept.uni.example`. None: no record was found.
+  pub main: Option<String>,
+  /// Every address of the mailbox, the main one too.
+  pub addresses: Vec<String>,
 }
 
 /// Every address of the signed-in mailbox, from its record in the
-/// directory. A mailbox signs in as one address and may send as another:
-/// at a university, `abc123@uni.example` sends as `kim@dept.uni.example`, and mail from that
-/// address read as somebody else's. Only the record that holds `account`
-/// itself counts; none found is an empty list.
-pub fn read_own_addresses(xml: &str, account: &str) -> Vec<String> {
+/// directory, and which one is the main one. A mailbox signs in as one
+/// address and may send as another: at a university, `abc123@uni.example`
+/// sends as `kim@dept.uni.example`, and mail from that address read as
+/// somebody else's. Only the record that holds `account` itself counts;
+/// none found is an empty answer.
+pub fn read_own_addresses(xml: &str, account: &str) -> OwnAddresses {
   let account = account.trim().to_lowercase();
   let user_id = user_id_of(&account);
   let message = inner(xml, "ResolveNamesResponseMessage").unwrap_or("");
@@ -158,7 +184,7 @@ pub fn read_own_addresses(xml: &str, account: &str) -> Vec<String> {
   // The record that lists the account's address, else the one whose
   // mailbox `Name` is the account's user id: on KU the record of
   // abc123@dept.uni.example does not list that address, and its Name is abc123.
-  let by_address = resolutions.iter().map(|r| addresses_of(r)).find(|a| a.contains(&account));
+  let by_address = resolutions.iter().map(|r| addresses_of(r)).find(|(_, a)| a.contains(&account));
   let found = by_address.or_else(|| {
     resolutions
       .iter()
@@ -175,12 +201,14 @@ pub fn read_own_addresses(xml: &str, account: &str) -> Vec<String> {
     resolutions.len(),
     if found.is_some() { "one is this mailbox" } else { "none is this mailbox" }
   );
-  let mut found = found.unwrap_or_default();
+  let Some((main, mut addresses)) = found.filter(|(_, a)| !a.is_empty()) else {
+    return OwnAddresses::default();
+  };
   // The address signed in with is ours whatever the record lists.
-  if !found.is_empty() && !found.contains(&account) {
-    found.push(account);
+  if !addresses.contains(&account) {
+    addresses.push(account);
   }
-  found
+  OwnAddresses { main, addresses }
 }
 
 /// The part before the @: the user id on a directory like KU's.
@@ -188,7 +216,7 @@ fn user_id_of(account: &str) -> &str {
   account.split('@').next().unwrap_or(account)
 }
 
-pub async fn own_addresses(client: &EwsClient, account: &str) -> EwsResult<Vec<String>> {
+pub async fn own_addresses(client: &EwsClient, account: &str) -> EwsResult<OwnAddresses> {
   // Asked by the user id, which is what the directory's record is named by;
   // `call_many`: no match comes as an `Error` message, which is an answer.
   let account = account.trim().to_lowercase();
@@ -222,17 +250,26 @@ pub mod commands {
   }
 
   /// Every address the signed-in mailbox has, so mail from any of them is
-  /// the reader's own. A count in the log, never an address.
+  /// the reader's own, and the main one, which From shows. A count in the
+  /// log, never an address.
   #[tauri::command]
   pub async fn mail_ews_own_addresses(
     secrets: tauri::State<'_, Secrets>,
     accounts: tauri::State<'_, EwsAccounts>,
     account: String,
-  ) -> Result<Vec<String>, String> {
+  ) -> Result<OwnAddresses, String> {
     let client = accounts.client(&secrets, &account).map_err(|e| e.to_string())?;
     match own_addresses(&client, &account).await {
       Ok(found) => {
-        log::info!("ews: the mailbox has {} address(es) in the directory", found.len());
+        log::info!(
+          "ews: the mailbox has {} address(es) in the directory, {}",
+          found.addresses.len(),
+          match &found.main {
+            Some(main) if *main == account.trim().to_lowercase() => "the main one is the one signed in with",
+            Some(_) => "the main one is another",
+            None => "no main one",
+          }
+        );
         Ok(found)
       }
       Err(e) => {

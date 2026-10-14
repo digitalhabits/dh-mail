@@ -52,12 +52,13 @@ export function ReaderWindow({
           )
         );
         if (cancelled) return;
-        setAccounts(
-          perProvider
-            .flat()
-            .filter((row) => row.inMailTab)
-            .map((row) => row.email)
-        );
+        // Every connected mailbox, the shown ones first: a message can go
+        // from a hidden mailbox too (see sendFromAccounts).
+        const rows = perProvider.flat();
+        setAccounts([
+          ...rows.filter((row) => row.inMailTab),
+          ...rows.filter((row) => !row.inMailTab),
+        ].map((row) => row.email));
       } catch {
         // The window still works on its one mailbox; only the From picker
         // has less to offer.

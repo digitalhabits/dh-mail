@@ -9,6 +9,20 @@ export type ParsedCalendarInvite = {
   location: string;
   /** Best join/conference URL if we can find one. */
   joinUrl: string | null;
+  /**
+   * What the file asks for (METHOD): REQUEST for an invitation, REPLY for
+   * an answer to one, CANCEL when the organiser calls it off. Upper case;
+   * "" when the file does not say.
+   */
+  method: string;
+  /** In a REPLY, who answered and how. */
+  reply: InviteReply | null;
+};
+
+export type InviteReply = {
+  /** The name they go by, else their address. */
+  name: string;
+  status: "accepted" | "declined" | "tentative" | "other";
 };
 
 export function isCalendarAttachment(att: {
@@ -119,6 +133,108 @@ function parseProp(line: string): IcsProp | null {
   return { name, params, value };
 }
 
+/**
+ * Windows time-zone names, as Outlook and Exchange write them in TZID, and
+ * the zone each one means. Google and Apple write the zone's own name
+ * ("Europe/Copenhagen"), which needs no list.
+ */
+const WINDOWS_ZONES: Record<string, string> = {
+  "GMT Standard Time": "Europe/London",
+  "Greenwich Standard Time": "Atlantic/Reykjavik",
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Romance Standard Time": "Europe/Paris",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Central European Standard Time": "Europe/Warsaw",
+  "E. Europe Standard Time": "Europe/Chisinau",
+  "FLE Standard Time": "Europe/Kiev",
+  "GTB Standard Time": "Europe/Bucharest",
+  "Russian Standard Time": "Europe/Moscow",
+  "Turkey Standard Time": "Europe/Istanbul",
+  "Israel Standard Time": "Asia/Jerusalem",
+  "South Africa Standard Time": "Africa/Johannesburg",
+  "Eastern Standard Time": "America/New_York",
+  "Central Standard Time": "America/Chicago",
+  "Mountain Standard Time": "America/Denver",
+  "US Mountain Standard Time": "America/Phoenix",
+  "Pacific Standard Time": "America/Los_Angeles",
+  "Alaskan Standard Time": "America/Anchorage",
+  "Hawaiian Standard Time": "Pacific/Honolulu",
+  "Atlantic Standard Time": "America/Halifax",
+  "Newfoundland Standard Time": "America/St_Johns",
+  "Canada Central Standard Time": "America/Regina",
+  "SA Pacific Standard Time": "America/Bogota",
+  "E. South America Standard Time": "America/Sao_Paulo",
+  "India Standard Time": "Asia/Kolkata",
+  "China Standard Time": "Asia/Shanghai",
+  "Tokyo Standard Time": "Asia/Tokyo",
+  "Korea Standard Time": "Asia/Seoul",
+  "Singapore Standard Time": "Asia/Singapore",
+  "Arabian Standard Time": "Asia/Dubai",
+  "AUS Eastern Standard Time": "Australia/Sydney",
+  "E. Australia Standard Time": "Australia/Brisbane",
+  "Cen. Australia Standard Time": "Australia/Adelaide",
+  "W. Australia Standard Time": "Australia/Perth",
+  "New Zealand Standard Time": "Pacific/Auckland",
+  "UTC": "UTC",
+  "Coordinated Universal Time": "UTC",
+};
+
+/** The zone a TZID names, if this machine knows it; null for one it does not. */
+function zoneOf(tzid: string | undefined): string | null {
+  const name = (tzid ?? "").trim().replace(/^"(.*)"$/, "$1").replace(/^\//, "");
+  if (!name) return null;
+  const zone = WINDOWS_ZONES[name] ?? name;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+/** How far the zone's clock is ahead of UTC at this moment, in ms. */
+function zoneOffsetMs(at: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(at));
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const shown = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second")
+  );
+  return shown - Math.floor(at / 1000) * 1000;
+}
+
+/**
+ * The moment a clock in the zone reads this time. The offset is asked
+ * twice: the first guess can sit on the other side of a change of the
+ * clocks from the answer.
+ */
+function wallTimeIn(
+  zone: string,
+  y: number,
+  mo: number,
+  d: number,
+  h: number,
+  mi: number,
+  s: number
+): Date {
+  const asUtc = Date.UTC(y, mo - 1, d, h, mi, s);
+  const first = asUtc - zoneOffsetMs(asUtc, zone);
+  return new Date(asUtc - zoneOffsetMs(first, zone));
+}
+
 function parseIcsDate(
   value: string,
   params: Record<string, string>
@@ -152,7 +268,15 @@ function parseIcsDate(
     const mi = Number(mins);
     const s = Number(ss);
     if (!zone) {
-      // Floating / TZID without a zone database: treat as local wall time.
+      /*
+        A time in a named zone is that zone's clock, not this one's: the
+        acceptance from an Outlook in Copenhagen said 14:30 "Romance
+        Standard Time", and was shown as 14:30 in London, an hour late.
+        A floating time, or a zone this machine does not know, is read as
+        local wall time.
+      */
+      const named = zoneOf(params.TZID);
+      if (named) return { date: wallTimeIn(named, y, mo, d, h, mi, s), allDay: false };
       return { date: new Date(y, mo - 1, d, h, mi, s), allDay: false };
     }
     if (zone.toUpperCase() === "Z") {
@@ -213,6 +337,8 @@ export function parseCalendarInvite(raw: string): ParsedCalendarInvite | null {
   let start: Date | null = null;
   let end: Date | null = null;
   let allDay = false;
+  let method = "";
+  let reply: InviteReply | null = null;
 
   for (const line of lines) {
     const upper = line.toUpperCase();
@@ -221,10 +347,18 @@ export function parseCalendarInvite(raw: string): ParsedCalendarInvite | null {
       continue;
     }
     if (upper === "END:VEVENT") break;
-    if (!inEvent) continue;
+    if (!inEvent) {
+      if (upper.startsWith("METHOD:")) method = upper.slice("METHOD:".length).trim();
+      continue;
+    }
 
     const prop = parseProp(line);
     if (!prop) continue;
+
+    if (prop.name === "ATTENDEE" && !reply && prop.params.PARTSTAT) {
+      reply = replyOf(prop);
+      continue;
+    }
 
     if (prop.name === "SUMMARY") {
       summary = unescapeIcsText(prop.value).trim();
@@ -271,6 +405,26 @@ export function parseCalendarInvite(raw: string): ParsedCalendarInvite | null {
     allDay,
     location: locationText,
     joinUrl,
+    method,
+    reply: method === "REPLY" ? reply : null,
+  };
+}
+
+/** Who an ATTENDEE line names, and the answer it carries. */
+function replyOf(prop: IcsProp): InviteReply {
+  const name = (prop.params.CN ?? "").replace(/^"(.*)"$/, "$1").trim();
+  const address = prop.value.replace(/^mailto:/i, "").trim();
+  const said = prop.params.PARTSTAT.toUpperCase();
+  return {
+    name: name || address,
+    status:
+      said === "ACCEPTED"
+        ? "accepted"
+        : said === "DECLINED"
+          ? "declined"
+          : said === "TENTATIVE"
+            ? "tentative"
+            : "other",
   };
 }
 

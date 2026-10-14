@@ -15,13 +15,13 @@ import type { MailPageModel } from "@/components/mail/use-mail-page";
 /** The floated reply and the floated new message, over everything. */
 export function FloatingCards({
   m,
-
+  sendFrom,
 }: {
   m: MailPageModel;
-
+  /** What From offers: every mailbox, the hidden ones too (sendFromAccounts). */
+  sendFrom: string[];
 }) {
   const {
-    accountEmails,
     adjustZoom,
     floatingCompose,
     floatingReply,
@@ -47,8 +47,9 @@ export function FloatingCards({
         <ThreadPane
           key={`floating|${floatingReply.account}|${floatingReply.threadId}`}
           floating
+          floatingStartsFull={floatingReply.full}
           account={floatingReply.account}
-          accounts={accountEmails}
+          accounts={sendFrom}
           threadId={floatingReply.threadId}
           zoom={zoom}
           onZoomAdjust={adjustZoom}
@@ -89,7 +90,7 @@ export function FloatingCards({
         <ComposeView
           key={`floating|${floatingCompose}`}
           floating
-          accounts={accountEmails}
+          accounts={sendFrom}
           scope={mailboxScopeEmails}
           zoom={zoom}
           onZoomAdjust={adjustZoom}

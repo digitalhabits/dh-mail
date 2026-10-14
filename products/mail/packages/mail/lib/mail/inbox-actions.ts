@@ -6,6 +6,7 @@
  * app uses, so callers import from there.
  */
 
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
 import { applyLocalAction, queueLocalAction } from "@/lib/mail/local-store";
@@ -400,7 +401,10 @@ async function tipMessageIdForThread(
   try {
     const provider = await resolveMailProvider(account);
     // Never a Gmail or Graph call for an Exchange mailbox: the local copy.
-    if (provider === "exchange") return await exchangeTipMessageId(account, threadId);
+    // Nor for a Gmail on an app password, which Google's API does not take.
+    if (provider === "exchange" || (provider === "gmail" && (await isAppPasswordGmail(account)))) {
+      return await exchangeTipMessageId(account, threadId);
+    }
     if (provider === "outlook") {
       const token = await outlookAccessTokenFor(account);
       const tipPage = await listConversationMessages(token, threadId, {

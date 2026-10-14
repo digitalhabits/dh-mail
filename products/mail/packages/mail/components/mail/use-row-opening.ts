@@ -27,6 +27,7 @@ import { everyCopy, rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
 import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { patchCachedThreads } from "@/components/mail/mail-list-state";
+import { holdRead, releaseRead, stillHeld } from "@/lib/mail/held-reads";
 
 type OpenThread = {
   account: string;
@@ -96,6 +97,8 @@ export function useRowOpening({
       // row, unread while either copy is. Marking one read left the row
       // read for a moment and then bold again from the other.
       const copies = everyCopy(t, threadsRef.current);
+      const keys = copies.map((c) => threadKey(c));
+      holdRead(keys);
       /*
         A moment after the open, not at it. The thread opens on the first
         of its new, unread messages, and it can only see which those are
@@ -106,17 +109,21 @@ export function useRowOpening({
         the word to the store waits.
       */
       window.setTimeout(() => {
-        // Marked unread again in the meantime: that is the reader's last word.
-        if (threadsRef.current.some((item) => rowStandsFor(item, t) && item.unread)) return;
-        for (const c of copies) {
-          void apiJson("/api/mail/read", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(c),
-          }).catch((err) => {
-            console.warn("[mail] could not mark the thread read:", err);
-          });
-        }
+        // Marked unread again in the meantime: that is the reader's last
+        // word, and it let go of the hold (lib/mail/held-reads). A row
+        // made bold by a list from the store is not that word.
+        if (!stillHeld(keys)) return;
+        void Promise.all(
+          copies.map((c) =>
+            apiJson("/api/mail/read", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(c),
+            }).catch((err) => {
+              console.warn("[mail] could not mark the thread read:", err);
+            })
+          )
+        ).finally(() => releaseRead(keys));
       }, MARK_READ_AFTER_OPEN_MS);
     }
     setThreads((current) => {

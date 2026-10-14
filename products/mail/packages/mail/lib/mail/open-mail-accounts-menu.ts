@@ -18,6 +18,7 @@ export const MAIL_SETTINGS_CATEGORIES = [
   "snooze",
   "contacts",
   "shortcuts",
+  "advanced",
 ] as const;
 
 export type MailSettingsCategory = (typeof MAIL_SETTINGS_CATEGORIES)[number];

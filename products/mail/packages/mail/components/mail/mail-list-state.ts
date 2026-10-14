@@ -496,6 +496,29 @@ export function useMailListTab(
   return [tab, update];
 }
 
+/**
+ * The cursor with only the pages of the mailboxes in view.
+ *
+ * Every visible mailbox is read and the mailbox tab narrows what shows, so a
+ * cursor held a page token for a mailbox the tab hides. With a Gmail still
+ * on its first read — full pages, so always a next one — "Load more" stood
+ * under the one message of an Exchange mailbox that had nothing more, and
+ * would have loaded rows the tab then hid.
+ */
+export function cursorForMailboxScope(
+  cursor: string | null,
+  selected: string[],
+  accounts: string[]
+): string | null {
+  if (!cursor || isMailboxScopeAll(selected, accounts)) return cursor;
+  const kept = Object.fromEntries(
+    Object.entries(decodeCursorTokens(cursor)).filter(([email]) =>
+      accountPassesMailboxScope(email, selected, accounts)
+    )
+  );
+  return encodeCursorTokens(kept);
+}
+
 export function isMailboxScopeAll(selected: string[], accounts: string[]): boolean {
   return selected.length === 0 || selected.length >= accounts.length;
 }
@@ -505,8 +528,18 @@ export function accountPassesMailboxScope(
   selected: string[],
   accounts: string[]
 ): boolean {
-  if (isMailboxScopeAll(selected, accounts)) return true;
   const key = account.toLowerCase();
+  if (isMailboxScopeAll(selected, accounts)) {
+    /*
+      All means every mailbox that is shown, not every mailbox in the copy.
+      The list is loaded for every connected mailbox, so a hidden one's
+      threads were still in it, and passed here: a Gmail hidden from Mail
+      stayed in the All tab (2026-10-14). A thread with no account, or a
+      page that has not read its mailboxes yet, is kept.
+    */
+    if (!key || accounts.length === 0) return true;
+    return accounts.some((email) => email.toLowerCase() === key);
+  }
   return selected.some((email) => email.toLowerCase() === key);
 }
 

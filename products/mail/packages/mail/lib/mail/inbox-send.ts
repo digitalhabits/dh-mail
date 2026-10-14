@@ -6,6 +6,7 @@
  * app uses, so callers import from there.
  */
 
+import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 
 import { cancelExchangeHeld, listExchangeHeld, sendExchangeHeldNow } from "@/lib/mail/exchange-send-later";
@@ -15,7 +16,7 @@ import { localStoreServes } from "@/lib/mail/local-store";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { sendRawMessage } from "@/lib/gmail/api";
 import {
-  filterAccountsForScope,
+  isDhMailAccountEmail,
   type MailAccountScope,
 } from "@/lib/mail/account-scope";
 import { extractInlineImages } from "@/lib/mail/inline-images";
@@ -259,9 +260,13 @@ export async function listAllScheduledMailMessages(input: {
   clerkUserId: string;
   scope?: MailAccountScope;
 }): Promise<MailScheduledMessage[]> {
-  const accounts = filterAccountsForScope(
-    await listConnectedMailAccounts(input.clerkUserId),
-    input.scope ?? "all"
+  // Not filterAccountsForScope: that one drops hidden mailboxes, for the
+  // inbox. A message can go from a hidden mailbox, so its held messages
+  // are listed too, or one sent later from it could not be called back.
+  // Only the app's own allow-list applies here.
+  const scope = input.scope ?? "all";
+  const accounts = (await listConnectedMailAccounts(input.clerkUserId)).filter(
+    (a) => scope !== "personal" || isDhMailAccountEmail(a.email)
   );
   if (!accounts.length) return [];
 
@@ -792,8 +797,13 @@ export async function sendMailMessage(input: {
 
   // The name Gmail already puts on their mail. Never throws: an account we
   // cannot ask sends with the bare address, the way every send did before.
+  // A Gmail on an app password has no token: its name was given when it
+  // was connected, and it sends through the outbox.
   const senderName = await senderNameFor(input.account, {
-    token: await tokenFor(),
+    token: await tokenFor().catch((err: unknown) => {
+      if (isGmailAppPasswordError(err)) return undefined;
+      throw err;
+    }),
     provider: "gmail",
   });
   const raw = await buildOutgoingMime(input, senderName);

@@ -29,7 +29,7 @@ import { MAIL_POPOUT_SENT_KEY } from "@/lib/mail/popout";
 import { MAIL_CHANGED_KEY } from "@/lib/mail/reader-window";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { mailListCacheKey, markMailWarm, readCachedList, writeCachedList } from "@/lib/mail/list-cache";
-import { decodeCursorTokens, encodeCursorTokens, SERVER_FOLDER_VIEWS, peekMountCachedList, mailboxScopeApiAccount } from "@/components/mail/mail-list-state";
+import { cursorForMailboxScope, decodeCursorTokens, encodeCursorTokens, SERVER_FOLDER_VIEWS, peekMountCachedList, mailboxScopeApiAccount } from "@/components/mail/mail-list-state";
 import type { MailPageSnapshot } from "@/components/mail/MailPage";
 import {
   ROLE_VIEW,
@@ -37,6 +37,7 @@ import {
   type ActiveMailFolder,
 } from "@/components/mail/mail-list-state";
 import type { MailListCacheEntry } from "@/lib/mail/list-cache";
+import { withHeldReads } from "@/lib/mail/held-reads";
 import type { MailPauseState } from "@/lib/mail/quiet-hours";
 
 /**
@@ -110,7 +111,7 @@ export function useThreadListData(input: {
   // Soft-nav / InstantTabPaint: seed from prop. Hard refresh: keep the first
   // client render identical to SSR (empty + loading), then fill from cache in
   // useLayoutEffect before paint — peeking localStorage in useState mismatches.
-  const [threads, setThreads] = React.useState<MailThreadSummary[]>(() => {
+  const [threads, setThreadsRaw] = React.useState<MailThreadSummary[]>(() => {
     if (initialList?.threads.length) {
       writeCachedList(viewerId, initialList.key, {
         threads: initialList.threads,
@@ -120,6 +121,14 @@ export function useThreadListData(input: {
     }
     return [];
   });
+  /* Every list that lands here keeps the reads not yet told to the store
+     (lib/mail/held-reads), so a list in the seconds after an open does not
+     put the bold back on the row just read. */
+  const setThreads = React.useCallback<React.Dispatch<React.SetStateAction<MailThreadSummary[]>>>(
+    (action) =>
+      setThreadsRaw((prev) => withHeldReads(typeof action === "function" ? action(prev) : action)),
+    []
+  );
   /** Opaque cursor for the next Gmail list page; null = no more to load. */
   const [listCursor, setListCursor] = React.useState<string | null>(() => {
     if (initialList) return initialList.nextCursor;
@@ -163,7 +172,7 @@ export function useThreadListData(input: {
       setListCursor(null);
       setLoadingList(false);
     }
-  }, [accountEmails.length]);
+  }, [accountEmails.length, setThreads]);
 
   // Persist for InstantTabPaint — never clobber a warm snapshot with an empty
   // remount (SSR/hydrate starts with threads=[] before cache/fetch lands).
@@ -835,7 +844,7 @@ export function useThreadListData(input: {
         /* quiet — the next poll still catches up */
       }
     },
-    [viewerId]
+    [setThreads, viewerId]
   );
 
   /** Provider Sent indexing lags; two quiet beats for one mailbox only. */
@@ -875,6 +884,13 @@ export function useThreadListData(input: {
     };
   }, []);
 
+  // What "Load more" offers: the pages of the mailboxes in the tab only
+  // (see cursorForMailboxScope). The whole cursor still goes with it.
+  const shownListCursor = React.useMemo(
+    () => cursorForMailboxScope(listCursor, mailboxScopeEmails, accountEmails),
+    [listCursor, mailboxScopeEmails, accountEmails]
+  );
+
   const loadMoreThreads = React.useCallback(async () => {
     if (!listCursor || loadingMore || loadingList || refreshing) return;
     if (!activeFolder && folder === "snoozed") return;
@@ -911,6 +927,7 @@ export function useThreadListData(input: {
     loadingList,
     loadingMore,
     refreshing,
+    setThreads,
     viewerId,
   ]);
 
@@ -1191,7 +1208,7 @@ export function useThreadListData(input: {
     threadsKeyRef,
     hiddenRowsRef,
     listViewIdRef,
-    listCursor,
+    listCursor: shownListCursor,
     setListCursor,
     loadingList,
     setLoadingList,

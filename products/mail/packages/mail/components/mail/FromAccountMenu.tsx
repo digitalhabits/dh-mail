@@ -18,7 +18,23 @@ import { Check, ChevronDown } from "lucide-react";
 
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import { mainAddresses, sendAsLabel, subscribeMainAddresses } from "@/lib/mail/exchange-own-addresses";
 import { cn } from "@/lib/utils";
+
+/** `sendAsLabel`, drawn again when an answer from the directory comes in. */
+function useSendAsLabel(): (account: string) => string {
+  const current = React.useSyncExternalStore(subscribeMainAddresses, mainAddresses, mainAddresses);
+  return React.useCallback((account: string) => sendAsLabel(account, current), [current]);
+}
+
+/**
+ * The address a mailbox sends as, where there is only one to send from and
+ * no menu. Text only.
+ */
+export function SendAsAddress({ account }: { account: string }) {
+  const sendAs = useSendAsLabel();
+  return <>{sendAs(account)}</>;
+}
 
 export const FromAccountMenu = React.forwardRef<
   HTMLButtonElement,
@@ -54,6 +70,9 @@ export const FromAccountMenu = React.forwardRef<
   ref
 ) {
   const [open, setOpen] = React.useState(false);
+  // The address the server sends as, which can differ from the connected
+  // one on Exchange. The value stays the connected address.
+  const sendAs = useSendAsLabel();
   /** Which row the arrow keys are on. The one in use, to start. */
   const [active, setActive] = React.useState(0);
   const rowsRef = React.useRef<(HTMLButtonElement | null)[]>([]);
@@ -109,7 +128,7 @@ export const FromAccountMenu = React.forwardRef<
             triggerClassName
           )}
         >
-          <span className="truncate">{value}</span>
+          <span className="truncate">{sendAs(value)}</span>
           <ChevronDown
             aria-hidden
             className={cn(
@@ -162,7 +181,7 @@ export const FromAccountMenu = React.forwardRef<
                 aria-hidden
                 className={cn("h-3.5 w-3.5 shrink-0", !chosen && "opacity-0")}
               />
-              <span className="truncate">{account}</span>
+              <span className="truncate">{sendAs(account)}</span>
             </button>
           );
         })}

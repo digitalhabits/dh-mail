@@ -8,6 +8,8 @@
  * The interface calls the same two functions either way.
  */
 
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
+import { requestAppPasswordConnect } from "@/lib/mail/app-password-connect";
 import { toast } from "@/lib/mail/toast";
 
 import type { MailConnectSeam } from "@/lib/mail/host/contracts";
@@ -51,6 +53,17 @@ export const startMailConnect: MailConnectSeam["startMailConnect"] = async (
     } finally {
       running = false;
     }
+    return;
+  }
+  /*
+    A Gmail on an app password signs in again with a new password, in the
+    form in Settings. Google's sign-in would not take it, and connecting
+    there would replace the password with a grant from a client that, in
+    the organization's build, refuses a personal account.
+  */
+  if (provider !== "outlook" && email && (await isAppPasswordGmail(email).catch(() => false))) {
+    running = false;
+    requestAppPasswordConnect(email);
     return;
   }
   const oauthProvider = provider as Exclude<typeof provider, "exchange">;

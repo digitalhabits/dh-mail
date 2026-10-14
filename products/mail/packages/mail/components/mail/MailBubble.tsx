@@ -28,6 +28,7 @@ import {
   nonCalendarAttachments,
 } from "@/components/mail/CalendarInviteCard";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
+import { useBubbleReader } from "@/components/mail/MessageReader";
 import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { htmlHasRemoteImages, stripQuotedHtml } from "@/lib/mail/email-html";
 import {
@@ -602,6 +603,34 @@ export function MailBubble({
   const outgoing = sendingOut || failedOut;
   const reactAction = outgoing ? undefined : onReact;
   const replyAction = outgoing ? undefined : onReplyTo;
+
+  /** The body's box, which the Reader button measures in lines. */
+  const bodyBoxRef = React.useRef<HTMLDivElement>(null);
+  /* The Reader: the button in the rail for a long message, and the Reader
+     while it is open. Not in a chat window, where a message is one line
+     of a conversation. */
+  const bubbleReader = useBubbleReader({
+    id: message.id,
+    inChatWindow: !showMeta,
+    outgoing,
+    bubbleRef,
+    bodyBoxRef,
+    findScroller: nearestScrollParent,
+    message,
+    displayName,
+    subject,
+    fullText: fullBody,
+    foldedText: stripped,
+    htmlSplit,
+    showQuoted,
+    shownHtml,
+    allowImages,
+    readInTheDark,
+    zoom,
+    highlight,
+    onReplyTo: replyAction,
+    onForward,
+  });
   /** The "…" menu's rows, in the rail and on a right-click alike. */
   const menuActions: MessageMenuActions = {
     bodyText: message.bodyText,
@@ -676,10 +705,11 @@ export function MailBubble({
     >
     <div
       ref={bubbleRef}
+      tabIndex={-1}
       className={cn(
         // How wide the column may get, and the gutter that leaves beside
         // it, are one rule on `.mail-bubble-column` — see mail.css.
-        "mail-bubble-column flex w-full min-w-0 flex-col",
+        "mail-bubble-column flex w-full min-w-0 flex-col outline-none",
         // Auto margins, not `self-end`. `self-*` needs a flex parent, and a
         // bubble is not always given one — in the chat window each sits in a
         // plain block, so an open message ignored it and hugged the left
@@ -713,11 +743,13 @@ export function MailBubble({
         )}
       >
       {/* Not in a chat window: there the window's own width is the measure. */}
-      {showMeta ? <BubbleWidthHandle own={message.own} zoom={zoom} boxRef={bubbleRef} /> : null}
+      {showMeta ? <BubbleWidthHandle own={message.own} zoom={zoom} boxRef={railAnchorRef} columnRef={bubbleRef} /> : null}
+      {bubbleReader.reader}
       <MessageHoverActions
         own={message.own}
         onReact={reactAction}
         onReplyTo={replyAction}
+        onOpenReader={bubbleReader.onOpen}
         {...menuActions}
       />
       {contextMenu ? (
@@ -794,6 +826,7 @@ export function MailBubble({
           stripped={stripped}
           hasHidden={hasHidden}
           highlight={highlight}
+          boxRef={bodyBoxRef}
         />
       </div>
       </div>
@@ -933,9 +966,12 @@ function BubbleBody({
   stripped,
   hasHidden,
   highlight,
+  boxRef,
 }: {
   /** Search words to paint, in the frame or in the plain text. */
   highlight?: string[];
+  /** The body's box, which the Reader button measures in lines. */
+  boxRef: React.RefObject<HTMLDivElement | null>;
   showHtml: boolean;
   sendingOut: boolean;
   timeCorner: React.JSX.Element | null;
@@ -964,6 +1000,7 @@ function BubbleBody({
   }, [highlight, showHtml, showQuoted, fullBody]);
   return (
     <div
+      ref={boxRef}
       className={cn(
         "relative",
         showHtml && "overflow-hidden rounded-t-lg",

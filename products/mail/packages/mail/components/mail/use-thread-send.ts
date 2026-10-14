@@ -47,7 +47,7 @@ import {
   recipientsFromEmails,
   type MailRecipient,
 } from "@/lib/mail/contact-list-types";
-import { afterTeamSend } from "@/components/mail/team-layer";
+import { startTeamFollowUp } from "@/components/mail/team-layer";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
 import {
@@ -164,7 +164,6 @@ export function useThreadSend(input: {
     importedDraftRef,
     loadScheduled,
     readableAttachments,
-    recordsChanged,
     onSent,
     onChatPromoted,
     onChatThreadChanged,
@@ -289,6 +288,12 @@ export function useThreadSend(input: {
         [localId]: { ...entry, status: "sending" },
       }));
       setSending(true);
+      /*
+        The records' follow-up runs after the send, not inside it: asked
+        of the send route, the mail waited for the follow-up and nothing said so
+        (team-layer `startTeamFollowUp`). So the route is not told.
+      */
+      const { updateCrmNotes: followUp, ...sendRequest } = entry.request;
       try {
         const json = await apiJson<
           TeamSendAnswer & {
@@ -299,13 +304,18 @@ export function useThreadSend(input: {
         >("/api/mail/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(entry.request),
+          body: JSON.stringify(sendRequest),
         });
-        if (entry.request.updateCrmNotes) {
-          afterTeamSend(json, {
+        if (followUp) {
+          startTeamFollowUp({
             origin: { account, threadId },
-            readableAttachments,
-            onApplied: recordsChanged,
+            sent: {
+              to: sendRequest.to,
+              cc: sendRequest.cc,
+              subject: sendRequest.subject,
+              body: sendRequest.body,
+            },
+            attachments: readableAttachments,
           });
         }
         // A forward is not part of this conversation, so an answer about
@@ -403,7 +413,6 @@ export function useThreadSend(input: {
       threadId,
       onChatPromoted,
       onChatThreadChanged,
-      recordsChanged,
       readableAttachments,
       markOutboxConfirmed,
       onSent,

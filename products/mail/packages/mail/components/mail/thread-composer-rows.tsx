@@ -19,7 +19,7 @@
 
 import * as React from "react";
 
-import { FromAccountMenu } from "@/components/mail/FromAccountMenu";
+import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
 import { cn } from "@/lib/utils";
@@ -73,7 +73,9 @@ export function ComposerFieldRows({ m }: { m: ThreadPaneModel }) {
           triggerClassName="text-[15px] font-semibold text-stone-800"
         />
       ) : (
-        <span className="font-semibold text-stone-800">{account}</span>
+        <span className="font-semibold text-stone-800">
+          <SendAsAddress account={account} />
+        </span>
       )}
     </span>
   );

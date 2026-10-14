@@ -136,6 +136,22 @@ export function searchHitRanges(root: Node, terms: string[]): Range[] {
   return out;
 }
 
+const HIGHLIGHT_STYLE_ID = "dh-search-hit-style";
+
+/**
+ * The colour of the paint, put into the document being painted (the page,
+ * or a message's frame: a highlight does not cross into an iframe). Not in
+ * a stylesheet: a host's CSS parser does not know `::highlight()` and
+ * fails the whole sheet over it.
+ */
+function ensureHighlightStyle(doc: Document): void {
+  if (doc.getElementById(HIGHLIGHT_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = HIGHLIGHT_STYLE_ID;
+  style.textContent = `::highlight(${SEARCH_HIT_HIGHLIGHT}) { background-color: rgba(252, 211, 77, 0.6); color: inherit; }`;
+  (doc.head ?? doc.documentElement)?.appendChild(style);
+}
+
 type HighlightRegistry = { set: (name: string, value: unknown) => void; delete: (name: string) => void };
 
 /**
@@ -153,6 +169,7 @@ export function paintSearchHits(root: Node, terms: string[]): () => void {
   if (!registry || !HighlightCtor) return () => {};
   const ranges = searchHitRanges(root, terms);
   if (!ranges.length) return () => {};
+  ensureHighlightStyle(root.ownerDocument ?? (root as Document));
   registry.set(SEARCH_HIT_HIGHLIGHT, new HighlightCtor(...ranges));
   return () => registry.delete(SEARCH_HIT_HIGHLIGHT);
 }

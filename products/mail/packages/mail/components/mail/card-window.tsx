@@ -39,7 +39,7 @@ export function CardWindowBackdrop({
   return createPortal(
     <div
       aria-hidden
-      className="fixed inset-0 z-40 bg-stone-900/40"
+      className="fixed inset-0 z-40 bg-stone-900/60"
       onClick={onDismiss}
     />,
     document.body

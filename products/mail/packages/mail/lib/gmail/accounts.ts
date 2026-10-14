@@ -8,6 +8,7 @@
 import { mailStore } from "@/lib/mail/store";
 import { invalidateConnectedMailAccountsCache } from "@/lib/mail/connected-accounts-cache";
 import { PlanError } from "@/lib/plan/errors";
+import { isAppPasswordSecret } from "@/lib/mail/gmail-app-password";
 
 import type { MailAccountRecord, MailStoredToken } from "@/lib/mail/store/types";
 
@@ -186,6 +187,29 @@ export async function getAccountStoredToken(email: string): Promise<MailStoredTo
   const stored = await mailStore().accounts.getToken("gmail", normalize(email));
   if (!stored) throw new Error(`No Gmail account stored for ${email}`);
   return stored;
+}
+
+/** Which mailboxes sign in with an app password. Kept: the keychain is not asked twice. */
+const appPasswordKnown = new Map<string, boolean>();
+
+/**
+ * Whether a Gmail mailbox is connected with an app password (see
+ * `@/lib/mail/gmail-app-password`). False for a mailbox with no Gmail
+ * account stored.
+ */
+export async function isAppPasswordGmail(email: string): Promise<boolean> {
+  const key = normalize(email);
+  const known = appPasswordKnown.get(key);
+  if (known !== undefined) return known;
+  const stored = await mailStore().accounts.getToken("gmail", key).catch(() => null);
+  const yes = isAppPasswordSecret(stored?.refreshToken);
+  appPasswordKnown.set(key, yes);
+  return yes;
+}
+
+/** Forget what was learned about a mailbox's sign-in, after it is connected again. */
+export function forgetAppPasswordGmail(email: string): void {
+  appPasswordKnown.delete(normalize(email));
 }
 
 export async function hasGmailAccount(email: string): Promise<boolean> {

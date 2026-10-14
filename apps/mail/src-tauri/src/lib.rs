@@ -197,6 +197,10 @@ macro_rules! mail_commands {
       mail_native::popout::notify_mail_edit_as_new,
       // A message another app left, for the page to take on load.
       mail_native::popout::take_mail_compose_seed,
+      // Drafts another program on this computer left (drafts_inbox.rs).
+      mail_native::drafts_inbox::take_drafts_inbox,
+      mail_native::drafts_inbox::reject_drafts_inbox,
+      mail_native::drafts_inbox::drafts_inbox_path,
       mail_native::commands::mail_store_call,
       mail_native::pending::set_pending_mail_writes,
       mail_native::commands::mail_import_snapshot,
@@ -207,6 +211,7 @@ macro_rules! mail_commands {
       mail_native::sync::mail_sync_start,
       mail_native::sync::mail_sync_stop,
       mail_native::sync::mail_sync_wake,
+      mail_native::sync::mail_check_gmail_app_password,
       mail_native::sync::mail_sync_running,
       mail_native::sync::mail_sync_fetch_bodies,
       mail_native::sync::mail_sync_fetch_part,

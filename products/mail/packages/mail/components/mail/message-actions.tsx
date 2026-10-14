@@ -14,6 +14,7 @@ import {
   Download,
   Forward,
   Info,
+  Maximize2,
   MoreHorizontal,
   Printer,
   SquarePen,
@@ -48,6 +49,7 @@ export function MessageHoverActions({
   recipients,
   onReact,
   onReplyTo,
+  onOpenReader,
   onForward,
   onEditAsNew,
   onDownloadAttachments,
@@ -63,6 +65,8 @@ export function MessageHoverActions({
   recipients: string[];
   onReact?: (emoji: string) => void;
   onReplyTo?: () => void;
+  /** Open the thread in the Reader at this message. Only on a long message. */
+  onOpenReader?: () => void;
   onForward?: () => void;
   onEditAsNew?: () => void;
   /** Save this message's files, for a reader whose tiles are out of view. */
@@ -87,7 +91,7 @@ export function MessageHoverActions({
     Boolean(onPrint) ||
     Boolean(onShowOriginal) ||
     Boolean(onToggleDetails);
-  if (!onReact && !onReplyTo && !hasMenu) return null;
+  if (!onReact && !onReplyTo && !onOpenReader && !hasMenu) return null;
 
   const item =
     "inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-stone-800";
@@ -149,6 +153,18 @@ export function MessageHoverActions({
           onClick={onReplyTo}
         >
           <CornerUpLeft className="h-4 w-4" />
+        </button>
+      ) : null}
+      {onOpenReader ? (
+        <button
+          type="button"
+          data-reader-button
+          title={t("readerOpenHint")}
+          aria-label={t("readerOpenHint")}
+          className={item}
+          onClick={onOpenReader}
+        >
+          <Maximize2 className="h-4 w-4" />
         </button>
       ) : null}
       {hasMenu ? (

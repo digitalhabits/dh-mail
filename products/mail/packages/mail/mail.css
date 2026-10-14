@@ -151,15 +151,54 @@
  */
 .mail-bubble-column {
   /* The reader's own width, when they dragged one (lib/mail/bubble-width),
-     else three quarters of the pane up to 640px. A mail laid out at a fixed
-     width is never cut to less than that width. */
+     for every message: a mail laid out at a fixed width wider than that is
+     scaled to fit it, as it is in a narrow pane (EmailHtmlView), rather
+     than holding its message open (Ulrik, 2026-10-11). Without one, three
+     quarters of the pane up to 640px, and never less than a fixed mail's
+     own width. */
   max-width: min(
     calc(100% - 14px),
-    max(
-      var(--mail-bubble-user-width, max(340px, min(75%, 640px))),
-      var(--mail-bubble-fixed, 0px)
+    var(
+      --mail-bubble-user-width,
+      max(340px, min(75%, 640px), var(--mail-bubble-fixed, 0px))
     )
   );
+}
+
+/* The Reader (MessageReader.tsx): a mail with a fixed width of its own
+   is narrower than the column. It stands in the middle of it. */
+/* The Reader's mail starts at the column's left edge, with the note and
+   the forward line above it. */
+.mail-reader-html iframe {
+  margin-inline: 0;
+}
+/* Clear of the Mac's traffic lights, which sit over the window's top left. */
+.mail-reader-topbar {
+  padding-left: 88px;
+}
+html[data-dh-os="windows"] .mail-reader-topbar {
+  padding-left: 1.25rem;
+}
+/* Reply or Forward in the Reader: the composer comes up from the bottom. */
+@keyframes mail-reader-composer-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.mail-reader-composer-in {
+  animation: mail-reader-composer-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-reader-composer-in {
+    animation: none;
+  }
+}
+/* A reply moved to the floating card from the Reader stays in sight over it. */
+body:has(> [data-mail-reader]) .mail-floating-reply {
+  z-index: 60;
 }
 
 /*
@@ -393,12 +432,9 @@
 .mail-search-hit {
   animation: mail-search-hit-pulse 1.8s ease-out 1;
 }
-/* The search words in the message a search landed on. Frames carry their
-   own copy of this rule: a highlight does not cross into an iframe. */
-::highlight(dh-search-hit) {
-  background-color: rgba(252, 211, 77, 0.6);
-  color: inherit;
-}
+/* The search words' colour (a custom highlight) is not here: the
+   A host's CSS parser refuses that selector and fails the whole sheet. The
+   paint puts the rule in each document itself (lib/mail/search-highlight). */
 
 /* Optimistic send: pending outline → confirmed fill (~200ms). */
 @keyframes mail-sent-confirm {
@@ -442,6 +478,13 @@
  * go dark with the rest of the chrome.
  */
 .mail-shell {
+  /* The way back to a person's threads, and the steps through them. */
+  --mail-nav-tint: #ffffff;
+  --mail-nav-tint-border: rgb(214 211 209);
+  --mail-nav-tint-fg: #1c1917;
+  --mail-nav-step: rgb(231 229 228);
+  --mail-nav-avatar: rgb(231 229 228);
+  --mail-nav-avatar-fg: rgb(68 64 60);
   --mail-chrome: #faf8f5;
   --mail-chrome-border: rgb(231 229 228);
   --mail-chrome-fg: #1c1917;
@@ -568,6 +611,12 @@
 }
 
 .mail-shell[data-theme="dark"] {
+  --mail-nav-tint: rgba(255, 255, 255, 0.06);
+  --mail-nav-tint-border: rgba(255, 255, 255, 0.16);
+  --mail-nav-tint-fg: #e7e5e4;
+  --mail-nav-step: rgba(255, 255, 255, 0.14);
+  --mail-nav-avatar: rgba(255, 255, 255, 0.14);
+  --mail-nav-avatar-fg: #e7e5e4;
   color-scheme: dark;
 
   --mail-chrome: #1a2735;
@@ -1408,4 +1457,27 @@ html[data-dh-os="android"] .mail-phone .mail-phone-fab {
 .mail-phone input,
 .mail-phone textarea {
   font-size: max(16px, 1em);
+}
+
+/*
+ * Faces with no picture (components/mail/avatar.ts): one warm grey for
+ * everybody, with the initials in a darker grey.
+ */
+.mail-avatar-neutral { background-color: #ebe7e2; color: #57534e; }
+.mail-shell[data-theme="dark"] .mail-avatar-neutral { background-color: rgba(231, 225, 218, 0.14); color: #e7e5e4; }
+
+/* The thread over the whole window (thread-full-window): the messages in a
+   column down the middle, as the Reader has them, not from edge to edge. */
+[data-thread-full-window] .mail-thread-column {
+  width: 100%;
+  max-width: 860px;
+  margin-inline: auto;
+}
+/* The reply tray, at the right edge of that column. */
+[data-thread-full-window] .mail-thread-reply-tray {
+  right: max(1.5rem, calc((100% - 860px) / 2));
+}
+/* The reply card, under that column. */
+[data-thread-full-window] .mail-composer-region {
+  padding-inline: max(2rem, calc((100% - 860px) / 2));
 }

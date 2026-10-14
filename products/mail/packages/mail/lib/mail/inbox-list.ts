@@ -7,6 +7,7 @@
  * app uses, so callers import from there.
  */
 
+import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 import { exchangeListTarget } from "@/lib/mail/exchange-folders";
 import { outlookListTarget } from "@/lib/mail/outlook-folders";
@@ -470,6 +471,9 @@ export async function listUnifiedInbox(options: {
           pageStateByAccount,
         });
       } catch (err) {
+        // A Gmail on an app password is read from the copy only, as Exchange
+        // is: before its first rows it lists nothing, and that is no failure.
+        if (isGmailAppPasswordError(err)) return;
         accountFetchFailures += 1;
         // Auth failures already log a one-liner in accessTokenFor — no stack dump.
         const msg = err instanceof Error ? err.message : String(err);

@@ -1,4 +1,5 @@
 import { runIfExchange } from "@/lib/mail/exchange-actions";
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import { exchangeFolderRows, readExchangeFolders } from "@/lib/mail/exchange-folders";
 import { exchangeSnoozeFolderId } from "@/lib/mail/exchange-snooze";
 import {
@@ -176,6 +177,15 @@ async function userLabelsForAccount(
   accountEmail: string,
   includeCounts: boolean
 ): Promise<GmailLabel[]> {
+  // A Gmail on an app password has no Google API to list labels: its
+  // folders are the labels its copy holds, counted there. Without a type,
+  // so the system ids are dropped as for any label that omits one.
+  if (await isAppPasswordGmail(accountEmail)) {
+    const counts = await mailStore().messages.labelCounts(accountEmail);
+    return counts
+      .map((c) => ({ id: c.label, name: c.label, threadsTotal: includeCounts ? c.threads : undefined }))
+      .filter(isUserFolderLabel);
+  }
   const token = await accessTokenFor(accountEmail);
   const listed = await listGmailLabels(token);
   const userLabels = listed.filter(isUserFolderLabel);

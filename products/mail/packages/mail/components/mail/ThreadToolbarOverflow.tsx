@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, FolderInput, MoreHorizontal, MessagesSquare, Pin, Printer, RotateCwFadingClock, Sparkles } from "lucide-react";
+import { Loader2, FolderInput, Maximize2, MoreHorizontal, MessagesSquare, Pin, Printer, RotateCwFadingClock, Sparkles } from "lucide-react";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import { type ThreadToolbarSlot } from "@/components/mail/use-thread-toolbar-fold";
 import { type MoveMenuHere, MoveToFolderMenu } from "@/components/mail/MoveToFolderMenu";
@@ -30,6 +30,7 @@ export function ThreadToolbarOverflow({
   onZoomAdjust,
   onPrint,
   onPopOut,
+  onOpenReader,
   pinned,
   onTogglePin,
   unread,
@@ -56,6 +57,8 @@ export function ThreadToolbarOverflow({
   onZoomAdjust: (delta: number) => void;
   onPrint?: () => void;
   onPopOut?: () => void;
+  /** Open the whole thread in the Reader. */
+  onOpenReader?: () => void;
   pinned: boolean;
   onTogglePin?: () => void;
   unread: boolean;
@@ -231,6 +234,12 @@ export function ThreadToolbarOverflow({
               aria-hidden
             />
             {popOutLabel}
+          </button>
+        ) : null}
+        {onOpenReader ? (
+          <button type="button" className={row} onClick={pick(onOpenReader)}>
+            <Maximize2 className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+            {t("readerOpenThread")}
           </button>
         ) : null}
         {onUpdateRecords ? (

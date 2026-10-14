@@ -1,20 +1,31 @@
 ## What is new
 
-**Writing**
-- **Edit your signature in the message.** The signature under your words is part of the message now. Change it there for one message, for example a different title, and your saved signature stays as it is.
-- **See what a reply quotes.** Under the reply box, "Show quoted text" shows the earlier messages that go with your reply.
-- **Your signature keeps its style.** A saved signature, draft or auto-reply opens in the editor with its own text size and colour.
-
 **Reading**
-- **New mail in a long thread.** A thread opens on the first of its new messages, so you can read them in order.
-- **Search lands where it should.** A thread opened from a search goes to the message that matched, and the words you searched for are marked in it.
-- **Message width.** Drag the edge of a message to make messages wider or narrower. Double-click the edge for the default width.
+- **The Reader.** Open a long message in the Reader to read it in larger text. Drag the Reader's edges to make it wider or narrower.
+- **A thread in the whole window.** "Show the thread in the whole window" fills the window with the thread, under a quiet bar with Archive, Delete and more.
+- **Step through a person's threads.** When you open a person, step from one of their threads to the next from the toolbar.
+- **Your sign-off stays in view.** "Best, Ulrik" under a message no longer folds away with a repeated signature.
+- **An opened thread stays read.** A thread you opened no longer turns unread again a moment later.
+- **Changes reach Gmail at once.** When you archive, delete or mark mail in the Reader, Gmail gets the change at once. Before, it could wait for the next check.
+- **A thread opens on its newest message.** Opened a second time, a thread no longer stops on the message before the newest.
+- **Reconnecting clears "sync paused".** After you reconnect a mailbox, the warning goes at once. Before, it could stay for some minutes.
+
+**Writing**
+- **The reply is a card.** A reply opens as a card over the thread, so you still see the email you answer. Drag the card where you want it. Its top right has the buttons to fill the window and to pop it out.
+- **Reply, Reply all and Forward** float in a tray at the bottom of the thread. You can drag the tray too.
+- **Links.** Cmd+K opens the link box on a card you moved. Right-click selected words for Link… as well.
+- **Hidden mailboxes in From.** You can still pick a hidden mailbox in the From field.
+- **Drafts from other apps.** An assistant app on your Mac can leave drafts for Mail, with attachments. Settings → Advanced → Drafts from other apps has the instructions to give it.
 
 **The list**
-- **Act on a selection.** Right-click one of several selected conversations to mark them all read, snooze, pin, pop out, archive or delete them together. A person with several conversations works the same way, and the menu says how many it takes.
-- **Clearer empty list.** With no mailbox connected, the list offers Gmail, Outlook and Exchange. With every mailbox hidden, it says so and offers "Show in Mail now".
+- **Tabs.** The list filters are tabs, each with an icon.
+- **Archived stays archived.** Mail you archive one after another no longer comes back into the inbox for a moment.
+- **A hidden mailbox leaves All.** When you hide a mailbox, its mail no longer shows under All.
+- **No counts beside the folders.** The folder list no longer shows how many messages each folder holds. Turn the counts on in Settings → General if you want them.
+- **Hidden mailboxes.** When every mailbox is hidden by its schedule, Mail says so, instead of "No mailbox connected yet".
+- **Load more only when there is more.** Under a mailbox's tab, "Load more" no longer shows when that mailbox has nothing more to load.
 
-**Accounts**
-- **Exchange needs no access code.** Connect Exchange opens straight on your email address, username and password.
-- **"Sync paused" goes away after you reconnect.**
-- **Dialogs sit on top.** The Signature dialog and the other settings dialogs are drawn over the whole window.
+**Other**
+- **Invitation answers.** An answer to an invitation says who answered, and times show in the right time zone.
+- Right-click a picture in a message to copy it or save it.
+- The folder list lines up, with more room between mailboxes.

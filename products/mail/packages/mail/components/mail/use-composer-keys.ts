@@ -15,6 +15,7 @@
 import * as React from "react";
 
 import { sendsFromHere, shortcutMatchesEvent } from "@/lib/mail/shortcuts";
+import { inReaderComposer } from "@/components/mail/reader-composer";
 
 import type { ThreadComposerMode } from "@/lib/mail/local-drafts";
 import type { MailRecipient } from "@/lib/mail/contact-list-types";
@@ -107,7 +108,11 @@ export function useComposerKeys({
       const active = document.activeElement;
       if (
         !sendsFromHere({
-          caretHere: Boolean(pinchRef.current?.contains(active)),
+          // The pane's composer can stand in a Reader, outside the pane.
+          caretHere: Boolean(
+            pinchRef.current?.contains(active) ||
+              (!floating && active && inReaderComposer(active))
+          ),
           caretNowhere: !active || active === document.body,
           floating: Boolean(floating),
         })

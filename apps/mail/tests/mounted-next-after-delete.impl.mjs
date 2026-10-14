@@ -10,6 +10,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
+import { releaseRead, withHeldReads } from "@/lib/mail/held-reads";
 import { useRowOpening } from "@/components/mail/use-row-opening";
 
 const pass = (line) => console.log(`PASS  ${line}`);
@@ -113,13 +114,28 @@ async function main() {
     assert.deepEqual(reads, ["t1", "t2"], "and nothing more is sent");
     pass("Mark as unread on the open thread stays unread");
 
-    // Opened, and marked unread again before the store was told: it stays unread.
+    // Opened, and a list from the store lands before the store was told:
+    // the store still says unread. The row stays read, and the store is
+    // still told (it was not, and the thread stayed unread for good).
     await act(async () => page.openThread(page.threads.find((t) => t.threadId === "t2")));
     await act(async () => {
+      page.setThreads((current) => withHeldReads(current.map((t) => ({ ...t, unread: true }))));
+    });
+    assert.equal(unread("t2"), false, "a list from the store does not put the bold back");
+    await sleep(3200);
+    assert.deepEqual(reads, ["t1", "t2", "t2"], "and the store is told");
+    pass("a list from the store in the moment after an open does not undo the read");
+
+    // Opened, and marked unread again before the store was told: it stays unread.
+    await act(async () => page.setThreads((current) => current.map((t) => ({ ...t, unread: true }))));
+    await act(async () => page.openThread(page.threads.find((t) => t.threadId === "t2")));
+    await act(async () => {
+      // What Mark as unread does (use-thread-actions): let go, then bold.
+      releaseRead(["ulla@aavang.example|t2"]);
       page.setThreads((current) => current.map((t) => (t.threadId === "t2" ? { ...t, unread: true } : t)));
     });
     await sleep(3200);
-    assert.deepEqual(reads, ["t1", "t2"], "the late word to the store is not sent");
+    assert.deepEqual(reads, ["t1", "t2", "t2"], "the late word to the store is not sent");
     pass("marked unread again within the moment, the thread is not marked read behind the reader");
   } catch (err) {
     console.error("FAIL ", err?.message || err);

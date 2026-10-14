@@ -12,6 +12,7 @@ import "server-only";
 
 import { localStoreComplete, queueLocalAction } from "@/lib/mail/local-store";
 import { resolveMailProvider } from "@/lib/mail/providers";
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import { mailStore } from "@/lib/mail/store";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { fetchExchangeBodies } from "@/lib/mail/exchange-native";
@@ -72,9 +73,12 @@ export async function threadFromLocalStore(
   // The whole mailbox, not a copy still filling: a thread read from
   // half a copy is a thread with its older messages quietly missing. An
   // Exchange mailbox has no other source, so its copy serves at once.
+  // Nor has a Gmail on an app password: Google's API does not take it.
   const complete = await localStoreComplete(account);
   const early = complete ? null : await resolveMailProvider(account).catch(() => null);
-  if (!complete && early !== "exchange") return null;
+  if (!complete && early !== "exchange" && !(early === "gmail" && (await isAppPasswordGmail(account)))) {
+    return null;
+  }
   const store = mailStore();
   let rows = await store.messages.thread(account, threadId);
   if (!rows.length) return null;

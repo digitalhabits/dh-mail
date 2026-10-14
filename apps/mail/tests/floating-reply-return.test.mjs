@@ -23,22 +23,22 @@ const src = (name) =>
 
 suite(async () => {
   const pane = threadPaneSource();
-  const button = pane.slice(
-    pane.lastIndexOf("{onFloatReply", pane.indexOf("<PictureInPicture2")),
+  const buttons = pane.slice(
+    pane.indexOf("export function ComposerCardButtons"),
     pane.indexOf("<PictureInPicture2")
   );
 
   check(
     "in the thread the button sends the reply to the card",
-    button.includes("floatReply"),
-    button.trim().split("\n").slice(-3).join("\n")
+    buttons.includes("onClick={() => floatReply()}"),
+    buttons.trim().split("\n").slice(-3).join("\n")
   );
   // Since 7c1b67ef the card does not draw that button: a button to pop out
   // what is already out says nothing. The way home is in the card's heading.
   check(
     "the card does not draw the pop-out button",
-    button.startsWith("{onFloatReply && !floating ?"),
-    button.trim().split("\n")[0]
+    buttons.includes("if (floating) return null;"),
+    buttons.trim().split("\n").slice(0, 3).join("\n")
   );
   /*
     Since the card was given the window buttons, the heading has three of

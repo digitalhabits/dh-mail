@@ -355,6 +355,25 @@ impl MailDb {
     Ok(false)
   }
 
+  /*
+    Put what is still queued back on top of what the server just said.
+
+    A pass that reads labels and flags from the server writes them over
+    the copy, and the server has not yet heard of an action still in the
+    queue. Open a thread and archive it: the read goes out, the pass that
+    follows reads the thread back with its Inbox label, and the archive is
+    undone in the copy until it too has gone out. The row came back into
+    the inbox a minute later. So each pass ends by applying the queue
+    again, in order, to the copy only.
+  */
+  pub fn actions_replay(&self, account: &str) -> DbResult<usize> {
+    let pending = self.actions_pending(account)?;
+    for action in &pending {
+      self.actions_apply(account, &action.thread_id, &action.kind, &action.payload, false)?;
+    }
+    Ok(pending.len())
+  }
+
   pub fn actions_count(&self, account: &str) -> DbResult<i64> {
     let conn = self.conn_mut();
     Ok(conn.query_row(
@@ -515,7 +534,22 @@ fn deliver(client: &mut Client, action: &PendingAction, folders: &Folders) -> Re
   let label = action.payload.get("label").and_then(Value::as_str).unwrap_or("");
   let create = action.payload.get("create").and_then(Value::as_bool).unwrap_or(false);
   let in_all_mail = |client: &mut Client| -> Result<Vec<u32>, imap::ImapError> {
-    client.uid_search(&format!("X-GM-THRID {thrid}"))
+    let uids = client.uid_search(&format!("X-GM-THRID {thrid}"))?;
+    /*
+      Nothing found is taken as done, and the action leaves the queue. If
+      the thread is in fact on the server, it was not changed there, and
+      the next read brings it back as it was — an archived row back in the
+      inbox. Said in the log, so such a row can be traced (2026-10-13).
+    */
+    if uids.is_empty() {
+      log::warn!(
+        "[mail-sync] {}: {} found no message of thread {} in All Mail",
+        action.account,
+        action.kind,
+        action.thread_id
+      );
+    }
+    Ok(uids)
   };
   let set = |uids: &[u32]| uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
   match action.kind.as_str() {
@@ -639,6 +673,21 @@ mod tests {
     let conn = db.conn_mut();
     let mut stmt = conn.prepare("SELECT label FROM message_labels WHERE message_id = ?1 ORDER BY label").unwrap();
     stmt.query_map(params![id], |r| r.get::<_, String>(0)).unwrap().collect::<Result<_, _>>().unwrap()
+  }
+
+  #[test]
+  fn a_pass_that_reads_the_server_back_does_not_undo_a_queued_archive() {
+    let db = db();
+    seed(&db);
+    db.actions_apply_and_enqueue("vera@example.com", "1a", "read", &json!({})).unwrap();
+    db.actions_apply_and_enqueue("vera@example.com", "1a", "archive", &json!({})).unwrap();
+    // The server has the read but not yet the archive.
+    let inbox = vec![INBOX.to_string()];
+    db.messages_set_flags("vera@example.com", "", 1, Some(false), Some(false), Some(&inbox), None).unwrap();
+    assert_eq!(labels_of(&db, "m1"), vec![INBOX]);
+    assert_eq!(db.actions_replay("vera@example.com").unwrap(), 2);
+    assert!(labels_of(&db, "m1").is_empty());
+    assert_eq!(db.actions_pending("vera@example.com").unwrap().len(), 2, "replay queues nothing more");
   }
 
   #[test]

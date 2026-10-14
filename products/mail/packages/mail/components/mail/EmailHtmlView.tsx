@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { paintSearchHits, SEARCH_HIT_HIGHLIGHT } from "@/lib/mail/search-highlight";
+import { paintSearchHits } from "@/lib/mail/search-highlight";
 
 import {
   MAIL_PINCH_SCALE_EVENT,
@@ -219,7 +219,8 @@ export function EmailHtmlView({
   */
   const [bodyZoom, setBodyZoom] = React.useState(1);
   const [linkMenu, setLinkMenu] = React.useState<{
-    model: MailLinkMenuModel;
+    model: MailLinkMenuModel | null;
+    image?: string;
     x: number;
     y: number;
   } | null>(null);
@@ -237,12 +238,6 @@ export function EmailHtmlView({
     if (!ready || !highlight?.length) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) return;
-    if (!doc.getElementById("dh-search-hit-style")) {
-      const style = doc.createElement("style");
-      style.id = "dh-search-hit-style";
-      style.textContent = `::highlight(${SEARCH_HIT_HIGHLIGHT}) { background-color: rgba(252, 211, 77, 0.6); color: inherit; }`;
-      doc.head?.appendChild(style);
-    }
     return paintSearchHits(doc.body, highlight);
   }, [ready, highlight]);
 
@@ -625,12 +620,12 @@ export function EmailHtmlView({
     });
     attachLinkContextMenu(
       doc,
-      ({ target, frameX, frameY }) => {
-        const model = mailLinkMenuModel(target);
+      ({ target, image, frameX, frameY }) => {
+        const model = target ? mailLinkMenuModel(target) : null;
         const frame = iframeRef.current;
-        if (!model || !frame) return;
+        if ((!model && !image) || !frame) return;
         // In page pixels, whatever the zooms: see framePointToPage.
-        setLinkMenu({ model, ...framePointToPage(frame, frameX, frameY) });
+        setLinkMenu({ model, image, ...framePointToPage(frame, frameX, frameY) });
       },
       dismissLinkMenu
     );
@@ -743,6 +738,7 @@ export function EmailHtmlView({
       {linkMenu ? (
         <LinkContextMenu
           model={linkMenu.model}
+          image={linkMenu.image}
           x={linkMenu.x}
           y={linkMenu.y}
           onDismiss={dismissLinkMenu}

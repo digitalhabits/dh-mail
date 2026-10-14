@@ -95,9 +95,24 @@ export type FloatingCard = {
  */
 export function useFloatingCard(
   floating: boolean,
-  sizeKey: string
+  sizeKey: string,
+  /** Open over the whole window, as "Fill the window" does. */
+  startsFull = false,
+  /**
+   * Called instead of the card's other views when it leaves the full one:
+   * a reply grown out of the thread's composer goes back to it, not to a
+   * card in the corner.
+   */
+  onLeaveFull?: () => void
 ): FloatingCard {
-  const [view, setView] = React.useState<CardWindowView>("normal");
+  const [view, setView] = React.useState<CardWindowView>(startsFull ? "full" : "normal");
+  const leaveRef = React.useRef(onLeaveFull);
+  React.useLayoutEffect(() => {
+    leaveRef.current = onLeaveFull;
+  });
+  React.useEffect(() => {
+    if (floating && view !== "full") leaveRef.current?.();
+  }, [floating, view]);
   const full = floating && view === "full";
   const minimised = floating && view === "minimised";
   /** Sized by hand in either shape, and put away in neither. */

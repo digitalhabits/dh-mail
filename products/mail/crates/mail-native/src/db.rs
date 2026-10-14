@@ -126,7 +126,19 @@ impl TokenVault for KeychainVault {
   }
 
   fn read(&self, provider: &str, email: &str) -> DbResult<Option<String>> {
-    self.secrets.get(&vault_key(provider, email)).map_err(DbError::Vault)
+    let held = self.secrets.get(&vault_key(provider, email)).map_err(DbError::Vault)?;
+    if held.is_some() || vault_key(provider, email) == shared_vault_key(provider, email) {
+      return Ok(held);
+    }
+    // A build with keys of its own, reading one for the first time: take the
+    // shared item over once, so a mailbox connected before the split needs
+    // no new sign-in. If that grant was another client's, the refresh says
+    // so and the reader reconnects, which writes the build's own item.
+    let shared = self.secrets.get(&shared_vault_key(provider, email)).map_err(DbError::Vault)?;
+    if let Some(token) = &shared {
+      self.secrets.set(&vault_key(provider, email), token).map_err(DbError::Vault)?;
+    }
+    Ok(shared)
   }
 
   fn remove(&self, provider: &str, email: &str) -> DbResult<()> {
@@ -161,7 +173,26 @@ impl CachedVault {
   }
 }
 
+/// The keychain item for a mailbox's sign-in.
+///
+/// The public app and the team build share the keychain, so a mailbox
+/// connected in one is connected in the other. A Google grant cannot be
+/// shared that way: the two builds sign in to Google with different
+/// clients, a grant made by one is refused when the other renews it
+/// (`unauthorized_client`), and each build wrote its grant over the other's
+/// (2026-10-11). So the team build keeps its Gmail grants in items of its
+/// own. Outlook and Exchange stay shared: both builds use the same Microsoft
+/// client, and an Exchange password belongs to no client.
 fn vault_key(provider: &str, email: &str) -> String {
+  #[cfg(feature = "team")]
+  if provider == "gmail" {
+    return format!("gmail-team:{email}");
+  }
+  shared_vault_key(provider, email)
+}
+
+/// The item both builds read: every provider, and the public app's Gmail.
+fn shared_vault_key(provider: &str, email: &str) -> String {
   format!("{provider}:{email}")
 }
 
@@ -1733,6 +1764,18 @@ fn current_iso(args: &Value) -> DbResult<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// The team build keeps its Gmail grants apart; the rest stay shared.
+  #[test]
+  fn gmail_grants_are_kept_apart_in_the_team_build() {
+    assert_eq!(shared_vault_key("gmail", "a@example.com"), "gmail:a@example.com");
+    assert_eq!(vault_key("outlook", "a@example.com"), "outlook:a@example.com");
+    assert_eq!(vault_key("exchange", "a@example.com"), "exchange:a@example.com");
+    #[cfg(feature = "team")]
+    assert_eq!(vault_key("gmail", "a@example.com"), "gmail-team:a@example.com");
+    #[cfg(not(feature = "team"))]
+    assert_eq!(vault_key("gmail", "a@example.com"), "gmail:a@example.com");
+  }
 
   /// The store as the first shipped build made it, on 2026-09-08: no
   /// `folder` on messages, a UID unique on the account alone, no

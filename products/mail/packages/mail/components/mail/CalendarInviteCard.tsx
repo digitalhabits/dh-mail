@@ -358,7 +358,12 @@ function CalendarInviteCard({
             the same edge either way, so the card has one line of buttons
             wherever that line ends up. */}
         {/* One control that adds the event, with a second section that says
-            where to. The same shape as Send and Send later in the composer. */}
+            where to. The same shape as Send and Send later in the composer.
+            An answer or a calling-off has nothing to add: it says what
+            happened instead. */}
+        {invite.method === "REPLY" || invite.method === "CANCEL" ? (
+          <InviteOutcome invite={invite} />
+        ) : (
         <div className="ml-auto max-w-full shrink-0 text-right">
           <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-teal-700/70">
             <button
@@ -444,6 +449,7 @@ function CalendarInviteCard({
             {primaryCaption}
           </p>
         </div>
+        )}
       </div>
       <p className="mt-1 pl-7 text-[11px] leading-tight text-stone-400">
         <a
@@ -456,6 +462,49 @@ function CalendarInviteCard({
           {calendarAtt.filename}
           {attachment.size > 0 ? ` · ${formatFileSize(attachment.size)}` : ""}
         </a>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * What an answer to an invitation, or its calling-off, says in place of
+ * "Add to Calendar".
+ *
+ * An acceptance is METHOD:REPLY: a file that tells the organiser's calendar
+ * who is coming. A calendar app has nothing to add from it — Apple's
+ * Calendar said "No valid events were found" — so the card says who
+ * answered, and how, instead.
+ */
+function InviteOutcome({ invite }: { invite: ParsedCalendarInvite }) {
+  const t = useMailT();
+  const cancelled = invite.method === "CANCEL";
+  const name = invite.reply?.name || t("inviteSomeone");
+  const words = cancelled
+    ? t("inviteCancelled")
+    : invite.reply?.status === "accepted"
+      ? t("inviteAccepted", { name })
+      : invite.reply?.status === "declined"
+        ? t("inviteDeclined", { name })
+        : invite.reply?.status === "tentative"
+          ? t("inviteTentative", { name })
+          : t("inviteReplied", { name });
+  const tone =
+    cancelled || invite.reply?.status === "declined"
+      ? "border-stone-300 bg-stone-50 text-stone-700"
+      : "border-teal-700/40 bg-teal-50 text-teal-800";
+  return (
+    <div className="ml-auto max-w-full shrink-0 text-right">
+      <span
+        className={cn(
+          "inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-semibold",
+          tone
+        )}
+      >
+        {words}
+      </span>
+      <p className="mt-1 text-[10px] leading-tight text-stone-400">
+        {t(cancelled ? "inviteCancelCaption" : "inviteReplyCaption")}
       </p>
     </div>
   );

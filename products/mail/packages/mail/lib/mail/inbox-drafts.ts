@@ -5,6 +5,7 @@
  * app uses, so callers import from there.
  */
 
+import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
 import { localStoreServes, queueLocalAction } from "@/lib/mail/local-store";
@@ -168,6 +169,8 @@ export async function listProviderDrafts(
     }));
   }
 
+  // A Gmail on an app password has its drafts in the copy or nowhere yet.
+  if (await isAppPasswordGmail(account)) return [];
   const token = await accessTokenFor(account);
   const { ids } = await listMessageIds(token, "in:drafts");
   const rows = await mapWithConcurrency(

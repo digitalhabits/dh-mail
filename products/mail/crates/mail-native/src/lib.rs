@@ -60,6 +60,7 @@ pub mod sync;
 pub mod downloads;
 #[cfg(target_os = "macos")]
 pub mod dragout;
+pub mod drafts_inbox;
 pub mod handover;
 // A message another app leaves for Mail's composer. See handoff.rs.
 pub mod handoff;
@@ -147,7 +148,8 @@ use tauri::Manager;
 /// The keychain service name. Changing it orphans every stored token, so it
 /// is written out here rather than taken from a bundle identifier. Both apps
 /// use the same name on purpose: a mailbox connected in one is connected in
-/// the other, on the same Mac.
+/// the other, on the same Mac. Except a Gmail grant, which the team build
+/// keeps in items of its own: see `vault_key` in db.rs.
 pub const KEYCHAIN_SERVICE: &str = "org.digitalhabits.mail";
 
 /// The keychain access group both apps carry in their entitlements, so the

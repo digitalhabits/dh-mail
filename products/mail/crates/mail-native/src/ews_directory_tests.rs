@@ -155,10 +155,9 @@ fn the_mailbox_record_gives_every_address_it_sends_as() {
     "kim.example@dept.uni.example",
     &["SMTP:kim.example@dept.uni.example", "smtp:abc123@uni.example", "X500:/o=Uni/cn=abc123", "SIP:kim@uni.example"],
   )]);
-  assert_eq!(
-    read_own_addresses(&xml, "ABC123@uni.example"),
-    vec!["kim.example@dept.uni.example".to_string(), "abc123@uni.example".to_string()]
-  );
+  let own = read_own_addresses(&xml, "ABC123@uni.example");
+  assert_eq!(own.addresses, vec!["kim.example@dept.uni.example".to_string(), "abc123@uni.example".to_string()]);
+  assert_eq!(own.main.as_deref(), Some("kim.example@dept.uni.example"));
 }
 
 #[test]
@@ -168,11 +167,11 @@ fn only_the_record_holding_the_account_counts() {
     ("someone.else@uni.example", &["SMTP:someone.else@uni.example"]),
     ("kim.example@dept.uni.example", &["SMTP:kim.example@dept.uni.example", "smtp:abc123@uni.example"]),
   ]);
-  let found = read_own_addresses(&xml, "abc123@uni.example");
+  let found = read_own_addresses(&xml, "abc123@uni.example").addresses;
   assert!(!found.contains(&"someone.else@uni.example".to_string()), "{found:?}");
   assert!(found.contains(&"kim.example@dept.uni.example".to_string()), "{found:?}");
   // No record holds the account: nothing is learned.
-  assert!(read_own_addresses(&own_answer(&[("someone.else@uni.example", &[])]), "abc123@uni.example").is_empty());
+  assert_eq!(read_own_addresses(&own_answer(&[("someone.else@uni.example", &[])]), "abc123@uni.example"), OwnAddresses::default());
 }
 
 #[test]
@@ -184,7 +183,7 @@ fn a_record_named_by_the_user_id_counts_when_it_does_not_list_the_address() {
     ("kim.example@dept.uni.example", &["SMTP:kim.example@dept.uni.example", "smtp:abc123@uni.example"]),
   ])
   .replacen("<t:Name>kim.example</t:Name>", "<t:Name>abc123</t:Name>", 1);
-  let found = read_own_addresses(&xml, "abc123@dept.uni.example");
+  let found = read_own_addresses(&xml, "abc123@dept.uni.example").addresses;
   assert_eq!(
     found,
     vec![
@@ -193,4 +192,62 @@ fn a_record_named_by_the_user_id_counts_when_it_does_not_list_the_address() {
       "abc123@dept.uni.example".to_string()
     ]
   );
+}
+
+#[test]
+fn the_main_address_is_the_upper_case_smtp_entry() {
+  // The other addresses can come first, and the mailbox's own address can
+  // be one of them: only `SMTP:` in upper case names the main one.
+  let xml = own_answer(&[(
+    "abc123@uni.example",
+    &["smtp:abc123@uni.example", "X500:/o=Uni/cn=abc123", "SMTP:Kim.Example@dept.uni.example"],
+  )]);
+  let own = read_own_addresses(&xml, "abc123@uni.example");
+  assert_eq!(own.main.as_deref(), Some("kim.example@dept.uni.example"));
+}
+
+#[test]
+fn with_no_smtp_entry_the_mailbox_address_is_the_main_one() {
+  let xml = own_answer(&[("kim.example@dept.uni.example", &["smtp:abc123@uni.example"])]);
+  let own = read_own_addresses(&xml, "abc123@uni.example");
+  assert_eq!(own.main.as_deref(), Some("kim.example@dept.uni.example"));
+  // A lower case `smtp:` entry alone is never the main one.
+  let xml = own_answer(&[("abc123@uni.example", &["smtp:kim.example@dept.uni.example"])])
+    .replace("<t:EmailAddress>abc123@uni.example</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType>", "<t:EmailAddress>/o=Uni/cn=abc123</t:EmailAddress><t:RoutingType>EX</t:RoutingType>");
+  let own = read_own_addresses(&xml, "abc123@uni.example");
+  assert_eq!(own.main, None);
+  assert!(own.addresses.contains(&"kim.example@dept.uni.example".to_string()), "{own:?}");
+}
+
+#[test]
+fn a_new_main_address_after_connect_comes_from_the_server() {
+  // Connected as abc123@dept.uni.example; later the university gave the
+  // mailbox the main address kim.example@dept.uni.example. The fake server
+  // finds the record by the user id, as KU does, and its Name is the user id.
+  let server = serve(Arc::new(|_, body| {
+    let text = crate::ews::element_text(body, "UnresolvedEntry").unwrap_or_default();
+    if text != "abc123" {
+      return (200, response("ResolveNames", &[error("ResolveNames", "ErrorNameResolutionNoResults", "No results were found.")]));
+    }
+    let message = own_answer(&[(
+      "kim.example@dept.uni.example",
+      &["SMTP:kim.example@dept.uni.example", "smtp:abc123@dept.uni.example", "smtp:abc123@uni.example"],
+    )])
+    .replacen("<t:Name>kim.example</t:Name>", "<t:Name>abc123</t:Name>", 1);
+    (200, response("ResolveNames", &[message]))
+  }));
+  let own = run(own_addresses(&client(&server.url), " ABC123@dept.uni.example ")).unwrap();
+  assert_eq!(own.main.as_deref(), Some("kim.example@dept.uni.example"));
+  assert!(own.addresses.contains(&"abc123@dept.uni.example".to_string()), "{own:?}");
+  let sent = server.requests.lock().unwrap()[0].clone();
+  assert!(sent.contains("<UnresolvedEntry>abc123</UnresolvedEntry>"), "{sent}");
+}
+
+#[test]
+fn the_own_request_passes_the_fake_server_rules() {
+  // The fake server refuses what a real one does (resolve_refusal); the
+  // own request must not be refused.
+  let server = serve(Arc::new(|_, _| (200, response("ResolveNames", &[error("ResolveNames", "ErrorNameResolutionNoResults", "No results were found.")]))));
+  let own = run(own_addresses(&client(&server.url), "abc123@uni.example")).unwrap();
+  assert_eq!(own, OwnAddresses::default());
 }

@@ -1139,6 +1139,38 @@ async function moveToFolderAndJunk() {
   list row's menu, not the browser's text menu. Snooze… there opens the
   snooze times, and a time snoozes that conversation.
 */
+/** A thread opened from a person's threads has a way back to them, first in its toolbar. */
+async function backToAPersonsThreads() {
+  await mount({ people: true });
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(600);
+  const card = () => [...document.querySelectorAll('[role="button"]')].find((el) =>
+    (el.textContent || "").includes(CHOIR.subject)
+  );
+  clickEl(card());
+  await sleep(700);
+  const back = [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "All threads with Merle Mikkelsen");
+  assert(back, "the toolbar starts with the way back to Merle");
+  assert(/Merle Mikkelsen/.test(back.textContent || ""), back.textContent);
+  // Step through her threads without going back.
+  const at = () => document.querySelector("[data-person-step-at]")?.textContent ?? "";
+  const first = at();
+  assert(/^\d+ of \d+ threads$/.test(first), `it says which of her threads this is: ${first}`);
+  const n = Number(first.split(" ")[0]);
+  const total = Number(first.split(" of ")[1].split(" ")[0]);
+  const stepButton = (label) => [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === label);
+  const toward = n < total ? "Older thread" : "Newer thread";
+  clickEl(stepButton(toward));
+  await sleep(700);
+  assert.equal(at(), `${toward === "Older thread" ? n + 1 : n - 1} of ${total} threads`, "the arrow opens the next of her threads");
+  pass("the arrows beside it step through the person's threads");
+
+  clickEl([...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "All threads with Merle Mikkelsen"));
+  await sleep(500);
+  assert(card(), "and it goes back to her threads");
+  pass("a thread opened from a person's threads has a back button with their name, first in the toolbar");
+}
+
 async function personCardMenuSnoozes() {
   await mount({ people: true });
   clickEl(personEl("Merle Mikkelsen"));
@@ -1373,6 +1405,7 @@ async function main() {
     await pinTheOpenThread();
     await snoozeThenCommandZ();
     await personCardMenuSnoozes();
+    await backToAPersonsThreads();
     await moveToFolderAndJunk();
     await deleteAllForAPerson();
     await restoreAndDeleteForeverInTrash();

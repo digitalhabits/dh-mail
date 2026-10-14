@@ -69,10 +69,13 @@ import {
   SystemRow,
 } from "@/components/mail/folder-rail-rows";
 import { useFolderRail } from "@/components/mail/use-folder-rail";
+import { useShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 
 /** ── the rail ──────────────────────────────────────────────────────────── */
 
 export function MailFolderRail(props: FolderRailProps) {
+  // Counts are opt-in (Settings > General); the Outbox keeps its own.
+  const showCounts = useShowFolderCounts();
   const {
     accountDrag,
     accountDropBefore,
@@ -266,7 +269,7 @@ export function MailFolderRail(props: FolderRailProps) {
     <SystemRow
       icon={FilePen}
       label={t("viewDrafts")}
-      count={draftCount}
+      count={showCounts ? draftCount : null}
       active={systemView === "drafts"}
       drop={dragging ? "dim" : "rest"}
       dragOver={dragOver}
@@ -318,7 +321,7 @@ export function MailFolderRail(props: FolderRailProps) {
       <SystemRow
         icon={RotateCwFadingClock}
         label={t("viewSnoozed")}
-        count={props.snoozedCount}
+        count={showCounts ? props.snoozedCount : null}
         active={systemView === "snoozed"}
         drop={dragging ? "dim" : "rest"}
         dragOver={dragOver}
@@ -539,7 +542,9 @@ export function MailFolderRail(props: FolderRailProps) {
            first section starts at the very top of the scroll — so without
            this the one line the reader needed most was the one line the
            rail cut off. */
-        className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pt-1.5 pb-2"
+        // A clear gap between one mailbox's folders and the next mailbox,
+        // more than between a heading and its own first folder.
+        className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto pt-1.5 pb-2"
         /*
           The rail answers for a mailbox in the air, from top to bottom.
 
@@ -642,18 +647,18 @@ export function MailFolderRail(props: FolderRailProps) {
                   /* Half the gap above the heading, so the line reads as
                      the space between two mailboxes rather than as a rule
                      over the name below it. */
-                  className="pointer-events-none absolute inset-x-1 -top-[5px] z-10 h-0.5 rounded-full bg-teal-500"
+                  className="pointer-events-none absolute inset-x-1 -top-[9px] z-10 h-0.5 rounded-full bg-teal-500"
                 />
               ) : null}
               {dropAtEnd ? (
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute inset-x-1 -bottom-[3px] z-10 h-0.5 rounded-full bg-teal-500"
+                  className="pointer-events-none absolute inset-x-1 -bottom-[9px] z-10 h-0.5 rounded-full bg-teal-500"
                 />
               ) : null}
               <div
                 className={cn(
-                  "flex items-center gap-1 pr-2 pb-1",
+                  "flex items-center gap-1 pr-2",
                   state === "dim" && "opacity-40"
                 )}
                 /* Making a folder is the only thing there is to do to a

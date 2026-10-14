@@ -56,6 +56,7 @@ import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
 import type { ComposerMode } from "@/components/mail/thread-messages";
 import type { useDraftAttachments } from "@/components/mail/draft-attachments";
 import type { useThreadComposer } from "@/components/mail/use-thread-composer";
+import { readerHoldsComposer } from "@/components/mail/reader-composer";
 
 /**
  * How long to watch for the pop-out to go after asking it to hand back.
@@ -78,7 +79,7 @@ export function useComposerHome(input: {
   floating?: boolean;
   /** This thread's reply is in the floating card right now. */
   replyFloating?: boolean;
-  onFloatReply?: () => void;
+  onFloatReply?: (opts?: { full?: boolean }) => void;
   onDraftDiscarded?: () => void;
   /** The provider's draft, from the Drafts list, when the thread did not carry it. */
   draftRef?: string;
@@ -145,10 +146,12 @@ export function useComposerHome(input: {
   const floatReply = React.useCallback(
     (
       /* What to store. The default is what is on screen — see `handOver`. */
-      snapshot = composerSnapshotRef.current
+      snapshot = composerSnapshotRef.current,
+      /* Over the whole window, dimmed around it. */
+      full = false
     ) => {
       handOverComposer(snapshot);
-      onFloatReply?.();
+      onFloatReply?.(full ? { full } : undefined);
     },
     [composerSnapshotRef, handOverComposer, onFloatReply]
   );
@@ -354,6 +357,9 @@ export function useComposerHome(input: {
     if (!mode) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      // In the Reader, Esc puts the composer away and keeps the draft.
+      // The Reader answers it (see MessageReader).
+      if (readerHoldsComposer()) return;
       if (event.key === "Enter") {
         if (!confirmDiscard) return;
         event.preventDefault();

@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::actions::{flush_actions, Folders};
 use crate::smtp::{Smtp, SmtpError, SMTP_HOST, SMTP_PORT};
 use crate::db::MailDb;
-use crate::imap::{self, Client, Fetched, Item};
+use crate::imap::{self, Client, Credential, Fetched, Item};
 use crate::messages::{Address, MessageRow, SyncState, DRAFT, IMPORTANT, INBOX, SENT, SPAM, STARRED, TRASH};
 
 /// Emitted with the sync state as JSON whenever it changes.
@@ -150,9 +150,25 @@ pub fn mail_sync_start(app: AppHandle, accounts: Vec<String>) -> Result<Vec<Stri
     }
     if start_account(&app, email.clone()) {
       started.push(email);
+    } else {
+      retry_if_paused(&app, &email);
     }
   }
   Ok(started)
+}
+
+/// A running worker whose mailbox is paused tries again now, with a new
+/// token. The app starts the sync again after a reconnect, and the worker
+/// was then still waiting out its back-off with the old token, so the
+/// "sync paused" line stayed for minutes after the reader had signed in
+/// again (2026-10-13).
+fn retry_if_paused(app: &AppHandle, email: &str) {
+  let db = app.state::<MailDb>();
+  let paused = matches!(db.sync_state_get(email, ""), Ok(Some(state)) if state.phase == "paused");
+  if paused {
+    forget_token(app, email);
+    wake(app, email);
+  }
 }
 
 /// Ask a worker to stop after its current step. The list hears at once
@@ -208,12 +224,12 @@ pub fn mail_sync_wake(app: AppHandle, account: String) -> Result<(), String> {
 
 /// A signed-in connection for one request, and the folder names to select.
 fn on_demand_session(app: &AppHandle, email: &str) -> Result<(Client, Vec<imap::MailboxName>), String> {
-  let token = access_token(app, email).map_err(|e| match e {
+  let credential = credential(app, email).map_err(|e| match e {
     SyncError::Failed(s) | SyncError::Transient(s) => s,
     SyncError::Stopped => "stopped".into(),
   })?;
   let mut client = Client::connect(IMAP_HOST, IMAP_PORT, CONNECT_TIMEOUT).map_err(|e| e.to_string())?;
-  if let Err(e) = client.authenticate_xoauth2(email, &token) {
+  if let Err(e) = client.sign_in(email, &credential) {
     forget_token(app, email);
     return Err(auth_refusal_reason(&e).unwrap_or_else(|| e.to_string()));
   }
@@ -617,7 +633,7 @@ fn run_worker(
         }
         let wait = if transient >= 3 { 30 } else { 2 };
         for _ in 0..wait {
-          if stop.load(Ordering::SeqCst) {
+          if stop.load(Ordering::SeqCst) || wake.swap(false, Ordering::SeqCst) {
             break;
           }
           thread::sleep(Duration::from_secs(1));
@@ -628,8 +644,10 @@ fn run_worker(
         set_paused(&app, &email, &reason);
         let wait = BACKOFF_SECS[failures.min(BACKOFF_SECS.len() - 1)];
         failures += 1;
+        // A reconnect, or anything else that wakes the worker, ends the
+        // wait: see `retry_if_paused`.
         for _ in 0..wait {
-          if stop.load(Ordering::SeqCst) {
+          if stop.load(Ordering::SeqCst) || wake.swap(false, Ordering::SeqCst) {
             break;
           }
           thread::sleep(Duration::from_secs(1));
@@ -746,9 +764,9 @@ const SIDE_EVERY: Duration = Duration::from_secs(300);
 
 fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -> Result<(), SyncError> {
   let db = app.state::<MailDb>();
-  let token = access_token(app, email)?;
+  let credential = credential(app, email)?;
   let mut client = Client::connect(IMAP_HOST, IMAP_PORT, CONNECT_TIMEOUT)?;
-  if let Err(e) = client.authenticate_xoauth2(email, &token) {
+  if let Err(e) = client.sign_in(email, &credential) {
     forget_token(app, email);
     return Err(e.into());
   }
@@ -795,6 +813,7 @@ fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -
   for folder in &targets {
     states.push(catch_up(Some(app), &db, &mut client, folder, email, stop, Some(&mut between))?);
   }
+  replay_queue(&db, email);
   client.select(&all_mail)?;
 
   let mut last_sweep = Instant::now();
@@ -866,7 +885,8 @@ fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -
     if prefetch_bodies(&db, &mut client, email)? == BODY_BATCH {
       continue;
     }
-    match client.idle(IDLE_WAIT)? {
+    // The wake flag ends the wait: what the reader did goes out at once.
+    match client.idle_until(IDLE_WAIT, Some(wake))? {
       imap::IdleEvent::Expunge(_) => {
         sweep_now = true;
         look_aside = true;
@@ -1111,7 +1131,18 @@ fn live_pass(
     (Some(a), Some(b)) => Some(a.max(b)),
     (a, b) => a.or(b),
   };
+  // What the server said is written; what the server has not yet heard
+  // goes back on top (MailDb::actions_replay).
+  if changed {
+    replay_queue(db, email);
+  }
   Ok(changed)
+}
+
+fn replay_queue(db: &MailDb, email: &str) {
+  if let Err(e) = db.actions_replay(email) {
+    log::warn!("[mail-sync] {email}: could not apply the action queue again: {e}");
+  }
 }
 
 /// Every message in the outbox whose time has come, over SMTP. Returns how
@@ -1129,12 +1160,12 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
   if due.is_empty() {
     return 0;
   }
-  let token = match access_token(app, email) {
-    Ok(t) => t,
+  let credential = match credential(app, email) {
+    Ok(c) => c,
     Err(_) => return 0,
   };
   let mut smtp = match Smtp::connect(SMTP_HOST, SMTP_PORT, CONNECT_TIMEOUT)
-    .and_then(|mut s| s.authenticate_xoauth2(email, &token).map(|_| s))
+    .and_then(|mut s| s.sign_in(email, &credential).map(|_| s))
   {
     Ok(s) => s,
     Err(e) => {
@@ -1339,6 +1370,48 @@ fn set_paused(app: &AppHandle, email: &str, reason: &str) {
 fn forget_token(app: &AppHandle, email: &str) {
   let config = app.state::<SyncConfig>();
   config.tokens.lock().unwrap().remove(email);
+}
+
+/*
+  A Gmail mailbox connected with an app password.
+
+  The internal app's Google sign-in takes only the organization's own
+  accounts, so a personal Gmail gets in another way: an app password, which
+  Gmail's IMAP and SMTP servers take with no Google sign-in. It is kept
+  where a Google grant is kept, in the keychain item for the mailbox, marked
+  so it is never sent to Google as a refresh token. Saving, removing and
+  sharing between the apps then work as they do for a grant.
+*/
+pub const APP_PASSWORD_MARK: &str = "app-password:";
+
+/// How the mailbox signs in: its app password, or a fresh Google token.
+fn credential(app: &AppHandle, email: &str) -> Result<Credential, SyncError> {
+  let db = app.state::<MailDb>();
+  if let Some(secret) = db.refresh_token("gmail", email)? {
+    if let Some(password) = secret.strip_prefix(APP_PASSWORD_MARK) {
+      return Ok(Credential::Password(password.to_string()));
+    }
+  }
+  access_token(app, email).map(Credential::OAuth)
+}
+
+/// Check an app password before the mailbox is saved: sign in to Gmail's
+/// IMAP server with it, and say what the server said if it refused.
+#[tauri::command(async)]
+pub fn mail_check_gmail_app_password(email: String, password: String) -> Result<(), String> {
+  let email = email.trim().to_lowercase();
+  // Google shows it in four groups of four; the spaces are not part of it.
+  let password: String = password.chars().filter(|c| !c.is_whitespace()).collect();
+  if email.is_empty() || password.is_empty() {
+    return Err("Enter the Gmail address and the app password".into());
+  }
+  let mut client = Client::connect(IMAP_HOST, IMAP_PORT, CONNECT_TIMEOUT).map_err(|e| e.to_string())?;
+  let signed = client.authenticate_plain(&email, &password);
+  client.logout();
+  signed.map_err(|e| match e {
+    imap::ImapError::Refused { text, .. } => format!("Gmail refused the app password: {text}"),
+    other => other.to_string(),
+  })
 }
 
 fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {

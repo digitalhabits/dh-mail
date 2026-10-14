@@ -937,22 +937,12 @@ export function useThreadStream(
     if (!thread || !el || !deepLinkTarget) return;
     if (scrolledToFocusRef.current === deepLinkTarget) return;
     const selector = `[data-message-id="${deepLinkTarget.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
-    const SETTLED_MS = 800;
     const LONGEST_MS = 10_000;
     const startedAt = Date.now();
-    let lastHeight = -1;
-    let heightSince = startedAt;
     let placed = -1;
 
     const pin = () => {
       const now = Date.now();
-      if (el.scrollHeight !== lastHeight) {
-        lastHeight = el.scrollHeight;
-        heightSince = now;
-      } else if (placed >= 0 && now - heightSince >= SETTLED_MS) {
-        stop();
-        return;
-      }
       if (now - startedAt >= LONGEST_MS) {
         stop();
         return;
@@ -1069,12 +1059,16 @@ export function useThreadStream(
       76-message thread was still growing above its newest message, the
       pin stopped, and the growth pushed the newest message far below a
       pane left near the top (Ulrik, 2026-10-07).
+
+      Nor for "still for a moment": a message above can grow after a
+      pause, when its pictures come in. The pin stopped 800 ms after the
+      stream was last still, an automatic reply above the newest message
+      grew after that, and the thread opened on the reply every time, read
+      or not (Ulrik, 2026-10-14). So the pin holds for the whole span
+      below; only the reader moving, or a zoom, ends it sooner.
     */
-    const SETTLED_MS = 800;
     const LONGEST_MS = 10_000;
     const startedAt = Date.now();
-    let lastHeight = -1;
-    let heightSince = startedAt;
 
     const pin = () => {
       if (zoomRef.current !== zoomAtOpen) {
@@ -1082,13 +1076,6 @@ export function useThreadStream(
         return;
       }
       const now = Date.now();
-      if (el.scrollHeight !== lastHeight) {
-        lastHeight = el.scrollHeight;
-        heightSince = now;
-      } else if (placed >= 0 && now - heightSince >= SETTLED_MS) {
-        stop();
-        return;
-      }
       if (now - startedAt >= LONGEST_MS) {
         stop();
         return;
@@ -1140,7 +1127,16 @@ export function useThreadStream(
         placed,
         Math.max(0, el.scrollHeight - el.clientHeight)
       );
-      if (Math.round(el.scrollTop) !== clampedPlace) stop();
+      /*
+        A scroll nobody made by hand is not the reader moving: the reader's
+        own scrolls come with a wheel, a press or a key (`readerInput`),
+        and those stop the pin. Something nudged the pane 34 px a moment
+        after it was placed, the pin took that for the reader and let go,
+        and the reply above then grew and pushed the newest message below
+        the fold — every open after the first (Ulrik, 2026-10-14). Put
+        back instead.
+      */
+      if (Math.round(el.scrollTop) !== clampedPlace) pin();
     };
     /** The keys that scroll a pane. Typing elsewhere is not moving. */
     const SCROLL_KEYS = new Set([
@@ -1156,7 +1152,7 @@ export function useThreadStream(
       added.disconnect();
       el.removeEventListener("scroll", onScroll);
       el.removeEventListener("wheel", readerInput);
-      el.removeEventListener("pointerdown", readerInput);
+      window.removeEventListener("pointerdown", readerInput, true);
       window.removeEventListener("keydown", readerInput);
     };
     /*
@@ -1190,7 +1186,9 @@ export function useThreadStream(
     pin();
     el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("wheel", readerInput, { passive: true });
-    el.addEventListener("pointerdown", readerInput, { passive: true });
+    // Anywhere in the window: a click on Reply, say, scrolls the pane to
+    // the reply, and the pin must not pull it back.
+    window.addEventListener("pointerdown", readerInput, { passive: true, capture: true });
     window.addEventListener("keydown", readerInput);
     el.addEventListener("touchstart", stop, { passive: true, once: true });
 

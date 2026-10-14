@@ -179,6 +179,8 @@ async function main() {
     hiddenMailboxes.add(TEA);
     root = await mount([], () => text().includes("hidden for now"));
     assert(!text().includes("Connect an account"), "not the connect notice");
+    // Nor the reading pane's: it said "No mailbox connected yet" over hidden mailboxes.
+    assert(!text().includes("No mailbox connected yet"), "not the reading pane's no-mailbox line");
     assert(text().includes(ULLA) && text().includes(TEA), "each hidden mailbox is named");
     assert(
       [...document.querySelectorAll("button")].filter((b) => (b.textContent || "").trim() === "Show in Mail now").length === 2,

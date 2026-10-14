@@ -287,6 +287,30 @@ if (!isPopout && !isReader) {
 }
 
 /**
+ * "Link…", from the right-click menu (mail-native's paste_plain_menu.rs).
+ * The editor with the focus opens its link box on the selected words, as
+ * its link key does (RichTextEditor answers `dh-insert-link`).
+ */
+{
+  const tauriEvent = (
+    window as unknown as {
+      __TAURI__?: {
+        event?: {
+          listen?: (name: string, handler: () => void) => Promise<() => void>;
+        };
+      };
+    }
+  ).__TAURI__?.event;
+  void tauriEvent
+    ?.listen?.("insert-link", () => {
+      const target = document.activeElement;
+      if (!(target instanceof HTMLElement)) return;
+      target.dispatchEvent(new CustomEvent("dh-insert-link", { bubbles: true, cancelable: true }));
+    })
+    .catch(() => {});
+}
+
+/**
  * A key the menu bar took, given back to the page.
  *
  * Cmd+Shift+A is in the Edit menu so that a macOS Service on the same chord

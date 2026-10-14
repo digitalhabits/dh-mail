@@ -65,6 +65,7 @@ import { cn } from "@/lib/utils";
 import { useMailboxHideVerdict } from "@/components/mail/use-mailbox-hide";
 import { formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
 import { syncStates } from "@/lib/mail/local-store";
+import { AccountAssistSwitch, GmailAppPasswordConnect } from "@/components/mail/team-layer";
 
 export type MailAccountRow = GmailAccountDto & {
   provider: MailProvider;
@@ -246,6 +247,10 @@ function SortableAccountRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {/* The assist buttons for this mailbox, on or off. The team layer only. */}
+        <span onPointerDown={stopDrag} className="px-1">
+          <AccountAssistSwitch account={account.email} />
+        </span>
         {/* Auto-reply beside Reconnect, where the account's other actions
             are. It was a line of its own under the account, with "Set up…"
             at the far end of it. When a reply is on, that line stays: it
@@ -1068,6 +1073,14 @@ export function MailAccountsPanel({
           />
         ) : null}
       </div>
+      {/* A personal Gmail, which this build's Google sign-in does not take.
+          The team layer only. */}
+      <GmailAppPasswordConnect
+        onConnected={() => {
+          router.refresh();
+          void loadAccounts();
+        }}
+      />
       </div>
 
       {onOwnIdentityChange ? (

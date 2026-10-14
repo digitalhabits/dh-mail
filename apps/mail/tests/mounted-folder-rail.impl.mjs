@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
 import { MailFolderRail } from "@/components/mail/MailFolderRail";
+import { writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 
 const pass = (line) => console.log(`PASS  ${line}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -114,9 +115,16 @@ async function viewsAndFolders() {
   assert.deepEqual(last("openFolder"), ["openFolder", ULLA, "Receipts"]);
   pass("a click on a folder opens it");
 
-  const receiptsRow = folderButton(ULLA, "Receipts").closest("[data-folder-row]");
-  assert(/7$/.test((receiptsRow.textContent || "").trim()), `Receipts shows its count: ${receiptsRow.textContent}`);
-  pass("a folder shows its count");
+  const receiptsRow = () => folderButton(ULLA, "Receipts").closest("[data-folder-row]");
+  // Counts are opt-in (Settings > General): none by default.
+  assert(!/7$/.test((receiptsRow().textContent || "").trim()), `Receipts shows no count by default: ${receiptsRow().textContent}`);
+  pass("a folder shows no count by default");
+  writeShowFolderCounts(true);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert(/7$/.test((receiptsRow().textContent || "").trim()), `Receipts shows its count: ${receiptsRow().textContent}`);
+  pass("with counts turned on, a folder shows its count");
+  writeShowFolderCounts(false);
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
   const heart = [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Add to favourites: Receipts");
   assert(heart, "Receipts has a heart");

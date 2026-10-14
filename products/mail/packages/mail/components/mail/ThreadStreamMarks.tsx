@@ -27,7 +27,10 @@ export function DayHeading({ iso }: { iso: string | null }) {
          it, only the subject. The stream's own padding is the space it
          needs. It keeps the padding whenever something does come first,
          such as the button that fetches older messages. */
-      className="pb-1 pt-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)] first:pt-0"
+      /* `-mb-2` takes back half the stream's 16px gap below it: a day
+         names the message under it, and the full gap left it floating
+         between the two (Ulrik, 2026-10-11). */
+      className="-mb-2 pt-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)] first:pt-0"
     >
       {chatDayLabel(iso, t)}
     </p>

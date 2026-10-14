@@ -7,7 +7,7 @@ import { MailAccountsPanel } from "@/components/mail/MailAccountsPanel";
 import { ExchangeSettingsPane, useExchangeConnectRequest } from "@/components/mail/ExchangeConnectForm";
 import { useLoadImagesByDefault } from "@/components/mail/MailBubble";
 import { useMailListPlacement } from "@/components/mail/use-mail-layout";
-import { BookOpen, ChevronDown, Command, Mail, Moon, RefreshCw, Search, Settings, Settings2, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, ChevronDown, Command, Mail, Moon, RefreshCw, Search, Settings, Settings2, Users, Wrench, type LucideIcon } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { type AutoReplyDto } from "@/components/mail/AutoReplyDialog";
 import { ContactSourcesPanel } from "@/components/mail/ContactSourcesDialog";
@@ -17,8 +17,11 @@ import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { MailShortcutsPanel } from "@/components/mail/MailShortcutsDialog";
 import { SnoozeOptionsPanel } from "@/components/mail/SnoozeOptionsPanel";
 import { readUsagePingEnabled, writeUsagePingEnabled } from "@/lib/mail/usage-ping";
+import { useShowFolderCounts, writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
 import { StackThreadsSetting } from "@/components/mail/stack-threads-setting";
+import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
+import { DraftsFolderSetting } from "@/components/mail/drafts-folder-setting";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
 import { OPEN_MAIL_ACCOUNTS_EVENT, isMailSettingsCategory, type MailSettingsCategory } from "@/lib/mail/open-mail-accounts-menu";
 import { MAIL_APP_VERSION } from "@/lib/mail/app-version";
@@ -205,6 +208,9 @@ export function MailLayoutMenu({
     useLoadImagesByDefault();
   const [theme, setTheme] = useMailTheme();
   const [usagePing, setUsagePing] = React.useState(readUsagePingEnabled);
+  const showFolderCounts = useShowFolderCounts();
+  const hasDesktopShell =
+    typeof window !== "undefined" && Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
   const t = useMailT();
 
   /*
@@ -275,7 +281,7 @@ export function MailLayoutMenu({
       id: "reading",
       label: t("settingsReading"),
       Icon: BookOpen,
-      words: [t("stackThreads"), t("readingPane"), t("loadImages")],
+      words: [t("stackThreads"), t("readingPane"), t("loadImages"), t("readerLines")],
     },
     {
       id: "snooze",
@@ -295,6 +301,17 @@ export function MailLayoutMenu({
       Icon: Command,
       words: [],
     },
+    // Only in the desktop app: the drafts folder is a folder on this Mac.
+    ...(hasDesktopShell
+      ? [
+          {
+            id: "advanced" as const,
+            label: t("settingsAdvanced"),
+            Icon: Wrench,
+            words: [t("draftsFolder")],
+          },
+        ]
+      : []),
   ];
   const needle = query.trim().toLocaleLowerCase();
   const matches = needle
@@ -366,6 +383,17 @@ export function MailLayoutMenu({
               }
             />
             <SettingsTextSizeRow />
+            <SettingsRow
+              label={t("showFolderCounts")}
+              hint={t("showFolderCountsHint")}
+              control={
+                <SettingsToggle
+                  checked={showFolderCounts}
+                  onChange={writeShowFolderCounts}
+                  label={t("showFolderCounts")}
+                />
+              }
+            />
             {/* Only where the count can run: a Mac or Windows release build,
                 where apps/mail/src/usage-ping.ts sets the flag. */}
             {(window as unknown as { __MAIL_USAGE_PING__?: string }).__MAIL_USAGE_PING__ ? (
@@ -384,6 +412,19 @@ export function MailLayoutMenu({
                 }
               />
             ) : null}
+          </SettingsGroup>
+        </SettingsPane>
+      );
+      break;
+    case "advanced":
+      pane = (
+        <SettingsPane
+          title={t("settingsAdvanced")}
+          description={t("settingsAdvancedHint")}
+          onDone={close}
+        >
+          <SettingsGroup>
+            <DraftsFolderSetting />
           </SettingsGroup>
         </SettingsPane>
       );
@@ -439,6 +480,7 @@ export function MailLayoutMenu({
                 />
               }
             />
+            <ReaderLinesSetting />
           </SettingsGroup>
         </SettingsPane>
       );

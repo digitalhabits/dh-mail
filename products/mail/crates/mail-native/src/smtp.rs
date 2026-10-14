@@ -127,6 +127,29 @@ impl Smtp {
     Ok((code, text))
   }
 
+  /// Sign in as the mailbox's credential says (see imap::Credential).
+  pub fn sign_in(&mut self, user: &str, credential: &crate::imap::Credential) -> Result<(), SmtpError> {
+    match credential {
+      crate::imap::Credential::OAuth(token) => self.authenticate_xoauth2(user, token),
+      crate::imap::Credential::Password(password) => self.authenticate_plain(user, password),
+    }
+  }
+
+  /// AUTH PLAIN with a password: a Gmail app password, which
+  /// smtp.gmail.com takes with no Google sign-in.
+  pub fn authenticate_plain(&mut self, user: &str, password: &str) -> Result<(), SmtpError> {
+    let raw = format!("\u{0}{user}\u{0}{password}");
+    let encoded = base64::engine::general_purpose::STANDARD.encode(raw);
+    let stream = self.stream.get_mut();
+    stream.write_all(format!("AUTH PLAIN {encoded}\r\n").as_bytes())?;
+    stream.flush()?;
+    let (code, text) = self.reply()?;
+    if code == 235 {
+      return Ok(());
+    }
+    Err(SmtpError::Refused { code, text })
+  }
+
   pub fn authenticate_xoauth2(&mut self, user: &str, access_token: &str) -> Result<(), SmtpError> {
     let raw = format!("user={user}\u{1}auth=Bearer {access_token}\u{1}\u{1}");
     let encoded = base64::engine::general_purpose::STANDARD.encode(raw);
@@ -291,6 +314,26 @@ mod tests {
     assert!(matches!(err, SmtpError::Unconfirmed(_)), "{err}");
     assert!(err.is_permanent(), "handed back rather than sent again");
     assert!(err.to_string().contains("Check Sent"));
+  }
+
+  #[test]
+  fn an_app_password_signs_in_with_auth_plain_and_a_refusal_is_an_auth_error() {
+    let stream = fake_smtp(vec![
+      ("EHLO", "250-smtp.test\r\n250 AUTH PLAIN XOAUTH2\r\n"),
+      ("AUTH PLAIN", "235 2.7.0 Accepted\r\n"),
+      ("QUIT", "221 bye\r\n"),
+    ]);
+    let mut smtp = Smtp::connect_plain(stream).unwrap();
+    smtp.sign_in("vera@example.com", &crate::imap::Credential::Password("app pw".into())).unwrap();
+    smtp.quit();
+
+    let stream = fake_smtp(vec![
+      ("EHLO", "250 smtp.test\r\n"),
+      ("AUTH PLAIN", "535-5.7.8 Username and Password not accepted\r\n535 5.7.8 https://support.google.com/mail/?p=BadCredentials\r\n"),
+    ]);
+    let mut smtp = Smtp::connect_plain(stream).unwrap();
+    let err = smtp.sign_in("vera@example.com", &crate::imap::Credential::Password("bad".into())).unwrap_err();
+    assert!(err.is_auth(), "{err}");
   }
 
   #[test]

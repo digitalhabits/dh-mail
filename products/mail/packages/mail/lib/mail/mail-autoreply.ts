@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import {
   getVacationSettings,
   updateVacationSettings,
@@ -142,6 +143,15 @@ export async function listMailAutoReplies(
       const token = await accessTokenFor(a.email);
       results.push(toMailAutoReply(a.email, await getVacationSettings(token)));
     } catch (err) {
+      // A Gmail on an app password: Google keeps the vacation reply behind
+      // its API, which the password does not open.
+      if (isGmailAppPasswordError(err)) {
+        results.push({
+          ...blank(),
+          unavailable: "This mailbox is connected with an app password. Set its out-of-office reply in Gmail's settings on the web.",
+        });
+        continue;
+      }
       const status = (err as Error & { status?: number }).status;
       if (status === 403) {
         results.push({ ...blank(), needsReconnect: true });

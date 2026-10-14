@@ -981,7 +981,7 @@ export function RichTextEditor({
       With nothing selected there is nothing to make a link of, and the key
       is left alone rather than swallowed into a box where it means nothing.
     */
-    const openLinkFromKey = (event: KeyboardEvent) => {
+    const openLinkFromKey = (event: Event) => {
       const quill = quillRef.current?.getEditor();
       const range = quill?.getSelection();
       if (!quill || !range || !range.length) return;
@@ -1039,6 +1039,8 @@ export function RichTextEditor({
       pastePlainNow();
     };
     root.addEventListener("dh-paste-plain", onPastePlainAsked);
+    // "Link…" in the right-click menu (apps/mail/src/main.tsx).
+    root.addEventListener("dh-insert-link", openLinkFromKey);
     root.addEventListener("keydown", onKeyDown, true);
     root.addEventListener("paste", onPaste, true);
     root.addEventListener("keyup", clear);
@@ -1047,6 +1049,7 @@ export function RichTextEditor({
       root.removeEventListener("paste", onPaste, true);
       root.removeEventListener("keyup", clear);
       root.removeEventListener("dh-paste-plain", onPastePlainAsked);
+      root.removeEventListener("dh-insert-link", openLinkFromKey);
     };
   });
 
@@ -1316,6 +1319,22 @@ export function RichTextEditor({
         root.style.position = "fixed";
         root.style.left = `${parentRect.left / scaleX + left}px`;
         root.style.top = `${parentRect.top / scaleY + top}px`;
+        /*
+          Where it landed, and the difference taken off.
+
+          A fixed box is placed against the window only while no box around
+          it has a transform (or a filter): with one, it is placed against
+          that box instead. Mail's reply card moves by a transform when it
+          is dragged, so the link box stood off by however far the card had
+          been moved — off the window, where Cmd+K seemed to do nothing.
+        */
+        const landed = root.getBoundingClientRect();
+        const offX = landed.left - (parentRect.left + left * scaleX);
+        const offY = landed.top - (parentRect.top + top * scaleY);
+        if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) {
+          root.style.left = `${parseFloat(root.style.left) - offX / scaleX}px`;
+          root.style.top = `${parseFloat(root.style.top) - offY / scaleY}px`;
+        }
         // Read back, not the strings written: WebKit rounds them, and a
         // write it no longer recognised was divided by the zoom again on
         // every pass, walking the box to the corner.

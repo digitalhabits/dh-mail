@@ -21,6 +21,10 @@ suite(async () => {
     openLandingMessageId([m("a", true), m("b"), m("c")], "c") === "c");
   check("all unread: the first",
     openLandingMessageId([m("a", true), m("b", true)], "b") === "a");
+  check("the reader's own reply, held as unread, is not new mail",
+    openLandingMessageId([m("a"), { id: "b", unread: true, own: true }, m("c", true)], "c") === "c");
+  check("and an own message at the very end opens on the newest",
+    openLandingMessageId([m("a", true), { id: "b", unread: true, own: true }], "b") === "b");
   check("no messages: the newest id given",
     openLandingMessageId([], "x") === "x");
 });

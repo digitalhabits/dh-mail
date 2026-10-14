@@ -36,7 +36,8 @@ export type DraftAssistResult = {
 };
 
 /** Which part of a draft is running, for the strip above the composer. */
-export type DraftAssistWorking = "reading" | "writing" | null;
+/** Writing a draft into an empty box, or updating the words already there. */
+export type DraftAssistWorking = "reading" | "writing" | "updating" | null;
 
 /** What the send route can answer for the team layer, beside the send itself. */
 export type TeamSendAnswer = {

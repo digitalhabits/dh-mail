@@ -8,6 +8,8 @@
  */
 
 import { headingWithHeld } from "@/lib/mail/held-thread-header";
+import { createPortal } from "react-dom";
+import { useMailColorMode } from "@/lib/mail/theme";
 import { Loader2, Trash2 } from "lucide-react";
 
 import { ThreadFindBar } from "@/components/mail/ThreadFindBar";
@@ -28,6 +30,21 @@ import { useThreadPane, type ThreadPaneProps } from "@/components/mail/use-threa
 import { ThreadPaneDialogs, ReplyButtons, ThreadMessages, ThreadHeader } from "@/components/mail/thread-pane-parts";
 import { ThreadComposerBand } from "@/components/mail/thread-pane-composer";
 import { threadActionClass } from "@/components/mail/thread-pane-classes";
+import {
+  ComposerHome,
+  ReaderComposerContext,
+  composerInReader,
+  useReaderComposerSlot,
+} from "@/components/mail/reader-composer";
+import { ReaderThreadContext, useReaderThreadInfo } from "@/components/mail/reader-thread";
+import {
+  closeThreadFullWindow,
+  useThreadFullWindow,
+  useThreadFullWindowEsc,
+} from "@/components/mail/thread-full-window";
+import { ThreadFullWindowBar } from "@/components/mail/thread-full-window-bar";
+import { ThreadFullWindowMore } from "@/components/mail/thread-full-window-more";
+import { READER_TEXT_SIZES, useReaderTextSize } from "@/lib/mail/reader-settings";
 
 
 /**
@@ -39,8 +56,45 @@ import { threadActionClass } from "@/components/mail/thread-pane-classes";
  * the ellipsis.
  */
 
+/** The bubbles' own text size, which the Reader's sizes are counted from. */
+const BUBBLE_TEXT_PX = 14;
+
+/** Reply all reaches more people than Reply. */
+function replyAllReachesMore(reply: { allTo: string[]; allCc: string[] } | undefined): boolean {
+  return (
+    new Set(
+      [...(reply?.allTo ?? []), ...(reply?.allCc ?? [])]
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+    ).size > 1
+  );
+}
+
 export function ThreadPane(props: ThreadPaneProps) {
-  const m = useThreadPane(props);
+  /* The whole window (thread-full-window): the same pane, its type the
+     Reader's size, under a quiet bar. */
+  const fullWindow = useThreadFullWindow(!props.floating);
+  const [sizeIndex] = useReaderTextSize();
+  const m = useThreadPane(
+    fullWindow
+      ? { ...props, zoom: (props.zoom * READER_TEXT_SIZES[sizeIndex]) / BUBBLE_TEXT_PX }
+      : props
+  );
+  useThreadFullWindowEsc(fullWindow, Boolean(m.mode));
+  const colorMode = useMailColorMode();
+  /* The composer can move into a Reader opened from a message here. Not
+     in the floating card, which is the composer and nothing else. */
+  const readerSlot = useReaderComposerSlot(
+    Boolean(m.mode),
+    m.bandFills || m.replyFocusSliding
+  );
+  const readerComposer = m.floating ? null : readerSlot;
+  /* Reply all for the Reader, as the bar under the thread has it: only
+     when it reaches more people than Reply. */
+  const readerInfo = useReaderThreadInfo(
+    replyAllReachesMore(m.thread?.reply) ? () => m.startReply(true) : undefined
+  );
+  const readerThread = m.floating ? null : readerInfo;
   const {
     account,
     accounts,
@@ -148,12 +202,7 @@ export function ThreadPane(props: ThreadPaneProps) {
   const chatStyle = Boolean(chat && chat.noQuote !== false);
   const headerTitle = heading.subject.replace(/^((re|fwd?):\s*)+/i, "");
   // Gmail-style bottom bar: Reply all only when it reaches more people than Reply.
-  const showReplyAll =
-    new Set(
-      [...thread.reply.allTo, ...thread.reply.allCc]
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean)
-    ).size > 1;
+  const showReplyAll = replyAllReachesMore(thread.reply);
   const jumpToPart = (p: MailChatPartSummary) => {
     if (!chat || p.providerThreadId === threadId) return;
     onChatThreadChanged(p.providerThreadId, {
@@ -163,15 +212,18 @@ export function ThreadPane(props: ThreadPaneProps) {
       isOpenPart: p.status === "open",
     });
   };
-  return (
+  const pane = (
+    <ReaderThreadContext.Provider value={readerThread}>
     <div
       ref={setPaneNode}
       /* The size it was dragged to — one for the corner, one for the
          dialog. Put away, neither: that one is its heading, and as wide
          as a heading needs. */
       style={card.style}
+      data-thread-full-window={fullWindow ? "" : undefined}
       className={cn(
         "mail-thread-surface relative flex flex-col bg-[var(--mail-thread)]",
+        fullWindow && "fixed inset-0 z-40",
         floating
           ? // The card. It has a width of its own, so the composer inside
             // measures a pane that width and lays itself out to it — the
@@ -205,7 +257,18 @@ export function ThreadPane(props: ThreadPaneProps) {
         hidden={!mode}
         onClose={() => onFloatReply?.()}
       />
-      <ThreadHeader m={m} thread={thread} chat={chat} dateRange={dateRange} headerTitle={headerTitle} jumpToPart={jumpToPart} showReplyAll={showReplyAll} threadOthers={threadOthers} totalMessageCount={totalMessageCount} />
+      {fullWindow ? (
+        <ThreadFullWindowBar
+          lead={props.toolbarLead}
+          title={headerTitle}
+          more={<ThreadFullWindowMore m={m} />}
+          onArchive={m.inTrash ? undefined : m.onArchive}
+          onTrash={m.inTrash || fromDrafts ? undefined : () => m.onTrash({ account, threadId })}
+          onExit={closeThreadFullWindow}
+        />
+      ) : (
+        <ThreadHeader m={m} toolbarLead={props.toolbarLead} thread={thread} chat={chat} dateRange={dateRange} headerTitle={headerTitle} jumpToPart={jumpToPart} showReplyAll={showReplyAll} threadOthers={threadOthers} totalMessageCount={totalMessageCount} />
+      )}
 
       {!floating && !replyFocus && find.open ? (
         <ThreadFindBar
@@ -232,7 +295,9 @@ export function ThreadPane(props: ThreadPaneProps) {
           onClose={() => setOriginalOf(null)}
         />
       ) : null}
-      <ThreadMessages m={m} thread={thread} chat={chat} jumpToPart={jumpToPart} />
+      <ReaderComposerContext.Provider value={readerComposer}>
+        <ThreadMessages m={m} thread={thread} chat={chat} jumpToPart={jumpToPart} />
+      </ReaderComposerContext.Provider>
 
       <AttachmentPreviewDialog
         account={account}
@@ -266,11 +331,34 @@ export function ThreadPane(props: ThreadPaneProps) {
       ) : null}
 
       <ReplyButtons m={m} showReplyAll={showReplyAll} />
-      <ThreadComposerBand m={m} chatStyle={chatStyle} />
+      <ComposerHome slot={readerComposer}>
+        <ThreadComposerBand
+          m={m}
+          chatStyle={chatStyle}
+          inReader={composerInReader(readerComposer)}
+        />
+      </ComposerHome>
       </div>
       <ThreadPaneDialogs m={m} />
     </div>
+    </ReaderThreadContext.Provider>
   );
+  /*
+    Over the whole window, drawn into the page itself, as the Reader is.
+    Fixed in place, the pane stayed under the title bar and the folder
+    rail in the Mac app: something around it kept its own stacking order,
+    and lifting each box around it did not reach it there. The state is
+    this component's (useThreadPane), so the reply being written comes
+    along; only the pane's own boxes are made again.
+  */
+  return fullWindow
+    ? createPortal(
+        <div className="mail-shell" data-theme={colorMode}>
+          {pane}
+        </div>,
+        document.body
+      )
+    : pane;
 }
 
 

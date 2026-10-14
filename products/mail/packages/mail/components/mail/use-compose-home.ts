@@ -32,6 +32,8 @@ export function useComposeHome() {
   const [floatingReply, setFloatingReply] = React.useState<{
     account: string;
     threadId: string;
+    /** Opened over the whole window. */
+    full?: boolean;
   } | null>(null);
   /**
    * A new message floated out of the composer, by its draft key. The words

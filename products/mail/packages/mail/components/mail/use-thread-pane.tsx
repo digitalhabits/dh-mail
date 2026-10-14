@@ -94,6 +94,8 @@ export type ThreadPaneProps = {
   threadId: string;
   /** Search hit — open centered on this message instead of the tip. */
   focusMessageId?: string;
+  /** First in the toolbar row: the way back to the list the thread came from. */
+  toolbarLead?: React.ReactNode;
   /** The search's words, painted in the focus message. */
   searchTerms?: string[];
   zoom: number;
@@ -192,8 +194,11 @@ export type ThreadPaneProps = {
    * Send the reply being written into a floating card, so the reader can
    * browse other threads while they write. The draft is persisted first;
    * the card reads the same draft, so nothing is handed over but the key.
+   * `full` opens the card over the whole window, dimmed around it.
    */
-  onFloatReply?: () => void;
+  onFloatReply?: (opts?: { full?: boolean }) => void;
+  /** This pane IS the floating card, and it opens over the whole window. */
+  floatingStartsFull?: boolean;
   /**
    * This thread's reply is in the floating card right now. The pane keeps
    * its hands off the draft — no composer from it, no saves onto it — and
@@ -637,20 +642,16 @@ export function useThreadPane(props: ThreadPaneProps) {
     streamNode,
   });
   takeZoomAnchorRef.current = captureZoomAnchor;
-  /*
-    The floating card is carried by its heading: it is read against what
-    it covers, and it is in the way of it until it is moved.
-  */
   /**
-   * Out of the way, ordinary, or the whole window — see `floating-card`,
-   * which both floating cards stand in.
-   *
-   * Only ever the first of those in a pane, which is not a card and has
-   * nowhere to go.
+   * Out of the way, ordinary, or the whole window — see `floating-card`.
+   * Only ever the first in a pane. Opened full from the pane's composer, a
+   * card that leaves full goes home to the pane, not to the corner.
    */
   const card = useFloatingCard(
     Boolean(floating),
-    "dh-mail-floating-reply-size"
+    "dh-mail-floating-reply-size",
+    props.floatingStartsFull,
+    props.floatingStartsFull ? onUnfloatReply : undefined
   );
   const { cardRef, size: cardSize } = card;
   /**
@@ -744,6 +745,8 @@ export function useThreadPane(props: ThreadPaneProps) {
     readableAttachments,
     replyText,
     replaceWords,
+    // The pane whose reply is in the floating card does not hold it.
+    ownsReply: !replyFloating,
   });
   /* Where the message being written lives: this pane, the floating card or
      the pop-out window — see use-composer-home.ts. It stands where the
@@ -1487,7 +1490,7 @@ export function useThreadPane(props: ThreadPaneProps) {
     tightToolbar,
     toList,
     unread,
-    updateRecordsFromThread,
+    updateRecordsFromThread, updateRecordsAfterSend, setUpdateRecordsAfterSend: composer.setUpdateRecordsAfterSend,
     updatingRecords,
     zoom,
   };

@@ -1,5 +1,6 @@
 "use client";
 
+import { sendFromAccounts } from "@/lib/mail/account-scope";
 import * as React from "react";
 import { TeamLayerHost } from "@/components/mail/team-layer";
 import { Moon, Pause } from "lucide-react";
@@ -17,7 +18,7 @@ import { MailTitleBar } from "@/components/mail/mail-title-bar";
 import { FloatingCards } from "@/components/mail/mail-floating-cards";
 import { ReadingPaneContent } from "@/components/mail/mail-reading-pane";
 import { ThreadListColumn } from "@/components/mail/mail-thread-list";
-import { FoldersMenu, FolderRail, FoldersButton, FilterButton, FilterChips, FilterRow, AccountTabs, ListTabsOrFolder, LayoutMenu } from "@/components/mail/mail-list-chrome";
+import { FoldersMenu, FolderRail, FoldersButton, FilterChips, FilterRow, AccountTabs, ListTabsOrFolder, LayoutMenu } from "@/components/mail/mail-list-chrome";
 import { MailPauseMenu } from "@/components/mail/MailPauseMenu";
 import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { MailPhoneShell, type MailPhoneDetail } from "@/components/mail/MailPhoneShell";
@@ -123,10 +124,9 @@ export function MailPage(props: MailPageProps) {
    * would leave a gap in the row and the rail with no way to close it.
    */
   const foldersButton = <FoldersButton m={m} />;
-  const filterButton = <FilterButton m={m} />;
   /** The filter chips: the built-in lists, the reader's own, and New list. */
   const filterChips = <FilterChips m={m} />;
-  const filterRow = <FilterRow m={m} filterButton={filterButton} filterChips={filterChips} foldersButton={foldersButton} />;
+  const filterRow = <FilterRow m={m} filterChips={filterChips} foldersButton={foldersButton} />;
   /** The mailbox row: All, then one tab per mailbox. */
   // Hiding mailboxes for a while: its clock runs as long as the page does.
   const mailboxHide = useMailboxHide({
@@ -155,7 +155,9 @@ export function MailPage(props: MailPageProps) {
   /** The rows, with the banners over them and the load-more under them. */
   const threadListColumn = <ThreadListColumn m={m} listTabsOrFolder={listTabsOrFolder} hide={mailboxHide} />;
   /** What the reading pane holds: a composer, a thread, a person, or the rest picture. */
-  const readingPaneContent = <ReadingPaneContent m={m} />;
+  // From offers every mailbox: hiding one takes its mail away, not its address.
+  const sendFrom = sendFromAccounts(m.accountEmails, mailboxHide.hidden);
+  const readingPaneContent = <ReadingPaneContent m={m} hide={mailboxHide} sendFrom={sendFrom} />;
   /* The team layer's host, for whichever pane asked. Here and not in the
      pane: the pane is made again for every thread. The public app's host
      draws nothing. */
@@ -461,7 +463,7 @@ export function MailPage(props: MailPageProps) {
         // Before the rail when the rail is on the right; after it otherwise.
         style={{ order: railOnRight ? 1 : 3 }}
       >
-      <ListPaneFrame m={m} peek={listPeek} filterButton={filterButton} foldersButton={foldersButton} foldersMenu={foldersMenu} listTabsOrFolder={listTabsOrFolder} threadListColumn={threadListColumn} />
+      <ListPaneFrame m={m} peek={listPeek} foldersButton={foldersButton} foldersMenu={foldersMenu} listTabsOrFolder={listTabsOrFolder} threadListColumn={threadListColumn} />
 
       <ListResizeHandle m={m} />
 
@@ -471,7 +473,7 @@ export function MailPage(props: MailPageProps) {
 
       {autoReplyDialog}
       {teamLayerHostNode}
-      <FloatingCards m={m} />
+      <FloatingCards m={m} sendFrom={sendFrom} />
       {contactDialogs}
     </div>
   );

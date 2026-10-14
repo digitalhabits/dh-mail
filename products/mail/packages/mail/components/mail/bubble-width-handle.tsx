@@ -18,31 +18,42 @@ export function BubbleWidthHandle({
   own,
   zoom = 1,
   boxRef,
+  columnRef,
 }: {
   own: boolean;
   zoom?: number;
-  /**
-   * The message's column, measured at the start of a drag: the width a
-   * message may take now. Not the box, which a short message keeps narrow;
-   * starting from it, a drag on a short message shrank every message.
-   */
+  /** The message's box: the edge the reader sees and drags. */
   boxRef: React.RefObject<HTMLElement | null>;
+  /** The message's column: the widest it may be now. */
+  columnRef: React.RefObject<HTMLElement | null>;
 }) {
   const t = useMailT();
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const box = boxRef.current;
-    if (!box || e.button !== 0) return;
+    const column = columnRef.current;
+    if (!box || !column || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    // In the box's own pixels: the stream is zoomed, the pointer is not.
-    const start = box.getBoundingClientRect().width / (zoom || 1);
-    let last = start;
+    /*
+      Two starting points, so the drag answers at once either way. Inward,
+      from the edge the reader holds: the message narrows as the pointer
+      moves. Outward, from the widest a message may be now: every message
+      with room grows at once. Measured from the limit alone, a message
+      narrower than its limit did nothing until the pointer had crossed the
+      gap between its edge and the limit (Ulrik, 2026-10-11). A message laid
+      out at a width of its own does not grow; the others do.
+      In the box's own pixels: the stream is zoomed, the pointer is not.
+    */
+    const fromEdge = box.getBoundingClientRect().width / (zoom || 1);
+    const fromLimit = column.getBoundingClientRect().width / (zoom || 1);
+    let last = fromLimit;
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / (zoom || 1);
-      last = Math.max(MIN_BUBBLE_WIDTH, start + (own ? -dx : dx));
+      const outward = own ? -dx : dx;
+      last = Math.max(MIN_BUBBLE_WIDTH, outward >= 0 ? fromLimit + outward : fromEdge + outward);
       showBubbleWidth(last);
     };
     const onUp = () => {
@@ -68,7 +79,8 @@ export function BubbleWidthHandle({
       }}
       className={cn(
         // The area to grab is a little wider than the line it shows.
-        "group/edge absolute bottom-2 top-2 z-10 flex w-2.5 cursor-col-resize touch-none justify-center",
+        "group/edge absolute bottom-2 top-2 z-10 flex w-2.5 touch-none justify-center",
+        "cursor-col-resize",
         // Across the edge, so the line sits on it, not beside it.
         own ? "-left-1.5" : "-right-1.5"
       )}

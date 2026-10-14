@@ -423,9 +423,10 @@ function EmptyListNotice({
 /**
  * What the list shows when every connected mailbox is hidden: that they are,
  * how, and a way to show one now. It said "Connect an account" before, which
- * is wrong for a mailbox hidden by its schedule.
+ * is wrong for a mailbox hidden by its schedule. The reading pane shows it
+ * too, for a list that is folded away.
  */
-function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: MailboxHideControls }) {
+export function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: MailboxHideControls }) {
   const { t } = m;
   return (
     <div className="px-5 py-8">

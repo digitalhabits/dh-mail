@@ -15,7 +15,8 @@ import {
   MAIL_PINCH_WHEEL_EVENT,
 } from "@/lib/mail/pinch";
 import { createPortal } from "react-dom";
-import { Copy, ExternalLink, Mail } from "lucide-react";
+import { Copy, Download, ExternalLink, Image as ImageIcon, Mail } from "lucide-react";
+import { copyImage, downloadImage } from "@/lib/mail/image-menu";
 import { toast } from "@/lib/mail/toast";
 import {
   MAIL_IMAGE_CSP_SOURCE,
@@ -469,7 +470,10 @@ export function attachExternalLinkHandling(doc: Document) {
 
 /** A right-click on a link, in the frame's own coordinates. */
 type LinkMenuRequest = {
+  /** The link's destination, or "" for a picture that is not a link. */
   target: string;
+  /** The picture under the pointer, when there is one: its `src`. */
+  image?: string;
   /** Pointer position in the frame's viewport, before the frame's zoom. */
   frameX: number;
   frameY: number;
@@ -542,13 +546,26 @@ export function attachLinkContextMenu(
   doc.addEventListener("scroll", onDismiss, true);
   doc.addEventListener("wheel", onDismiss, { capture: true, passive: true });
 
+  /** The picture under the pointer, for Copy image and Download image. */
+  const imageFromEvent = (event: Event): string | undefined => {
+    for (const node of event.composedPath()) {
+      const el = asElement(node);
+      if (el?.tagName === "IMG") {
+        const img = el as HTMLImageElement;
+        return img.currentSrc || img.src || undefined;
+      }
+    }
+    return undefined;
+  };
+
   doc.addEventListener(
     "contextmenu",
     (event) => {
       const link = linkFromEvent(event);
-      if (!link || linkWasSelected) return;
-      const target = linkTargetFromEl(link);
-      if (!target) return;
+      const image = imageFromEvent(event);
+      if ((!link && !image) || linkWasSelected) return;
+      const target = link ? linkTargetFromEl(link) ?? "" : "";
+      if (!target && !image) return;
       event.preventDefault();
       event.stopPropagation();
       // The word WebKit selected under the pointer goes back to whatever was
@@ -558,7 +575,7 @@ export function attachLinkContextMenu(
         sel.removeAllRanges();
         for (const range of selectionBefore) sel.addRange(range);
       }
-      onRequest({ target, frameX: event.clientX, frameY: event.clientY });
+      onRequest({ target, image, frameX: event.clientX, frameY: event.clientY });
     },
     true
   );
@@ -647,11 +664,15 @@ async function copyText(text: string): Promise<boolean> {
  */
 export function LinkContextMenu({
   model,
+  image,
   x,
   y,
   onDismiss,
 }: {
-  model: MailLinkMenuModel;
+  /** The link, or null for a picture that is not a link. */
+  model: MailLinkMenuModel | null;
+  /** The picture right-clicked, when there is one: its `src`. */
+  image?: string;
   x: number;
   y: number;
   onDismiss: () => void;
@@ -690,7 +711,7 @@ export function LinkContextMenu({
     };
   }, [onDismiss]);
 
-  const OpenIcon = model.kind === "mailto" ? Mail : ExternalLink;
+  const OpenIcon = model?.kind === "mailto" ? Mail : ExternalLink;
   const item =
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100";
 
@@ -709,6 +730,8 @@ export function LinkContextMenu({
       onKeyDown={(e) => e.stopPropagation()}
       className="mail-light-surface fixed z-50 w-max max-w-[min(28rem,calc(100vw-1rem))] rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
     >
+      {model ? (
+        <>
       <div
         className="truncate px-3 pb-1.5 pt-1 text-xs text-stone-500"
         title={model.target}
@@ -744,6 +767,43 @@ export function LinkContextMenu({
         <Copy className="h-3.5 w-3.5 shrink-0 text-stone-500" aria-hidden />
         {model.copyLabel}
       </button>
+        </>
+      ) : null}
+      {image ? (
+        <>
+          {model ? <div className="my-1 border-t border-stone-200" /> : null}
+          <button
+            type="button"
+            role="menuitem"
+            autoFocus={!model}
+            className={item}
+            onClick={() => {
+              onDismiss();
+              void copyImage(image).then((ok) => {
+                if (ok) toast(t("imageCopied"));
+                else toast.error(mailSay("couldNotCopy"));
+              });
+            }}
+          >
+            <ImageIcon className="h-3.5 w-3.5 shrink-0 text-stone-500" aria-hidden />
+            {t("copyImage")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={item}
+            onClick={() => {
+              onDismiss();
+              void downloadImage(image).catch((err: unknown) =>
+                toast.error(err instanceof Error ? err.message : String(err))
+              );
+            }}
+          >
+            <Download className="h-3.5 w-3.5 shrink-0 text-stone-500" aria-hidden />
+            {t("downloadImage")}
+          </button>
+        </>
+      ) : null}
     </div>,
     document.body
   );

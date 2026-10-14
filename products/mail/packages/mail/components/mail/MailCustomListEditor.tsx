@@ -20,6 +20,7 @@ import {
 import type { MailContactSuggestion } from "@/lib/mail/contact-suggestion";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
+import { TabIconPicker } from "@/components/mail/TabIconPicker";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 
 
@@ -129,6 +130,8 @@ export function MailCustomListEditor({
   onCancel: () => void;
   initial?: {
     name: string;
+    /** The tab's icon, a Lucide name, or "" for none (lib/mail/tab-icons). */
+    icon?: string;
     members: MailCustomListMember[];
     scheduleDefault?: boolean;
     scheduleFrom?: string;
@@ -140,7 +143,8 @@ export function MailCustomListEditor({
   onSubmit: (
     name: string,
     members: MailCustomListMember[],
-    schedule: MailCustomListSchedule
+    schedule: MailCustomListSchedule,
+    icon: string
   ) => void;
   onDelete?: () => void;
   /**
@@ -154,6 +158,7 @@ export function MailCustomListEditor({
 }) {
   const t = useMailT();
   const [name, setName] = React.useState(initial?.name ?? "");
+  const [icon, setIcon] = React.useState(initial?.icon ?? "");
   const [members, setMembers] = React.useState<MailCustomListMember[]>(
     initial?.members ?? []
   );
@@ -173,7 +178,7 @@ export function MailCustomListEditor({
   const [contacts, setContacts] = React.useState<MailContactSuggestion[]>([]);
   const [highlight, setHighlight] = React.useState(0);
   const nameRef = React.useRef<HTMLInputElement | null>(null);
-  const initialKey = `${initial?.name ?? ""}\0${(initial?.members ?? [])
+  const initialKey = `${initial?.name ?? ""}\0${initial?.icon ?? ""}\0${(initial?.members ?? [])
     .map((m) => m.email)
     .join(",")}\0${initial?.scheduleDefault ? "1" : "0"}\0${
     initial?.scheduleFrom ?? ""
@@ -182,6 +187,7 @@ export function MailCustomListEditor({
   React.useEffect(() => {
     if (!open) return;
     setName(initial?.name ?? "");
+    setIcon(initial?.icon ?? "");
     setMembers(initial?.members ?? []);
     setScheduleDefault(Boolean(initial?.scheduleDefault));
     setScheduleFrom(initial?.scheduleFrom || DEFAULT_SCHEDULE_FROM);
@@ -244,6 +250,7 @@ export function MailCustomListEditor({
           className={cn(fieldClass, "mt-2.5")}
         />
       )}
+      <TabIconPicker value={icon} onChange={setIcon} />
       {scheduleOnly ? null : (
         <>
       <div className="relative mt-2">
@@ -467,7 +474,7 @@ export function MailCustomListEditor({
               from: scheduleFrom,
               to: scheduleTo,
               days: scheduleDays,
-            });
+            }, icon);
           }}
         >
           {submitLabel}

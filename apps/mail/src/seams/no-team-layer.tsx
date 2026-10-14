@@ -15,7 +15,6 @@ import type {
   DraftAssistWorking,
   ReadableThreadAttachment,
   TeamOrigin,
-  TeamSendAnswer,
 } from "@/components/mail/team-layer-types";
 
 /** Mounted once in each window. Nothing to hold here. */
@@ -46,12 +45,29 @@ export function ThreadDiaryDialog(_props: { proposal: unknown; onClose: () => vo
 /** A menu beside the composer. None here. */
 export function DraftAssistMenu(_props: {
   drafting: boolean;
+  working?: DraftAssistWorking;
   disabled?: boolean;
   onDraft: (hint: string) => void;
   onStop?: () => void;
   purpose?: "reply" | "compose" | "autoreply";
   variant?: "quiet" | "pill";
   className?: string;
+}): null {
+  return null;
+}
+
+/** The records' follow-up after a send. None here. */
+export function startTeamFollowUp(_input: {
+  origin: { account: string; threadId: string };
+  sent: { to: string[]; cc?: string[]; subject: string; body: string };
+  attachments: ReadableThreadAttachment[];
+}): void {}
+
+/** A box beside the composer's menu. None here. */
+export function SendFollowUpToggle(_props: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }): null {
   return null;
 }
@@ -107,6 +123,7 @@ export function useThreadAssistant(_input: {
   readableAttachments: ReadableThreadAttachment[];
   replyText: string;
   replaceWords: (html: string) => void;
+  ownsReply: boolean;
 }): typeof THREAD_ASSISTANT {
   return THREAD_ASSISTANT;
 }
@@ -128,12 +145,17 @@ export async function notifyTeamDataChanged(): Promise<boolean> {
   return false;
 }
 
-/** Only a send with the team layer's switch on calls this. */
-export function afterTeamSend(
-  _answer: TeamSendAnswer,
-  _context: {
-    origin: TeamOrigin;
-    readableAttachments: ReadableThreadAttachment[];
-    onApplied: () => void;
-  }
-): void {}
+/** Connecting a mailbox with an app password. None here. */
+export function GmailAppPasswordConnect(_props: { onConnected: () => void }): null {
+  return null;
+}
+
+/** A per-mailbox switch on its Settings row. None here. */
+export function AccountAssistSwitch(_props: { account: string }): null {
+  return null;
+}
+
+/** Whether a mailbox's assist buttons show. They draw nothing here either way. */
+export function useAccountAssist(_account: string | null | undefined): boolean {
+  return true;
+}
