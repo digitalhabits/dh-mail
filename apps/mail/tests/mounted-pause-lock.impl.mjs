@@ -8,6 +8,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { FrictionPanel, QuietHoursPanel } from "@/components/mail/pause-panels";
+import { mailPauseVerdict } from "@/lib/mail/quiet-hours";
 
 const pass = (line) => console.log(`PASS  ${line}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -41,7 +42,14 @@ function Friction({ lock }) {
   return React.createElement(FrictionPanel, { words: count, lock, onChange: setCount, onBack: () => {} });
 }
 
-const day = (label) => document.querySelector(`button[aria-label="${label}"]`);
+const rows = () => [...document.querySelectorAll("div.rounded-lg.bg-stone-50")];
+const rowCount = () => rows().length;
+const dayIn = (row, label) => rows()[row].querySelector(`button[aria-label="${label}"]`);
+// 5 Oct 2026 is a Monday.
+const MONDAY_10 = new Date(2026, 9, 5, 10);
+const TUESDAY_10 = new Date(2026, 9, 6, 10);
+const SATURDAY_NOON = new Date(2026, 9, 10, 12);
+const arrives = (at) => !mailPauseVerdict({ quietHours: windows }, at).paused;
 const byText = (text) => [...document.querySelectorAll("button")].find((b) => b.textContent === text);
 const text = () => document.body.textContent || "";
 const challengeWords = () => document.querySelector("p[aria-hidden].font-mono")?.textContent ?? "";
@@ -56,37 +64,40 @@ async function main() {
     document.body.innerHTML = '<div id="r"></div>';
     let root = createRoot(document.getElementById("r"));
     await act(() => root.render(React.createElement(Schedule, { lock: LOCK })));
-    await act(() => day("Mon").click());
-    assert(windows[0].days.includes(0), `Monday is still on: ${windows[0].days}`);
+    // The panel shows the hours new mail arrives: around 09:00–17:00 on
+    // weekdays, and all day at the weekend, which is the third rule.
+    assert(rowCount() === 3, `three rules: ${rowCount()}`);
+    await act(() => dayIn(2, "Mon").click());
+    assert(!arrives(MONDAY_10), "Monday 10:00 is still quiet");
     assert(challengeWords().split(" ").length === 2, `two words asked: "${challengeWords()}"`);
-    pass("taking Monday off waits for the words (a tester's case)");
+    pass("more hours for new mail wait for the words (a tester's case)");
 
-    await act(() => day("Sat").click());
-    assert(windows[0].days.includes(5), `Saturday is on: ${windows[0].days}`);
+    await act(() => dayIn(2, "Sat").click());
+    assert(!arrives(SATURDAY_NOON), "Saturday noon is quiet at once");
     assert(!document.querySelector("textarea"), "the Monday change waiting is dropped");
-    pass("adding Saturday goes through at once, and drops the change waiting");
+    pass("fewer hours go through at once, and drop the change waiting");
 
-    await act(() => day("Mon").click());
+    await act(() => dayIn(2, "Mon").click());
     assert(challengeWords(), "Monday asks again");
 
     await act(() => typeInto(document.querySelector("textarea"), "wrong words"));
     assert(byText("Make the change").disabled, "wrong words do not unlock");
     await act(() => typeInto(document.querySelector("textarea"), challengeWords()));
     await act(() => byText("Make the change").click());
-    assert(!windows[0].days.includes(0), `Monday is off: ${windows[0].days}`);
-    assert(windows[0].days.includes(5), `Saturday is still on: ${windows[0].days}`);
-    pass("typed right, the change waiting is made, and Saturday stays");
+    assert(arrives(MONDAY_10), "Monday 10:00 now has new mail");
+    assert(!arrives(SATURDAY_NOON), "Saturday noon is still quiet");
+    pass("typed right, the change waiting is made, and Saturday stays quiet");
 
-    await act(() => day("Tue").click());
-    assert(!windows[0].days.includes(1), `Tuesday is off at once: ${windows[0].days}`);
+    await act(() => dayIn(2, "Tue").click());
+    assert(arrives(TUESDAY_10), "Tuesday 10:00 has new mail at once");
     pass("once unlocked, the panel stays open for more");
 
     root.unmount();
     document.body.innerHTML = '<div id="r2"></div>';
     root = createRoot(document.getElementById("r2"));
     await act(() => root.render(React.createElement(Schedule, { lock: undefined })));
-    await act(() => day("Mon").click());
-    assert(!windows[0].days.includes(0), "no pause running: Monday comes off at once");
+    await act(() => dayIn(2, "Mon").click());
+    assert(arrives(MONDAY_10), "no pause running: Monday 10:00 has new mail at once");
     assert(!document.querySelector("textarea"), "and nothing is asked");
     pass("with no pause running, nothing is locked");
 

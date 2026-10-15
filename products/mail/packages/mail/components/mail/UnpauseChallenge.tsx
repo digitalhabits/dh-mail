@@ -20,6 +20,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { Button } from "@/components/ui/button";
 import { useMailT } from "@/lib/mail/i18n";
+import { useMailColorMode } from "@/lib/mail/theme";
 import {
   correctPrefixLength,
   normaliseUnpauseWords,
@@ -44,6 +45,7 @@ type Pending = { target: string; copy?: ChallengeCopy; resolve: (ok: boolean) =>
 
 export function UnpauseChallengeHost() {
   const t = useMailT();
+  const colorMode = useMailColorMode();
   const [pending, setPending] = React.useState<Pending | null>(null);
   const [typed, setTyped] = React.useState("");
 
@@ -80,7 +82,11 @@ export function UnpauseChallengeHost() {
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[2200] bg-stone-900/30" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[2201] w-[calc(100%-3rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl">
+        <DialogPrimitive.Content
+          // The shell's colours, which the portal on <body> leaves behind: as MenuShell.
+          data-theme={colorMode}
+          className="mail-shell mail-popover fixed left-1/2 top-1/2 z-[2201] w-[calc(100%-3rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl"
+        >
           <DialogPrimitive.Title className="text-base font-semibold text-stone-900">
             {pending?.copy?.title ?? t("unpauseTitle")}
           </DialogPrimitive.Title>

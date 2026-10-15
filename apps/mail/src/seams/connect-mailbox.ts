@@ -15,6 +15,7 @@ import { toast } from "@/lib/mail/toast";
 import type { MailConnectSeam } from "@/lib/mail/host/contracts";
 
 import { requestExchangeConnect } from "@/lib/mail/exchange-connect";
+import { announceMailboxConnected } from "@/lib/mail/mailbox-connected";
 import { hasExchangeAccount } from "@/lib/mail/exchange-accounts";
 import { forgetMailProviderLists } from "@/lib/mail/use-outlook-accounts";
 
@@ -46,6 +47,7 @@ export const startMailConnect: MailConnectSeam["startMailConnect"] = async (
   if (exchange) {
     try {
       const connected = await requestExchangeConnect(email);
+      if (connected && !email) announceMailboxConnected(connected);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       if (connected) useMailRouter().refresh();
     } catch (err) {
@@ -91,6 +93,8 @@ export const startMailConnect: MailConnectSeam["startMailConnect"] = async (
   try {
     const connected = await connectMailbox(oauthProvider, email);
     toast.success(`Connected ${connected.email}`, { id: waiting });
+    // A new mailbox, not a reconnect: ask how it should fit the week.
+    if (!email) announceMailboxConnected(connected.email);
     // So a new Outlook mailbox gets its own mark at once, not Gmail's.
     forgetMailProviderLists();
     // The mailbox list belongs to App, which reads it from the store.

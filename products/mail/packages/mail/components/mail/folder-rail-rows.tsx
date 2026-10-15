@@ -80,16 +80,15 @@ export function SystemRow({
         // four places every mailbox has, and spaced like separate things
         // they took as much room as the whole of somebody's filing.
         "flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-1 text-left text-sm",
-        // The same navy as the folder button wears while the rail is
-        // pinned. A pale wash was easy to miss on a rail of forty rows —
-        // the one row that says where you are has to be the one row you
-        // cannot read past.
+        // A fill and a bold name, the icon in the name's colour
+        // (--mail-folder-active). The pinned colours it wore, the chrome
+        // turned inside out, shouted it; a pale wash was easy to miss.
         active
-          ? "bg-[var(--mail-chrome-pinned)] font-semibold text-[var(--mail-chrome-pinned-fg)]"
+          ? "bg-[var(--mail-folder-active)] font-semibold text-[var(--mail-folder-active-fg)]"
           // The same hover as a row in the thread list. Both are lists of
           // rows on the same chrome, and a stone grey laid over cream reads
           // faintly green beside it.
-          : "text-stone-800 hover:bg-[var(--mail-chrome-hover)]",
+          : "text-stone-800 hover:bg-[var(--mail-folder-hover)]",
         // Dimmed rather than hidden. Mid-drag nothing may move, and a row
         // that vanishes takes every row below it up by its own height.
         drop === "dim" && "pointer-events-none opacity-35",
@@ -120,7 +119,7 @@ export function SystemRow({
         className={cn(
           "h-4 w-4 shrink-0",
           active
-            ? "text-[var(--mail-chrome-pinned-fg)]"
+            ? "text-[var(--mail-folder-active-icon)]"
             : "text-stone-400",
           over && takesDrop && "text-white"
         )}
@@ -133,7 +132,7 @@ export function SystemRow({
             over && takesDrop
               ? "text-white/80"
               : active
-                ? "text-[var(--mail-chrome-pinned-fg)] opacity-70"
+                ? "text-[var(--mail-folder-active-fg)] opacity-70"
                 : "text-stone-400"
           )}
         >
@@ -299,8 +298,8 @@ export function FolderRow({
         // Only while the row is not already saying something else. A folder
         // that is open, or that a conversation is being held over, has an
         // answer of its own, and a hover under it would be a second one.
-        !active && drop === "rest" && "hover:bg-[var(--mail-chrome-hover)]",
-        active && "bg-[var(--mail-chrome-pinned)]",
+        !active && drop === "rest" && "hover:bg-[var(--mail-folder-hover)]",
+        active && "bg-[var(--mail-folder-active)]",
         state === "dim" && "pointer-events-none opacity-40",
         // The right mailbox, but not a folder mail goes into. Dimmed like
         // Sent and Drafts at the top of the rail, so the answer is given
@@ -392,7 +391,7 @@ export function FolderRow({
             className={cn(
               "rounded p-0.5",
               active
-                ? "text-[var(--mail-chrome-pinned-fg)] opacity-70 hover:opacity-100"
+                ? "text-[var(--mail-folder-active-fg)] opacity-70 hover:opacity-100"
                 : "text-stone-400 hover:text-stone-700",
               over && takesDrop && !carrying && "text-white/80"
             )}
@@ -466,7 +465,7 @@ export function FolderRow({
           // middle of the pair.
           "flex min-w-0 flex-1 items-start gap-1.5 py-1 pr-1 text-left text-sm outline-none",
           active
-            ? "font-semibold text-[var(--mail-chrome-pinned-fg)]"
+            ? "font-semibold text-[var(--mail-folder-active-fg)]"
             : "text-stone-800",
           // An implied parent is a heading, not a place.
           node.implied
@@ -491,7 +490,7 @@ export function FolderRow({
             // row is aligned to the top of a name that may be two lines.
             "mt-[3px] h-4 w-4 shrink-0",
             active
-              ? "text-[var(--mail-chrome-pinned-fg)]"
+              ? "text-[var(--mail-folder-active-icon)]"
               : "text-stone-400",
             over && takesDrop && !carrying && "text-white"
           )}

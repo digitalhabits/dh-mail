@@ -91,6 +91,7 @@ import { useComposerKeys } from "./use-composer-keys";
 export type ThreadPaneProps = {
   account: string;
   accounts: string[];
+  oneMailbox?: boolean; // one mailbox's tab chosen: the heading says "You" (ThreadHeader)
   threadId: string;
   /** Search hit — open centered on this message instead of the tip. */
   focusMessageId?: string;

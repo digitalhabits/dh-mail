@@ -267,7 +267,7 @@ export function ThreadPane(props: ThreadPaneProps) {
           onExit={closeThreadFullWindow}
         />
       ) : (
-        <ThreadHeader m={m} toolbarLead={props.toolbarLead} thread={thread} chat={chat} dateRange={dateRange} headerTitle={headerTitle} jumpToPart={jumpToPart} showReplyAll={showReplyAll} threadOthers={threadOthers} totalMessageCount={totalMessageCount} />
+        <ThreadHeader m={m} oneMailbox={props.oneMailbox} toolbarLead={props.toolbarLead} thread={thread} chat={chat} dateRange={dateRange} headerTitle={headerTitle} jumpToPart={jumpToPart} showReplyAll={showReplyAll} threadOthers={threadOthers} totalMessageCount={totalMessageCount} />
       )}
 
       {!floating && !replyFocus && find.open ? (

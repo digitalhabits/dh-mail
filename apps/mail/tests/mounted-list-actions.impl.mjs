@@ -537,11 +537,20 @@ const personEl = (name) =>
     (el.textContent || "").includes(name)
   );
 
+/**
+ * A person's threads, in the reader: the Down key lands on the top person
+ * (Merle), and with several threads that is the list of them. A click on
+ * the row is a stack now, unfolding in the list (person-stack.tsx).
+ */
+async function openPersonPane() {
+  press("ArrowDown");
+  await sleep(600);
+}
+
 async function archiveAPersonThenCommandZ() {
   await mount({ people: true });
   assert(personEl("Merle Mikkelsen"), "Merle has a row in the people view");
-  clickEl(personEl("Merle Mikkelsen"));
-  await sleep(600);
+  await openPersonPane();
   const archiveAll = [...document.querySelectorAll("button")].find((b) =>
     (b.getAttribute("title") || "").startsWith(
       "Archive all 2 conversations with Merle Mikkelsen"
@@ -1139,42 +1148,29 @@ async function moveToFolderAndJunk() {
   list row's menu, not the browser's text menu. Snooze… there opens the
   snooze times, and a time snoozes that conversation.
 */
-/** A thread opened from a person's threads has a way back to them, first in its toolbar. */
-async function backToAPersonsThreads() {
+/** A person with several threads is a stack that opens in the list. */
+async function stacksOpenInTheList() {
   await mount({ people: true });
+  const rows = () => [...document.querySelectorAll("[data-stack-thread]")];
+  const marked = () => rows().filter((r) => /mail-row-selected/.test(r.className));
+  assert.equal(rows().length, 0, "Merle's stack starts folded");
+  assert(/2 threads/.test(personEl("Merle Mikkelsen").textContent || ""), "and says how many it holds");
   clickEl(personEl("Merle Mikkelsen"));
   await sleep(600);
-  const card = () => [...document.querySelectorAll('[role="button"]')].find((el) =>
-    (el.textContent || "").includes(CHOIR.subject)
-  );
-  clickEl(card());
-  await sleep(700);
-  const back = [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "All threads with Merle Mikkelsen");
-  assert(back, "the toolbar starts with the way back to Merle");
-  assert(/Merle Mikkelsen/.test(back.textContent || ""), back.textContent);
-  // Step through her threads without going back.
-  const at = () => document.querySelector("[data-person-step-at]")?.textContent ?? "";
-  const first = at();
-  assert(/^\d+ of \d+ threads$/.test(first), `it says which of her threads this is: ${first}`);
-  const n = Number(first.split(" ")[0]);
-  const total = Number(first.split(" of ")[1].split(" ")[0]);
-  const stepButton = (label) => [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === label);
-  const toward = n < total ? "Older thread" : "Newer thread";
-  clickEl(stepButton(toward));
-  await sleep(700);
-  assert.equal(at(), `${toward === "Older thread" ? n + 1 : n - 1} of ${total} threads`, "the arrow opens the next of her threads");
-  pass("the arrows beside it step through the person's threads");
-
-  clickEl([...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "All threads with Merle Mikkelsen"));
-  await sleep(500);
-  assert(card(), "and it goes back to her threads");
-  pass("a thread opened from a person's threads has a back button with their name, first in the toolbar");
+  assert.equal(rows().length, 2, "a click unfolds it: both her threads stand under her");
+  assert(marked().length === 1 && marked()[0] === rows()[0], "and the newest is open, its row marked");
+  clickEl(rows()[1]);
+  await sleep(600);
+  assert(marked().length === 1 && marked()[0] === rows()[1], "a click on the other opens it, and the mark moves");
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(300);
+  assert.equal(rows().length, 0, "and a click on her row folds the stack");
+  pass("a person with several threads is a stack: a click unfolds it and opens the newest, marked");
 }
 
 async function personCardMenuSnoozes() {
   await mount({ people: true });
-  clickEl(personEl("Merle Mikkelsen"));
-  await sleep(600);
+  await openPersonPane();
   const card = [...document.querySelectorAll('[role="button"]')].find((el) =>
     (el.textContent || "").includes(CHOIR.subject)
   );
@@ -1201,8 +1197,7 @@ async function personCardMenuSnoozes() {
 
 async function deleteAllForAPerson() {
   await mount({ people: true });
-  clickEl(personEl("Merle Mikkelsen"));
-  await sleep(600);
+  await openPersonPane();
   const deleteAll = [...document.querySelectorAll("button")].find((b) =>
     (b.getAttribute("title") || "").startsWith("Delete all 2 conversations with Merle")
   );
@@ -1405,7 +1400,7 @@ async function main() {
     await pinTheOpenThread();
     await snoozeThenCommandZ();
     await personCardMenuSnoozes();
-    await backToAPersonsThreads();
+    await stacksOpenInTheList();
     await moveToFolderAndJunk();
     await deleteAllForAPerson();
     await restoreAndDeleteForeverInTrash();

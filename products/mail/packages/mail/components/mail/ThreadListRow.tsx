@@ -478,18 +478,20 @@ function MenuRule() {
   return <div aria-hidden className="my-1 h-px bg-stone-200" />;
 }
 
-/** How many messages, when it is more than one. Hidden at one so a lone mail does not wear a "1". */
+/** How many messages, a plain grey number after the sender as Gmail has it. Hidden at one: a lone mail needs no count. */
 export function ThreadMessageCount({
   count,
   label,
+  className,
 }: {
   count: number;
   label: string;
+  className?: string;
 }) {
   if (count <= 1) return null;
   return (
     <span
-      className="shrink-0 rounded-full bg-[var(--mail-chrome-selected)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--mail-chrome-muted)]"
+      className={cn(className, "shrink-0 text-sm tabular-nums text-[var(--mail-chrome-muted)]")}
       title={label}
     >
       {count}
@@ -529,7 +531,7 @@ function threadRowClass({
           : cn("items-start gap-3 py-2", padX)
         : compact
           ? cn("items-center gap-2.5 py-1.5", padX)
-          : cn("items-start gap-3 py-3", padX),
+          : cn("items-start gap-3 py-2.5", padX),
     /*
       The open thread, said twice: a fill, and a bar down the left.
 
@@ -912,6 +914,7 @@ export function ThreadListRow({
             >
               <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
             </p>
+            <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
             {t.hasCalendarInvite ? (
               <span
@@ -965,10 +968,6 @@ export function ThreadListRow({
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </p>
           </div>
-          <ThreadMessageCount
-            count={t.messageCount}
-            label={say("threadMessageMany", { count: t.messageCount })}
-          />
           <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
             {t.snoozedUntil && onSnooze ? (
               <span
@@ -1101,13 +1100,9 @@ function StackedRowBody({
           >
             <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
           </p>
+          <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
           {hasDraft ? <DraftBadge /> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-        <ThreadMessageCount
-          count={t.messageCount}
-          label={say("threadMessageMany", { count: t.messageCount })}
-        />
         {/* At rest: time (or wake time). On hover: read / snooze / pin. */}
         <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
           {t.snoozedUntil && onSnooze ? (
@@ -1145,11 +1140,10 @@ function StackedRowBody({
           )}
           {rowActions}
         </span>
-        </div>
       </div>
       <p
         className={cn(
-          "mt-0.5 truncate text-sm",
+          "truncate text-sm",
           t.unread && "font-semibold",
           onNavy ? "text-white/85" : "text-stone-700"
         )}
@@ -1158,7 +1152,7 @@ function StackedRowBody({
       </p>
       <p
         className={cn(
-          "mt-0.5 flex min-w-0 items-center gap-1.5 text-xs",
+          "flex min-w-0 items-center gap-1.5 text-xs",
           onNavy ? "text-white/45" : "text-[#908985]"
         )}
       >
@@ -1244,17 +1238,87 @@ function WideRowBody({
   withYear: boolean;
   rowActions: React.JSX.Element;
 }) {
+  const time = (
+    <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
+      {t.snoozedUntil && onSnooze ? (
+        <span
+          className={atRestClass}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <SnoozeMenu
+            onSnooze={onSnooze}
+            onCancelSnooze={onCancelSnooze}
+            currentUntil={t.snoozedUntil}
+            trigger={
+              <button
+                type="button"
+                className={snoozeBtn}
+                title={say("changeSnooze")}
+              >
+                <Clock className="h-3 w-3" aria-hidden />
+                {formatSnoozeWakeLabel(t.snoozedUntil)}
+              </button>
+            }
+          />
+        </span>
+      ) : (
+        <p
+          className={cn(
+            atRestClass,
+            "w-[4.5rem] text-right text-xs tabular-nums",
+            withYear && "w-[6rem]",
+            onNavy ? "text-white/40" : "text-stone-400"
+          )}
+        >
+          {rowTime(t.lastAt, { withYear })}
+        </p>
+      )}
+      {rowActions}
+    </span>
+  );
+  /*
+    Wide and not compact, as a reader scans it: the subject first, then who
+    and how many mails, and the message's first words on the line under.
+  */
+  if (!compact) {
+    return (
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="flex min-w-0 items-baseline gap-1.5 text-sm">
+            <span className={cn("min-w-0 shrink truncate font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+              <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
+            </span>
+            <span className={cn("min-w-0 max-w-[40%] shrink-0 truncate", onNavy ? "text-white/60" : "text-stone-500")}>
+              <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+            </span>
+            <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
+            {hasDraft ? <DraftBadge /> : null}
+          </p>
+          <p className={cn("truncate text-[13px]", onNavy ? "text-white/45" : "text-[#908985]")}>
+            {t.hasCalendarInvite ? (
+              <Calendar className="mr-1 inline h-3.5 w-3.5 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80" aria-label={t.calendarInviteWhen || "Calendar invite"} />
+            ) : null}
+            {t.hasAttachments ? (
+              <Paperclip className="mr-1 inline h-3.5 w-3.5 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)]" aria-label={say("hasAttachments")} />
+            ) : null}
+            {poppedOut ? null : <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />}
+          </p>
+        </div>
+        {poppedOut ? <PoppedOutBadge /> : null}
+        {time}
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div className="flex min-w-0 items-center gap-3">
-        <p
-          className={cn(
-            "w-[10rem] shrink-0 truncate text-sm font-semibold",
-            onNavy ? "text-white" : "text-stone-900"
-          )}
-        >
-          <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
-        </p>
+        <span className="flex w-[10rem] shrink-0 items-center gap-1.5">
+          <p className={cn("min-w-0 truncate text-sm font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+            <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+          </p>
+          <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
+        </span>
         {hasDraft ? <DraftBadge /> : null}
         {compact && t.hasCalendarInvite ? (
           <span
@@ -1304,101 +1368,8 @@ function WideRowBody({
           ) : null}
         </p>
         {poppedOut ? <PoppedOutBadge /> : null}
-        <ThreadMessageCount
-          count={t.messageCount}
-          label={say("threadMessageMany", { count: t.messageCount })}
-        />
-        <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
-          {t.snoozedUntil && onSnooze ? (
-            <span
-              className={atRestClass}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <SnoozeMenu
-                onSnooze={onSnooze}
-                onCancelSnooze={onCancelSnooze}
-                currentUntil={t.snoozedUntil}
-                trigger={
-                  <button
-                    type="button"
-                    className={snoozeBtn}
-                    title={say("changeSnooze")}
-                  >
-                    <Clock className="h-3 w-3" aria-hidden />
-                    {formatSnoozeWakeLabel(t.snoozedUntil)}
-                  </button>
-                }
-              />
-            </span>
-          ) : (
-            <p
-              className={cn(
-                atRestClass,
-                "w-[4.5rem] text-right text-xs tabular-nums",
-                withYear && "w-[6rem]",
-                onNavy ? "text-white/40" : "text-stone-400"
-              )}
-            >
-              {rowTime(t.lastAt, { withYear })}
-            </p>
-          )}
-          {rowActions}
-        </span>
+        {time}
       </div>
-      {compact ||
-      poppedOut ||
-      !(t.snippet || t.hasCalendarInvite || t.hasAttachments) ? null : (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="w-[10rem] shrink-0" aria-hidden />
-          {t.hasCalendarInvite ? (
-            <span
-              className="inline-flex shrink-0"
-              title={t.calendarInviteWhen || "Calendar invite"}
-            >
-              <Calendar
-                className={cn(
-                  "h-3.5 w-3.5 stroke-[1.5]",
-                  "text-[var(--mail-chrome-muted)] opacity-80"
-                )}
-                aria-hidden
-              />
-            </span>
-          ) : null}
-          {t.hasAttachments ? (
-            <span
-              className={cn(
-                "inline-flex shrink-0",
-                t.hasCalendarInvite ? "-ml-[5px]" : "-ml-0.5"
-              )}
-              title={say("hasAttachments")}
-            >
-              <Paperclip
-                className={cn(
-                  "h-3.5 w-3.5 stroke-[1.5]",
-                  "text-[var(--mail-chrome-muted)]"
-                )}
-                aria-hidden
-              />
-            </span>
-          ) : null}
-          <p
-            className={cn(
-              "min-w-0 flex-1 truncate text-xs",
-              onNavy ? "text-white/45" : "text-[#908985]"
-            )}
-          >
-            <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
-          </p>
-          <span
-            className={cn(
-              "w-[4.5rem] shrink-0",
-              withYear && "w-[6rem]"
-            )}
-            aria-hidden
-          />
-        </div>
-      )}
     </div>
   );
 }

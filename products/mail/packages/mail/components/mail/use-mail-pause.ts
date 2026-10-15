@@ -71,6 +71,16 @@ function withAccountRow(
   return next;
 }
 
+/**
+ * Give one mailbox hours of its own, from outside the pause menu: the
+ * rhythm asked for when a mailbox is connected (account-rhythm.ts). An
+ * empty list is hours of its own that are none — fetching around the
+ * clock, whatever All's hours say.
+ */
+export function setAccountQuietHours(email: string, windows: MailQuietWindow[]): void {
+  write(withAccountRow(read(), email, (row) => ({ ...row, quietHours: windows })));
+}
+
 export function useMailPause(): {
   state: MailPauseState;
   verdict: MailPauseVerdict;

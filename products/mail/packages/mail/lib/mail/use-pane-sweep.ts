@@ -77,14 +77,27 @@ export function usePaneSweep(
   atRef.current = at;
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
+  /*
+    A snap is settled before the frame is painted. In the effect below it
+    came a frame late: the list pinned from a peek had stopped peeking and
+    was not yet in place, so for one frame it was gone.
+  */
+  const snapped = React.useRef<boolean | null>(null);
+  React.useLayoutEffect(() => {
+    if (!booted.current) return;
+    if (optsRef.current?.snapWhen?.(target)) {
+      snapped.current = target;
+      setAt(target);
+      setMounted(target);
+    }
+  }, [target]);
   React.useEffect(() => {
     if (!booted.current) {
       booted.current = true;
       return;
     }
-    if (optsRef.current?.snapWhen?.(target)) {
-      setAt(target);
-      setMounted(target);
+    if (snapped.current === target) {
+      snapped.current = null;
       return;
     }
     if (optsRef.current?.flag) setMailPaneSliding(true);

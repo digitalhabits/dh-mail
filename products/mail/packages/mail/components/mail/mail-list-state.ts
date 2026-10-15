@@ -523,6 +523,11 @@ export function isMailboxScopeAll(selected: string[], accounts: string[]): boole
   return selected.length === 0 || selected.length >= accounts.length;
 }
 
+/** One mailbox's tab is chosen, not All. */
+export function isMailboxScopeOne(selected: string[], accounts: string[]): boolean {
+  return selected.length === 1 && !isMailboxScopeAll(selected, accounts);
+}
+
 export function accountPassesMailboxScope(
   account: string,
   selected: string[],

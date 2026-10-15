@@ -85,6 +85,12 @@ export const SNAP_HIDE_LIST_HEIGHT = 100;
 const SNAP_FILL_LIST_PX = 48;
 /** How far past the reader's room a drag goes before the list takes the pane. */
 const SNAP_EXPAND_LIST_PX = 72;
+/** The list's drag, past the reader's room: on the page, for mail.css. */
+function showListSnap(state: "near" | "go" | null): void {
+  const root = document.documentElement;
+  if (state) root.dataset.mailListSnap = state;
+  else delete root.dataset.mailListSnap;
+}
 /** Divider thickness reserved so the list can still be dragged back. */
 const LIST_DIVIDER_PX = 8;
 const MAIL_COMPOSER_WIDTH_KEY = "redd-plan-mail-composer-width-pct";
@@ -490,11 +496,20 @@ export function useMailListWidth(options: {
           escapedNarrow ? undefined : NARROW_LIST_WIDTH
         );
         if (size > 0) setWidth(size);
+        /*
+          Said while it can still be undone: the list stops at the reader's
+          room, and dragged on past it, takes the whole pane when let go.
+          Nothing showed that, so a list that would not grow looked like the
+          end. Past the room the reader dims ("near"); far enough past, it
+          says to let go ("go") — mail.css, .mail-list-snap-hint.
+        */
+        showListSnap(pastTheEnd(e.clientX) ? "go" : rawAt(e.clientX) > maxWidth ? "near" : null);
       };
       /** Dragged on past the reader's room: the list takes the pane. */
       const pastTheEnd = (clientX: number) =>
         (!fromNarrow || escapedNarrow) && rawAt(clientX) >= maxWidth + SNAP_EXPAND_LIST_PX;
       const onUp = (e: PointerEvent) => {
+        showListSnap(null);
         if (pastTheEnd(e.clientX)) {
           // The width the drag began at comes back when the list is let go of.
           persistWidth(startWidth);

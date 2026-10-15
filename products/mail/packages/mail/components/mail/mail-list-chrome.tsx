@@ -668,22 +668,23 @@ export function FilterRow({
 }) {
   const {
     filtersShowing,
-    listChromeOnToolbar,
   } = m;
+  // Here only with one mailbox; with more, before their tabs.
+  const ownsFolders = foldersButton != null;
   return (
-    listChromeOnToolbar && !filtersShowing ? null : (
-    /* The tabs, then the folders at the right end, under the button that
-       hides the list, as Outlook has Focused and Other. The light line
+    !filtersShowing && !ownsFolders ? null : (
+    /* The tabs, then the folders at the right end when there is no
+       mailbox row for them, as Outlook has Focused and Other. The light line
        runs the whole width of the list: the row reaches out over the
        head's padding (px-5) and takes it back. An inset shadow and not a
        border, so the selected tab's underline is drawn over it. */
     <div className="-mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
       {filtersShowing ? filterChips : null}
-      {/* Centred under the hide button, which stands 9px out past the
-          edge and is 28px wide; this one is 32px. Level with the tab
-          words: a tab is 30px from its underline up, with the words'
-          middle 16px above the line, which is this button's middle. */}
-      {listChromeOnToolbar ? null : <div className="-mr-[11px] ml-auto shrink-0">{foldersButton}</div>}
+      {/* Its glyph level with the times at the end of the rows. Level
+          with the tab words: a tab is 30px from its underline up, with
+          the words' middle 16px above the line, which is this button's
+          middle. */}
+      {ownsFolders ? <div className="-mr-[11px] ml-auto shrink-0">{foldersButton}</div> : null}
     </div>
   )
   );
@@ -735,14 +736,14 @@ export function ListTabsOrFolder({
   m,
   accountTabs,
   filterRow,
-  hideButton,
+  foldersButton,
   accountTabsShowing,
 }: {
   m: MailPageModel;
   accountTabs: React.ReactNode;
   filterRow: React.ReactNode;
-  /** The list's hide button, at the end of the tabs. */
-  hideButton: React.ReactNode;
+  /** The way to the folders, before the mailbox tabs; null when it stands elsewhere. */
+  foldersButton: React.ReactNode;
   /** Whether the mailbox row shows: more than one mailbox connected, hidden ones counted. */
   accountTabsShowing: boolean;
 }) {
@@ -816,14 +817,7 @@ export function ListTabsOrFolder({
     <div className="text-sm">{filterRow}</div>
     </>
   ) : (
-    <div
-      className={cn(
-        "text-sm",
-        // Room for the mailbox row under New email. One mailbox has no
-        // such row, so the filter row's own margin is enough.
-        !listVertical && accountTabsShowing && "mt-[13px]"
-      )}
-    >
+    <div className="text-sm">
       {/*
         Two rows, and the second one grows when it is asked to.
 
@@ -846,17 +840,23 @@ export function ListTabsOrFolder({
         the evening still counts, or the row that shows it again would go
         with it.
       */}
+      {/*
+        Level with the reader beside it: the tabs' top with the top of its
+        row of actions, and the line under the filters with the foot of
+        its subject (the 16px under the tabs, which takes in the filter
+        row's own 8px, puts it there).
+      */}
       {accountTabsShowing ? (
-      <div className="flex items-center gap-2">
+      <div className={cn("flex items-center gap-1", !listVertical && "mb-4")}>
+        {/* The folders first: they are the mailboxes' own. The glyph,
+            not the button, is level with the row's left edge. */}
+        {foldersButton ? <div className="-ml-2 shrink-0">{foldersButton}</div> : null}
         {/* The row scrolls when the mailboxes outrun it; the button beside it does not move. */}
         <div className="min-w-0 flex-1">
           {accountTabs}
         </div>
-        {hideButton}
       </div>
-      ) : (
-        <div className="flex justify-end">{hideButton}</div>
-      )}
+      ) : null}
 
       {/*
         The filters go under the tabs, not beside them.

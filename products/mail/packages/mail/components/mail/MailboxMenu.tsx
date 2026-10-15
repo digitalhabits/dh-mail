@@ -19,13 +19,16 @@ import { Check, ChevronLeft, ChevronRight, Eye, EyeOff, Image as ImageIcon, Rota
 
 import { POINTER_MENU_ICON, POINTER_MENU_ITEM, PointerMenu } from "@/components/mail/PointerMenu";
 import { formatSnoozeClock, formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
-import { FrictionPanel, QuietHoursPanel, frictionSummary } from "@/components/mail/pause-panels";
+import { FrictionPanel, QuietHoursPanel, frictionSummary, hideAgainLabel, useOnHoursWords } from "@/components/mail/pause-panels";
+import { ShownTile } from "@/components/mail/hours-icons";
+import { onHoursSummary } from "@/lib/mail/account-rhythm";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { SCHEDULE_DAY_LABELS } from "@/lib/mail/custom-lists";
+import { HIDE_AGAIN_OPTIONS, scheduleWindowEnd } from "@/lib/mail/mailbox-hide";
 import { useMailT } from "@/lib/mail/i18n";
 import { readPauseOptions } from "@/lib/mail/pause-options";
 import type { PauseLock } from "@/lib/mail/pause-lock";
-import { mailPauseOptions, quietHoursSummary } from "@/lib/mail/quiet-hours";
+import { mailPauseOptions } from "@/lib/mail/quiet-hours";
 
 type Panel = "main" | "hide" | "schedule" | "friction";
 
@@ -73,12 +76,33 @@ export function MailboxMenu({
   const frictionLock = lockWhen(
     Boolean(hide?.hidden.some((other) => !hide.statusOf(other).byHand))
   );
+  /*
+    "Show in Mail for 15 minutes" when "Hide again after" will hide it
+    again before its own time or window would have; "Show in Mail now"
+    when that ends sooner anyway, or when it was hidden by hand (no clock
+    hides that again).
+  */
+  const hideAgain = hide?.hideAgainMinutes ?? 0;
+  const showLabel = (() => {
+    if (!hide || !status?.hidden || status.byHand || hideAgain <= 0) return t("showMailboxNow");
+    const now = new Date();
+    const ownEnd =
+      status.reason === "until"
+        ? (status.until?.getTime() ?? null)
+        : scheduleWindowEnd(hide.hoursOf(email), now);
+    const cut = now.getTime() + hideAgain * 60_000;
+    return ownEnd != null && ownEnd <= cut
+      ? t("showMailboxNow")
+      : t("showMailboxFor", { duration: hideAgainLabel(hideAgain, t) });
+  })();
   const options = React.useMemo(
     () => mailPauseOptions(new Date(), (key) => t(key), formatSnoozeClock, formatSnoozeDayTime, readPauseOptions()),
     [t]
   );
   const hours = hide?.hoursOf(email) ?? [];
-  const scheduleLine = hours.length ? quietHoursSummary(hours, (k) => t(k), SCHEDULE_DAY_LABELS) : t("quietHoursNone");
+  // When it is shown, never when it is not: "07:15 – 18:00 daily", or Always.
+  const hoursWords = useOnHoursWords();
+  const scheduleLine = onHoursSummary(hours, hoursWords, SCHEDULE_DAY_LABELS) ?? t("hoursAlways");
   const statusLine = !status?.hidden
     ? null
     : status.byHand
@@ -111,7 +135,7 @@ export function MailboxMenu({
       <PointerMenu x={x} y={y} onDismiss={onDismiss} className="w-[22rem] py-0">
         <QuietHoursPanel
           hiding
-          title={t("hideScheduleTitle")}
+          title={t("hoursShownTitle")}
           windows={hours}
           lock={scheduleLock}
           account={null}
@@ -135,6 +159,11 @@ export function MailboxMenu({
           onBack={() => setPanel("hide")}
           title={t("hideFrictionTitle")}
           explain={t("hideFrictionExplain")}
+          after={{
+            minutes: hide.hideAgainMinutes,
+            options: HIDE_AGAIN_OPTIONS,
+            onChange: hide.setHideAgainMinutes,
+          }}
         />
       </PointerMenu>
     );
@@ -190,9 +219,12 @@ export function MailboxMenu({
           </button>
         ) : null}
         <button type="button" className={`${row} border-t border-stone-100`} onClick={() => openSchedule("hide")}>
-          <span className="min-w-0">
-            <span className="block text-sm text-stone-800">{t("quietHours")}</span>
-            <span className="block truncate text-xs text-stone-500">{scheduleLine}</span>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <ShownTile />
+            <span className="min-w-0">
+              <span className="block text-sm text-stone-800">{t("hoursShownTitle")}</span>
+              <span className="block truncate text-xs text-stone-500">{scheduleLine}</span>
+            </span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-stone-400" />
         </button>
@@ -214,11 +246,11 @@ export function MailboxMenu({
           {statusLine ? <p className="px-3 pb-1 pt-1 text-xs text-stone-500">{statusLine}</p> : null}
           <button type="button" role="menuitem" autoFocus className={POINTER_MENU_ITEM} onClick={done(() => hide.showNow(email))}>
             <Eye className={POINTER_MENU_ICON} aria-hidden />
-            {t("showMailboxNow")}
+            {showLabel}
           </button>
           <button type="button" role="menuitem" className={POINTER_MENU_ITEM} onClick={() => openSchedule("main")}>
             <ChevronRight className={POINTER_MENU_ICON} aria-hidden />
-            {t("quietHours")}
+            {t("hoursShownTitle")}
           </button>
           <div className="my-1 h-px bg-stone-100" role="separator" />
         </>
@@ -251,7 +283,7 @@ export function MailboxMenu({
             <span className="min-w-0">
               <span className="block">{t("hideMailboxMenu")}</span>
               {hours.length ? (
-                <span className="block truncate text-xs text-stone-500">{t("hiddenOnSchedule", { when: scheduleLine })}</span>
+                <span className="block truncate text-xs text-stone-500">{t("shownOnSchedule", { when: scheduleLine })}</span>
               ) : null}
             </span>
           </button>

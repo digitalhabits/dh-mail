@@ -571,6 +571,15 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      switch in the title bar. */
   --mail-segment-track: var(--cream-section);
   --mail-segment-track-strong: var(--cream-section);
+  /* A mailbox's hours: shown (the eye) and new mail arriving (the tray),
+     in their row icons, the week's bars and its key. */
+  --mail-shown-tile: #d3ebe6;
+  --mail-shown-stroke: #2f7f73;
+  --mail-fetch-tile: #2ab3a0;
+  --mail-fetch-stroke: #0f2f2b;
+  --mail-week-shown: #a8d6ce;
+  --mail-week-fetch: #2ab3a0;
+  --mail-week-hidden: rgba(120, 113, 108, 0.14);
   --mail-segment-active: #ffffff;
   /*
    * The mark a mailbox wears while it answers on its own.
@@ -586,6 +595,12 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      no arrow at all. */
   --mail-autoreply-fg: #ffffff;
   --mail-segment-active-fg: #1c1917;
+  /* The open folder in the folder rail: a fill, and a bold name with its
+     icon in the name's colour. Its own hover, a step quieter. */
+  --mail-folder-active: var(--mail-segment-active);
+  --mail-folder-active-fg: var(--mail-segment-active-fg);
+  --mail-folder-active-icon: var(--mail-segment-active-fg);
+  --mail-folder-hover: var(--mail-chrome-hover);
   --mail-segment-fg: rgb(87 83 78);
 
   /* Boxes that hold something rather than do something. */
@@ -703,10 +718,21 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 
   --mail-segment-track: #18222e;
   --mail-segment-track-strong: #0f1822;
+  --mail-shown-tile: #2b4b55;
+  --mail-shown-stroke: #7fd1c4;
+  --mail-fetch-tile: #2ab3a0;
+  --mail-fetch-stroke: #0f2f2b;
+  --mail-week-shown: #2b4b55;
+  --mail-week-fetch: #2ab3a0;
+  --mail-week-hidden: #18222e;
   --mail-autoreply: #8199ad;
   --mail-autoreply-fg: #16202b;
   --mail-segment-active: #33465c;
   --mail-segment-active-fg: #f3f6fa;
+  --mail-folder-active: #2b3e55;
+  --mail-folder-active-fg: #f3f6fa;
+  --mail-folder-active-icon: #f3f6fa;
+  --mail-folder-hover: #223349;
   --mail-segment-fg: #9fb2c4;
 
   --mail-field-border: #33465c;
@@ -845,7 +871,8 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 
 .mail-shell[data-theme="dark"] .bg-stone-100,
 .mail-shell[data-theme="dark"] .hover\:bg-stone-50:hover,
-.mail-shell[data-theme="dark"] .hover\:bg-stone-100:hover {
+.mail-shell[data-theme="dark"] .hover\:bg-stone-100:hover,
+.mail-shell[data-theme="dark"] .focus\:bg-stone-100:focus {
   background-color: var(--mail-u-hover);
 }
 
@@ -1005,6 +1032,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 .mail-shell[data-theme="dark"] .bg-red-50\/40,
 .mail-shell[data-theme="dark"] .bg-red-50\/50,
 .mail-shell[data-theme="dark"] .bg-rose-100,
+.mail-shell[data-theme="dark"] .bg-red-100,
 .mail-shell[data-theme="dark"] .hover\:bg-red-50:hover {
   background-color: var(--mail-u-danger-soft);
 }
@@ -1467,17 +1495,67 @@ html[data-dh-os="android"] .mail-phone .mail-phone-fab {
 .mail-shell[data-theme="dark"] .mail-avatar-neutral { background-color: rgba(231, 225, 218, 0.14); color: #e7e5e4; }
 
 /* The thread over the whole window (thread-full-window): the messages in a
-   column down the middle, as the Reader has them, not from edge to edge. */
+   column down the middle, as the Reader has them, not from edge to edge.
+   860px, or wider when a message's edge is dragged wider than that
+   (lib/mail/bubble-width): the column held every message to 860px, so
+   the drag did nothing here. The 80px is the room beside a message for
+   its actions.
+
+   Its left edge stays where it stands at 860px, and only the right edge
+   moves out: grown from the middle, it took the message off to the left
+   as its right edge was dragged to the right. Never past the window. */
+[data-thread-full-window] {
+  --mail-full-column: max(860px, calc(var(--mail-bubble-user-width, 0px) + 80px));
+}
 [data-thread-full-window] .mail-thread-column {
-  width: 100%;
-  max-width: 860px;
-  margin-inline: auto;
+  --mail-full-left: max(0px, calc((100% - 860px) / 2));
+  width: min(var(--mail-full-column), calc(100% - var(--mail-full-left)));
+  max-width: none;
+  margin-left: var(--mail-full-left);
+  margin-right: 0;
 }
 /* The reply tray, at the right edge of that column. */
 [data-thread-full-window] .mail-thread-reply-tray {
-  right: max(1.5rem, calc((100% - 860px) / 2));
+  right: max(1.5rem, calc(100% - max(0px, (100% - 860px) / 2) - var(--mail-full-column)));
 }
 /* The reply card, under that column. */
 [data-thread-full-window] .mail-composer-region {
-  padding-inline: max(2rem, calc((100% - 860px) / 2));
+  padding-left: max(2rem, calc((100% - 860px) / 2));
+  padding-right: max(2rem, calc(100% - max(0px, (100% - 860px) / 2) - var(--mail-full-column)));
+}
+
+/*
+ * The list dragged past the reader's room (use-mail-layout, showListSnap):
+ * the reader fades a little, and far enough past, says that letting go
+ * gives the list the whole pane.
+ */
+.mail-reading-pane > :not(.mail-list-snap-hint) {
+  transition: opacity 120ms ease;
+}
+html[data-mail-list-snap="near"] .mail-reading-pane > :not(.mail-list-snap-hint) {
+  opacity: 0.7;
+}
+html[data-mail-list-snap="go"] .mail-reading-pane > :not(.mail-list-snap-hint) {
+  opacity: 0.25;
+}
+.mail-list-snap-hint {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.mail-list-snap-hint > span {
+  border-radius: 9999px;
+  border: 1px solid var(--mail-chrome-border);
+  background: var(--mail-chrome);
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--mail-chrome-fg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+html[data-mail-list-snap="go"] .mail-list-snap-hint {
+  display: flex;
 }

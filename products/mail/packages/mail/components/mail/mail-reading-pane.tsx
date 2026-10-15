@@ -10,7 +10,6 @@
 
 import { HiddenMailboxesNotice } from "@/components/mail/mail-thread-list";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
-import { PersonBackButton } from "@/components/mail/person-back-button";
 import { ComposeView } from "@/components/mail/ComposeView";
 import { ThreadPane } from "@/components/mail/ThreadPane";
 import { SelectionPane } from "@/components/mail/SelectionPane";
@@ -21,7 +20,7 @@ import { MailRestPanel } from "@/components/mail/MailRestPanel";
 import { findCachedThread } from "@/lib/mail/list-cache";
 import { isMailPersonPinned, personOfOpenThread } from "@/lib/mail/person-pins";
 import { PersonPane } from "@/components/mail/PersonPane";
-import { patchCachedThreads } from "@/components/mail/mail-list-state";
+import { patchCachedThreads, isMailboxScopeOne } from "@/components/mail/mail-list-state";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 import {
   draftsInView,
@@ -234,21 +233,11 @@ export function ReadingPaneContent({
               key={`${threadKey(selected)}|${selected.focusMessageId ?? ""}`}
               account={selected.account}
               accounts={sendFrom}
+              oneMailbox={isMailboxScopeOne(mailboxScopeEmails, accountEmails)}
               threadId={selected.threadId}
               focusMessageId={selected.focusMessageId}
-              /* The way back to a list worth going back to, first in the
-                 toolbar. With one thread there is nothing behind it but the
-                 thread itself, so there is no button. */
-              toolbarLead={
-                viewMode === "people" && selectedPerson && selectedPerson.threads.length > 1 ? (
-                  <PersonBackButton
-                    row={selectedPerson}
-                    open={selected}
-                    onBack={() => setSelected(null)}
-                    onStep={openThread}
-                  />
-                ) : undefined
-              }
+              /* No way back to the person's threads here: an open stack
+                 shows them in the list, the open one marked (person-stack). */
               searchTerms={highlightTerms}
               zoom={zoom}
               onZoomAdjust={adjustZoom}

@@ -27,6 +27,7 @@ import type { MailStoreProvider } from "@/lib/mail/store/types";
 import { mailApiFetch } from "@/lib/mail/api";
 import { hasExchangeAccount } from "@/lib/mail/exchange-accounts";
 import { requestExchangeConnect } from "@/lib/mail/exchange-connect";
+import { announceMailboxConnected } from "@/lib/mail/mailbox-connected";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { useTeamUpdate } from "@/lib/mail/team-update";
 import { useWindowBackdrop } from "@/lib/mail/window-backdrop";
@@ -242,11 +243,14 @@ export function App() {
     try {
       // Exchange signs in with the password form, never in a browser.
       if (provider === "exchange" || (email && (await hasExchangeAccount(email)))) {
-        if (await requestExchangeConnect(email)) await load();
+        const exchange = await requestExchangeConnect(email);
+        if (exchange && !email) announceMailboxConnected(exchange);
+        if (exchange) await load();
         return;
       }
       const connected = await connectMailbox(provider, email);
       toast.success(`Connected ${connected.email}`);
+      if (!email) announceMailboxConnected(connected.email);
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't connect");

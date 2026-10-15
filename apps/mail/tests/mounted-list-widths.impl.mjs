@@ -185,11 +185,15 @@ async function main() {
       })
     );
     await sleep(700);
-    const senders = [...document.querySelectorAll("[data-thread-key] p")]
-      .filter((p) => p.className.includes("w-[10rem]"))
-      .map((p) => (p.textContent || "").trim());
-    assert(senders.includes("Merle Mikkelsen"), `each row names its sender in a column of its own: ${senders.join(", ")}`);
-    pass("wide enough, each row is one line, with the sender in a column of its own");
+    // The first line is the subject, then who wrote it: the row's first
+    // paragraph, with the sender's name after the subject.
+    const firstLines = [...document.querySelectorAll("[data-thread-key]")]
+      .map((row) => (row.querySelector("p")?.textContent || "").trim());
+    assert(
+      firstLines.some((line) => /Merle Mikkelsen/.test(line) && line.indexOf("Merle Mikkelsen") > 0),
+      `each row's first line is its subject and then its sender: ${firstLines.join(" | ")}`
+    );
+    pass("wide enough, each row is the subject and sender, with the preview under");
 
     root.unmount();
     process.exit(0);

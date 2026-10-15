@@ -20,6 +20,7 @@ export function PersonRowActions({
   onTogglePin,
   onArchive,
   onToggleRead,
+  className,
 }: {
   row: PersonRow;
   pinned: boolean;
@@ -29,6 +30,8 @@ export function PersonRowActions({
   onArchive?: () => void;
   /** Read when anything is unread; otherwise the newest back to unread. */
   onToggleRead: () => void;
+  /** Where they sit up and down: on the name's line when the row has more than one. */
+  className?: string;
 }) {
   const say = useMailT();
   const plain = onNavy
@@ -41,11 +44,14 @@ export function PersonRowActions({
       Over the row's right end, not beside it: beside, the row gave them its
       room as they showed, and the name, the badge and the line under them
       all moved. In the row's own colour, hovered or picked, so what is
-      under them does not show through.
+      under them does not show through: the solid one, as the open row's
+      fill in dark is a tint you can see through.
     */
     <span
-      className="absolute right-[14px] top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md pl-1.5 group-hover:flex"
-      style={{ backgroundColor: "inherit" }}
+      className={cn(
+        "absolute right-[14px] top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md bg-[var(--mail-person-stack-ring,transparent)] pl-1.5 group-hover:flex",
+        className
+      )}
     >
       <button
         type="button"

@@ -53,17 +53,17 @@ html[data-dh-os="windows"] .mail-titlebar-search {
   order: -1;
 }
 
-/* And the row stands in the same column as New email, rather than out over
-   the folders: the search box and the button under it are the two things
-   the reader reaches for first, and a column is easier to come back to than
-   a corner. MailPage stands the row there itself now; what this says is
-   only that there are no traffic lights here to keep out from under. */
+/* The button that hides the list stands at the window's left edge, there
+   whatever the folders are doing: no traffic lights here to keep out from
+   under. The row starts over the list column, as on a Mac, and keeps clear
+   of the button (12px, its 28px, and 8px). */
 html[data-dh-os="windows"] .mail-shell {
-  --mail-titlebar-left: var(--mail-list-controls-left, 12px);
+  --mail-titlebar-toggle-left: 12px;
+  --mail-titlebar-left: max(var(--mail-list-controls-left, 12px), 48px);
 }
 
-/* Following it at the speed of the rail, rather than jumping to the new
-   place while the rail is still sliding to it. */
+/* The row follows the list at the speed of the rail, rather than jumping
+   to the new place while the rail is still sliding to it. */
 html[data-dh-os="windows"] .mail-titlebar {
   transition: padding-left var(--mail-rail-slide, 0ms) ease-out;
 }

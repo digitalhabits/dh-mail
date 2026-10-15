@@ -16,8 +16,10 @@ import {
   hideStep,
   mailboxHideVerdict,
   MAILBOX_HIDE_DEFAULT,
+  normaliseHideAgainMinutes,
   readHideState,
   scheduleWindowEnd,
+  shownEarlyEnd,
   shownEarlyUntil,
   type MailboxHide,
   type MailboxHideState,
@@ -85,7 +87,19 @@ export type MailboxHideControls = {
   /** Shown early inside a schedule window: let the schedule hide it again. */
   resumeSchedule: (email: string) => void;
   setShowWords: (count: number) => void;
+  /** Shown early, hidden again after this many minutes; 0 is Never. */
+  hideAgainMinutes: number;
+  setHideAgainMinutes: (minutes: number) => void;
 };
+
+/**
+ * Set a mailbox's hiding schedule from outside the tabs: the rhythm asked
+ * for when a mailbox is connected (account-rhythm.ts). The page's clock
+ * hides and shows it from here on, as for a schedule set in its menu.
+ */
+export function setMailboxHiddenHours(email: string, windows: MailQuietWindow[]): void {
+  patchRow(email, (row) => ({ ...row, hours: windows.length ? windows : undefined, shownUntil: undefined }));
+}
 
 export function useMailboxHide({
   visible,
@@ -205,6 +219,7 @@ export function useMailboxHide({
   );
 
   const showWords = state.showWords ?? 0;
+  const hideAgainMinutes = state.hideAgainMinutes ?? 0;
 
   return {
     hidden: hiddenNow,
@@ -247,11 +262,24 @@ export function useMailboxHide({
           });
           if (!ok) return;
         }
+        /*
+          Shown until its own time or window would have ended, or sooner
+          with "Hide again after" set. A time kept with the hide-again cut
+          stays, so the mailbox hides again when the cut runs out; with no
+          cut it goes, as before.
+        */
+        const ownEnd =
+          verdict.reason === "schedule"
+            ? scheduleWindowEnd(row?.hours, now)
+            : verdict.reason === "until"
+              ? (row?.hiddenUntil ?? null)
+              : null;
+        const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, hideAgainMinutes, now) : null;
         patchRow(email, (r) => ({
           ...r,
-          hiddenUntil: undefined,
+          hiddenUntil: verdict.reason === "until" && hideAgainMinutes > 0 ? r.hiddenUntil : undefined,
           autoHidden: undefined,
-          shownUntil: verdict.reason === "schedule" ? (scheduleWindowEnd(r.hours, now) ?? undefined) : r.shownUntil,
+          shownUntil: verdict.hidden ? (shownEnd ?? undefined) : r.shownUntil,
         }));
         try {
           await flip(email, true);
@@ -264,8 +292,15 @@ export function useMailboxHide({
     setShowWords: (count) => {
       const state2 = read();
       const words = normaliseUnpauseWords(count);
-      const next: MailboxHideState = { accounts: state2.accounts, ...(words ? { showWords: words } : null) };
-      write(next);
+      const { showWords: _old, ...rest } = state2;
+      write({ ...rest, ...(words ? { showWords: words } : null) });
+    },
+    hideAgainMinutes,
+    setHideAgainMinutes: (minutes) => {
+      const state2 = read();
+      const value = normaliseHideAgainMinutes(minutes);
+      const { hideAgainMinutes: _old, ...rest } = state2;
+      write({ ...rest, ...(value ? { hideAgainMinutes: value } : null) });
     },
   };
 }

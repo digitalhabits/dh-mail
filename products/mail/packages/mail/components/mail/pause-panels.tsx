@@ -15,12 +15,23 @@ import {
   WEEKDAY_DAYS,
   type MailScheduleDay,
 } from "@/lib/mail/custom-lists";
-import { mailSay, useMailT } from "@/lib/mail/i18n";
+import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
+import {
+  ALWAYS_RULE,
+  daysPhrase,
+  isAllDay,
+  isOvernight,
+  keptCovers,
+  keptFromOnHours,
+  onHoursFromKept,
+  onRulePhrase,
+  sameWeek,
+  type OnHoursWords,
+} from "@/lib/mail/account-rhythm";
+import { MenuSelect } from "@/components/mail/menu-select";
 import {
   addQuietSuggestion,
   quietHoursFromElsewhere,
-  quietHoursLength,
-  quietSuggestionApplied,
   readPauseState,
   MAIL_QUIET_SUGGESTIONS,
   type MailQuietWindow,
@@ -58,11 +69,15 @@ export function QuietHoursPanel({
   onDone,
 }: {
   /**
-   * The panel is about hiding a mailbox, not pausing mail: its words say
-   * so, for a reader who could not tell whether the hours set were the
-   * ones it shows or the ones it is hidden.
+   * The panel is about when a mailbox is shown, not when new mail arrives:
+   * its words say so.
    */
   hiding?: boolean;
+  /**
+   * What the setting keeps: the hours it is off (hidden, or nothing
+   * fetched). The panel shows and edits the hours it is on, and hands back
+   * what to keep — see `onHoursFromKept` in account-rhythm.ts.
+   */
   windows: MailQuietWindow[];
   /** All's hours, for a mailbox that may follow them or stop following. */
   allWindows?: MailQuietWindow[];
@@ -74,9 +89,9 @@ export function QuietHoursPanel({
   onFollowAll?: (follow: boolean) => void;
   /** The row of account tabs above the hours, when there is one. */
   tabs?: React.ReactNode;
-  /** The heading; "Schedule" when not given. */
+  /** The heading; "New mail arrives" or "Shown in Mail" when not given. */
   title?: string;
-  /** What the hours do; the pause's words when not given. */
+  /** What the hours mean; the setting's own words when not given. */
   what?: string;
   onBack: () => void;
   onChange: (windows: MailQuietWindow[]) => void;
@@ -84,30 +99,56 @@ export function QuietHoursPanel({
 }) {
   const t = useMailT();
   const locked = useLockedEdits(lock);
+  const words = useOnHoursWords();
+  /*
+    The rules as the reader wrote them, kept while the panel is open. What
+    is saved is derived from them, and read back only when it changes from
+    outside — a suggestion, All's hours, another window — so a rule being
+    typed is not rewritten under the caret.
+  */
+  const rowsFor = (kept: MailQuietWindow[]) => {
+    const on = onHoursFromKept(kept);
+    return on.length ? on : [ALWAYS_RULE];
+  };
+  const [rows, setRows] = React.useState<MailQuietWindow[]>(() => rowsFor(windows));
+  const keptRef = React.useRef(windows);
+  React.useEffect(() => {
+    if (!sameWeek(windows, keptRef.current)) setRows(rowsFor(windows));
+    keptRef.current = windows;
+  }, [windows]);
+
   /** Every change goes through here: a looser one waits for the words. */
-  const change = (next: MailQuietWindow[]) =>
-    locked.attempt(scheduleLoosened(windows, next), () => onChange(next));
+  const keep = (nextKept: MailQuietWindow[], nextRows: MailQuietWindow[]) =>
+    locked.attempt(scheduleLoosened(windows, nextKept), () => {
+      keptRef.current = nextKept;
+      setRows(nextRows.length ? nextRows : [ALWAYS_RULE]);
+      onChange(nextKept);
+    });
+  const keepRows = (nextRows: MailQuietWindow[]) => keep(keptFromOnHours(nextRows), nextRows);
+  const keepKept = (nextKept: MailQuietWindow[]) => keep(nextKept, rowsFor(nextKept));
+
   const toggleFollowAll = onFollowAll
     ? (follow: boolean) =>
         locked.attempt(
           follow
             ? scheduleLoosened(windows, allWindows ?? [])
-            : // Its own hours start empty: none, until some are added.
+            : // Its own hours start as always, until some are set.
               scheduleLoosened(windows, []),
           () => onFollowAll(follow)
         )
     : undefined;
   const [adding, setAdding] = React.useState<MailQuietWindow | null>(null);
-  const suggestions = MAIL_QUIET_SUGGESTIONS.filter(
-    (suggestion) => !quietSuggestionApplied(windows, suggestion)
-  );
+  const suggestions = MAIL_QUIET_SUGGESTIONS.filter((suggestion) => !keptCovers(windows, suggestion.windows));
   // Hours set for another mailbox, for All, or for hiding: offered here too.
   const elsewhere = React.useMemo(() => quietHoursFromElsewhere(storedQuietHours(), windows), [windows]);
+  /** Only the one rule that means always: nothing to take away. */
+  const alwaysOnly = rows.length === 1 && isAllDay(rows[0]) && rows[0].days.length === 7;
+  const lineKey = hiding ? "hoursShownLine" : "hoursNewMailLine";
 
   const patch = (index: number, part: Partial<MailQuietWindow>) =>
-    change(
-      windows.map((window, i) => (i === index ? { ...window, ...part } : window))
-    );
+    keepRows(rows.map((window, i) => (i === index ? { ...window, ...part } : window)));
+  const note = (window: MailQuietWindow) =>
+    isAllDay(window) ? words.allDay : isOvernight(window) ? words.nextDay : "";
 
   return (
     <div className="p-3">
@@ -121,12 +162,12 @@ export function QuietHoursPanel({
           <ChevronLeft className="h-4 w-4" />
         </button>
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-          {title ?? t("quietHours")}
+          {title ?? t(hiding ? "hoursShownTitle" : "hoursNewMailTitle")}
         </p>
       </div>
       {tabs ? <div className="mt-2">{tabs}</div> : null}
       <p className="mt-2 border-t border-stone-100 pt-2 text-xs text-stone-600">
-        {what ?? t("quietHoursWhat")}
+        {what ?? t(hiding ? "hideScheduleWhat" : "quietHoursWhat")}
       </p>
       {locked.box}
       {account && toggleFollowAll ? (
@@ -147,11 +188,12 @@ export function QuietHoursPanel({
         ) : null}
         {followAll && account
           ? null
-          : windows.map((window, index) => (
+          : rows.map((window, index) => (
           <div key={index} className="rounded-lg bg-stone-50 p-2">
             <div className="flex items-center gap-2">
               <input
                 type="time"
+                aria-label={t("rhythmFrom")}
                 value={window.start}
                 onChange={(e) => patch(index, { start: e.target.value })}
                 className={quietTimeClass}
@@ -159,95 +201,56 @@ export function QuietHoursPanel({
               <span className="text-stone-400">–</span>
               <input
                 type="time"
+                aria-label={t("rhythmTo")}
                 value={window.end}
                 onChange={(e) => patch(index, { end: e.target.value })}
                 className={quietTimeClass}
               />
-              <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
-                {quietHoursName(window, t, hiding)}
-              </span>
-              <button
-                type="button"
-                aria-label={t("quietHoursRemove")}
-                title={t("quietHoursRemove")}
-                className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
-                onClick={() => change(windows.filter((_, i) => i !== index))}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <span className="min-w-0 flex-1 truncate text-xs text-stone-500">{note(window)}</span>
+              {alwaysOnly ? null : (
+                <button
+                  type="button"
+                  aria-label={t("rhythmRemoveHours")}
+                  title={t("rhythmRemoveHours")}
+                  className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
+                  onClick={() => keepRows(rows.filter((_, i) => i !== index))}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-            <DayCircles
-              days={window.days}
-              onToggle={(day) =>
-                patch(index, { days: toggleDay(window.days, day) })
-              }
-            />
+            <DayCircles days={window.days} onToggle={(day) => patch(index, { days: toggleDay(window.days, day) })} />
           </div>
         ))}
 
-        {/* Hours to take rather than hours to invent.
-            One press each, and what it comes to is a card like any other,
-            there to be changed or thrown away. A suggestion already
-            standing is not a suggestion, so it leaves the list. */}
+        {/* Hours to take rather than hours to invent. One press each; a
+            suggestion already standing is not a suggestion, so it leaves. */}
         {followAll && account ? null : suggestions.length || elsewhere.length ? (
           <div className="pt-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-              {t(hiding ? "hideSuggestions" : "quietSuggestions")}
+              {t("quietSuggestions")}
             </p>
             <div className="mt-1.5 flex flex-col gap-2">
               {suggestions.map((suggestion) => (
-                <button
+                <SuggestionCard
                   key={suggestion.id}
-                  type="button"
-                  title={t(hiding ? "hideSuggestionUse" : "quietSuggestionUse")}
-                  className="group flex items-center gap-2 rounded-lg border border-dashed border-stone-300 p-2 text-left hover:border-teal-600/60 hover:bg-teal-50/60"
-                  onClick={() => change(addQuietSuggestion(windows, suggestion))}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
-                      <span className="font-semibold text-stone-900">
-                        {suggestion.range}
-                      </span>{" "}
-                      <span className="text-stone-500">
-                        {t(suggestion.nameKey)}
-                      </span>
-                    </span>
-                    <span className="block truncate text-xs text-stone-500">
-                      {t(suggestion.whenKey)}
-                    </span>
-                  </span>
-                  <span
-                    aria-hidden
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-teal-600/60 text-teal-700 group-hover:bg-teal-700 group-hover:text-white"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </span>
-                </button>
+                  name={t(SUGGESTION_WORDS[suggestion.id].name)}
+                  line={t(lineKey, { hours: t(SUGGESTION_WORDS[suggestion.id].on) })}
+                  onAdd={() => keepKept(addQuietSuggestion(windows, suggestion))}
+                />
               ))}
               {elsewhere.map((window) => (
-                <button
+                <SuggestionCard
                   key={`${window.start}-${window.end}-${window.days.join()}`}
-                  type="button"
-                  title={t(hiding ? "hideSuggestionUse" : "quietSuggestionUse")}
-                  className="group flex items-center gap-2 rounded-lg border border-dashed border-stone-300 p-2 text-left hover:border-teal-600/60 hover:bg-teal-50/60"
-                  onClick={() => change([...windows, window])}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
-                      <span className="font-semibold text-stone-900">
-                        {window.start} – {window.end}
-                      </span>{" "}
-                      <span className="text-stone-500">{t("quietSetElsewhere")}</span>
-                    </span>
-                    <span className="block truncate text-xs text-stone-500">{quietHoursName(window, t, hiding)}</span>
-                  </span>
-                  <span
-                    aria-hidden
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-teal-600/60 text-teal-700 group-hover:bg-teal-700 group-hover:text-white"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </span>
-                </button>
+                  name={t("quietSetElsewhere")}
+                  line={t(lineKey, {
+                    hours: t("hoursExcept", {
+                      hours: `${window.start} – ${window.end}${isOvernight(window) ? ` ${words.nextDay}` : ""}`,
+                      days: daysPhrase(window.days, words, SCHEDULE_DAY_LABELS),
+                    }),
+                  })}
+                  onAdd={() => keepKept([...windows, window])}
+                />
               ))}
             </div>
           </div>
@@ -271,22 +274,13 @@ export function QuietHoursPanel({
                 className={quietTimeClass}
               />
             </div>
-            <DayCircles
-              days={adding.days}
-              onToggle={(day) =>
-                setAdding({ ...adding, days: toggleDay(adding.days, day) })
-              }
-            />
+            <DayCircles days={adding.days} onToggle={(day) => setAdding({ ...adding, days: toggleDay(adding.days, day) })} />
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-xs text-stone-500">
-                {quietHoursName(adding, t)}
+                {adding.days.length ? onRulePhrase(adding, words, SCHEDULE_DAY_LABELS) : ""}
               </span>
               <span className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  className="text-xs text-stone-500 hover:text-stone-800"
-                  onClick={() => setAdding(null)}
-                >
+                <button type="button" className="text-xs text-stone-500 hover:text-stone-800" onClick={() => setAdding(null)}>
                   {t("cancel")}
                 </button>
                 <button
@@ -294,7 +288,8 @@ export function QuietHoursPanel({
                   disabled={!adding.days.length}
                   className="rounded-md bg-teal-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
                   onClick={() => {
-                    change([...windows, adding]);
+                    // Hours added to "always" are the hours now, not more of always.
+                    keepRows(alwaysOnly ? [adding] : [...rows, adding]);
                     setAdding(null);
                   }}
                 >
@@ -307,13 +302,9 @@ export function QuietHoursPanel({
           <button
             type="button"
             className="rounded-lg border border-dashed border-teal-600/50 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50"
-            onClick={() =>
-              setAdding({ start: "09:00", end: "12:00", days: [...WEEKDAY_DAYS] })
-            }
+            onClick={() => setAdding({ start: "08:00", end: "17:00", days: [...WEEKDAY_DAYS] })}
           >
-            {accountLabel
-              ? t("quietHoursAddFor", { account: accountLabel })
-              : t(hiding ? "hideHoursAdd" : "quietHoursAdd")}
+            {accountLabel ? t("quietHoursAddFor", { account: accountLabel }) : t("quietHoursAdd")}
           </button>
         )}
       </div>
@@ -331,7 +322,53 @@ export function QuietHoursPanel({
   );
 }
 
-function DayCircles({
+/** Each suggestion's name, and its hours said as the hours on. */
+const SUGGESTION_WORDS: Record<string, { name: MailStringKey; on: MailStringKey }> = {
+  nights: { name: "quietNightsName", on: "quietNightsOn" },
+  worklife: { name: "quietWorkLifeName", on: "quietWorkLifeOn" },
+  mornings: { name: "quietFocusMorningsName", on: "quietFocusMorningsOn" },
+  weekend: { name: "quietWeekendsOffName", on: "quietWeekendsOffOn" },
+};
+
+function SuggestionCard({ name, line, onAdd }: { name: string; line: string; onAdd: () => void }) {
+  const t = useMailT();
+  return (
+    <button
+      type="button"
+      title={t("quietSuggestionUse")}
+      className="group flex items-center gap-2 rounded-lg border border-dashed border-stone-300 p-2 text-left hover:border-teal-600/60 hover:bg-teal-50/60"
+      onClick={onAdd}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-stone-900">{name}</span>
+        <span className="block text-xs text-stone-500">{line}</span>
+      </span>
+      <span
+        aria-hidden
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-teal-600/60 text-teal-700 group-hover:bg-teal-700 group-hover:text-white"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </span>
+    </button>
+  );
+}
+
+/** The words a rule is said in, in the reader's language. */
+export function useOnHoursWords(): OnHoursWords {
+  const t = useMailT();
+  return React.useMemo(
+    () => ({
+      allDay: t("hoursAllDay"),
+      nextDay: t("hoursNextDay"),
+      daily: t("everyDayShort"),
+      weekdays: t("weekdaysShort"),
+      weekends: t("weekendsShort"),
+    }),
+    [t]
+  );
+}
+
+export function DayCircles({
   days,
   onToggle,
 }: {
@@ -391,37 +428,7 @@ function toggleDay(
     : [...days, day].sort((a, b) => a - b);
 }
 
-/** "Weekdays, 3 hours quiet" — what the row comes to, in words. */
-function quietHoursName(
-  window: MailQuietWindow,
-  t: (key: "everyDayShort" | "weekdaysShort" | "weekendsShort" | "quietHoursLong") => string,
-  /** For hiding a mailbox: "3 hours hidden", not quiet. */
-  hiding = false
-): string {
-  const days = [...window.days].sort((a, b) => a - b);
-  const named =
-    !days.length
-      ? ""
-      : days.length === 7
-        ? t("everyDayShort")
-        : days.join() === "0,1,2,3,4"
-          ? t("weekdaysShort")
-          : days.join() === "5,6"
-            ? t("weekendsShort")
-            : days
-                .map((day) => SCHEDULE_DAY_LABELS.find((d) => d.day === day)?.label)
-                .filter(Boolean)
-                .join(" ");
-  const hours = quietHoursLength(window);
-  const length = hours
-    ? mailSay(hiding ? "hiddenHoursLong" : "quietHoursLong", {
-        hours: hours % 1 === 0 ? String(hours) : hours.toFixed(1),
-      })
-    : "";
-  return [named, length].filter(Boolean).join(", ");
-}
-
-const quietTimeClass =
+export const quietTimeClass =
   "h-7 w-[5.5rem] rounded-md border border-stone-300 bg-white px-1.5 text-sm font-semibold text-stone-900 focus:border-teal-600 focus:outline-none";
 
 /** "None", or "Type 5 random words · ~1 min". */
@@ -430,6 +437,14 @@ export function frictionSummary(words: number, t: ReturnType<typeof useMailT>): 
   return words === 1
     ? t("pauseFrictionSummaryOne")
     : t("pauseFrictionSummary", { count: words, minutes: unpauseMinutes(words) });
+}
+
+/** A "Hide again after" length in words: Never, 15 minutes, 1 hour, 8 hours. */
+export function hideAgainLabel(minutes: number, t: ReturnType<typeof useMailT>): string {
+  if (minutes === 0) return t("hideAgainNever");
+  if (minutes < 60) return t("hideAgainMinutes", { count: minutes });
+  if (minutes === 60) return t("hideAgainOneHour");
+  return t("hideAgainHours", { count: minutes / 60 });
 }
 
 /**
@@ -443,6 +458,7 @@ export function FrictionPanel({
   onBack,
   title,
   explain,
+  after,
 }: {
   words: number;
   /** While a pause runs: fewer words wait for the words (pause-lock.ts). */
@@ -452,9 +468,16 @@ export function FrictionPanel({
   /** The heading and the explanation; the pause's when not given. */
   title?: string;
   explain?: string;
+  /**
+   * "Hide again after", under the words: a mailbox's panel has it, the
+   * pause's does not. Minutes, 0 for Never. A longer time, or Never, is a
+   * looser setting, held back like fewer words while a lock is on.
+   */
+  after?: { minutes: number; options: readonly number[]; onChange: (minutes: number) => void };
 }) {
   const t = useMailT();
   const locked = useLockedEdits(lock);
+  const afterLabel = (minutes: number) => hideAgainLabel(minutes, t);
   return (
     <div className="p-3">
       <div className="flex items-center gap-1.5">
@@ -494,6 +517,24 @@ export function FrictionPanel({
           className="mt-2 w-full accent-teal-700"
         />
       </label>
+      {after ? (
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-stone-100 pt-3">
+          <span className="min-w-0">
+            <span className="block text-sm text-stone-800">{t("hideAgainAfter")}</span>
+            <span className="block text-xs leading-relaxed text-stone-500">{t("hideAgainHint")}</span>
+          </span>
+          <MenuSelect
+            ariaLabel={t("hideAgainAfter")}
+            value={after.minutes}
+            options={after.options.map((minutes) => ({ value: minutes, label: afterLabel(minutes) }))}
+            onChange={(next) => {
+              const looser = next === 0 ? after.minutes !== 0 : after.minutes !== 0 && next > after.minutes;
+              locked.attempt(looser, () => after.onChange(next));
+            }}
+            className="shrink-0"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

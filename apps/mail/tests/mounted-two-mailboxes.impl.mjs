@@ -169,6 +169,15 @@ async function main() {
     await sleep(600);
     const allTab = () => [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "All");
     assert(allTab(), "the mailbox row shows with one of two mailboxes hidden");
+    // The way to the folders stands before the mailbox tabs, and only there.
+    const folderButtons = [...document.querySelectorAll("button")].filter((b) =>
+      /^folders$/i.test(b.getAttribute("aria-label") || "")
+    );
+    assert.equal(folderButtons.length, 1, "one way to the folders");
+    assert(
+      folderButtons[0].compareDocumentPosition(allTab()) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "before the mailbox tabs"
+    );
     root.unmount();
     hiddenMailboxes.clear();
     pass("with two mailboxes connected and one hidden, the mailbox row stays");

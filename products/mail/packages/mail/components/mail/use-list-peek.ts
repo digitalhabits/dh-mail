@@ -136,16 +136,23 @@ export function useListPeek(hidden: boolean): ListPeek {
     /*
       A message is drawn in a frame of its own, and a pointer over a frame
       moves in the frame's document: this one hears no more moves, and the
-      list stayed out. Leaving the list is still heard here, so it goes
-      then — unless the pointer went on to something of ours.
+      list stayed out. Going into a frame is still heard here, so it goes
+      then — from wherever the pointer was. Heard only when it came from
+      the list, the list stayed out when the pointer crossed the strip
+      beside it (PEEK_MARGIN_PX) on its way into a message.
     */
     const onOut = (event: PointerEvent) => {
       if (event.buttons) return;
+      const to = event.relatedTarget;
+      if (to instanceof HTMLIFrameElement) {
+        if (!to.closest("[data-mail-peek]") && !to.closest(OUTSIDE_BUT_OURS)) setOn(false);
+        return;
+      }
+      // Out of the window altogether, from the list: it goes too. Anywhere
+      // else in this document, the moves above decide.
       const from = event.target;
       if (!(from instanceof Element) || !from.closest("[data-mail-peek]")) return;
-      const to = event.relatedTarget;
-      if (to instanceof Element && to.tagName !== "IFRAME") return;
-      if (to instanceof Element && (to.closest("[data-mail-peek]") || to.closest(OUTSIDE_BUT_OURS))) return;
+      if (to instanceof Element) return;
       setOn(false);
     };
     const onKey = (event: KeyboardEvent) => {

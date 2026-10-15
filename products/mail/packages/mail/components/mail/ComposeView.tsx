@@ -44,7 +44,7 @@ import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
 import { DraftAssistMenu, DraftAssistNotes, useAccountAssist } from "@/components/mail/team-layer";
 import { SignatureDialog } from "@/components/mail/SignatureDialog";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
-import { ZoomControls } from "@/components/mail/ZoomControls";
+import { ZoomTextSize } from "@/components/mail/ZoomControls";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
 import { textStyleVars, useTextStyleDefault } from "@/components/mail/use-text-style";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -246,7 +246,7 @@ export function ComposeView(props: ComposeViewProps) {
               className="mx-auto flex justify-end"
               style={{ width: cardW * zoom, maxWidth: "100%" }}
             >
-              <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
+              <ZoomTextSize zoom={zoom} onAdjust={onZoomAdjust} />
             </div>
           </div>
         )}

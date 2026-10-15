@@ -11,7 +11,7 @@ import { isOwnPersonalAddress, normalizeEmail } from "@/lib/own-addresses";
 import { type PersonRow } from "@/lib/mail/person-participants";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import { usePinchZoom } from "@/components/mail/use-mail-layout";
-import { ZoomControls } from "@/components/mail/ZoomControls";
+import { ZoomTextSize } from "@/components/mail/ZoomControls";
 import { Archive, Trash2 } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 import { threadDraftKey } from "@/lib/mail/local-drafts";
@@ -206,7 +206,7 @@ export function PersonPane({
           under the hand that was pressing it. Same reason the reader
           keeps its own pill on the toolbar rather than in the thread. */}
       <div className="flex shrink-0 items-center justify-end px-4 pt-3">
-        <ZoomControls zoom={zoom} onAdjust={onZoomAdjust} />
+        <ZoomTextSize zoom={zoom} onAdjust={onZoomAdjust} />
       </div>
       <div ref={pinchRef} className="min-h-0 flex-1 overflow-y-auto">
         <div

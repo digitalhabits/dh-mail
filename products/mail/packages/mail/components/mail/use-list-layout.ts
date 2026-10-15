@@ -114,6 +114,9 @@ export function useListLayout({
     railOnRight,
     listControlsLeft,
     titlebarLeft,
+    titlebarToggleLeft,
+    peekListControlsLeft,
+    peekTitlebarLeft,
     listBorderClass,
     railSlideDuration,
   } = useMailPaneGeometry({
@@ -181,6 +184,9 @@ export function useListLayout({
     railOnRight,
     listControlsLeft,
     titlebarLeft,
+    titlebarToggleLeft,
+    peekListControlsLeft,
+    peekTitlebarLeft,
     listBorderClass,
     railSlideDuration,
   };

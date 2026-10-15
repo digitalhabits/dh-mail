@@ -8,6 +8,7 @@ import {
   mailboxHideVerdict,
   readHideState,
   scheduleWindowEnd,
+  shownEarlyEnd,
   shownEarlyUntil,
 } from "@/lib/mail/mailbox-hide";
 
@@ -58,4 +59,20 @@ suite(async () => {
   check("with only the well-formed windows", read.accounts["alma@example.org"].hours.length === 1);
   check("and the friction count", read.showWords === 7);
   check("rubbish is no state", Object.keys(readHideState("nope").accounts).length === 0);
+
+  // Hide again after: an early show is cut short.
+  const noon = at(12);
+  const in10 = noon.getTime() + 10 * 60_000;
+  check("with Never, shown early lasts until its own end", shownEarlyEnd(at(14).getTime(), 0, noon) === at(14).getTime());
+  check("with 10 minutes, it hides again after 10", shownEarlyEnd(at(14).getTime(), 10, noon) === in10);
+  check("its own end comes first when sooner", shownEarlyEnd(at(12, 5).getTime(), 10, noon) === at(12, 5).getTime());
+  check("Never and no end of its own: nothing hides it", shownEarlyEnd(null, 0, noon) === null);
+  const untilTwo = { hiddenUntil: at(14).getTime(), shownUntil: in10 };
+  check("hidden until 14:00, shown early: not hidden now", !mailboxHideVerdict(untilTwo, at(12, 5)).hidden);
+  check("and hidden again once the 10 minutes are up", mailboxHideVerdict(untilTwo, at(12, 11)).hidden);
+  check("so the clock hides it again", hideStep(untilTwo, true, at(12, 11)) === "hide");
+  const cut = { ...evenings, shownUntil: at(20, 10).getTime() };
+  check("shown early in a window, hidden again when the cut runs out", mailboxHideVerdict(cut, at(20, 11)).hidden);
+  check("the setting is read when it is one of the menu's", readHideState({ accounts: {}, hideAgainMinutes: 30 }).hideAgainMinutes === 30);
+  check("and dropped when it is not", readHideState({ accounts: {}, hideAgainMinutes: 7 }).hideAgainMinutes === undefined);
 });

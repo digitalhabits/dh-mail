@@ -24,6 +24,7 @@
  * header, as in the thread.
  */
 
+import { TextSizePopover } from "@/components/mail/ZoomControls";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, CornerUpLeft, Forward, ReplyAll } from "lucide-react";
@@ -152,35 +153,19 @@ function ReaderBody({
   );
 }
 
-/** The "Aa" button and its two steps, smaller and bigger. */
+/** The "Aa" button and its two steps, smaller and bigger: as the thread's, with the reader's own sizes. */
 export function ReaderTextSize() {
   const t = useMailT();
   const [index, setIndex] = useReaderTextSize();
-  const [open, setOpen] = React.useState(false);
-  const step = "flex h-8 w-8 items-center justify-center rounded-full text-stone-600 hover:bg-stone-200/70 disabled:opacity-40";
   return (
-    <span className="relative">
-      <button
-        type="button"
-        aria-label={t("readerTextSize")}
-        title={t("readerTextSize")}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="rounded-md px-2 py-1 text-[15px] text-stone-600 hover:bg-stone-200/70"
-      >
-        Aa
-      </button>
-      {open ? (
-        <span className="absolute right-0 top-full z-10 mt-1 flex items-center gap-1 rounded-full border border-stone-200 bg-white p-1 shadow-sm">
-          <button type="button" aria-label={t("smallerText")} title={t("smallerText")} disabled={index <= 0} onClick={() => setIndex(index - 1)} className={cn(step, "text-[12px]")}>
-            A
-          </button>
-          <button type="button" aria-label={t("biggerText")} title={t("biggerText")} disabled={index >= READER_TEXT_SIZES.length - 1} onClick={() => setIndex(index + 1)} className={cn(step, "text-[17px]")}>
-            A
-          </button>
-        </span>
-      ) : null}
-    </span>
+    <TextSizePopover
+      label={t("readerTextSize")}
+      size={`${READER_TEXT_SIZES[index]}px`}
+      canSmaller={index > 0}
+      canBigger={index < READER_TEXT_SIZES.length - 1}
+      onSmaller={() => setIndex(index - 1)}
+      onBigger={() => setIndex(index + 1)}
+    />
   );
 }
 

@@ -505,31 +505,63 @@
   margin-top: 8px;
 }
 
-/* The pause picture without its empty left 30% and 5px more, so it starts
-   just before Sync, and 10px off the right. At the top and the foot the
-   frame's clear strips go (72 and 24 of its 2055 pixels' width, from
-   mail-readme-screenshots.mjs, FRAME), and 2px of the window more.
-   Narrower than its column. */
-.mail-shell.mail-welcome #eula-onboarding .welcome-picture-crop {
-  --crop: 0.3;
-  --crop-left: 5px;
-  --crop-right: 10px;
-  --crop-top: 2px;
-  --crop-bottom: 2px;
-  width: 80%;
-  justify-self: end;
-  overflow: hidden;
+/* Check mails on your own terms: the two features, each a button. The
+   chosen one stands on a card, and the picture beside them is of it. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.mail-shell.mail-welcome #eula-onboarding .welcome-picture-crop .welcome-step-picture {
-  --picture-width: calc((100% + var(--crop-left) + var(--crop-right)) / (1 - var(--crop)));
-  width: var(--picture-width);
-  max-width: none;
-  margin-left: calc(-1 * (var(--picture-width) * var(--crop) + var(--crop-left)));
-  /* Margins in per cent are of the width, and the picture is 2055 pixels
-     wide: 72/2055 and 24/2055 of it are the frame's clear strips. */
-  margin-top: calc(-1 * (var(--picture-width) * 72 / 2055 + var(--crop-top)));
-  margin-bottom: calc(-1 * (var(--picture-width) * 24 / 2055 + var(--crop-bottom)));
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choice.is-chosen {
+  border-color: var(--card-border);
+  background: var(--row-bg);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choice:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choice strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-choice strong + span {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Under the choices, in line with their words. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-feature-note {
+  padding-left: 59px;
+}
+
+/* Taken unframed and cut to the menu (mail-readme-screenshots.mjs), so it
+   needs no crop: an edge to set it off the card, and corners. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-quiet-picture {
+  margin-top: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
 }
 
 /* Find your way around: arrows from each name to its button in the picture. */
@@ -539,11 +571,11 @@
   column-gap: 40px;
 }
 
-/* The picture's frame leaves 36 of its 1020 pixels clear on the left
+/* The picture's frame leaves 36 of its 1002 pixels clear on the left
    (mail-readme-screenshots.mjs, FRAME.side): pulled left by that much, the
    window's edge lines up with the heading. */
 .mail-shell.mail-welcome #eula-onboarding .welcome-around .welcome-step-picture {
-  margin-left: calc(-36 / 1020 * 100%);
+  margin-left: calc(-36 / 1002 * 100%);
 }
 
 .mail-shell.mail-welcome #eula-onboarding .welcome-arrows {

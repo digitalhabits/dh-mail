@@ -1,9 +1,10 @@
 /**
  * The one-time welcome screen. Three short steps first show what other mail
  * apps do not have: stacked threads (Off and On side by side, to pick
- * one), new mail only when you choose (with the README's picture of the
- * pause menu, in the theme's light or dark), and the buttons that hide the
- * list and show folders and filters.
+ * one), mail on your own terms (pausing new mail and choosing when a
+ * mailbox is shown, each with a picture of where it lives, in the theme's
+ * light or dark), and the buttons that hide the list and show folders and
+ * filters.
  * After them, on its own screen, "Private by design": To-Do's WelcomeScreen, with the
  * same markup and class names, so the two stay alike.
  * Shown until accepted (and on every launch of a dev build, via alwaysShow),
@@ -12,15 +13,19 @@
  * there shows it to everyone again.
  */
 import * as React from "react";
-import { Folder, Funnel, PanelLeftClose } from "lucide-react";
+import { Folder, PanelLeft, Users } from "lucide-react";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
 import { useMailLang, type MailLang } from "@/lib/mail/i18n";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { openExternalUrl } from "@/lib/native-shell";
 
-import pausePictureDarkUrl from "../docs/screenshots/pause.png";
-import pausePictureLightUrl from "../docs/screenshots/pause-light.png";
+import { FetchTile, ShownTile } from "@/components/mail/hours-icons";
+
+import pausePictureDarkUrl from "../docs/screenshots/welcome-pause.png";
+import pausePictureLightUrl from "../docs/screenshots/welcome-pause-light.png";
+import showPictureDarkUrl from "../docs/screenshots/welcome-show.png";
+import showPictureLightUrl from "../docs/screenshots/welcome-show-light.png";
 import aroundPictureDarkUrl from "../docs/screenshots/around.png";
 import aroundPictureLightUrl from "../docs/screenshots/around-light.png";
 import aroundSpots from "../docs/screenshots/around-spots.json";
@@ -61,7 +66,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     step: "Step {n} of {total}",
     stacksTitle: "Less clutter in your inbox",
     stacksLead:
-      "When one sender has several threads in your inbox, Mail stacks them into one row. Three emails from your airline are one row, not three.",
+      "When one sender has several threads in your inbox, Mail stacks them into one row. Three emails from your airline are one row, not three. Click the stack to see each of them.",
     stacksTry: "Stack threads from the same sender",
     stacksOnRecommended: "On (recommended)",
     stacksOff: "Off",
@@ -80,17 +85,20 @@ const COPY: Record<MailLang, Record<string, string>> = {
     foldersTitle: "Folders",
     foldersBody: "Click to show the folders of all your mailboxes.",
     filterTitle: "Filter",
-    filterBody: "Click to see only mail from specific people, e.g. from your personal contacts.",
+    filterBody: "Click In Contacts to see only mail from people in your contacts. With + you make a list of your own.",
     quietTitle: "Check mails on your own terms",
     pauseTitle: "Pause new mail",
     pauseBody:
-      "Stop new emails for an hour, until tomorrow, or on a schedule. Use the menu next to Sync.",
-    hideTitle: "Hide a mailbox on a schedule",
-    hideBody: "For example, hide your work mailbox in the evening.",
+      "For example, stop new emails for an hour when you need to focus. Or choose that new email never arrives after 10pm.",
+    hideTitle: "Choose when a mailbox is shown",
+    hideBody: "For example, show your work mailbox only on weekdays.",
+    quietLater: "You can set pause/show hours for each account when you connect it.",
     aroundPictureAlt:
-      "The left of the Mail window: the folders, then the mail list with its buttons for folders and filter, and the button that hides the list",
+      "The left of the Mail window: the button that hides the list beside New email, the folders, and the mail list with its folders button and its tabs All, In Contacts and Other",
     pausePictureAlt:
-      "The pause menu next to Sync: pause for an hour, until tomorrow, until a time, or on a schedule, and friction to restart early",
+      "The menu next to Sync: pause new mail for an hour, until tomorrow, or until a time, the hours when new mail arrives, and friction to restart early",
+    showPictureAlt:
+      "A mailbox's menu, opened from its tab: hide it for an hour, until tomorrow, or until you show it, and the hours when it is shown in Mail",
   },
   da: {
     title: "Velkommen til Digital Habits: Mail",
@@ -115,7 +123,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     step: "Trin {n} af {total}",
     stacksTitle: "Mindre rod i din indbakke",
     stacksLead:
-      "Når én afsender har flere tråde i din indbakke, samler Mail dem i én række. Tre e-mails fra dit flyselskab er én række, ikke tre.",
+      "Når én afsender har flere tråde i din indbakke, samler Mail dem i én række. Tre e-mails fra dit flyselskab er én række, ikke tre. Klik på stakken for at se hver af dem.",
     stacksTry: "Saml tråde fra samme afsender",
     stacksOnRecommended: "Til (anbefalet)",
     stacksOff: "Fra",
@@ -132,17 +140,20 @@ const COPY: Record<MailLang, Record<string, string>> = {
     foldersTitle: "Mapper",
     foldersBody: "Klik for at vise mapperne fra alle dine postkasser.",
     filterTitle: "Filter",
-    filterBody: "Klik for kun at se post fra bestemte personer, f.eks. fra dine personlige kontakter.",
+    filterBody: "Klik på I Kontakter for kun at se post fra personer i dine kontakter. Med + laver du din egen liste.",
     quietTitle: "Tjek din post på dine egne præmisser",
     pauseTitle: "Sæt ny post på pause",
     pauseBody:
-      "Stop nye e-mails i en time, til i morgen eller efter en tidsplan. Brug menuen ved siden af Synkroniser.",
-    hideTitle: "Skjul en postkasse efter en tidsplan",
-    hideBody: "Skjul for eksempel din arbejdspostkasse om aftenen.",
+      "Stop for eksempel nye e-mails i en time, når du skal fokusere. Eller vælg, at ny e-mail aldrig kommer efter kl. 22.",
+    hideTitle: "Vælg, hvornår en postkasse vises",
+    hideBody: "Vis for eksempel kun din arbejdspostkasse på hverdage.",
+    quietLater: "Du kan vælge tider for pause og visning for hver konto, når du forbinder den.",
     aroundPictureAlt:
-      "Venstre side af Mail-vinduet: mapperne, så postlisten med dens knapper til mapper og filter, og knappen der skjuler listen",
+      "Venstre side af Mail-vinduet: knappen der skjuler listen ved siden af Ny e-mail, mapperne, og postlisten med dens knap til mapper og dens faner Alle, I Kontakter og Andre",
     pausePictureAlt:
-      "Pausemenuen ved siden af Synkroniser: pause i en time, til i morgen, til et tidspunkt eller efter en tidsplan, og modstand mod at starte igen før tid",
+      "Menuen ved siden af Synkroniser: sæt ny post på pause i en time, til i morgen eller til et tidspunkt, tiderne hvor ny post kommer, og modstand mod at starte igen før tid",
+    showPictureAlt:
+      "En postkasses menu, åbnet fra dens fane: skjul den i en time, til i morgen eller til du viser den, og tiderne hvor den vises i Mail",
   },
 };
 
@@ -196,18 +207,24 @@ function AroundStep({ t, pictureUrl }: { t: Record<string, string>; pictureUrl: 
     spot: Spot;
     /** How far the curve's middle moves down (up when below 0), in pixels. */
     bend: number;
+    /** Comes straight down onto the button, for one with neighbours either side. */
+    fromAbove?: boolean;
   }[] = [
     {
-      icon: PanelLeftClose,
+      icon: PanelLeft,
       title: t.hideListTitle,
       body: t.hideListBody,
       spot: aroundSpots.hideList,
-      bend: -12,
+      // Over the title bar and down onto the button, not across New email.
+      bend: 0,
+      fromAbove: true,
     },
-    // Folders and Filter sit side by side: their arrows dip and come up from
-    // below, so the one to Folders does not run over Filter.
-    { icon: Funnel, title: t.filterTitle, body: t.filterBody, spot: aroundSpots.filter, bend: 30 },
-    { icon: Folder, title: t.foldersTitle, body: t.foldersBody, spot: aroundSpots.folders, bend: 60 },
+    // In the order the buttons stand, top to bottom, so no arrow crosses
+    // another: the folders before the tabs, the tabs under them.
+    { icon: Folder, title: t.foldersTitle, body: t.foldersBody, spot: aroundSpots.folders, bend: -10 },
+    // No button of its own: the list's tabs. People, for what they filter by.
+    // Arched over the rows rather than through them.
+    { icon: Users, title: t.filterTitle, body: t.filterBody, spot: aroundSpots.filter, bend: -40 },
   ];
 
   const draw = React.useCallback(() => {
@@ -226,10 +243,12 @@ function AroundStep({ t, pictureUrl }: { t: Record<string, string>; pictureUrl: 
         const sx = picture.left - box.left + item.spot.x * picture.width;
         const sy = picture.top - box.top + item.spot.y * picture.height;
         const len = Math.hypot(sx - fx, sy - fy) || 1;
-        const tx = sx - ((sx - fx) / len) * 16;
-        const ty = sy - ((sy - fy) / len) * 16;
-        const mx = (fx + tx) / 2;
-        const my = (fy + ty) / 2 + item.bend;
+        const tx = item.fromAbove ? sx : sx - ((sx - fx) / len) * 16;
+        const ty = item.fromAbove ? sy - 14 : sy - ((sy - fy) / len) * 16;
+        // From above: the bend's point is over the button, so the curve
+        // ends going straight down.
+        const mx = item.fromAbove ? tx : (fx + tx) / 2;
+        const my = item.fromAbove ? Math.min(fy, ty) - 40 : (fy + ty) / 2 + item.bend;
         const angle = Math.atan2(ty - my, tx - mx);
         const head = (turn: number) =>
           `${tx - 9 * Math.cos(angle + turn)},${ty - 9 * Math.sin(angle + turn)}`;
@@ -323,12 +342,14 @@ function StackOption({
       {/* Rows as the mail list draws them: initials, the sender, "3 threads"
           when stacked, the time, and the subject under them. */}
       {rows.map((row, i) => (
+        // A stack as the list draws it: a row, with "3 threads" and a
+        // chevron by the name.
         <span key={i} className="welcome-stack-row" aria-hidden="true">
           <span className={"welcome-stack-avatar is-" + row.tone}>{row.initials}</span>
           <span className="welcome-stack-body">
             <span className="welcome-stack-line">
               <strong>{row.sender}</strong>
-              {row.count ? <span className="welcome-stack-count">{row.count}</span> : null}
+              {row.count ? <span className="welcome-stack-count">{row.count} ›</span> : null}
               <span className="welcome-stack-time">{row.time}</span>
             </span>
             <span className="welcome-stack-subject">{row.subject}</span>
@@ -336,6 +357,53 @@ function StackOption({
         </span>
       ))}
     </button>
+  );
+}
+
+/**
+ * Check mails on your own terms: the two features on the left, each a
+ * button, and on the right a picture of where the chosen one lives, with a
+ * pointer on what to click: the menu next to Sync for pausing, the
+ * mailbox's tab for when it is shown.
+ */
+function QuietStep({ t, dark }: { t: Record<string, string>; dark: boolean }) {
+  const [shown, setShown] = React.useState<"pause" | "show">("pause");
+  const features = [
+    { id: "pause" as const, tile: <FetchTile />, title: t.pauseTitle, body: t.pauseBody },
+    { id: "show" as const, tile: <ShownTile />, title: t.hideTitle, body: t.hideBody },
+  ];
+  return (
+    <div className="welcome-two-columns">
+      <div>
+        <div className="welcome-feature-choices">
+          {features.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              aria-pressed={shown === f.id}
+              className={"welcome-feature-choice" + (shown === f.id ? " is-chosen" : "")}
+              onClick={() => setShown(f.id)}
+            >
+              {f.tile}
+              <span>
+                <strong>{f.title}</strong>
+                <span>{f.body}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="welcome-step-note welcome-feature-note">{t.quietLater}</p>
+      </div>
+      <img
+        className="welcome-step-picture welcome-quiet-picture"
+        src={
+          shown === "pause"
+            ? dark ? pausePictureDarkUrl : pausePictureLightUrl
+            : dark ? showPictureDarkUrl : showPictureLightUrl
+        }
+        alt={shown === "pause" ? t.pausePictureAlt : t.showPictureAlt}
+      />
+    </div>
   );
 }
 
@@ -420,28 +488,7 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
               ) : step === 1 ? (
                 <>
                   <h2 className="eula-privacy-title">{t.quietTitle}</h2>
-                  <div className="welcome-two-columns">
-                    <ul className="welcome-feature-list">
-                      <li>
-                        <strong>{t.pauseTitle}</strong>
-                        <span>{t.pauseBody}</span>
-                      </li>
-                      <li>
-                        <strong>{t.hideTitle}</strong>
-                        <span>{t.hideBody}</span>
-                      </li>
-                    </ul>
-                    {/* The README's picture: the pause menu, with friction to restart early.
-                        Cropped to just before Sync on the left, and a little on the
-                        right and at the foot (welcome-screen.css). */}
-                    <div className="welcome-picture-crop">
-                      <img
-                        className="welcome-step-picture"
-                        src={colorMode === "dark" ? pausePictureDarkUrl : pausePictureLightUrl}
-                        alt={t.pausePictureAlt}
-                      />
-                    </div>
-                  </div>
+                  <QuietStep t={t} dark={colorMode === "dark"} />
                 </>
               ) : step === 2 ? (
                 <>

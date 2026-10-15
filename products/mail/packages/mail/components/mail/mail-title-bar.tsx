@@ -12,7 +12,6 @@ import * as React from "react";
 import { Search, SquarePen, X } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { cn } from "@/lib/utils";
-import { ListDensityToggle } from "@/components/mail/MailListControls";
 import { SyncControl } from "@/components/mail/SyncControl";
 import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
 import { mailSearchPlaceholder } from "@/components/mail/mail-list-state";
@@ -22,20 +21,24 @@ import type { MailPageModel } from "@/components/mail/use-mail-page";
 export function MailTitleBar({
   m,
   layoutMenu,
+  listToggle,
+  listOut = false,
 }: {
   m: MailPageModel;
+  /** The list put away is out on hover: the row moves over with it. */
+  listOut?: boolean;
   layoutMenu: React.ReactNode;
+  /** The button that hides and shows the list (ListHideButton). */
+  listToggle: React.ReactNode;
 }) {
   const {
     activeCustomList,
     activeFolder,
     chromeDark,
-    listDensity,
     search,
     searchDeleted,
     searchFocused,
     searchInputRef,
-    setListDensity,
     setSearch,
     setSearchDeleted,
     setSearchFocused,
@@ -43,6 +46,8 @@ export function MailTitleBar({
     t,
     tab,
     titlebarLeft,
+    titlebarToggleLeft,
+    peekTitlebarLeft,
   } = m;
   return (
     <>
@@ -59,17 +64,27 @@ export function MailTitleBar({
           // right of the strip (the standalone app on Windows) sets this.
           paddingRight: "var(--mail-titlebar-right, 12px)",
           // Where the controls start — see `titlebarLeft`.
-          paddingLeft: titlebarLeft,
+          paddingLeft: listOut ? peekTitlebarLeft : titlebarLeft,
           // At the speed of the rail, so the row follows the folders rather
           // than jumping while they are still sliding.
           transitionDuration: "var(--mail-rail-slide)",
         }}
       >
-        {/* New email, Sync with its pause menu, then density and settings,
+        {/* The list's button, New email, Sync with its pause menu, then settings,
             then search takes the rest — the whole row standing over the
             list column. A shell can put the search first instead
             — see the standalone app's Windows window in
             apps/mail/src/standalone.css. */}
+        {/* The list's button: next to the traffic lights, as a sidebar
+            button is, and there whatever the folders are doing — so it is
+            always where the hand goes for it. Out of the row, which moves
+            over with the list. The -4px answers the row's own. */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2"
+          style={{ left: `calc(${titlebarToggleLeft} - 4px)` }}
+        >
+          {listToggle}
+        </div>
         <div className="mail-titlebar-controls -ml-[4px] flex min-w-0 max-w-3xl flex-1 items-center gap-2">
           {/* First, where it is in reach whatever the list is doing: it
               stood at the head of the list, and went with the list when
@@ -91,11 +106,6 @@ export function MailTitleBar({
             {t("newEmail")}
           </button>
           <SyncControl m={m} />
-          <ListDensityToggle
-            density={listDensity}
-            onChange={setListDensity}
-            onNavy={chromeDark}
-          />
           {layoutMenu}
           <label
             className={cn(

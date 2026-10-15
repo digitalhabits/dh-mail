@@ -18,6 +18,8 @@ import { useMailT } from "@/lib/mail/i18n";
 import { toast } from "@/lib/mail/toast";
 import { FrictionPanel, QuietHoursPanel, frictionSummary } from "@/components/mail/pause-panels";
 import { readPauseOptions } from "@/lib/mail/pause-options";
+import { FetchTile } from "@/components/mail/hours-icons";
+import { onHoursSummary, sameWeek } from "@/lib/mail/account-rhythm";
 import type { PauseLock } from "@/lib/mail/pause-lock";
 import {
   accountFollowsAllHours,
@@ -26,7 +28,6 @@ import {
   mailPauseVerdictForAccount,
   mailPauseVerdictForScope,
   quietHoursForAccount,
-  quietHoursSummary,
   type MailPauseState,
   type MailQuietWindow,
 } from "@/lib/mail/quiet-hours";
@@ -249,12 +250,11 @@ export function MailPauseMenu({
               className="mail-menu-pick flex w-full items-center justify-between gap-3 border-t border-stone-100 px-3 py-2 text-left"
               onClick={() => setPanel("quiet")}
             >
-              <span className="min-w-0">
-                <span className="block text-sm text-stone-800">
-                  {t("quietHours")}
-                </span>
-                <span className="block truncate text-xs text-stone-500">
-                  {summary || t("quietHoursNone")}
+              <span className="flex min-w-0 items-center gap-2.5">
+                <FetchTile />
+                <span className="min-w-0">
+                  <span className="block text-sm text-stone-800">{t("hoursNewMailTitle")}</span>
+                  <span className="block truncate text-xs text-stone-500">{summary}</span>
                 </span>
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-stone-400" />
@@ -326,9 +326,10 @@ export function MailPauseMenu({
 }
 
 /**
- * "All: 22:00–08:00 daily · team: ☾ until Mon 08:00"
+ * "Always · vera.vinter 08:00 – 17:00 weekdays"
  *
- * All's standing hours, then each mailbox that is quiet on its own.
+ * When new mail arrives on All, then each mailbox whose own hours differ.
+ * Said as the hours mail does arrive, never the hours it does not.
  */
 function pauseMenuHoursLine(
   state: MailPauseState,
@@ -336,27 +337,21 @@ function pauseMenuHoursLine(
   labels: Map<string, AccountChipLabel>,
   t: ReturnType<typeof useMailT>
 ): string {
-  const parts: string[] = [];
-  const allHours = quietHoursSummary(
-    state.quietHours,
-    (key) => t(key),
-    SCHEDULE_DAY_LABELS
-  );
-  if (allHours) parts.push(`${t("tabAll")}: ${allHours}`);
+  const words = {
+    allDay: t("hoursAllDay"),
+    nextDay: t("hoursNextDay"),
+    daily: t("everyDayShort"),
+    weekdays: t("weekdaysShort"),
+    weekends: t("weekendsShort"),
+  };
+  const say = (kept: MailQuietWindow[]) => onHoursSummary(kept, words, SCHEDULE_DAY_LABELS) ?? t("hoursAlways");
+  const parts = [say(state.quietHours)];
   // Schedules only. A pause is not a schedule: it is in "Paused now", at
   // the top of the menu.
   for (const email of accounts) {
-    const row = accountPauseRow(state, email);
-    if (!row) continue;
-    const name = formatAccountChipLabel(email, labels);
-    if (row.quietHours?.length) {
-      const hours = quietHoursSummary(
-        row.quietHours,
-        (key) => t(key),
-        SCHEDULE_DAY_LABELS
-      );
-      if (hours) parts.push(`${name}: ${hours}`);
-    }
+    const own = accountPauseRow(state, email)?.quietHours;
+    if (own == null || sameWeek(own, state.quietHours)) continue;
+    parts.push(`${formatAccountChipLabel(email, labels)} ${say(own)}`);
   }
   return parts.join(" · ");
 }

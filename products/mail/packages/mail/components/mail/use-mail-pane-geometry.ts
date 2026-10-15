@@ -447,15 +447,11 @@ export function useMailPaneGeometry(input: {
       ? shownRailWidth + RAIL_GUTTER
       : 0) + LIST_COLUMN_PAD;
   /**
-   * Where the title bar's row of controls begins: the list column, so
-   * that grouping, density and settings stand over New email rather than
-   * out in the middle of the strip, and the search runs on from them.
-   *
-   * The same place whatever the folders are doing. The row used to be
-   * laid out from the window's width instead, so that it never moved
-   * when the rail did; but that put its first control a long way from
-   * the column it belongs to, and a control that stands nowhere in
-   * particular is one the reader has to look for every time.
+   * Where the title bar's row begins: over the list column, so that New
+   * email stands over the mailbox tabs and moves over with them when the
+   * folders come out. The list's own button is not in the row: it stands
+   * just after the window's buttons whatever the folders are doing
+   * (`titlebarToggleLeft`), and the row keeps clear of it.
    *
    * Never behind the traffic lights: they are the window's, and how far
    * they reach into this page depends on what the shell has to the left
@@ -465,8 +461,20 @@ export function useMailPaneGeometry(input: {
    * A shell can still put the row somewhere else through the variable —
    * see `--mail-titlebar-left` in apps/mail/src/standalone.css.
    */
+  /** The list's button (28px) and the gap after it, which the row keeps clear of. */
+  const LIST_TOGGLE_ROOM = 36;
   const lightsFloor = Math.max(0, TRAFFIC_LIGHTS_RIGHT - paneLeft) + 4;
-  const titlebarLeft = `var(--mail-titlebar-left, max(${listControlsLeft}px, ${lightsFloor}px))`;
+  // Past the folders' button, which stands first in the tab row, so New
+  // email is over the first mailbox tab (28px and its 4px gap).
+  const titlebarLeft = `var(--mail-titlebar-left, max(${listControlsLeft + 32}px, ${lightsFloor + LIST_TOGGLE_ROOM}px))`;
+  const titlebarToggleLeft = `var(--mail-titlebar-toggle-left, ${lightsFloor}px)`;
+  /**
+   * The same, while the list put away is out on hover (use-list-peek): it
+   * stands over the reader just after the folders, if they are out, and
+   * New email moves over with it as it does for the list kept out.
+   */
+  const peekListControlsLeft = (railShowing && !railOnRight ? railInset + RAIL_GUTTER : 0) + LIST_COLUMN_PAD;
+  const peekTitlebarLeft = `var(--mail-titlebar-left, max(${peekListControlsLeft + 32}px, ${lightsFloor + LIST_TOGGLE_ROOM}px))`;
   const listBorderClass =
     listPlacement === "left"
       ? "border-r"
@@ -512,6 +520,9 @@ export function useMailPaneGeometry(input: {
     railOnRight,
     listControlsLeft,
     titlebarLeft,
+    titlebarToggleLeft,
+    peekListControlsLeft,
+    peekTitlebarLeft,
     listBorderClass,
     railSlideDuration,
   };

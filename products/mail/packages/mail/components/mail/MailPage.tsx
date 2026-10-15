@@ -24,6 +24,7 @@ import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { MailPhoneShell, type MailPhoneDetail } from "@/components/mail/MailPhoneShell";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
+import { ConnectedMailboxRhythm } from "@/components/mail/AccountRhythmDialog";
 import { mailBuiltinTabLabels, mailSearchPlaceholder } from "@/components/mail/mail-list-state";
 export { openMailAccountsMenu };
 
@@ -40,6 +41,34 @@ export type MailPageSnapshot = {
 
 
 
+/**
+ * Which row the way to the folders stands on: the start of the mailbox
+ * tabs when they show, the end of the filter row when they do not. The
+ * expanded list has it on its toolbar, so it is passed to neither row.
+ */
+function placeFolders(
+  button: React.ReactNode,
+  accountTabsShowing: boolean
+): { tabRow: React.ReactNode; filterRow: React.ReactNode } {
+  // Before the mailbox tabs, the expanded list too: its own row above
+  // them held nothing else once New email went to the title bar.
+  if (accountTabsShowing) return { tabRow: button, filterRow: null };
+  return { tabRow: null, filterRow: button };
+}
+
+
+/**
+ * Where the list column's controls start, for the title bar's row: the
+ * list kept out, or the list out on hover (not while it slides), which
+ * the row follows as well.
+ */
+function titlebarFollowsList(
+  peek: { on: boolean },
+  m: { listSliding: boolean; listControlsLeft: number; peekListControlsLeft: number }
+): { listOut: boolean; controlsLeft: number } {
+  const listOut = peek.on && !m.listSliding;
+  return { listOut, controlsLeft: listOut ? m.peekListControlsLeft : m.listControlsLeft };
+}
 export function MailPage(props: MailPageProps) {
   const m = useMailPage(props);
   const {
@@ -60,7 +89,6 @@ export function MailPage(props: MailPageProps) {
     filterIsOn,
     hideList,
     isOutlookAccount,
-    listControlsLeft,
     listMounted,
     listSlideOverlay,
     listSliding,
@@ -115,8 +143,8 @@ export function MailPage(props: MailPageProps) {
    * The way to the folders.
    *
    * On the expanded toolbar it stands before New email, because it says
-   * which mail this is. Unexpanded it stays on the mailbox row, or on
-   * the filter row when there is no mailbox row.
+   * which mail this is. Unexpanded it stands at the start of the mailbox
+   * row, or at the end of the filter row when there is no mailbox row.
    *
    * It stays while the rail is open, lit the way the funnel is lit while
    * the filters are showing. Pressing it again puts the rail away: it is
@@ -126,7 +154,6 @@ export function MailPage(props: MailPageProps) {
   const foldersButton = <FoldersButton m={m} />;
   /** The filter chips: the built-in lists, the reader's own, and New list. */
   const filterChips = <FilterChips m={m} />;
-  const filterRow = <FilterRow m={m} filterChips={filterChips} foldersButton={foldersButton} />;
   /** The mailbox row: All, then one tab per mailbox. */
   // Hiding mailboxes for a while: its clock runs as long as the page does.
   const mailboxHide = useMailboxHide({
@@ -143,12 +170,15 @@ export function MailPage(props: MailPageProps) {
     [...m.accountEmails, ...mailboxHide.hidden].map((email) => email.toLowerCase())
   );
   const accountTabsShowing = connectedMailboxes.size > 1 && !m.activeFolder;
+  const folders = placeFolders(foldersButton, accountTabsShowing);
+  const filterRow = <FilterRow m={m} filterChips={filterChips} foldersButton={folders.filterRow} />;
   // The list put away comes out over the reader from its edge, side by side only.
   const listPeek = useListPeek(m.hideList && !m.listVertical && !m.listExpanded);
   // The folders come out with it when they are shown.
   const railPeeking = listPeek.on && !m.listSliding && m.railShowing;
+  const { listOut, controlsLeft } = titlebarFollowsList(listPeek, m);
   const listTabsOrFolder = (
-    <ListTabsOrFolder m={m} accountTabs={accountTabs} filterRow={filterRow} hideButton={<ListHideButton m={m} peek={listPeek} />} accountTabsShowing={accountTabsShowing} />
+    <ListTabsOrFolder m={m} accountTabs={accountTabs} filterRow={filterRow} foldersButton={folders.tabRow} accountTabsShowing={accountTabsShowing} />
   );
   /** Display & accounts, with Settings, shortcuts and contact sources in it. */
   const layoutMenu = <LayoutMenu m={m} />;
@@ -296,6 +326,7 @@ export function MailPage(props: MailPageProps) {
         {autoReplyDialog}
         {teamLayerHostNode}
         {contactDialogs}
+        <ConnectedMailboxRhythm />
       </MailPhoneShell>
     );
   }
@@ -309,14 +340,14 @@ export function MailPage(props: MailPageProps) {
       data-theme={colorMode}
       style={
         {
-          "--mail-list-controls-left": `${listControlsLeft}px`,
+          "--mail-list-controls-left": `${controlsLeft}px`,
           // How long anything following that column takes to catch up
           // with it — see railSlideDuration in use-mail-pane-geometry.
           "--mail-rail-slide": railSlideDuration,
         } as React.CSSProperties
       }
     >
-      <MailTitleBar m={m} layoutMenu={layoutMenu} />
+      <MailTitleBar m={m} layoutMenu={layoutMenu} listOut={listOut} listToggle={<ListHideButton m={m} peek={listPeek} />} />
 
       {/* The rail stands outside the pane row rather than inside it: the
           pane may be laid out top-to-bottom (list over reader), and the
@@ -475,6 +506,7 @@ export function MailPage(props: MailPageProps) {
       {teamLayerHostNode}
       <FloatingCards m={m} sendFrom={sendFrom} />
       {contactDialogs}
+      <ConnectedMailboxRhythm />
     </div>
   );
 }

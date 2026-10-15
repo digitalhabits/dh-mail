@@ -77,6 +77,22 @@ export function groupPeopleLabel(people: PersonParticipant[]): string {
  * The person view groups by this and the thread list draws its avatar from
  * it, so one thread shows the same faces in both.
  */
+/**
+ * A participant known only by address takes the sender's name when they
+ * are the sender. The list is gathered from every message, and the first
+ * one may name them by address alone (yours to them, say), while the
+ * thread's sender line has their name: the row said the address while
+ * the thread row and the reader said the name.
+ */
+function withSenderName(people: PersonParticipant[], t: MailThreadSummary): PersonParticipant[] {
+  const name = t.fromName?.trim();
+  const from = t.fromEmail?.trim().toLowerCase();
+  if (!name || !from || name.toLowerCase() === from) return people;
+  return people.map((p) =>
+    !p.name?.trim() && p.email.trim().toLowerCase() === from ? { ...p, name } : p
+  );
+}
+
 export function threadPeople(t: MailThreadSummary): {
   externals: PersonParticipant[];
   lead: PersonParticipant;
@@ -88,7 +104,7 @@ export function threadPeople(t: MailThreadSummary): {
   // Rows from an older cache have no participant list; fall back to the
   // counterpart so the view still works until the next refresh.
   const raw = t.externalParticipants?.length
-    ? t.externalParticipants
+    ? withSenderName(t.externalParticipants, t)
     : [{ name: t.fromName, email: t.fromEmail }];
   const accountKey = normalizeEmail(t.account);
   const externals = collapseSameNameParticipants(

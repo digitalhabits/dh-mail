@@ -9,6 +9,9 @@ import { copyTextToClipboard } from "@/lib/mail/copy-text";
 import type { MailMessage } from "@/lib/mail/types";
 import { useMailT } from "@/lib/mail/i18n";
 import { mailSay } from "@/lib/mail/i18n-strings";
+import { AccountMark } from "@/components/mail/AccountMark";
+import { useAccountMarks } from "@/lib/mail/account-mark";
+import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 
 /**
  * The people on the thread, cut down to a line.
@@ -26,15 +29,20 @@ const THREAD_PARTICIPANTS_SHOWN = 4;
 
 type ParticipantChunk =
   | { kind: "person"; label: string; email: string; name?: string }
-  | { kind: "you"; emails: string[] };
+  /** `plain`: "You", the addresses on hover — when one mailbox's tab is chosen, it is no news. */
+  | { kind: "you"; emails: string[]; plain?: boolean };
 
 /**
  * One name on the line, with its address as a way to write to it.
  *
- * The address is a button: a click opens a new message to that person,
- * the same request an address clicked inside a message body makes. "You"
- * carries every own address, each one clickable — writing to yourself is
- * how half the world takes notes.
+ * The name and its address are a button: a click opens a new message to
+ * that person, the same request an address clicked inside a message body
+ * makes. A named person reads as a mail header writes them: "Name
+ * <address>", in the line's one colour.
+ *
+ * Yours are not "You": each is its mailbox as the tabs show it, the mark
+ * and the short name, with the whole address on hover. Each is clickable —
+ * writing to yourself is how half the world takes notes.
  */
 type AddressMenuOpener = (
   e: React.MouseEvent,
@@ -51,26 +59,27 @@ function ParticipantName({
   onAddressMenu: AddressMenuOpener;
 }) {
   const t = useMailT();
+  if (chunk.kind === "you" && chunk.plain) {
+    return <span title={chunk.emails.join(", ")}>{t("threadYou")}</span>;
+  }
   if (chunk.kind === "you") {
     return (
-      <span>
-        You (
+      <>
         {chunk.emails.map((email, i) => (
           <React.Fragment key={email}>
             {i > 0 ? ", " : null}
             <button
               type="button"
               className="hover:underline"
-              title={t("writeToThisAddress")}
+              title={`${email} — ${t("writeToThisAddress")}`}
               onClick={() => requestMailComposeTo(email)}
               onContextMenu={(e) => onAddressMenu(e, email)}
             >
-              {email}
+              <MailboxName email={email} />
             </button>
           </React.Fragment>
         ))}
-        )
-      </span>
+      </>
     );
   }
   return (
@@ -81,8 +90,31 @@ function ParticipantName({
       onClick={() => requestMailComposeTo(chunk.email)}
       onContextMenu={(e) => onAddressMenu(e, chunk.email, chunk.name)}
     >
-      {chunk.label}
+      {chunk.name ? (
+        <>
+          {chunk.name} &lt;{chunk.email}&gt;
+        </>
+      ) : (
+        chunk.email
+      )}
     </button>
+  );
+}
+
+/** A mailbox of yours as its tab shows it: the mark and the short name. */
+function MailboxName({ email }: { email: string }) {
+  const marks = useAccountMarks();
+  const isOutlookAccount = useIsOutlookAccount();
+  return (
+    <span className="inline-flex items-center gap-1 align-[-2px]">
+      <AccountMark
+        mark={marks[email.trim().toLowerCase()]}
+        provider={mailProviderFor(email, isOutlookAccount)}
+        className="h-3.5 w-3.5"
+      />
+      {/* The tab's word: the address before the @, its mark telling two of a name apart. */}
+      {email.split("@")[0] || email}
+    </span>
   );
 }
 
@@ -201,6 +233,9 @@ export function ThreadParticipants({
       <ParticipantNames chunks={shown} onAddressMenu={openAddressMenu} />{" "}
       <button
         type="button"
+        aria-expanded={expanded}
+        // The heading wraps its line for the names, and only for them.
+        data-names-open={expanded ? "" : undefined}
         className="font-medium text-teal-700 hover:underline"
         onClick={() => setExpanded((v) => !v)}
       >
@@ -271,11 +306,24 @@ export function threadPeople(
   return { others, yours };
 }
 
+/**
+ * The line's people. "You (…)" always holds the mailbox the thread came in
+ * on, which the line no longer names apart: a list's mail or a Bcc names
+ * none of your addresses, and the mailbox went with them.
+ */
 export function participantsWithAddresses(
   messages: MailMessage[],
-  ownAddresses: string[]
+  ownAddresses: string[],
+  receivedOn?: string,
+  /** One mailbox's tab is chosen: "You" for yours, rather than the mailbox. */
+  plainYou = false
 ): ParticipantChunk[] {
-  const { others, yours } = threadPeople(messages, ownAddresses);
+  const { others, yours: named } = threadPeople(messages, ownAddresses);
+  const mailbox = receivedOn?.trim();
+  const yours =
+    mailbox && !named.some((e) => e.trim().toLowerCase() === mailbox.toLowerCase())
+      ? [mailbox, ...named]
+      : named;
   return [
     ...others.map(
       (p): ParticipantChunk => ({
@@ -286,7 +334,7 @@ export function participantsWithAddresses(
       })
     ),
     ...(yours.length
-      ? [{ kind: "you", emails: yours } satisfies ParticipantChunk]
+      ? [{ kind: "you", emails: yours, plain: plainYou } satisfies ParticipantChunk]
       : []),
   ];
 }

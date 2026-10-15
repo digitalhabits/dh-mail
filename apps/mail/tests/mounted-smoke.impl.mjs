@@ -230,6 +230,36 @@ async function main() {
     assert(!document.querySelector("[data-mail-list-edge]"), "and the edge stands down");
     pass("the edge brings it out, and the pin keeps it shown");
 
+    // The button stands in the title bar, before New email. The pointer
+    // on it brings the list out, as the edge does, and a click keeps it.
+    const toggle = byTitle(/hide the mail list/i);
+    assert(toggle.closest(".mail-titlebar"), "the list's button stands in the title bar");
+    const newEmail = byTitle(/^new email/i);
+    assert(
+      toggle.compareDocumentPosition(newEmail) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "before New email"
+    );
+    clickEl(toggle);
+    await sleep(700);
+    assert(!listShown(), "it puts the list away");
+    const show = byTitle(/show mail list/i);
+    assert(show, "and then offers to show it");
+    show.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+    await sleep(100);
+    assert(listShown(), "the pointer on the button brings the list out");
+    document.body.dispatchEvent(
+      new MouseEvent("pointermove", { bubbles: true, clientX: 900, clientY: 600 })
+    );
+    await sleep(100);
+    assert(!listShown(), "and it goes again when the pointer goes away");
+    byTitle(/show mail list/i).dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+    await sleep(100);
+    assert(listShown(), "out again from the button");
+    clickEl(byTitle(/keep the mail list shown/i));
+    await sleep(700);
+    assert(listShown() && byTitle(/hide the mail list/i), "a click keeps it");
+    pass("the title bar's button brings the list out on hover, and a click keeps it");
+
     /*
       A search brings a hidden list out, since its answers are in the list.
       Its button is then the pin: the list is hidden, out only for now.

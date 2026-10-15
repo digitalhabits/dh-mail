@@ -10,7 +10,8 @@
 
 import * as React from "react";
 import { isInteractiveDoubleClickTarget, MAX_CONTROLS_WIDTH, MAX_LIST_ARIA, MIN_CONTROLS_WIDTH, MIN_LIST_HEIGHT, NARROW_LIST_WIDTH } from "@/components/mail/use-mail-layout";
-import { ArrowLeft, Moon, PanelLeftClose, PanelRightClose, Pin } from "lucide-react";
+import { ArrowLeft, Moon, PanelLeft, PanelRight, Pin } from "lucide-react";
+import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { autoReplyActive } from "@/components/mail/AutoReplyDialog";
 import { formatAccountChipLabel } from "@/lib/mail/account-labels";
 import { currentMailLocale } from "@/lib/mail/i18n";
@@ -69,13 +70,17 @@ export function ReadingPaneFrame({
           the app at rest, and at rest the two halves of the window should
           be the one colour, which is what light has always done.
         */
-        className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--mail-thread-chrome)]"
+        className="mail-reading-pane relative z-0 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--mail-thread-chrome)]"
         style={{
           order: listFirst ? 3 : 1,
           ...(pushedBy ? (listFirst ? { marginLeft: pushedBy } : { marginRight: pushedBy }) : {}),
         }}
       >
         {readingPaneContent}
+        {/* Shown while the list is dragged far enough to take the pane. */}
+        <div className="mail-list-snap-hint" aria-hidden>
+          <span>{m.t("listSnapHint")}</span>
+        </div>
       </div>
       ) : null}
     </>
@@ -184,7 +189,6 @@ export function ListPaneFrame({
     expandClip,
     hideList,
     listBorderClass,
-    listChromeOnToolbar,
     listExpandSliding,
     listExpanded,
     listFirst,
@@ -226,7 +230,6 @@ export function ListPaneFrame({
      pointer is on it, at the width it was dragged to. */
   const peeking = peek.on && !listSliding;
   const peekBox = { ...box, listOpen: true, listSlideOverlay: false, listExpandSliding: false, shownListWidth: listWidth };
-  const hideButton = <ListHideButton m={m} peek={peek} />;
   return (
     <>
       {/* The edge the list went into: the pointer on it brings it out.
@@ -317,7 +320,7 @@ export function ListPaneFrame({
         }}
       >
         {listNarrow ? (
-          <NarrowListControls m={m} foldersMenu={foldersMenu} hideButton={hideButton} />
+          <NarrowListControls m={m} foldersMenu={foldersMenu} />
         ) : (
         <div
           className={cn(
@@ -326,11 +329,12 @@ export function ListPaneFrame({
             "mail-chrome-strip flex flex-col px-5",
             listSplit
               ? "shrink-0 overflow-y-auto border-r border-[var(--mail-chrome-border)] bg-[var(--mail-chrome)] pb-3 pt-2"
-              : cn(
-                  "bg-[var(--mail-chrome)] pb-1 pt-2",
-                  listChromeOnToolbar &&
-                    "border-b border-[var(--mail-chrome-border)] pb-1"
-                )
+              // No line of its own at the foot: the filter row draws one
+              // under the tabs, and with both the expanded list had two.
+              // Nothing under that line either: where the rows have a fill
+              // of their own (the expanded list), the head's colour showed
+              // 4px below it.
+              : "bg-[var(--mail-chrome)] pt-2"
           )}
           style={listSplit ? { width: controlsWidth } : undefined}
           /* The whole head of the list, not the first row of it.
@@ -353,16 +357,6 @@ export function ListPaneFrame({
               Settings + density live in the title bar. */}
           {/* No margin under this row: what follows brings its own, and two
               stacked read as a gap twice over. */}
-          {/* New email is in the title bar, and the hide button at the end
-              of the mailbox tabs; what is left here are the folder and
-              filter buttons of the expanded list. Nothing else stands
-              above the tabs, so their top is level with the top of the
-              folder rail's first row beside them. */}
-          {listChromeOnToolbar ? (
-            <div className="-ml-[4px] flex h-11 items-center gap-1">
-              {foldersButton}
-            </div>
-          ) : null}
 
           {(() => {
             /*
@@ -472,44 +466,68 @@ export function ListPaneFrame({
 }
 
 /**
- * The list's own way to be put away, and back, as a sidebar can be: put
- * away, and pinned from the edge. At the end of the mailbox tabs
- * (or of the narrow list's column).
+ * The list's own way to be put away, and back, as a sidebar can be. In the
+ * title bar, before New email, as the sidebar button of a desktop app
+ * stands beside the window's own buttons.
+ *
+ * - Shown: it puts the list away.
+ * - Put away: the pointer on it brings the list out, as the edge does
+ *   (use-list-peek), and a click keeps it out.
+ * - Out from the edge or for a search: it is the pin.
  */
 export function ListHideButton({ m, peek }: { m: MailPageModel; peek: ListPeek }) {
-  const { chromeIconBtn: iconBtn, listExpanded, listFirst, listOutForSearch, listSliding, listVertical, phone, setListCollapsed, t } = m;
+  const { chromeIconBtn, hideList, listExpanded, listFirst, listOutForSearch, listSliding, listVertical, phone, setListCollapsed, t } = m;
   if (phone || listExpanded || listVertical) return null;
-  /*
-    The glyph's right edge, not the button's, is level with the times at the
-    end of the rows below (their 18px from the pane's edge). The button's
-    6px of padding and the 1px inside the icon's own box go past the strip's
-    20px instead: 20 - 18 + 6 + 1 = 9.
-  */
-  const chromeIconBtn = cn(iconBtn, "-mr-[9px]");
-  return (peek.on || listOutForSearch) && !listSliding ? (
-    <button
-      type="button"
-      title={t("keepMailListShown")}
-      aria-label={t("keepMailListShown")}
-      className={chromeIconBtn}
-      onClick={() => {
-        // Out for a search, it is already in its place: no slide to skip.
-        if (peek.on) pinListInPlace();
-        setListCollapsed(false);
-        peek.unpeek();
-      }}
-    >
-      <Pin className="h-4 w-4" />
-    </button>
-  ) : (
+  // The pin, the show and the hide are one button, so the pointer on it
+  // stays on it when it changes from one to the next.
+  const className = cn(chromeIconBtn, "mail-titlebar-list-toggle shrink-0");
+  if ((peek.on || listOutForSearch) && !listSliding) {
+    return (
+      <button
+        type="button"
+        title={t("keepMailListShown")}
+        aria-label={t("keepMailListShown")}
+        // Part of what came out: the pointer on it keeps the list out.
+        data-mail-peek={peek.on ? "" : undefined}
+        className={className}
+        onPointerDown={beginNativeWindowDragOnMove}
+        onClick={() => {
+          // Out for a search, it is already in its place: no slide to skip.
+          if (peek.on) pinListInPlace();
+          setListCollapsed(false);
+          peek.unpeek();
+        }}
+      >
+        <Pin className="h-4 w-4" />
+      </button>
+    );
+  }
+  if (hideList) {
+    return (
+      <button
+        type="button"
+        title={t("showMailList")}
+        aria-label={t("showMailList")}
+        className={className}
+        // Not while the list is still going: it would come out at once.
+        onPointerEnter={listSliding ? undefined : peek.peek}
+        onPointerDown={beginNativeWindowDragOnMove}
+        onClick={() => setListCollapsed(false)}
+      >
+        {listFirst ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+      </button>
+    );
+  }
+  return (
     <button
       type="button"
       title={t("hideMailList")}
       aria-label={t("hideMailList")}
-      className={chromeIconBtn}
+      className={className}
+      onPointerDown={beginNativeWindowDragOnMove}
       onClick={() => setListCollapsed(true)}
     >
-      {listFirst ? <PanelLeftClose className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+      {listFirst ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
     </button>
   );
 }
@@ -521,11 +539,9 @@ export function ListHideButton({ m, peek }: { m: MailPageModel; peek: ListPeek }
 function NarrowListControls({
   m,
   foldersMenu,
-  hideButton,
 }: {
   m: MailPageModel;
   foldersMenu: (iconOnly: boolean) => React.ReactNode;
-  hideButton: React.ReactNode;
 }) {
   const {
     activeFolder,
@@ -566,7 +582,6 @@ function NarrowListControls({
           <ArrowLeft className="h-4 w-4" />
         </button>
       ) : null}
-      {hideButton}
     </div>
   );
 }

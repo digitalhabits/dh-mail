@@ -2,6 +2,10 @@
 
 import * as React from "react";
 import { useMailT } from "@/lib/mail/i18n";
+import { cn } from "@/lib/utils";
+import { THREAD_ACTION_CLASS } from "@/components/mail/thread-actions";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 
 import {
   MAX_ZOOM,
@@ -129,5 +133,104 @@ export function ZoomControls({
         +
       </button>
     </div>
+  );
+}
+
+/**
+ * The "Aa" among the thread's actions: a circle like theirs, the letters in
+ * the app's serif. The thread's strip and the reader's bar both use it.
+ */
+export const AA_BUTTON_CLASS = cn(
+  THREAD_ACTION_CLASS,
+  "mail-chrome-strip inline-flex items-center justify-center font-serif text-[20.5px] font-[405] leading-none"
+);
+
+/**
+ * An "Aa" button, and under it a smaller A and a bigger A with the size
+ * between them. The zoom of the pane and the reader's text size are both
+ * offered this way.
+ */
+export function TextSizePopover({
+  label,
+  size,
+  canSmaller,
+  canBigger,
+  onSmaller,
+  onBigger,
+  className = AA_BUTTON_CLASS,
+}: {
+  /** The button's name and tooltip. */
+  label: string;
+  /** The size now, between the two As: "100%", "16px". */
+  size: string;
+  canSmaller: boolean;
+  canBigger: boolean;
+  onSmaller: () => void;
+  onBigger: () => void;
+  className?: string;
+}) {
+  const t = useMailT();
+  const [open, setOpen] = React.useState(false);
+  // The As in the app's serif, as the button's own Aa is; close together,
+  // so the strip of three is no wider than it needs to be.
+  const step =
+    "flex h-7 w-7 items-center justify-center rounded-full font-serif text-stone-600 hover:bg-stone-200/70 disabled:opacity-40";
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={label} title={label} className={className}>
+          Aa
+        </button>
+      </PopoverTrigger>
+      <MailPopoverContent align="end" className="flex w-auto items-center gap-0.5 rounded-full p-1">
+        <button
+          type="button"
+          aria-label={t("smallerText")}
+          title={t("smallerText")}
+          disabled={!canSmaller}
+          onClick={onSmaller}
+          className={`${step} text-[13px]`}
+        >
+          A
+        </button>
+        <span className="min-w-[2.25rem] text-center text-[11px] tabular-nums text-stone-500">{size}</span>
+        <button
+          type="button"
+          aria-label={t("biggerText")}
+          title={t("biggerText")}
+          disabled={!canBigger}
+          onClick={onBigger}
+          className={`${step} text-[18px]`}
+        >
+          A
+        </button>
+      </MailPopoverContent>
+    </Popover>
+  );
+}
+
+/** The pane's zoom, offered as the reader's text size is: "Aa" and its two As. */
+export function ZoomTextSize({
+  zoom,
+  onAdjust,
+  className,
+}: {
+  zoom: number;
+  /** As ZoomControls: moves the zoom by an amount. */
+  onAdjust: (delta: number) => void;
+  /** The button's look; the thread's strip has its own default. */
+  className?: string;
+}) {
+  const t = useMailT();
+  return (
+    <TextSizePopover
+      label={t("textSize")}
+      size={`${Math.round(zoom * 100)}%`}
+      canSmaller={zoom > MIN_ZOOM}
+      canBigger={zoom < MAX_ZOOM}
+      onSmaller={() => onAdjust(nextZoomStop(zoom, -1) - zoom)}
+      onBigger={() => onAdjust(nextZoomStop(zoom, 1) - zoom)}
+      className={className ?? "mail-chrome-strip shrink-0 rounded-md px-2 py-1 text-[15px] text-stone-600 hover:bg-stone-200/70"}
+    />
   );
 }

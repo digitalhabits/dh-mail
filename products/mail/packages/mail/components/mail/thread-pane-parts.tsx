@@ -9,7 +9,7 @@
  */
 
 import * as React from "react";
-import { Archive, ArchiveRestore, ArrowUpRight, ChevronDown, Clock, Forward, Loader2, Maximize2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, Clock, Forward, Loader2, Maximize2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
 import { openThreadFullWindow } from "@/components/mail/thread-full-window";
 import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
@@ -35,12 +35,12 @@ import {
   THREAD_ACTION_ACTIVE_CLASS,
 } from "@/components/mail/thread-actions";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
-import { ZoomControls } from "@/components/mail/ZoomControls";
+import { AA_BUTTON_CLASS, ZoomTextSize } from "@/components/mail/ZoomControls";
 import { EmojiReactionButton } from "@/components/ui/EmojiPicker";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { partJumpLabel, type MailChatPartSummary } from "@/lib/mail/chat-types";
-import { messageStamp, shortDate, timeOfDay } from "@/lib/mail/date-format";
+import { messageStamp, timeOfDay } from "@/lib/mail/date-format";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { cn } from "@/lib/utils";
 import { ThreadParticipants, participantsWithAddresses } from "@/components/mail/ThreadParticipants";
@@ -616,6 +616,7 @@ export function ThreadMessages({
 /** The thread's header: its subject and people, and the toolbar of actions. */
 export function ThreadHeader({
   m,
+  oneMailbox,
   toolbarLead,
   chat,
   dateRange,
@@ -627,6 +628,8 @@ export function ThreadHeader({
   thread,
 }: {
   m: ThreadPaneModel;
+  /** One mailbox's tab is chosen: the people line says "You". */
+  oneMailbox?: boolean;
   toolbarLead?: React.ReactNode;
   chat: MailChatRef | undefined;
   dateRange: string;
@@ -654,7 +657,13 @@ export function ThreadHeader({
         {/* Cream action strip. Slightly tighter than the New email row.
             Pull left over the w-2 resize gutter so cream meets the list
             border — only this band, not the full-height sidebar chrome. */}
-        <ThreadActionStrip m={m} lead={toolbarLead} showReplyAll={showReplyAll} thread={thread} />
+        <ThreadActionStrip
+          m={m}
+          lead={toolbarLead}
+          showReplyAll={showReplyAll}
+          thread={thread}
+          span={<ThreadSpan m={m} dateRange={dateRange} totalMessageCount={totalMessageCount} />}
+        />
         {/* The subject stays while the thread moves under it, and says so
             with a shadow rather than a rule. It reaches about ten pixels
             down: enough to lift the header off what is scrolling beneath,
@@ -670,12 +679,11 @@ export function ThreadHeader({
             the subject back where it was after the pull. */}
         <ThreadTitleBlock
           m={m}
+          oneMailbox={oneMailbox}
           chat={chat}
-          dateRange={dateRange}
           headerTitle={headerTitle}
           jumpToPart={jumpToPart}
           threadOthers={threadOthers}
-          totalMessageCount={totalMessageCount}
           thread={thread}
         />
       </div>
@@ -685,32 +693,19 @@ export function ThreadHeader({
 }
 
 /**
- * The thread's heading under the action strip: the subject, the people and
- * dates, and a chat's parts.
+ * How long the thread is and when it ran: "14 messages · 8 Nov – 12 Feb",
+ * in the action strip beside the thread's files.
  */
-function ThreadTitleBlock({
+function ThreadSpan({
   m,
-  chat,
   dateRange,
-  headerTitle,
-  jumpToPart,
-  threadOthers,
   totalMessageCount,
-  thread,
 }: {
   m: ThreadPaneModel;
-  chat: MailChatRef | undefined;
   dateRange: string;
-  headerTitle: string;
-  jumpToPart: (p: MailChatPartSummary) => void;
-  threadOthers: { email: string; name?: string; }[];
   totalMessageCount: number;
-  thread: MailThreadDetail;
 }) {
   const {
-    account,
-    accounts,
-    chatParts,
     firstMessage,
     firstPeekAllowImages,
     firstPeekHtml,
@@ -718,199 +713,240 @@ function ThreadTitleBlock({
     goToFirstMessage,
     latestId,
     loadingToStart,
-    partMenuOpen,
     setFirstPeekOpen,
-    setPartMenuOpen,
     t,
     threadOverflows,
   } = m;
+  /*
+    Where the thread began, for a thread long enough to have lost
+    its beginning off the top. It reads the first message rather
+    than describing it, because "what was this about" is answered by
+    the words and not by a date.
+
+    Not on a thread of one message. A long single message overflows
+    too, but its beginning is the top of the message the reader is
+    already looking at, and where it started says nothing about a mail
+    nobody has answered. The first message is the newest one when
+    their ids agree — across a chat's rotated parts, they will not.
+
+    It is the dates in the line, not a button of its own: "8 Nov –
+    12 Feb" already says when it started, and a pill saying it again
+    was one more thing in the heading.
+  */
+  const startPeek = threadOverflows && firstMessage && firstMessage.id !== latestId ? (
+    <Popover
+      open={firstPeekOpen}
+      onOpenChange={setFirstPeekOpen}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={t("threadStarted")}
+          className="underline decoration-dotted underline-offset-2 hover:text-[var(--mail-thread-fg)]"
+        >
+          {dateRange}
+        </button>
+      </PopoverTrigger>
+      <MailPopoverContent
+        align="end"
+        className="w-[420px] max-w-[80vw] p-0"
+      >
+        <div className="flex items-start justify-between gap-3 px-3.5 pt-3">
+          <div className="min-w-0 text-xs text-stone-500">
+            {/* Opened from the dates, it says what it is: the thread's start. */}
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+              {t("threadFirstMessage")}
+            </p>
+            <p className="truncate">
+              <span className="text-stone-400">
+                {t("fieldFromColon")}{" "}
+              </span>
+              <span className="font-semibold text-stone-800">
+                {firstMessage.fromEmail || firstMessage.fromName}
+              </span>
+            </p>
+            {firstMessage.toEmails?.length ? (
+              <p className="truncate">
+                <span className="text-stone-400">To: </span>
+                {firstMessage.toEmails.join(", ")}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            aria-label={t("close")}
+            className="-mr-1 shrink-0 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            onClick={() => setFirstPeekOpen(false)}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {/*
+          Six lines high, and the rest scrolls. This is a peek, and a
+          first message long enough to fill the pane would put the way
+          back to the thread off the bottom of it.
+
+          The frame is the one the thread reads with, so a link is a
+          link here too, and a picture at the head of a message is a
+          picture — capped at 72px, which is a thumbnail, because a
+          screenshot at its own height is six lines of screenshot.
+          `mail-bubble-surface`: the mail inside is dark on white,
+          the same island the bubbles are.
+        */}
+        {firstPeekHtml ? (
+          /* No padding of our own: the frame carries 14px of its
+             own, which is exactly where the From line above and
+             the buttons below sit. */
+          <div className="mail-bubble-surface mt-1 max-h-[8.5rem] overflow-y-auto">
+            <EmailHtmlView
+              html={firstPeekHtml}
+              inlineImages={firstMessage.inlineImages}
+              allowImages={firstPeekAllowImages}
+              imageMaxHeight={72}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 max-h-[8.5rem] overflow-y-auto px-3.5 text-sm leading-relaxed text-stone-800">
+            {messageSnippet(firstMessage) || "(no text)"}
+          </p>
+        )}
+        <div className="mt-2 flex items-center justify-between gap-3 px-3.5 pb-3">
+          {/* The peek stays up until the jump lands. Closing it
+              first left the reader looking at an unchanged thread
+              while a page was fetched, with nothing to say so. */}
+          <button
+            type="button"
+            disabled={loadingToStart}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700 hover:underline disabled:opacity-60 disabled:hover:no-underline"
+            onClick={() => void goToFirstMessage()}
+          >
+            {loadingToStart ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("goingToFirst")}
+              </>
+            ) : (
+              t("goToThisMessage")
+            )}
+          </button>
+          <span className="shrink-0 text-xs text-stone-400">
+            {messageStamp(firstMessage.sentAt)}
+          </span>
+        </div>
+      </MailPopoverContent>
+    </Popover>
+  ) : null;
+  return (
+    <span className="mail-chrome-strip shrink-0 whitespace-nowrap text-xs text-[var(--mail-thread-meta)]">
+      {totalMessageCount === 1
+        ? t("threadMessageOne")
+        : t("threadMessageMany", { count: totalMessageCount })}{" "}
+      · {startPeek ?? dateRange}
+    </span>
+  );
+}
+
+/**
+ * The thread's heading under the action strip: the subject, the people and
+ * dates, and a chat's parts.
+ */
+function ThreadTitleBlock({
+  m,
+  oneMailbox,
+  chat,
+  headerTitle,
+  jumpToPart,
+  threadOthers,
+  thread,
+}: {
+  m: ThreadPaneModel;
+  oneMailbox?: boolean;
+  chat: MailChatRef | undefined;
+  headerTitle: string;
+  jumpToPart: (p: MailChatPartSummary) => void;
+  threadOthers: { email: string; name?: string; }[];
+  thread: MailThreadDetail;
+}) {
+  const {
+    account,
+    accounts,
+    chatParts,
+    partMenuOpen,
+    setPartMenuOpen,
+    t,
+  } = m;
   return (
     <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-2 pl-10 pr-8 pt-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-serif text-lg font-bold text-stone-900">
+      <div className="flex items-center gap-4">
+        <h2
+          className="min-w-[12rem] flex-1 basis-0 truncate font-serif text-lg font-bold text-stone-900"
+          title={headerTitle}
+        >
           {headerTitle}
         </h2>
+        {/* Its own colour, because the two themes want two answers —
+            see `--mail-thread-meta`. Small type on cream needs the
+            contrast; the same step on navy would make this line as loud
+            as the subject above it. */}
         {/*
-          Where the thread began, for a thread long enough to have lost
-          its beginning off the top. It reads the first message rather
-          than describing it, because "what was this about" is answered by
-          the words and not by a date.
-
-          Not on a thread of one message. A long single message overflows
-          too, but its beginning is the top of the message the reader is
-          already looking at, and "Started" says nothing about a mail
-          nobody has answered. The first message is the newest one when
-          their ids agree — across a chat's rotated parts, they will not.
+          Right of the subject, on its line. The subject keeps the left
+          and gives way first (its basis is 0, so it takes only what the
+          details leave); the details give way only once the subject is
+          down to its least width. A list of names opened with "and N
+          others" wraps rather than vanishing into an ellipsis.
         */}
-        {threadOverflows && firstMessage && firstMessage.id !== latestId ? (
-          <Popover
-            open={firstPeekOpen}
-            onOpenChange={setFirstPeekOpen}
-          >
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                title={t("threadStarted")}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-50"
-              >
-                Started {shortDate(firstMessage.sentAt)}
-                <ArrowUpRight
-                  className="h-3.5 w-3.5 text-stone-400"
-                  aria-hidden
-                />
-              </button>
-            </PopoverTrigger>
-            <MailPopoverContent
-              align="end"
-              className="w-[420px] max-w-[80vw] p-0"
-            >
-              <div className="flex items-start justify-between gap-3 px-3.5 pt-3">
-                <div className="min-w-0 text-xs text-stone-500">
-                  <p className="truncate">
-                    <span className="text-stone-400">
-                      {t("fieldFromColon")}{" "}
-                    </span>
-                    <span className="font-semibold text-stone-800">
-                      {firstMessage.fromEmail || firstMessage.fromName}
-                    </span>
-                  </p>
-                  {firstMessage.toEmails?.length ? (
-                    <p className="truncate">
-                      <span className="text-stone-400">To: </span>
-                      {firstMessage.toEmails.join(", ")}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  aria-label={t("close")}
-                  className="-mr-1 shrink-0 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                  onClick={() => setFirstPeekOpen(false)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              {/*
-                Six lines and no more. This is a peek, and a first message
-                long enough to fill the pane would put the way back to the
-                thread off the bottom of it.
-
-                The frame is the one the thread reads with, so a link is a
-                link here too, and a picture at the head of a message is a
-                picture — capped at 72px, which is a thumbnail, because a
-                screenshot at its own height is six lines of screenshot.
-                `mail-bubble-surface`: the mail inside is dark on white,
-                the same island the bubbles are.
-              */}
-              {firstPeekHtml ? (
-                /* No padding of our own: the frame carries 14px of its
-                   own, which is exactly where the From line above and
-                   the buttons below sit. */
-                <div className="mail-bubble-surface mt-1 max-h-[8.5rem] overflow-hidden">
-                  <EmailHtmlView
-                    html={firstPeekHtml}
-                    inlineImages={firstMessage.inlineImages}
-                    allowImages={firstPeekAllowImages}
-                    imageMaxHeight={72}
-                  />
-                </div>
-              ) : (
-                <p className="mt-2 max-h-[8.5rem] overflow-hidden px-3.5 text-sm leading-relaxed text-stone-800">
-                  {messageSnippet(firstMessage) || "(no text)"}
-                </p>
-              )}
-              <div className="mt-2 flex items-center justify-between gap-3 px-3.5 pb-3">
-                {/* The peek stays up until the jump lands. Closing it
-                    first left the reader looking at an unchanged thread
-                    while a page was fetched, with nothing to say so. */}
-                <button
-                  type="button"
-                  disabled={loadingToStart}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700 hover:underline disabled:opacity-60 disabled:hover:no-underline"
-                  onClick={() => void goToFirstMessage()}
-                >
-                  {loadingToStart ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {t("goingToFirst")}
-                    </>
-                  ) : (
-                    t("goToThisMessage")
-                  )}
-                </button>
-                <span className="shrink-0 text-xs text-stone-400">
-                  {messageStamp(firstMessage.sentAt)}
-                </span>
-              </div>
-            </MailPopoverContent>
-          </Popover>
-        ) : null}
-      </div>
-      {/* Its own colour, because the two themes want two answers —
-          see `--mail-thread-meta`. Small type on cream needs the
-          contrast; the same step on navy would make this line as loud
-          as the subject above it. */}
-      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-[var(--mail-thread-meta)]">
-        {/*
-          A circular arrives with the whole club on it, and that is a
-          list worth keeping — the same list the composer offers to save
-          when you type the names in yourself. Here they are already
-          gathered, so the offer belongs here too. It lives inside the
-          participants, which is what knows whether the names are out.
-        */}
-        <ThreadParticipants
-          people={participantsWithAddresses(thread.messages, [
-            account,
-            ...accounts,
-          ])}
-          others={threadOthers}
-          meta={
+        <p className="min-w-0 truncate text-[13px] text-[var(--mail-thread-meta)] [&:has([data-names-open])]:whitespace-normal">
+          {/*
+            A circular arrives with the whole club on it, and that is a
+            list worth keeping — the same list the composer offers to save
+            when you type the names in yourself. Here they are already
+            gathered, so the offer belongs here too. It lives inside the
+            participants, which is what knows whether the names are out.
+          */}
+          <ThreadParticipants
+            people={participantsWithAddresses(thread.messages, [account, ...accounts], account, oneMailbox)}
+            others={threadOthers}
+            // The count and the dates are in the strip above, by the files.
+            meta={null}
+          />
+          {chatParts.length > 1 ? (
             <>
-              ·{" "}
-              {totalMessageCount === 1
-                ? t("threadMessageOne")
-                : t("threadMessageMany", { count: totalMessageCount })}{" "}
-              · {dateRange} · {t("threadReceivedOn")} {account}
-            </>
-          }
-        />
-        {chatParts.length > 1 ? (
-          <>
-            <span aria-hidden>·</span>
-            <Popover open={partMenuOpen} onOpenChange={setPartMenuOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-0.5 font-medium text-stone-700 hover:text-stone-900"
-                >
-                  {t("earlier")}
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </PopoverTrigger>
-              <MailPopoverContent align="start" className="w-56 p-1">
-                {[...chatParts].reverse().map((p) => (
+              <span aria-hidden>·</span>
+              <Popover open={partMenuOpen} onOpenChange={setPartMenuOpen}>
+                <PopoverTrigger asChild>
                   <button
-                    key={p.partIndex}
                     type="button"
-                    className={cn(
-                      "flex w-full rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-stone-100",
-                      p.partIndex === chat?.partIndex
-                        ? "font-semibold text-stone-900"
-                        : "text-stone-700"
-                    )}
-                    onClick={() => {
-                      setPartMenuOpen(false);
-                      jumpToPart(p);
-                    }}
+                    className="inline-flex items-center gap-0.5 font-medium text-stone-700 hover:text-stone-900"
                   >
-                    {partJumpLabel(p, chat?.partIndex ?? p.partIndex)}
+                    {t("earlier")}
+                    <ChevronDown className="h-3 w-3" />
                   </button>
-                ))}
-              </MailPopoverContent>
-            </Popover>
-          </>
-        ) : null}
-      </p>
+                </PopoverTrigger>
+                <MailPopoverContent align="start" className="w-56 p-1">
+                  {[...chatParts].reverse().map((p) => (
+                    <button
+                      key={p.partIndex}
+                      type="button"
+                      className={cn(
+                        "flex w-full rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-stone-100",
+                        p.partIndex === chat?.partIndex
+                          ? "font-semibold text-stone-900"
+                          : "text-stone-700"
+                      )}
+                      onClick={() => {
+                        setPartMenuOpen(false);
+                        jumpToPart(p);
+                      }}
+                    >
+                      {partJumpLabel(p, chat?.partIndex ?? p.partIndex)}
+                    </button>
+                  ))}
+                </MailPopoverContent>
+              </Popover>
+            </>
+          ) : null}
+        </p>
+      </div>
     </div>
   );
 }
@@ -925,12 +961,15 @@ function ThreadActionStrip({
   lead,
   showReplyAll,
   thread,
+  span,
 }: {
   m: ThreadPaneModel;
   /** First in the row, with a rule after it: the way back to a list. */
   lead?: React.ReactNode;
   showReplyAll: boolean;
   thread: MailThreadDetail;
+  /** How many messages and when, beside the thread's files. */
+  span?: React.ReactNode;
 }) {
   const {
     account,
@@ -1185,6 +1224,10 @@ function ThreadActionStrip({
           onClick={popOutThread}
         />
       )}
+      {/* The text size beside the Reader, which has an Aa of its own. */}
+      {hidden.has("zoom") ? null : (
+        <ZoomTextSize zoom={m.zoom} onAdjust={m.adjustZoomFromControls} className={AA_BUTTON_CLASS} />
+      )}
       <ThreadReaderAction m={m} />
       {mailHasTeamRecords() && assistOn && !hidden.has("records") ? (
         <ThreadAssistMenu
@@ -1196,7 +1239,7 @@ function ThreadActionStrip({
       {/* No Focus mode button here any more: the list has its own way to
           be put away, on its head, and the edge brings it back. The
           shortcut still does both (use-thread-keys). */}
-      <ThreadStripEnd m={m} thread={thread} />
+      <ThreadStripEnd m={m} thread={thread} span={span} />
       </div>
     </div>
   );
@@ -1213,14 +1256,17 @@ function ThreadReaderAction({ m }: { m: ThreadPaneModel }) {
 
 /**
  * The right-hand end of the action strip: the ellipsis menu holding the
- * actions that do not fit, the thread's files, and the zoom.
+ * actions that do not fit, how many messages and when, and the thread's
+ * files.
  */
 function ThreadStripEnd({
   m,
   thread,
+  span,
 }: {
   m: ThreadPaneModel;
   thread: MailThreadDetail;
+  span?: React.ReactNode;
 }) {
   const {
     account,
@@ -1293,6 +1339,7 @@ function ThreadStripEnd({
           pinShortcut={formatShortcut(shortcuts.togglePin)}
         />
       ) : null}
+      {span}
       <ThreadAttachmentsRollup
         account={account}
         items={[
@@ -1320,9 +1367,6 @@ function ThreadStripEnd({
           setAttachmentPreview({ messageId, attachment });
         }}
       />
-      {hidden.has("zoom") ? null : (
-        <ZoomControls zoom={zoom} onAdjust={adjustZoomFromControls} />
-      )}
     </div>
   );
 }

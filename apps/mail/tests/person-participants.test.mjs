@@ -36,6 +36,25 @@ function thread(participants, from = participants[0]) {
 }
 
 suite(async () => {
+  // Named by address alone in the participants (your first mail to them),
+  // and by name as the thread's sender: the row takes the name.
+  const addressOnly = threadPeople(
+    thread([{ name: "", email: "lena.moss@example.net" }], { name: "Lena Moss", email: "lena.moss@example.net" })
+  );
+  check(
+    "a participant known by address takes the sender's name",
+    addressOnly.lead.name === "Lena Moss",
+    JSON.stringify(addressOnly.lead)
+  );
+  const otherSender = threadPeople(
+    thread([{ name: "", email: "lena.moss@example.net" }], { name: "Ora Fenn", email: "ora.fenn@example.net" })
+  );
+  check(
+    "it takes no one else's name",
+    otherSender.externals.find((p) => p.email === "lena.moss@example.net")?.name === "",
+    JSON.stringify(otherSender.externals)
+  );
+
   const sameNameTwice = collapseSameNameParticipants([
     { name: "Dana Vale", email: davidCampus },
     { name: "Dana Vale", email: davidHome },

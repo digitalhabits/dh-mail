@@ -14,6 +14,11 @@
  * mailPauseVerdict): a window over midnight is a night, overlapping windows
  * are one, and the one ending last says when it ends. Showing a mailbox
  * early inside a window shows it until that window ends (`shownUntil`).
+ *
+ * "Hide again after" (`hideAgainMinutes`) cuts an early show short: shown
+ * early, a mailbox hides itself again after that long, or when its own
+ * time or window ends, whichever comes first. The menu is Blocker's "Turn
+ * back on after"; 0, the default, is Never.
  */
 
 import {
@@ -43,7 +48,27 @@ export type MailboxHideState = {
   accounts: Record<string, MailboxHide>;
   /** Words to type before showing a mailbox early. 0 is none. */
   showWords?: number;
+  /** Shown early, hidden again after this many minutes. 0 or absent is Never. */
+  hideAgainMinutes?: number;
 };
+
+/** The "Hide again after" menu, in minutes; 0 is Never. Blocker's menu. */
+export const HIDE_AGAIN_OPTIONS = Object.freeze([0, 5, 10, 15, 30, 60, 120, 240, 480, 1440]);
+
+/** One of the menu's values, or 0 (Never) for anything else. */
+export function normaliseHideAgainMinutes(value: unknown): number {
+  return typeof value === "number" && HIDE_AGAIN_OPTIONS.includes(value) ? value : 0;
+}
+
+/**
+ * When a mailbox shown early now hides again: the end of its own time or
+ * window, cut short by "Hide again after". Null when nothing hides it again.
+ */
+export function shownEarlyEnd(ownEnd: number | null, hideAgainMinutes: number, now: Date): number | null {
+  const after = hideAgainMinutes > 0 ? now.getTime() + hideAgainMinutes * 60_000 : null;
+  if (ownEnd == null) return after;
+  return after == null ? ownEnd : Math.min(ownEnd, after);
+}
 
 export const MAILBOX_HIDE_DEFAULT: MailboxHideState = { accounts: {} };
 
@@ -65,11 +90,12 @@ const NOT_HIDDEN: MailboxHideVerdict = { hidden: false, reason: null, until: nul
 /** Is the mailbox hidden by a time or its schedule now, and until when? */
 export function mailboxHideVerdict(row: MailboxHide | undefined, now: Date): MailboxHideVerdict {
   if (!row) return NOT_HIDDEN;
-  if (row.hiddenUntil && row.hiddenUntil > now.getTime()) {
+  const shownEarly = Boolean(row.shownUntil && row.shownUntil > now.getTime());
+  if (row.hiddenUntil && row.hiddenUntil > now.getTime() && !shownEarly) {
     const until = new Date(row.hiddenUntil);
     return { hidden: true, reason: "until", until, untilClock: formatClock(minutesOfDay(until)) };
   }
-  if (row.hours?.length && !(row.shownUntil && row.shownUntil > now.getTime())) {
+  if (row.hours?.length && !shownEarly) {
     const verdict = mailPauseVerdict({ quietHours: row.hours }, now);
     if (verdict.paused) return { hidden: true, reason: "schedule", until: null, untilClock: verdict.untilClock };
   }
@@ -120,7 +146,7 @@ export function hideStep(row: MailboxHide | undefined, inMailTab: boolean, now: 
 /** Read stored state, keeping only what is well formed. */
 export function readHideState(raw: unknown): MailboxHideState {
   if (!raw || typeof raw !== "object") return MAILBOX_HIDE_DEFAULT;
-  const value = raw as { accounts?: unknown; showWords?: unknown };
+  const value = raw as { accounts?: unknown; showWords?: unknown; hideAgainMinutes?: unknown };
   const accounts: Record<string, MailboxHide> = {};
   if (value.accounts && typeof value.accounts === "object") {
     for (const [email, rawRow] of Object.entries(value.accounts as Record<string, unknown>)) {
@@ -137,5 +163,10 @@ export function readHideState(raw: unknown): MailboxHideState {
     }
   }
   const showWords = normaliseUnpauseWords(value.showWords);
-  return { accounts, ...(showWords ? { showWords } : null) };
+  const hideAgainMinutes = normaliseHideAgainMinutes(value.hideAgainMinutes);
+  return {
+    accounts,
+    ...(showWords ? { showWords } : null),
+    ...(hideAgainMinutes ? { hideAgainMinutes } : null),
+  };
 }

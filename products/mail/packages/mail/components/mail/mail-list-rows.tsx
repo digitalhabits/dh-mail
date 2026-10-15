@@ -35,7 +35,8 @@ import { OutboxRowMenu, type OutboxMenuAt } from "@/components/mail/OutboxRowMen
 import type { MailScheduledMessage } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
-import { PersonThreadsBadge } from "@/components/mail/person-threads-badge";
+import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
+import type { PersonRow } from "@/lib/mail/person-participants";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 
 /** The thread view's rows: the pinned band, then the list by day. */
@@ -174,7 +175,7 @@ export function ThreadRows({
               <div key={group.label || "results"}>
                 {group.label && !listNarrow ? (
                   <p className={cn(
-                    "px-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                    "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
                     listExpanded ? "pt-2" : "pt-4"
                   )}>
                     {t(group.label as MailStringKey)}
@@ -254,6 +255,7 @@ export function PeopleRows({
     askDeleteForever,
     askPersonSnooze,
     chromeDark,
+    clearMultiSelection,
     clickPersonRow,
     debouncedSearch,
     draftKeys,
@@ -273,11 +275,14 @@ export function PeopleRows({
     personRows,
     personSnooze,
     personSnoozeSignal,
+    openThread,
     purgeFrom,
     rowMenuActions,
     search,
+    selected,
     setPersonMenuAt,
     setPersonSnooze,
+    setSelectedPersonKey,
     snooze,
     t,
     togglePersonPin,
@@ -287,6 +292,37 @@ export function PeopleRows({
     unsnooze,
   } = m;
   const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
+  /*
+    The stacks open in the list (person-stack.tsx). A click on a closed
+    stack unfolds it and opens its newest thread; on an open one, folds it.
+    With a modifier key a click picks rows, as on any row.
+  */
+  const [openStacks, setOpenStacks] = React.useState<ReadonlySet<string>>(() => new Set());
+  const toggleStack = (key: string) =>
+    setOpenStacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const isOpenThread = (th: { account: string; threadId: string }) =>
+    selected != null && selected.account === th.account && selected.threadId === th.threadId;
+  const openFromStack = (row: PersonRow, th: PersonRow["threads"][number]) => {
+    clearMultiSelection();
+    setSelectedPersonKey(row.key);
+    openThread(th);
+  };
+  /** A stack in the list, and open. Open, the thread's own row is marked, not the person's. */
+  const stackState = (row: PersonRow) => {
+    const stack = row.threads.length > 1 && !listNarrow;
+    const open = stack && openStacks.has(row.key);
+    return { open, painted: paintedPersonKey === row.key && !open };
+  };
+  const clickStack = (row: PersonRow, e: React.MouseEvent) => {
+    if (row.threads.length < 2 || e.metaKey || e.ctrlKey || e.shiftKey) return clickPersonRow(row, e);
+    toggleStack(row.key);
+    if (!openStacks.has(row.key)) openFromStack(row, row.threads[0]);
+  };
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -337,7 +373,7 @@ export function PeopleRows({
             ) : group.label && !listNarrow ? (
               <p
                 className={cn(
-                  "px-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                  "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
                   listExpanded ? "pt-2" : "pt-4"
                 )}
               >
@@ -370,9 +406,10 @@ export function PeopleRows({
             ]
               .filter(Boolean)
               .join(" — ");
+            const { open: stackOpen, painted } = stackState(row);
             return (
+              <React.Fragment key={row.key}>
               <div
-                key={row.key}
                 onDoubleClick={(e) => {
                   // The row's own control is the button that fills
                   // it, so that is the container; a double click on
@@ -410,12 +447,13 @@ export function PeopleRows({
                     : listRowWide
                       ? "items-center pl-5 pr-[18px] py-1.5"
                     : listDensity !== "compact"
-                      ? "items-center pl-5 pr-[18px] py-2.5"
+                      ? "items-start pl-5 pr-[18px] py-2.5"
                       : "items-center pl-5 pr-[18px] py-1.5",
-                  !listExpanded &&
-                  (paintedPersonKey === row.key ||
-                    multiKeys.has(row.key))
-                    ? "bg-[var(--mail-chrome-selected)] [--mail-person-stack-ring:var(--mail-chrome-selected)]"
+                  // Open, a quiet fill: its open thread is marked below.
+                  stackOpen && "bg-[var(--mail-chrome-hover)]",
+                  !listExpanded && (painted || multiKeys.has(row.key))
+                    ? // The open person, marked as an open thread is: fill and bar.
+                      "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
                     : "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
                 )}
               >
@@ -424,15 +462,17 @@ export function PeopleRows({
                 data-person-key={row.key}
                 title={listNarrow ? personTitle : undefined}
                 aria-label={listNarrow ? personTitle : undefined}
-                onClick={(e) => clickPersonRow(row, e)}
+                onClick={(e) => clickStack(row, e)}
                 className={cn(
                   "flex min-w-0 flex-1 text-left",
                   listNarrow
                     ? "items-center justify-center"
                     : listRowWide && listDensity !== "compact"
                       ? "items-start gap-3"
-                      : listRowWide || listDensity !== "compact"
+                      : listRowWide
                         ? "items-center gap-3"
+                      : listDensity !== "compact"
+                        ? "items-start gap-3"
                         : "items-center gap-2.5"
                 )}
               >
@@ -448,13 +488,24 @@ export function PeopleRows({
                   }
                 />
                 {listNarrow ? null : listRowWide ? (
+                listDensity !== "compact" ? (
+                <PersonWideBody
+                  name={row.name}
+                  threads={row.threads}
+                  open={stackOpen}
+                  hasDraft={personHasDraft}
+                  hasFile={personHasFile}
+                  highlight={highlightTerms}
+                  onNavy={chromeDark}
+                  time={rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
+                />
+                ) : (
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="flex w-[14rem] shrink-0 items-center gap-2">
                       <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
-                      <PersonThreadsBadge count={row.threads.length} />
                     </span>
                     {personHasDraft ? <DraftBadge /> : null}
                     <span className="min-w-0 flex-1 truncate text-sm">
@@ -476,7 +527,9 @@ export function PeopleRows({
                     </span>
                     {/* Invisible on hover, not gone: it keeps its room, and
                         the actions float over it (PersonRowActions), so
-                        nothing in the row moves when they show. */}
+                        nothing in the row moves when they show. The
+                        count goes with the time. */}
+                    <PersonCount threads={row.threads} open={stackOpen} />
                     <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
                       {rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
@@ -499,6 +552,7 @@ export function PeopleRows({
                     </span>
                   )}
                 </span>
+                )
                 ) : (
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
@@ -506,17 +560,32 @@ export function PeopleRows({
                       <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
-                      <PersonThreadsBadge count={row.threads.length} />
+                      <PersonCount threads={row.threads} open={stackOpen} />
                       {personHasDraft ? <DraftBadge /> : null}
                     </span>
-                    <span className="shrink-0 text-xs text-[var(--mail-chrome-faint)] group-hover:invisible">
-                      {rowTime(row.lastAt, {
-                        withYear: Boolean(debouncedSearch),
-                      })}
+                    {/* The time, away on hover for the actions. */}
+                    <span className="flex shrink-0 items-center gap-2 group-hover:invisible">
+                      <span className="text-xs text-[var(--mail-chrome-faint)]">
+                        {rowTime(row.lastAt, {
+                          withYear: Boolean(debouncedSearch),
+                        })}
+                      </span>
                     </span>
                   </span>
                   {listDensity === "compact" ? null : (
-                    <span className="mt-0.5 flex items-center justify-between gap-3">
+                    // The newest thread's subject, as a thread row shows it.
+                    <span
+                      className={cn(
+                        "block truncate text-sm",
+                        row.unread && "font-semibold",
+                        chromeDark ? "text-white/85" : "text-stone-700"
+                      )}
+                    >
+                      <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
+                    </span>
+                  )}
+                  {listDensity === "compact" || !newest.snippet ? null : (
+                    <span className="flex items-center justify-between gap-3">
                       <span className="min-w-0 truncate text-xs text-[var(--mail-chrome-muted)]">
                         {personHasFile ? (
                         <Paperclip
@@ -524,7 +593,7 @@ export function PeopleRows({
                           aria-label={t("hasAttachments")}
                         />
                       ) : null}
-                        <Highlighted text={newest.snippet || newest.subject} terms={highlightTerms} onNavy={chromeDark} />
+                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                     </span>
                   )}
@@ -533,6 +602,14 @@ export function PeopleRows({
               </button>
               {listNarrow ? null : (
                 <PersonRowActions
+                  // On the name's line: its middle is the row's padding and half a line down.
+                  className={
+                    listDensity === "compact"
+                      ? undefined
+                      : listRowWide
+                        ? "top-[18px]"
+                        : "top-5"
+                  }
                   row={row}
                   pinned={isMailPersonPinned(row.key)}
                   onNavy={chromeDark}
@@ -546,6 +623,17 @@ export function PeopleRows({
                 />
               )}
               </div>
+              {stackOpen ? (
+                <StackThreads
+                  threads={row.threads}
+                  isOpen={isOpenThread}
+                  onOpen={(th) => openFromStack(row, th)}
+                  onNavy={chromeDark}
+                  highlight={highlightTerms}
+                  withYear={Boolean(debouncedSearch)}
+                />
+              ) : null}
+              </React.Fragment>
             );
           })}
           </div>
@@ -934,7 +1022,7 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
           {heldMessages.length && !listNarrow ? (
             <div>
               <p className={cn(
-                "px-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
                 listExpanded ? "pt-2" : "pt-4"
               )}>
                 {t("outbox")} · {heldMessages.length}
@@ -1072,7 +1160,7 @@ function PinnedHeading({
   return (
     <p
       className={cn(
-        "flex items-center gap-1.5 px-5 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+        "flex items-center gap-1.5 px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
         listExpanded ? "pt-2" : "pt-3"
       )}
     >

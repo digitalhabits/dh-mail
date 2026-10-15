@@ -389,14 +389,9 @@ export function MailFolderRail(props: FolderRailProps) {
         side === "right" ? "border-l" : "border-r"
       )}
     >
-      {/* What this column is. The way out of it is the folder button that
-          opened it, which closes it again — one control for the pair, so
-          the rail carries no cross of its own. */}
-      <div className="flex shrink-0 items-center gap-1 pl-2">
-        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-[var(--mail-chrome-muted)]">
-          {t("folders")}
-        </p>
-      </div>
+      {/* No "Folders" heading: the rows say what the column is. The way out
+          of it is the folder button that opened it, which closes it again —
+          one control for the pair, so the rail carries no cross of its own. */}
 
       {/*
         The four views. One set, across every mailbox — there is no
@@ -520,7 +515,16 @@ export function MailFolderRail(props: FolderRailProps) {
       {/* Under the divider, over the sections: it narrows what is below it
           and never the four views above, and standing between the two is
           how it says so. */}
-      <div className="mt-3 shrink-0 border-t border-[var(--mail-chrome-border)] pt-2">
+      {/* With three rows of views and no favourites, 5px under them puts
+          this rule level with the line under the list's tabs beside it. */}
+      <div
+        className={cn(
+          // 18px under the rule: the box's middle is then level with the
+          // list's first day heading ("Today") beside it.
+          "shrink-0 border-t border-[var(--mail-chrome-border)] pt-[18px]",
+          favouriteRows.length ? "mt-3" : "mt-[5px]"
+        )}
+      >
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
