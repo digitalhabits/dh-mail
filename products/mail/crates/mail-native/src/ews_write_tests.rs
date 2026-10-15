@@ -95,6 +95,8 @@ fn read_changes_go_ten_at_a_time_and_a_gone_item_is_done() {
   let out = run(set_read(&fx::client(&server.url), &ids(1..=12), true)).unwrap();
   assert_eq!(out.done.len(), 12);
   assert!(out.failed.is_empty());
+  // Said apart too: a change queued offline puts that row back.
+  assert_eq!(out.gone, vec![fx::item_id(3)]);
   let requests = server.requests.lock().unwrap();
   let batches: Vec<usize> = requests.iter().map(|r| r.matches("<t:ItemChange>").count()).collect();
   assert_eq!(batches, vec![10, 2]);
@@ -141,6 +143,65 @@ fn the_strict_server_takes_every_write_request() {
   assert!(run(set_flag(&client, &one, true)).unwrap().failed.is_empty());
   assert_eq!(run(move_items(&client, &one, &fx::folder_id(2))).unwrap().moved.len(), 1);
   assert_eq!(run(delete_forever(&client, &one)).unwrap().done.len(), 1);
+}
+
+/*
+  The rules the queued actions lean on (docs/mail-local-store.md, 7), as the
+  KU server keeps them: a moved item has a new id, and the old one is gone
+  after; and a refused password is asked once and never again.
+*/
+#[test]
+fn a_moved_item_answers_to_its_new_id_only() {
+  let moved = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+  let seen = moved.clone();
+  let handler: Handler = Arc::new(move |operation, body| {
+    let asked: Vec<u32> = (1..=3).filter(|n| body.contains(&fx::item_id(*n))).collect();
+    let mut gone = seen.lock().unwrap();
+    match operation {
+      "MoveItem" => {
+        let answer: Vec<Option<u32>> = asked
+          .iter()
+          .map(|n| if gone.contains(&fx::item_id(*n)) { None } else { Some(n + 100) })
+          .collect();
+        gone.extend(asked.iter().map(|n| fx::item_id(*n)));
+        (200, fx::move_answer(&answer))
+      }
+      "UpdateItem" => {
+        let answer: Vec<(u32, bool)> = asked.iter().map(|n| (*n, !gone.contains(&fx::item_id(*n)))).collect();
+        (200, fx::update_answer(&answer))
+      }
+      _ => (500, fx::fault("ErrorInvalidRequest", body)),
+    }
+  });
+  let server = fx::serve(handler);
+  let client = fx::client(&server.url);
+  let out = run(move_items(&client, &ids(1..=2), &fx::folder_id(7))).unwrap();
+  assert_eq!(out.moved[0].new_id.as_deref(), Some(fx::item_id(101).as_str()));
+  // The same item again, by its old id: gone, with no new id.
+  let again = run(move_items(&client, &ids(1..=1), &fx::folder_id(8))).unwrap();
+  assert_eq!(again.moved, vec![Moved { id: fx::item_id(1), new_id: None }]);
+  let read = run(set_read(&client, &ids(2..=3), true)).unwrap();
+  assert_eq!(read.gone, vec![fx::item_id(2)]);
+  assert_eq!(read.done.len(), 2);
+}
+
+#[test]
+fn a_refused_password_is_not_asked_again() {
+  let handler: Handler = Arc::new(|_, _| (200, fx::move_answer(&[Some(9)])));
+  let server = fx::serve(handler);
+  let client = crate::ews::EwsClient::new(crate::ews::EwsSettings {
+    url: server.url.clone(),
+    username: "someone@example.com".into(),
+    password: "wrong".into(),
+  })
+  .unwrap();
+  let first = run(move_items(&client, &ids(1..=1), &fx::folder_id(2)));
+  assert!(matches!(first, Err(EwsError::Refused)), "{first:?}");
+  let asked = server.count.load(std::sync::atomic::Ordering::SeqCst);
+  let second = run(move_items(&client, &ids(1..=1), &fx::folder_id(2)));
+  assert!(matches!(second, Err(EwsError::Refused)), "{second:?}");
+  assert_eq!(server.count.load(std::sync::atomic::Ordering::SeqCst), asked, "the second move went to the server");
+  assert!(server.requests.lock().unwrap().is_empty(), "no request got past the sign-in");
 }
 
 #[test]

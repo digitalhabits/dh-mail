@@ -12,6 +12,8 @@ import { createRoot } from "react-dom/client";
 import { toastSink } from "sonner";
 
 import { setMailApiTransport } from "@/lib/mail/api";
+import { invalidateConnectedMailAccountsCache } from "@/lib/mail/connected-accounts-cache";
+import { archiveMailThread } from "@/lib/mail/inbox";
 import { MailPage } from "@/components/mail/MailPage";
 import { PURGE_UNDO_SECONDS } from "@/lib/mail/pending-purge";
 
@@ -145,6 +147,13 @@ const server = {
   folders: [],
   /** POST paths that answer with a server error, for walks of a failure. */
   failing: new Set(),
+  /**
+   * POST paths that run the app's own action, as the desktop app's router
+   * does, for a walk with a provider faked behind it. A throw is a 500.
+   */
+  routes: new Map(),
+  /** Threads the local copy holds out of the inbox, for those walks. */
+  outOfInbox: () => new Set(),
   reset() {
     this.gone.clear();
     this.posts = [];
@@ -154,6 +163,8 @@ const server = {
     this.trashed = new Set();
     this.folders = [{ account: ACCOUNT, name: "Receipts", count: 0 }];
     this.failing = new Set();
+    this.routes = new Map();
+    this.outOfInbox = () => new Set();
   },
   postsTo(path) {
     return this.posts.filter((p) => p.path === path).map((p) => p.body.threadId);
@@ -193,6 +204,19 @@ setMailApiTransport(async (path, init) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+  if (init?.method === "POST" && server.routes.has(p)) {
+    const body = init.body ? JSON.parse(init.body) : {};
+    server.posts.push({ path: p, body });
+    try {
+      await server.routes.get(p)(body);
+      return json({ ok: true });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
   if (init?.method === "POST") {
     const body = init.body ? JSON.parse(init.body) : {};
     server.posts.push({ path: p, body });
@@ -215,13 +239,15 @@ setMailApiTransport(async (path, init) => {
       threads: ROWS.map((r) => r.summary).filter((t) => server.trashed.has(t.threadId)),
       nextCursor: null,
     });
-  if (p === "/api/mail/threads")
+  if (p === "/api/mail/threads") {
+    const outOfInbox = server.outOfInbox();
     return json({
       threads: [...server.arriving, ...ROWS.map((r) => r.summary)].filter(
-        (t) => !server.gone.has(t.threadId)
+        (t) => !server.gone.has(t.threadId) && !outOfInbox.has(t.threadId)
       ),
       nextCursor: null,
     });
+  }
   if (p === "/api/mail/thread") {
     const found = ROWS.find((r) => r.summary.threadId === url.searchParams.get("id"));
     if (!found) return json({});
@@ -1374,6 +1400,84 @@ async function failedArchiveKeepsThePin() {
   pass("an archive the provider refuses puts the row and its pin back");
 }
 
+/**
+ * Offline, on an Exchange mailbox: the page's archive runs the app's own
+ * action, which cannot reach the server. The row leaves and stays gone,
+ * and nothing says it failed: the archive is in the copy and the queue,
+ * and goes to the server when it can (a KU tester, 2026-10-15).
+ */
+async function archiveOfflineStaysGone() {
+  await mount();
+  const ews = [];
+  const queued = [];
+  /** The local copy of the bike thread: one message, in the inbox. */
+  const copy = [{
+    messageId: "bike-1-m1", threadId: "bike-1", folder: "", uid: null, rfcMessageId: "<bike-1-m1@example.test>",
+    fromName: "Otto Brink", fromEmail: "otto@gaarden.example", to: [], cc: [], bcc: [], subject: BIKE.subject,
+    snippet: "", sentAt: 1, hasAttachments: false, unread: false, starred: false, isDraft: false, labels: ["INBOX"],
+  }];
+  const tree = {
+    syncState: "h-1",
+    wellKnown: { inbox: "f-inbox", archive: "f-arch", deleteditems: "f-trash", msgfolderroot: "f-root" },
+    folders: Object.fromEntries([["f-inbox", "Inbox"], ["f-arch", "Archive"], ["f-trash", "Deleted Items"]].map(([id, name]) =>
+      [id, { id, parentId: "f-root", name, folderClass: "IPF.Note", total: 1, unread: 0, childCount: 0 }])),
+  };
+  const store = (op, a) => {
+    if (op === "accounts.exists") return a.provider === "exchange" && a.email === ACCOUNT;
+    if (op === "accounts.listForOwner" || op === "accounts.listAll")
+      return a.provider === "exchange" ? [{ email: ACCOUNT, ownerId: "local", inMailTab: true }] : [];
+    if (op === "settings.get") return a.key === `dh-mail-exchange-folders:${ACCOUNT}` ? JSON.stringify(tree) : null;
+    if (op === "sync.list") return [{ account: ACCOUNT, folder: "", phase: "paused", lastOkAt: 1 }];
+    if (op === "messages.thread") return { messages: copy.filter((r) => r.threadId === a.threadId) };
+    if (op === "messages.upsertMany") {
+      for (const r of a.rows) copy.splice(copy.findIndex((x) => x.messageId === r.messageId), 1, r);
+      return a.rows.length;
+    }
+    if (op === "actions.enqueue") {
+      // The rows go with the action, as the store writes them.
+      for (const r of a.rows ?? []) copy.splice(copy.findIndex((x) => x.messageId === r.messageId), 1, r);
+      return queued.push(a);
+    }
+    if (op === "actions.pending") return queued.map((q, i) => ({ id: i + 1, account: q.account, threadId: q.threadId, kind: q.kind, payload: q.payload, attempts: 0, lastError: null }));
+    if (op === "actions.failed") return { givenUp: false };
+    return null;
+  };
+  window.__TAURI__ = {
+    core: {
+      invoke: async (cmd, args) => {
+        if (cmd === "mail_store_call") return store(args.op, args.args);
+        if (cmd.startsWith("mail_ews_")) {
+          ews.push(cmd);
+          throw new Error("ews:network: Could not reach the server.");
+        }
+        return null;
+      },
+    },
+  };
+  invalidateConnectedMailAccountsCache();
+  try {
+    server.routes.set("/api/mail/archive", (body) => archiveMailThread(body.account, body.threadId));
+    server.outOfInbox = () => new Set(copy.filter((r) => !r.labels.includes("INBOX")).map((r) => r.threadId));
+    await open(BIKE);
+    clickEl(paneAction("Archive"));
+    await sleep(900);
+    assert.deepEqual(server.postsTo("/api/mail/archive"), ["bike-1"]);
+    assert.deepEqual(ews, ["mail_ews_move"], "one try at the server, which cannot be reached");
+    assert.equal(queued.length, 1, "the archive waits in the queue");
+    assert.deepEqual(copy[0].labels, [], "and is in the copy: out of the inbox");
+    assert(!inList(BIKE), "the row has left the list");
+    assert(!toasts.some((x) => x.kind === "error"), `no toast says it failed: ${JSON.stringify(toasts.map((x) => x.message))}`);
+    // The list read again, from the copy: the row does not come back.
+    clickEl([...document.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || "") === "Sync inbox"));
+    await sleep(600);
+    assert(!inList(BIKE), "a new read of the list does not bring the row back");
+    pass("offline, an Exchange archive leaves the row gone, with no error, and waits in the queue");
+  } finally {
+    delete window.__TAURI__;
+    invalidateConnectedMailAccountsCache();
+  }
+}
+
 async function main() {
   try {
     await archiveThenCommandZ();
@@ -1408,6 +1512,7 @@ async function main() {
     await scheduledReplyAtTheEndOfItsThread();
     await pinnedThreadArchivedAndDeleted();
     await failedArchiveKeepsThePin();
+    await archiveOfflineStaysGone();
     await pauseFromSyncAndResume();
     root?.unmount();
     process.exit(0);

@@ -17,6 +17,8 @@ import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu"
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { ListNotice, ListNoticeButton } from "@/components/mail/ListNotice";
 import { MailFirstReadLine } from "@/components/mail/MailFirstReadLine";
+import { OfflineLine } from "@/components/mail/OfflineLine";
+import { useOffline } from "@/lib/mail/use-offline";
 import { AlertTriangle, Clock, Loader2, Pin, Paperclip } from "lucide-react";
 import { MAIL_RECONNECT_REQUEST, toast, type MailReconnectRequest } from "@/lib/mail/toast";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
@@ -585,7 +587,7 @@ export function PeopleRows({
                     </span>
                   )}
                   {listDensity === "compact" || !newest.snippet ? null : (
-                    <span className="flex items-center justify-between gap-3">
+                    <span className="mt-px flex items-center justify-between gap-3">
                       <span className="min-w-0 truncate text-xs text-[var(--mail-chrome-muted)]">
                         {personHasFile ? (
                         <Paperclip
@@ -783,6 +785,7 @@ export function ListNotices({
     threads,
     unreadable,
   } = m;
+  const { offline, waiting } = useOffline();
   return (
     <>
       {/*
@@ -829,9 +832,13 @@ export function ListNotices({
           }
         />
       ))}
+      {/* Offline: one line for every mailbox, at every width, with what
+          waits to be sent. It stands in for each mailbox's own network line. */}
+      <OfflineLine offline={offline} waiting={waiting} t={t} />
       {/* A sync that stopped on a mailbox whose copy is complete. */}
       {!listNarrow
         ? syncPaused
+            .filter((s) => !(offline && syncPauseKind(s.lastError) === "offline"))
             .map((s) => (
               <div
                 key={`${s.account}|${s.folder}`}

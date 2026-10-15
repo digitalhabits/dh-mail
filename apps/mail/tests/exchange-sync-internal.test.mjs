@@ -25,6 +25,7 @@ import {
 } from "@/lib/mail/exchange-sync";
 import { setMailStore } from "@/lib/mail/store";
 
+import { fakeActionQueue } from "./fake-action-queue.mjs";
 import { check, suite } from "./harness.mjs";
 
 const EX = "someone@mail.example.com";
@@ -35,7 +36,9 @@ const settings = {};
 const states = [];
 const upserts = [];
 const removals = [];
+const queue = fakeActionQueue();
 setMailStore({
+  actions: queue.store,
   settings: {
     get: async (key) => settings[key] ?? null,
     set: async (key, value) => {
@@ -124,6 +127,7 @@ globalThis.window = {
         // The newest of the inbox first: one row, newest first.
         if (cmd === "mail_ews_newest_items") return { items: [item("in-2")], keys: { "in-2": "ck-in-2" } };
         if (cmd === "mail_ews_fetch_missing_bodies") return { kept: 0, more: false };
+        if (cmd === "mail_ews_set_read") return { done: args.itemIds, failed: [], gone: [] };
         if (cmd === "mail_ews_folder_counts") {
           return args.folderIds.map((id) => ({ ...FOLDERS.find((f) => f.id === id), total: 99, unread: 7 }));
         }
@@ -243,6 +247,16 @@ suite(async () => {
   const again = itemCalls().slice(before);
   check("an inbox pass reads the inbox only", again.every((c) => c.folderId === "f-inbox"), again.map((c) => c.folderId).join(","));
   check("a forgotten state reads the folder from the start", again[0]?.syncState === "i-2" && again[1]?.syncState === null);
+
+  // ---- What the reader did offline goes out before the pass reads -------------------
+  await queue.store.enqueue({ account: EX, threadId: "c-in-1", kind: "read", apply: false, payload: { ids: ["in-1"], target: null, targetLabel: null, before: {} } });
+  const atQueue = calls.length;
+  wakeExchangeSync(EX, "inbox");
+  await until(() => itemCalls().length > 0 && calls.slice(atQueue).some((c) => c.cmd === "mail_ews_sync_items"), "the pass after the queue");
+  const sent = calls.slice(atQueue);
+  const readAt = sent.findIndex((c) => c.cmd === "mail_ews_set_read");
+  check("a queued action goes out first in the pass", readAt === 0 && sent[0].itemIds.join(",") === "in-1", sent.map((c) => c.cmd).join(","));
+  check("and leaves the queue", queue.rows.length === 0);
 
   // ---- A refused password ------------------------------------------------------------
   refuseNext = true;

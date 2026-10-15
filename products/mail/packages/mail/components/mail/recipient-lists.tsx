@@ -423,7 +423,7 @@ export function ListChip({
   variant: "boxed" | "inline";
   selected?: boolean;
   /** Set where the chip may be carried to another field. */
-  carry?: React.HTMLAttributes<HTMLElement> & { draggable?: boolean };
+  carry?: React.HTMLAttributes<HTMLElement>;
   onSelect: (e: React.MouseEvent) => void;
   /** The mouse let go without a drag: give the input its focus back. */
   onRelease?: () => void;

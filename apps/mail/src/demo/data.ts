@@ -100,7 +100,7 @@ const P = {
       "Postboks 0, 0000 Byen",
     ],
   },
-  kanin: { name: "Kanin Kunsthal", email: "booking@kanin.example" },
+  kanin: { name: "Karen Kanin", email: "booking@kanin.example" },
   balance: { name: "Balance Bogføring", email: "bogholder@balance.example" },
   frida: {
     name: "Frida Fisker",
@@ -459,7 +459,7 @@ export function demoThreads(): DemoThread[] {
             "Please let us know if that works. We will come by the yard entrance as you suggested.",
             "",
             "Kind regards,",
-            "Kanin Kunsthal",
+            "Karen Kanin",
             "Booking og formidling",
             "Tlf. 00 00 00 00",
           ].join("\n"),

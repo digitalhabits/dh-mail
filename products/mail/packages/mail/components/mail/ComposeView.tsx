@@ -40,6 +40,7 @@ import {
 import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
 import { writeComposeFrom } from "@/lib/mail/compose-from";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
+import { RecipientDropZone, withRecipient } from "@/components/mail/recipient-carry";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
 import { DraftAssistMenu, DraftAssistNotes, useAccountAssist } from "@/components/mail/team-layer";
 import { SignatureDialog } from "@/components/mail/SignatureDialog";
@@ -412,28 +413,42 @@ export function ComposeView(props: ComposeViewProps) {
                   actions={
                     <span className="flex items-center gap-2.5 text-[15px] text-stone-500">
                       {!showCc ? (
-                        <button
-                          type="button"
-                          className="underline-offset-2 hover:text-stone-800 hover:underline"
-                          onClick={() => {
+                        <RecipientDropZone
+                          onDropRecipient={(r) => {
                             setShowCc(true);
-                            focusSoon(ccInputRef);
+                            setCcList(withRecipient(ccList, r));
                           }}
                         >
-                          Cc
-                        </button>
+                          <button
+                            type="button"
+                            className="underline-offset-2 hover:text-stone-800 hover:underline"
+                            onClick={() => {
+                              setShowCc(true);
+                              focusSoon(ccInputRef);
+                            }}
+                          >
+                            Cc
+                          </button>
+                        </RecipientDropZone>
                       ) : null}
                       {!showBcc ? (
-                        <button
-                          type="button"
-                          className="underline-offset-2 hover:text-stone-800 hover:underline"
-                          onClick={() => {
+                        <RecipientDropZone
+                          onDropRecipient={(r) => {
                             setShowBcc(true);
-                            focusSoon(bccInputRef);
+                            setBccList(withRecipient(bccList, r));
                           }}
                         >
-                          {t("fieldBcc")}
-                        </button>
+                          <button
+                            type="button"
+                            className="underline-offset-2 hover:text-stone-800 hover:underline"
+                            onClick={() => {
+                              setShowBcc(true);
+                              focusSoon(bccInputRef);
+                            }}
+                          >
+                            {t("fieldBcc")}
+                          </button>
+                        </RecipientDropZone>
                       ) : null}
                     </span>
                   }

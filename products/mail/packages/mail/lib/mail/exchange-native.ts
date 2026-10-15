@@ -228,8 +228,11 @@ export function exchangeInbox(account: string): Promise<ExchangeFolderSummary> {
 /** One id the server did not change, and why. */
 export type ExchangeFailure = { id: string; error: string };
 
-/** The answer to a change: the ids done, and the ids that failed. */
-export type ExchangeChanged = { done: string[]; failed: ExchangeFailure[] };
+/**
+ * The answer to a change: the ids done, and the ids that failed. `gone`:
+ * the ids among `done` that were no longer on the server.
+ */
+export type ExchangeChanged = { done: string[]; failed: ExchangeFailure[]; gone?: string[] };
 
 /** The answer to a move: each item's id before and after. Null: already gone. */
 export type ExchangeMoved = { moved: { id: string; newId: string | null }[]; failed: ExchangeFailure[] };

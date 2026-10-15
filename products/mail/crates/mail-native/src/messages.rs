@@ -734,7 +734,7 @@ fn read_sync_state(r: &rusqlite::Row<'_>) -> rusqlite::Result<SyncState> {
   })
 }
 
-fn upsert_one(tx: &Connection, account: &str, row: &MessageRow) -> DbResult<()> {
+pub(crate) fn upsert_one(tx: &Connection, account: &str, row: &MessageRow) -> DbResult<()> {
   tx.execute(
     "INSERT INTO messages (account_email, message_id, thread_id, uid, modseq, rfc_message_id,
        in_reply_to, ref_headers, from_name, from_email, to_json, cc_json, bcc_json, subject,

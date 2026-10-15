@@ -825,13 +825,14 @@ export async function getOutlookMessageTimes(
 
 /**
  * Move every message in a conversation (best-effort per message).
- * `destinationId` is a well-known name or a user folder id.
+ * `destinationId` is a well-known name or a user folder id. Answers how many
+ * messages the conversation had: none means it is gone from the mailbox.
  */
 export async function moveOutlookConversation(
   accessToken: string,
   conversationId: string,
   destinationId: string
-): Promise<void> {
+): Promise<number> {
   let beforeReceivedAt: string | undefined;
   /*
     A move that failed must be said to have failed.
@@ -845,6 +846,9 @@ export async function moveOutlookConversation(
   */
   let failed = 0;
   let total = 0;
+  // The status of every failure, when each had one: a queued move tells a
+  // refusal from a lost network by it (outlook-queue.ts).
+  const statuses: (number | undefined)[] = [];
   for (;;) {
     const page = await listConversationMessages(accessToken, conversationId, {
       top: 50,
@@ -859,7 +863,10 @@ export async function moveOutlookConversation(
     for (const r of results) {
       if (r.status === "rejected") {
         const status = (r.reason as { status?: number } | null)?.status;
-        if (status !== 404) failed += 1;
+        if (status !== 404) {
+          failed += 1;
+          statuses.push(status);
+        }
       }
     }
     if (!page.hasOlder || page.messages.length === 0) break;
@@ -868,10 +875,13 @@ export async function moveOutlookConversation(
     if (!beforeReceivedAt) break;
   }
   if (failed) {
-    throw new Error(
+    const err = new Error(
       `Could not move ${failed} of ${total} messages in the conversation`
-    );
+    ) as Error & { status?: number };
+    if (statuses.every((s) => s != null)) err.status = statuses[0];
+    throw err;
   }
+  return total;
 }
 
 /** A message in a folder's delta reply, or the id of one that left it. */

@@ -137,13 +137,60 @@ export function ZoomControls({
 }
 
 /**
- * The "Aa" among the thread's actions: a circle like theirs, the letters in
- * the app's serif. The thread's strip and the reader's bar both use it.
+ * The "Aa" among the thread's actions: a circle like theirs, with a drawn
+ * large and small A (TextSizeIcon) on the icons' grid and line weight. The
+ * thread's strip and the reader's bar both use it.
  */
+// A little bigger than the icons beside it (22px to their 19px): its small A
+// is small, and at their size the pair read as a smudge.
 export const AA_BUTTON_CLASS = cn(
   THREAD_ACTION_CLASS,
-  "mail-chrome-strip inline-flex items-center justify-center font-serif text-[20.5px] font-[405] leading-none"
+  "mail-chrome-strip inline-flex items-center justify-center [&_svg]:size-[22px] group-data-[tight]/toolbar:[&_svg]:size-[19px]"
 );
+
+/**
+ * A large A and a small A, drawn in strokes on Lucide's 24px grid, so it
+ * sits with the toolbar's icons: letters set in a font were heavier and
+ * taller than they are.
+ */
+export function TextSizeIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    >
+      <path d="M2.5 19 8.5 5l6 14" />
+      <path d="M4.6 14.2h7.8" />
+      <path d="m14.5 19 3.75-8.5L22 19" />
+      <path d="M15.9 16h4.7" />
+    </svg>
+  );
+}
+
+/** One A, drawn as the large A of TextSizeIcon: the popover's smaller and bigger. */
+function LetterAIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M5 20 12 4l7 16" />
+      <path d="M7.6 14.5h8.8" />
+    </svg>
+  );
+}
 
 /**
  * An "Aa" button, and under it a smaller A and a bigger A with the size
@@ -158,6 +205,7 @@ export function TextSizePopover({
   onSmaller,
   onBigger,
   className = AA_BUTTON_CLASS,
+  letters = false,
 }: {
   /** The button's name and tooltip. */
   label: string;
@@ -168,18 +216,20 @@ export function TextSizePopover({
   onSmaller: () => void;
   onBigger: () => void;
   className?: string;
+  /** "Aa" in letters, for a place with no icons beside it. */
+  letters?: boolean;
 }) {
   const t = useMailT();
   const [open, setOpen] = React.useState(false);
-  // The As in the app's serif, as the button's own Aa is; close together,
-  // so the strip of three is no wider than it needs to be.
+  // The As drawn as the button's icon is; close together, so the strip of
+  // three is no wider than it needs to be.
   const step =
-    "flex h-7 w-7 items-center justify-center rounded-full font-serif text-stone-600 hover:bg-stone-200/70 disabled:opacity-40";
+    "flex h-7 w-7 items-center justify-center rounded-full text-stone-600 hover:bg-stone-200/70 disabled:opacity-40";
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" aria-label={label} title={label} className={className}>
-          Aa
+          {letters ? "Aa" : <TextSizeIcon />}
         </button>
       </PopoverTrigger>
       <MailPopoverContent align="end" className="flex w-auto items-center gap-0.5 rounded-full p-1">
@@ -189,9 +239,9 @@ export function TextSizePopover({
           title={t("smallerText")}
           disabled={!canSmaller}
           onClick={onSmaller}
-          className={`${step} text-[13px]`}
+          className={step}
         >
-          A
+          <LetterAIcon className="h-3 w-3" />
         </button>
         <span className="min-w-[2.25rem] text-center text-[11px] tabular-nums text-stone-500">{size}</span>
         <button
@@ -200,9 +250,9 @@ export function TextSizePopover({
           title={t("biggerText")}
           disabled={!canBigger}
           onClick={onBigger}
-          className={`${step} text-[18px]`}
+          className={step}
         >
-          A
+          <LetterAIcon className="h-[18px] w-[18px]" />
         </button>
       </MailPopoverContent>
     </Popover>
@@ -231,6 +281,7 @@ export function ZoomTextSize({
       onSmaller={() => onAdjust(nextZoomStop(zoom, -1) - zoom)}
       onBigger={() => onAdjust(nextZoomStop(zoom, 1) - zoom)}
       className={className ?? "mail-chrome-strip shrink-0 rounded-md px-2 py-1 text-[15px] text-stone-600 hover:bg-stone-200/70"}
+      letters={!className}
     />
   );
 }

@@ -13,6 +13,7 @@ import { startOutlookSync, stopOutlookSync, wakeOutlookSync } from "@/lib/mail/o
 import { rememberOutlookAccessToken } from "@/lib/mail/outlook-token";
 import { setMailStore } from "@/lib/mail/store";
 
+import { fakeActionQueue } from "./fake-action-queue.mjs";
 import { check, suite } from "./harness.mjs";
 
 const me = "vera@outlook.example";
@@ -34,7 +35,9 @@ const bodies = [];
 const removed = [];
 /** Each removal with the folder it was reported for. */
 const removals = [];
+const queue = fakeActionQueue();
 setMailStore({
+  actions: queue.store,
   settings: { get: async () => null, set: async () => {} },
   accounts: {
     getToken: async () => ({ refreshToken: "r", ownerId: "local" }),

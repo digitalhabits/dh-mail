@@ -1007,6 +1007,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 .mail-shell[data-theme="dark"] .bg-teal-50\/90,
 .mail-shell[data-theme="dark"] .bg-teal-100,
 .mail-shell[data-theme="dark"] .hover\:bg-teal-50:hover,
+.mail-shell[data-theme="dark"] .hover\:bg-teal-50\/60:hover,
 .mail-shell[data-theme="dark"] .hover\:bg-teal-100:hover {
   background-color: var(--mail-u-accent-soft);
 }

@@ -24,6 +24,7 @@ import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
 import { DraftsFolderSetting } from "@/components/mail/drafts-folder-setting";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
 import { OPEN_MAIL_ACCOUNTS_EVENT, isMailSettingsCategory, type MailSettingsCategory } from "@/lib/mail/open-mail-accounts-menu";
+import { MAILBOX_CONNECTED_EVENT } from "@/lib/mail/mailbox-connected";
 import { MAIL_APP_VERSION } from "@/lib/mail/app-version";
 import { cn } from "@/lib/utils";
 
@@ -244,6 +245,18 @@ export function MailLayoutMenu({
     };
     window.addEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
+  }, []);
+
+  /*
+    A new mailbox asks how it should fit the week (AccountRhythmDialog), and
+    Settings, where it was connected, goes out of its way. The menu is modal:
+    while it is open nothing outside it takes a click, so the question drew
+    on top of it and could not be answered (2026-10-15).
+  */
+  React.useEffect(() => {
+    const onConnected = () => setOpen(false);
+    window.addEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
+    return () => window.removeEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
   }, []);
 
   // A search is for this visit. Settings opens again with the whole rail.

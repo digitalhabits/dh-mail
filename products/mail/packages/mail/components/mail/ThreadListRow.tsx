@@ -1152,7 +1152,7 @@ function StackedRowBody({
       </p>
       <p
         className={cn(
-          "flex min-w-0 items-center gap-1.5 text-xs",
+          "mt-px flex min-w-0 items-center gap-1.5 text-xs",
           onNavy ? "text-white/45" : "text-[#908985]"
         )}
       >

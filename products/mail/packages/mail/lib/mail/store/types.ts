@@ -700,6 +700,62 @@ export type MailSyncStore = {
   set(state: MailSyncState): Promise<void>;
 };
 
+/** An action on a thread, kept until the server has it. */
+export type MailPendingAction = {
+  id: number;
+  account: string;
+  threadId: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  attempts: number;
+  lastError: string | null;
+};
+
+/**
+ * The queue of actions not yet on the server, for the providers whose
+ * worker runs in the interface (Outlook, Exchange). The Gmail worker keeps
+ * the same table from Rust. In order, oldest first; it outlives a restart.
+ */
+export type MailActionQueueStore = {
+  /**
+   * Keep an action for the server. With `apply` (the default) the copy
+   * changes in the same step, and the action remembers how the thread's
+   * messages were. Without it the caller says how the copy changes: `rows`
+   * are written in the same transaction as the action, and `payload.before`
+   * says how they were.
+   */
+  enqueue(input: {
+    account: string;
+    threadId: string;
+    kind: string;
+    payload?: Record<string, unknown>;
+    apply?: boolean;
+    rows?: MailStoredMessage[];
+  }): Promise<number>;
+  pending(account: string): Promise<MailPendingAction[]>;
+  /** Delivered, or dropped. */
+  done(id: number): Promise<void>;
+  /**
+   * A try that did not land. A transient one (no network) is not counted.
+   * `givenUp` when this was the last try: the action has left the queue.
+   */
+  failed(id: number, error: string, transient: boolean): Promise<{ givenUp: boolean }>;
+  /**
+   * Delivered, and the item ids a move changed (old to new) written into
+   * the actions queued after it, in one transaction.
+   */
+  doneRenaming(id: number, newIds: Record<string, string>): Promise<void>;
+  /**
+   * Take back an action that has not gone out: it leaves the queue and its
+   * rows go back as its `before` says, in one transaction. False: it had gone.
+   */
+  cancel(id: number): Promise<boolean>;
+  /** Apply the queue to the copy again, over what a sync pass wrote. */
+  replay(account: string): Promise<number>;
+  /** Put rows back as an action's `before` says. */
+  restore(account: string, before: Record<string, unknown>): Promise<void>;
+};
+
 export type MailStore = {
   listSync: MailListSyncStore;
   settings: MailSettingsStore;
@@ -709,4 +765,5 @@ export type MailStore = {
   chats: MailChatStore;
   messages: MailMessageStore;
   sync: MailSyncStore;
+  actions: MailActionQueueStore;
 };

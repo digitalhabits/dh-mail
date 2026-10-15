@@ -381,6 +381,25 @@ export async function findOutlookFolder(
 }
 
 /**
+ * `findOutlookFolder`, or with no network the last folder list read, however
+ * old. A move made offline goes into the queue with the folder's id.
+ */
+export async function findOutlookFolderKnown(
+  accountEmail: string,
+  path: string
+): Promise<OutlookFolder | null> {
+  try {
+    return await findOutlookFolder(accountEmail, path);
+  } catch (err) {
+    const key = pathKey(path);
+    const tree = treeCache.get(accountEmail.trim().toLowerCase())?.value ?? [];
+    const hit = key ? tree.find((f) => pathKey(f.path) === key) : undefined;
+    if (hit) return { path: hit.path, id: hit.id, count: hit.count };
+    throw err;
+  }
+}
+
+/**
  * Find a folder by path, creating any missing part of it.
  * `Clients/2026` under a mailbox with neither creates both.
  */

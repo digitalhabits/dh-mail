@@ -21,6 +21,7 @@ import * as React from "react";
 
 import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
+import { RecipientDropZone, withRecipient } from "@/components/mail/recipient-carry";
 import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
 import { cn } from "@/lib/utils";
 
@@ -87,17 +88,26 @@ export function ComposerFieldRows({ m }: { m: ThreadPaneModel }) {
   const bccInputRef = React.useRef<HTMLInputElement>(null);
   const focusSoon = (ref: React.RefObject<HTMLInputElement | null>) =>
     requestAnimationFrame(() => requestAnimationFrame(() => ref.current?.focus()));
+  /* A chip dropped on Cc or Bcc while the row is not shown opens the row
+     with that person in it. */
   const bccButton = bccShown ? null : (
-    <button
-      type="button"
-      className={LINK}
-      onClick={() => {
+    <RecipientDropZone
+      onDropRecipient={(r) => {
         setShowBcc(true);
-        focusSoon(bccInputRef);
+        setBccList(withRecipient(bccList, r));
       }}
     >
-      {t("fieldBcc")}
-    </button>
+      <button
+        type="button"
+        className={LINK}
+        onClick={() => {
+          setShowBcc(true);
+          focusSoon(bccInputRef);
+        }}
+      >
+        {t("fieldBcc")}
+      </button>
+    </RecipientDropZone>
   );
   /** What stands at the right end of a row, with a rule between two. */
   const end = (...parts: React.ReactNode[]) => {
@@ -152,16 +162,23 @@ export function ComposerFieldRows({ m }: { m: ThreadPaneModel }) {
           end(
             ccShown ? null : (
               <span className="flex items-baseline gap-3">
-                <button
-                  type="button"
-                  className={LINK}
-                  onClick={() => {
+                <RecipientDropZone
+                  onDropRecipient={(r) => {
                     setShowCc(true);
-                    focusSoon(ccInputRef);
+                    setCcList(withRecipient(ccList, r));
                   }}
                 >
-                  Cc
-                </button>
+                  <button
+                    type="button"
+                    className={LINK}
+                    onClick={() => {
+                      setShowCc(true);
+                      focusSoon(ccInputRef);
+                    }}
+                  >
+                    Cc
+                  </button>
+                </RecipientDropZone>
                 {bccButton}
               </span>
             ),

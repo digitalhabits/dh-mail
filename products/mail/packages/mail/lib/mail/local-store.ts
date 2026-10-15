@@ -125,6 +125,17 @@ export async function applyLocalAction(
   notifySyncChanged(account);
 }
 
+/**
+ * Say that the server refused an action for good, or that what it was
+ * about is gone. The same event the Gmail worker sends from Rust, so the
+ * reader is told the same way whatever the provider (use-sync-states.ts).
+ */
+export function reportActionRefused(detail: { account: string; threadId: string; kind: string; error: string }): void {
+  if (typeof window === "undefined") return;
+  const tauri = (window as unknown as { __TAURI__?: { event?: { emit?: (name: string, payload: unknown) => Promise<void> } } }).__TAURI__;
+  void tauri?.event?.emit?.("mail-sync-action-failed", detail)?.catch(() => undefined);
+}
+
 /** Window events the pane listens to beside the worker's Tauri events. */
 export const SYNC_STATE_WINDOW_EVENT = "redd-mail-sync-state";
 export const SYNC_CHANGED_WINDOW_EVENT = "redd-mail-sync-changed";

@@ -26,6 +26,7 @@ import type {
   MailChatPartRow,
   MailContactSourceState,
   MailListSyncEntry,
+  MailPendingAction,
   MailSnoozeRecord,
   MailStoredBody,
   MailStoredMessage,
@@ -141,6 +142,14 @@ export const MAIL_STORE_OPERATIONS = [
   "messages.removeMessages",
   "sync.list",
   "sync.set",
+  "actions.enqueue",
+  "actions.pending",
+  "actions.done",
+  "actions.failed",
+  "actions.doneRenaming",
+  "actions.cancel",
+  "actions.replay",
+  "actions.restore",
 ] as const;
 
 export type MailStoreOperation = (typeof MAIL_STORE_OPERATIONS)[number];
@@ -323,6 +332,26 @@ export function createTauriMailStore(): MailStore {
     sync: {
       list: () => call("sync.list"),
       set: (state) => call("sync.set", { state }),
+    },
+
+    actions: {
+      enqueue: (input) =>
+        call<number>("actions.enqueue", {
+          account: input.account,
+          threadId: input.threadId,
+          kind: input.kind,
+          payload: input.payload ?? {},
+          apply: input.apply ?? true,
+          rows: input.rows ?? null,
+        }),
+      pending: async (account) => (await call<MailPendingAction[] | null>("actions.pending", { account })) ?? [],
+      done: (id) => call("actions.done", { id }),
+      failed: async (id, error, transient) =>
+        (await call<{ givenUp: boolean } | null>("actions.failed", { id, error, transient })) ?? { givenUp: false },
+      doneRenaming: (id, newIds) => call("actions.doneRenaming", { id, newIds }),
+      cancel: async (id) => Boolean(await call<boolean>("actions.cancel", { id })),
+      replay: (account) => call<number>("actions.replay", { account }),
+      restore: (account, before) => call("actions.restore", { account, before }),
     },
 
     chats: {

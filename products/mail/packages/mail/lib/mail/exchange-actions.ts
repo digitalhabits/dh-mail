@@ -3,11 +3,16 @@
  * move, trash, junk, and delete forever (phase 3 of
  * `docs/mail-exchange-ews.md`, section 12).
  *
- * The model is the Outlook provider: send the change to EWS, then apply it
- * to the local copy, then wake the worker. An action names a thread. The
- * local copy says which items of the thread are in which folder, by the
- * label the worker gave each row (`exchangeLabelFor`). Each action takes
- * only the items it is about (the table in section 12.2).
+ * An action names a thread. The local copy says which items of the thread
+ * are in which folder, by the label the worker gave each row
+ * (`exchangeLabelFor`). Each action takes only the items it is about (the
+ * table in section 12.2).
+ *
+ * Read, flag, archive, trash, junk and a move change the copy at once and
+ * wait in the queue for the server (`exchange-queue.ts`), so they work with
+ * no network. Delete forever and snooze go to the server first, then to the
+ * copy: the one cannot be undone, and the other moves to a folder the app
+ * makes.
  *
  * A move gets the new id of each item in the answer (`ReturnNewItemIds`),
  * so the row takes its new id at once: no hold as for Graph
@@ -17,9 +22,6 @@
 import {
   deleteExchangeForever,
   moveExchangeItems,
-  setExchangeFlag,
-  setExchangeRead,
-  type ExchangeChanged,
   type ExchangeFailure,
 } from "@/lib/mail/exchange-native";
 import {
@@ -28,6 +30,7 @@ import {
   readExchangeFolders,
   type ExchangeFolderState,
 } from "@/lib/mail/exchange-folders";
+import { asRow, cancelExchangeInverse, queueExchangeAction, QUEUED_EXCHANGE_KINDS, relabel } from "@/lib/mail/exchange-queue";
 import { wakeExchangeSync } from "@/lib/mail/exchange-sync";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
 import { notifySyncChanged } from "@/lib/mail/local-store";
@@ -164,18 +167,6 @@ function labelOfFolder(place: ThreadPlace, folderId: string): string | null {
   return null;
 }
 
-/** A store row for writing: no body, and its labels. */
-function asRow(row: Row & { body?: unknown }, change: Partial<Row>): Row {
-  const { body: _body, ...rest } = row;
-  void _body;
-  return { ...rest, ...change };
-}
-
-function relabel(row: Row, folderLabel: string | null): string[] {
-  const keep = row.labels.filter((l) => l === "STARRED" || (l === "DRAFT" && row.isDraft && folderLabel !== "DRAFT"));
-  return folderLabel ? [folderLabel, ...keep] : keep;
-}
-
 function failures(list: ExchangeFailure[]): void {
   if (list.length) throw new Error(list[0].error);
 }
@@ -194,28 +185,6 @@ async function applyMove(account: string, place: ThreadPlace, items: Row[], targ
   failures(result.failed);
 }
 
-async function applyChange(account: string, items: Row[], change: ExchangeChanged, next: (row: Row) => Partial<Row>): Promise<void> {
-  const done = new Set(change.done);
-  const rows = items.filter((r) => done.has(r.messageId)).map((r) => asRow(r, next(r)));
-  if (rows.length) await mailStore().messages.upsertMany(account, rows);
-  failures(change.failed);
-}
-
-async function applyFlags(account: string, kind: ExchangeActionKind, items: Row[]): Promise<void> {
-  const ids = items.map((r) => r.messageId);
-  if (kind === "read" || kind === "unread") {
-    const unread = kind === "unread";
-    await applyChange(account, items, await setExchangeRead(account, ids, !unread), () => ({ unread }));
-    return;
-  }
-  const starred = kind === "star";
-  const change = await setExchangeFlag(account, ids, starred);
-  await applyChange(account, items, change, (r) => ({
-    starred,
-    labels: starred ? [...r.labels.filter((l) => l !== "STARRED"), "STARRED"] : r.labels.filter((l) => l !== "STARRED"),
-  }));
-}
-
 async function applyDelete(account: string, items: Row[]): Promise<void> {
   const change = await deleteExchangeForever(account, items.map((r) => r.messageId));
   if (change.done.length) await mailStore().messages.removeMessages(account, change.done);
@@ -223,9 +192,11 @@ async function applyDelete(account: string, items: Row[]): Promise<void> {
 }
 
 /**
- * Do an action on an Exchange thread: on the server, then in the copy,
- * then wake the worker. Nothing to do (no item it is about) is not an
- * error.
+ * Do an action on an Exchange thread. Most go into the copy and the queue
+ * (see the top of this file); delete forever and snooze go to the server,
+ * then the copy. Then the worker is woken. Nothing to do (no item it is
+ * about) is not an error. A folder that is not there is, before anything
+ * changes.
  */
 export async function exchangeThreadAction(
   account: string,
@@ -234,19 +205,36 @@ export async function exchangeThreadAction(
   payload: Record<string, unknown> = {}
 ): Promise<void> {
   const email = account.trim().toLowerCase();
+  // An undo of an action that has not gone out: both are dropped, and the
+  // copy is as it was. The server never hears of either.
+  if (QUEUED_EXCHANGE_KINDS.has(kind) && (await cancelExchangeInverse(email, threadId, kind, payload))) return;
   const rows = (await mailStore().messages.thread(email, threadId)) as Row[];
   const place = placeOf(await readExchangeFolders(email), rows);
   const items = itemsFor(kind, place, payload);
   if (!items.length) return;
+  if (QUEUED_EXCHANGE_KINDS.has(kind)) {
+    const target = targetFor(kind, place, payload);
+    await queueExchangeAction({
+      account: email,
+      threadId,
+      kind,
+      items,
+      target,
+      targetLabel: target ? labelOfFolder(place, target) : null,
+      payload,
+    });
+    // What the server has now comes in with the next pass.
+    wakeExchangeSync(email, kind === "read" || kind === "unread" ? "inbox" : "all");
+    return;
+  }
   try {
     if (kind === "deleteForever") await applyDelete(email, items);
-    else if (["read", "unread", "star", "unstar"].includes(kind)) await applyFlags(email, kind, items);
     else await applyMove(email, place, items, targetFor(kind, place, payload)!);
   } finally {
     invalidateInboxCache();
     notifySyncChanged(email);
-    // A read change is in the inbox pass; a move touches two folders.
-    wakeExchangeSync(email, kind === "read" || kind === "unread" ? "inbox" : "all");
+    // Both touch a folder that is not the inbox.
+    wakeExchangeSync(email, "all");
   }
 }
 

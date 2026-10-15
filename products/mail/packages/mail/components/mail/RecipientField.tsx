@@ -58,6 +58,14 @@ import {
   SaveAsListControl,
   listSubtitle,
 } from "@/components/mail/recipient-lists";
+import {
+  RecipientCarryProvider,
+  useRecipientCarry,
+  useRecipientDrop,
+  withRecipient,
+} from "@/components/mail/recipient-carry";
+
+export { RecipientCarryProvider };
 
 /**
  * One person in a field, and who they actually are.
@@ -73,42 +81,6 @@ import {
  * (that is how several are cut or deleted at once), and a tooltip cannot
  * be copied from, which is most of the reason for looking.
  */
-/**
- * A recipient being carried from one field to another.
- *
- * To, Cc and Bcc are three fields that do not know about each other, and
- * moving somebody between them meant taking them out of one and typing
- * them into the next. The chip carries what it is and how to take it out
- * of where it came from, so the field it lands on can finish the move by
- * itself — no field has to know what the others are.
- *
- * Without a provider round them there is nothing to carry to, and the
- * chips are simply not draggable.
- */
-type CarriedRecipient = {
-  fieldId: string;
-  recipient: MailRecipient;
-  /** Take it out of the field it came from, once it has landed. */
-  takeFromSource: () => void;
-};
-
-const RecipientCarry = React.createContext<{
-  carried: CarriedRecipient | null;
-  setCarried: (next: CarriedRecipient | null) => void;
-} | null>(null);
-
-export function RecipientCarryProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [carried, setCarried] = React.useState<CarriedRecipient | null>(null);
-  const value = React.useMemo(() => ({ carried, setCarried }), [carried]);
-  return (
-    <RecipientCarry.Provider value={value}>{children}</RecipientCarry.Provider>
-  );
-}
-
 function EmailChip({
   recipient,
   contacts,
@@ -128,7 +100,7 @@ function EmailChip({
   onRelease?: () => void;
   onRemove: () => void;
   /** Set where the chip may be carried to another field. */
-  carry?: React.HTMLAttributes<HTMLElement> & { draggable?: boolean };
+  carry?: React.HTMLAttributes<HTMLElement>;
 }) {
   const t = useMailT();
   const [open, setOpen] = React.useState(false);
@@ -772,72 +744,42 @@ export function RecipientField({
   const foldedCount = values.length - shownValues.length;
 
   /*
-    Carrying somebody from this field to another.
+    Carrying somebody from this field to another (recipient-carry.tsx).
 
-    The chip says what it is and how to take it out of here; the field it
+    The chip says what it is and how to take it out of here; the place it
     is dropped on adds it and then calls that. So neither field knows the
     other exists — which is what lets To, Cc and Bcc trade without a
     composer standing between them holding all three.
   */
-  const carry = React.useContext(RecipientCarry);
+  const carry = useRecipientCarry();
   const fieldId = React.useId();
-  const [carriedOver, setCarriedOver] = React.useState(false);
-  const carriedFromElsewhere =
-    carry?.carried != null && carry.carried.fieldId !== fieldId;
+  // Already here: the move is only a removal from where it was.
+  const drop = useRecipientDrop(fieldId, (r) => {
+    const next = withRecipient(values, r);
+    if (next !== values) onChange(next);
+  });
 
   const carryProps = (value: MailRecipient) =>
     carry
       ? {
-          draggable: true,
-          onDragStart: (event: React.DragEvent) => {
-            // Something has to be on the drag or the browser refuses it.
-            event.dataTransfer.setData("text/plain", recipientKey(value));
-            event.dataTransfer.effectAllowed = "move";
-            // The mouse going down selected this chip and no mouse-up will
-            // follow; once it has gone the ring would fall on the next
-            // chip, and a Backspace would take that one.
-            clearChipSelection();
-            carry.setCarried({
-              fieldId,
-              recipient: value,
-              takeFromSource: () =>
-                onChange(
-                  values.filter((v) => recipientKey(v) !== recipientKey(value))
-                ),
-            });
-          },
-          onDragEnd: () => carry.setCarried(null),
+          onPointerDown: (event: React.PointerEvent) =>
+            carry.lift(
+              event,
+              {
+                fromId: fieldId,
+                recipient: value,
+                takeFromSource: () =>
+                  onChange(
+                    values.filter((v) => recipientKey(v) !== recipientKey(value))
+                  ),
+              },
+              // The mouse going down selected this chip; once it has gone
+              // the ring would fall on the next chip, and a Backspace
+              // would take that one.
+              clearChipSelection
+            ),
         }
       : undefined;
-
-  const dropProps = carry
-    ? {
-        onDragOver: (event: React.DragEvent) => {
-          if (!carriedFromElsewhere) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move" as const;
-          if (!carriedOver) setCarriedOver(true);
-        },
-        onDragLeave: (event: React.DragEvent) => {
-          // Only when the pointer has left the field, not one of its chips.
-          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-          setCarriedOver(false);
-        },
-        onDrop: (event: React.DragEvent) => {
-          setCarriedOver(false);
-          const carried = carry.carried;
-          if (!carried || carried.fieldId === fieldId) return;
-          event.preventDefault();
-          carry.setCarried(null);
-          // Already here: the move is only a removal from where it was.
-          const here = new Set(values.map((v) => recipientKey(v)));
-          if (!here.has(recipientKey(carried.recipient))) {
-            onChange([...values, carried.recipient]);
-          }
-          carried.takeFromSource();
-        },
-      }
-    : undefined;
 
   /*
     A boxed field with nobody in it yet is one row: the label, the place to
@@ -858,7 +800,7 @@ export function RecipientField({
       /* On the whole field, not on the box inside it: a chip is let go
          over the row it is meant for, and the gaps between the chips are
          as much a part of that row as the chips are. */
-      {...dropProps}
+      {...drop.dropProps}
     >
       <div
         ref={fieldElRef}
@@ -869,9 +811,7 @@ export function RecipientField({
              well as from the pointer, so a drag abandoned outside the
              window does not leave a field lit for a drop that is not
              coming. */
-          carriedOver &&
-            carriedFromElsewhere &&
-            "rounded-xl ring-2 ring-teal-500/60",
+          drop.over && "rounded-xl ring-2 ring-teal-500/60",
           /* Block rather than flex when the field has a box round it, so
              "Save as list…" can float into its top right corner: the chips
              wrap around it on the first line and take the whole width

@@ -9,12 +9,16 @@
  *   copy. The folder's view showed the mail up to a minute later.
  * - Trash and Junk were not read from the copy at all. They were listed from
  *   Graph, which can still be without a mail whose move is in flight.
+ *
+ * Since 2026-10-15 the copy is told first, with the action into the queue
+ * (outlook-queue.ts), and the queue goes to Graph at once.
  */
 
 import { moveMailThreadToFolder } from "@/lib/mail/folders";
 import { forgetSyncStates, localStoreServesFolder } from "@/lib/mail/local-store";
 import { forgetOutlookMoves } from "@/lib/mail/outlook-moves";
 
+import { fakeActionQueue } from "./fake-action-queue.mjs";
 import { check, suite } from "./harness.mjs";
 
 const OUTLOOK = "vera@outlook.com";
@@ -32,6 +36,8 @@ const ROWS = { gmail: [account(GMAIL)], outlook: [account(OUTLOOK)] };
 
 function harness(states) {
   const log = { applied: [], sent: [] };
+  // The store changes the copy as it queues (apply): that is the copy told.
+  const queue = fakeActionQueue({ onApply: (row) => log.applied.push(row) });
   globalThis.window = {
     dispatchEvent: () => true,
     setTimeout: () => 0,
@@ -44,6 +50,7 @@ function harness(states) {
           }
           if (cmd !== "mail_store_call") return null;
           const { op, args: a } = args;
+          if (queue.isQueueOp(op)) return queue.call(op, a);
           if (op === "accounts.listForOwner") return ROWS[a.provider] ?? [];
           if (op === "accounts.exists") return (ROWS[a.provider] ?? []).some((r) => r.email === a.email);
           if (op === "accounts.getToken") return { refreshToken: "rt", ownerId: "local" };
@@ -102,7 +109,8 @@ suite(async () => {
         log.applied[0].account === OUTLOOK &&
         log.applied[0].threadId === "conv-1" &&
         log.applied[0].kind === "move" &&
-        log.applied[0].payload?.label === out.folderName,
+        log.applied[0].payload?.label === out.folderName &&
+        log.applied[0].payload?.folderId === "f-receipts",
       JSON.stringify(log.applied)
     );
   }

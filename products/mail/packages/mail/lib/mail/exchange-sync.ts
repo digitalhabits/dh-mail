@@ -13,6 +13,11 @@
  * Phase 2 of `docs/mail-exchange-ews.md` reads only. The error rules are
  * section 4.7: a refused password stops the worker at once, because many
  * failed sign-ins can lock the account.
+ *
+ * Each pass first carries the reader's queued actions to the server, and
+ * ends by putting what is still queued back on the copy
+ * (`exchange-queue.ts`): the pass writes the server's view, and the server
+ * has not heard of those yet.
  */
 
 import {
@@ -36,6 +41,7 @@ import {
   type ExchangeFolderState,
 } from "@/lib/mail/exchange-folders";
 import { fillExchangeBodies } from "@/lib/mail/exchange-bodies";
+import { flushExchangeActions, replayExchangeActions, resumeExchangeActions } from "@/lib/mail/exchange-queue";
 import { wakeExchangeSnoozes } from "@/lib/mail/exchange-snooze";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
 import { notifySyncChanged, notifySyncState } from "@/lib/mail/local-store";
@@ -62,13 +68,17 @@ type Worker = {
   failures: number;
   /** When every folder was last walked; 0 asks for all of them next. */
   lastAll: number;
+  /** Woken during a pass: another one soon after, not at the next tick. */
+  again: boolean;
 };
 const workers = new Map<string, Worker>();
 
 export function startExchangeSync(account: string): boolean {
   const email = account.trim().toLowerCase();
   if (workers.has(email)) return false;
-  workers.set(email, { timer: null, running: false, current: null, stop: false, failures: 0, lastAll: 0 });
+  // A new worker is a new connect: a queue a refused password stopped goes on.
+  resumeExchangeActions(email);
+  workers.set(email, { timer: null, running: false, current: null, stop: false, failures: 0, lastAll: 0, again: false });
   runSoon(email, 0);
   return true;
 }
@@ -108,16 +118,24 @@ function runSoon(email: string, delay: number): void {
 
 async function pass(email: string): Promise<void> {
   const worker = workers.get(email);
-  if (!worker || worker.stop || worker.running) return;
+  if (!worker || worker.stop) return;
+  if (worker.running) {
+    // An action woke the worker mid-pass: what it changed is read soon after.
+    worker.again = true;
+    return;
+  }
   worker.running = true;
+  worker.again = false;
   const all = Date.now() - worker.lastAll >= ALL_EVERY_MS;
-  const run = syncMailbox(email, all ? "all" : "inbox", worker);
+  // The queue first, so the pass reads the server as the reader left it. A
+  // refused password throws here and stops the worker below.
+  const run = flushExchangeActions(email).then(() => syncMailbox(email, all ? "all" : "inbox", worker));
   worker.current = run;
   try {
     await run;
     if (all) worker.lastAll = Date.now();
     worker.failures = 0;
-    runSoon(email, INBOX_EVERY_MS);
+    runSoon(email, worker.again ? 500 : INBOX_EVERY_MS);
     // The bodies of the last year, slowly, beside the passes (section 14.2).
     void fillExchangeBodies(email, () => worker.stop || !workers.has(email));
     // Snoozed threads whose time came go back to the inbox (section 16.3).
@@ -125,6 +143,10 @@ async function pass(email: string): Promise<void> {
   } catch (err) {
     await failed(email, worker, err instanceof Error ? err.message : String(err));
   } finally {
+    // Also after a pass cut short: the pages it wrote are the server's view.
+    await replayExchangeActions(email).catch((err: unknown) =>
+      console.warn(`[mail-sync] ${email}: the queued actions could not be put back on the copy:`, err)
+    );
     worker.running = false;
     worker.current = null;
   }

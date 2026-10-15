@@ -11,6 +11,7 @@ import "server-only";
 
 import { applyLocalAction, queueLocalAction } from "@/lib/mail/local-store";
 import { wakeOutlookSync } from "@/lib/mail/outlook-sync";
+import { queueOutlookAction } from "@/lib/mail/outlook-queue";
 import { getThreadMetadata, getThreadMinimal, headerValue, modifyMessageLabels, modifyThreadLabels, trashThread, untrashThread, deleteMessagesForever, threadMessageIdsWithLabel } from "@/lib/gmail/api";
 import { mailStore } from "@/lib/mail/store";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
@@ -42,8 +43,12 @@ export async function archiveMailThread(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    await archiveOutlookThread(account, threadId);
-    await applyLocalAction(account, threadId, "archive");
+    // Into the copy and the queue (outlook-queue.ts); Graph first only
+    // while the copy does not serve the mailbox yet.
+    if (!(await queueOutlookAction(account, threadId, "archive"))) {
+      await archiveOutlookThread(account, threadId);
+      await applyLocalAction(account, threadId, "archive");
+    }
     wakeOutlookSync(account);
     if (clerkUserId) {
       await forgetThreadInStoredPages(clerkUserId, account, threadId);
@@ -82,8 +87,10 @@ export async function unarchiveMailThread(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    await unarchiveOutlookThread(account, threadId);
-    await applyLocalAction(account, threadId, "unarchive");
+    if (!(await queueOutlookAction(account, threadId, "unarchive"))) {
+      await unarchiveOutlookThread(account, threadId);
+      await applyLocalAction(account, threadId, "unarchive");
+    }
     wakeOutlookSync(account);
     invalidateInboxCache();
     return;
@@ -128,8 +135,10 @@ export async function markMailThreadUnread(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    await markOutlookThreadUnread(account, threadId);
-    await applyLocalAction(account, threadId, "unread");
+    if (!(await queueOutlookAction(account, threadId, "unread"))) {
+      await markOutlookThreadUnread(account, threadId);
+      await applyLocalAction(account, threadId, "unread");
+    }
     wakeOutlookSync(account, "inbox");
     invalidateInboxCache();
     return;
@@ -172,8 +181,10 @@ export async function markMailThreadRead(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    await markOutlookThreadRead(account, threadId);
-    await applyLocalAction(account, threadId, "read");
+    if (!(await queueOutlookAction(account, threadId, "read"))) {
+      await markOutlookThreadRead(account, threadId);
+      await applyLocalAction(account, threadId, "read");
+    }
     wakeOutlookSync(account, "inbox");
     invalidateInboxCache();
     return;
@@ -214,9 +225,11 @@ export async function markMailThreadJunk(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    const token = await outlookAccessTokenFor(account);
-    await moveOutlookConversation(token, threadId, "junkemail");
-    await applyLocalAction(account, threadId, "junk");
+    if (!(await queueOutlookAction(account, threadId, "junk"))) {
+      const token = await outlookAccessTokenFor(account);
+      await moveOutlookConversation(token, threadId, "junkemail");
+      await applyLocalAction(account, threadId, "junk");
+    }
     wakeOutlookSync(account);
     invalidateInboxCache();
     return;
@@ -250,9 +263,11 @@ export async function markMailThreadNotJunk(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    const token = await outlookAccessTokenFor(account);
-    await moveOutlookConversation(token, threadId, "inbox");
-    await applyLocalAction(account, threadId, "notjunk");
+    if (!(await queueOutlookAction(account, threadId, "notjunk"))) {
+      const token = await outlookAccessTokenFor(account);
+      await moveOutlookConversation(token, threadId, "inbox");
+      await applyLocalAction(account, threadId, "notjunk");
+    }
     wakeOutlookSync(account);
     invalidateInboxCache();
     return;
@@ -292,8 +307,10 @@ export async function trashMailThread(
     }
   };
   if ((await resolveMailProvider(account)) === "outlook") {
-    await trashOutlookThread(account, threadId);
-    await applyLocalAction(account, threadId, "trash");
+    if (!(await queueOutlookAction(account, threadId, "trash"))) {
+      await trashOutlookThread(account, threadId);
+      await applyLocalAction(account, threadId, "trash");
+    }
     wakeOutlookSync(account);
     await forget();
     invalidateInboxCache();
@@ -326,8 +343,10 @@ export async function untrashMailThread(
     return;
   }
   if ((await resolveMailProvider(account)) === "outlook") {
-    await untrashOutlookThread(account, threadId);
-    await applyLocalAction(account, threadId, "untrash");
+    if (!(await queueOutlookAction(account, threadId, "untrash"))) {
+      await untrashOutlookThread(account, threadId);
+      await applyLocalAction(account, threadId, "untrash");
+    }
     wakeOutlookSync(account);
     invalidateInboxCache();
     return;

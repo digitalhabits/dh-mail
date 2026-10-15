@@ -9,9 +9,14 @@
  * fills. It runs in the interface's process on a timer, and is woken after
  * anything the reader did. See docs/mail-local-store.md, sections 5.5 and
  * 6.
+ *
+ * Each pass starts by carrying the reader's queued actions to Graph, and
+ * ends by putting what is still queued back on the copy (`outlook-queue.ts`):
+ * a pass writes Graph's view, and Graph has not heard of those yet.
  */
 
 import { removalsToApplyNow, settledOutlookMoves } from "@/lib/mail/outlook-moves";
+import { flushOutlookActions, replayOutlookActions } from "@/lib/mail/outlook-queue";
 import "server-only";
 
 import {
@@ -141,7 +146,11 @@ async function pass(email: string): Promise<void> {
   if (!worker || worker.stop || worker.running) return;
   worker.running = true;
   const all = Date.now() - worker.lastAll >= ALL_EVERY_MS || !worker.folders;
-  const run = syncFolders(email, all ? "all" : "inbox", worker);
+  // The queue first, so the pass reads Graph as the reader left it. A flush
+  // that cannot reach Graph keeps the queue and lets the pass say why.
+  const run = flushOutlookActions(email)
+    .catch((err: unknown) => console.warn(`[mail-sync] ${email}: the queued actions did not go: ${err instanceof Error ? err.message : String(err)}`))
+    .then(() => syncFolders(email, all ? "all" : "inbox", worker));
   worker.current = run;
   try {
     await run;
@@ -175,6 +184,10 @@ async function pass(email: string): Promise<void> {
     worker.failures += 1;
     void runSoon(email, wait);
   } finally {
+    // Also after a pass cut short: the pages it wrote are Graph's view.
+    await replayOutlookActions(email).catch((err: unknown) =>
+      console.warn(`[mail-sync] ${email}: the queued actions could not be put back on the copy:`, err)
+    );
     worker.running = false;
     worker.current = null;
   }

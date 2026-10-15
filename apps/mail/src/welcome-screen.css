@@ -663,3 +663,39 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* A stack in the example: it unfolds on a click, as in the list. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-stack-row.is-stack {
+  cursor: pointer;
+}
+.mail-shell.mail-welcome #eula-onboarding .welcome-stack-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 0 44px;
+  border-left: 2px solid var(--card-border);
+}
+.mail-shell.mail-welcome #eula-onboarding .welcome-stack-thread {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: -2px;
+  padding: 6px 10px;
+  border-left: 2px solid transparent;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+/* The newest: the one that opens, marked as the list marks it. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-stack-thread.is-open {
+  border-left-color: var(--mail-accent);
+  background: var(--row-bg);
+  color: var(--text-primary);
+}
+.mail-shell.mail-welcome #eula-onboarding .welcome-stack-thread-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

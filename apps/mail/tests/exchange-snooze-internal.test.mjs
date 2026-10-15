@@ -19,6 +19,7 @@ import { listMailFolders } from "@/lib/mail/folders";
 import { snoozeMailThread, unsnoozeMailThread } from "@/lib/mail/inbox";
 import { exchangeSnoozedRow } from "@/lib/mail/inbox-snoozed";
 
+import { fakeActionQueue } from "./fake-action-queue.mjs";
 import { check, suite } from "./harness.mjs";
 
 const EX = "someone@mail.example.com";
@@ -55,7 +56,18 @@ globalThis.fetch = async (url) => {
   return new Response("{}", { status: 500 });
 };
 
+const queue = fakeActionQueue({
+  onRows: (_account, written) => {
+    for (const r of written) {
+      const at = rows.findIndex((x) => x.messageId === r.messageId);
+      if (at >= 0) rows[at] = r;
+      else rows.push(r);
+    }
+  },
+});
+
 function storeCall(op, args) {
+  if (queue.isQueueOp(op)) return queue.call(op, args);
   switch (op) {
     case "accounts.exists":
       return args.provider === "exchange" && args.email === EX;
@@ -72,7 +84,12 @@ function storeCall(op, args) {
     case "messages.thread":
       return { messages: rows.filter((r) => r.threadId === args.threadId) };
     case "messages.upsertMany":
-      rows.push(...args.rows);
+      // By id, as the store does: a row written again replaces itself.
+      for (const r of args.rows) {
+        const at = rows.findIndex((x) => x.messageId === r.messageId);
+        if (at >= 0) rows[at] = r;
+        else rows.push(r);
+      }
       return args.rows.length;
     case "messages.removeMessages":
       rows = rows.filter((r) => !args.messageIds.includes(r.messageId));

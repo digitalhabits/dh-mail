@@ -66,7 +66,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     step: "Step {n} of {total}",
     stacksTitle: "Less clutter in your inbox",
     stacksLead:
-      "When one sender has several threads in your inbox, Mail stacks them into one row. Three emails from your airline are one row, not three. Click the stack to see each of them.",
+      "Emails from one sender stack into one row, even with different subjects. Click the stack to unfold it.",
     stacksTry: "Stack threads from the same sender",
     stacksOnRecommended: "On (recommended)",
     stacksOff: "Off",
@@ -123,7 +123,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     step: "Trin {n} af {total}",
     stacksTitle: "Mindre rod i din indbakke",
     stacksLead:
-      "Når én afsender har flere tråde i din indbakke, samler Mail dem i én række. Tre e-mails fra dit flyselskab er én række, ikke tre. Klik på stakken for at se hver af dem.",
+      "E-mails fra én afsender samles i én række, også med forskellige emner. Klik på stakken for at folde den ud.",
     stacksTry: "Saml tråde fra samme afsender",
     stacksOnRecommended: "Til (anbefalet)",
     stacksOff: "Fra",
@@ -309,7 +309,16 @@ function AroundStep({ t, pictureUrl }: { t: Record<string, string>; pictureUrl: 
   );
 }
 
-type StackRow = { sender: string; initials: string; tone: "teal" | "amber"; time: string; subject: string; count?: string };
+type StackRow = {
+  sender: string;
+  initials: string;
+  tone: "teal" | "amber";
+  time: string;
+  subject: string;
+  count?: string;
+  /** A stack's threads, newest first: what a click on it unfolds. */
+  threads?: { subject: string; time: string }[];
+};
 
 /** The times of the invented mail: the airline's three, newest first, then the library's. */
 const STACK_TIMES = ["09:12", "08:40", "07:05"];
@@ -327,6 +336,8 @@ function StackOption({
   onChoose: () => void;
   rows: StackRow[];
 }) {
+  // A stack here unfolds as it does in the list: try it before choosing.
+  const [unfolded, setUnfolded] = React.useState(false);
   return (
     <button
       type="button"
@@ -344,17 +355,38 @@ function StackOption({
       {rows.map((row, i) => (
         // A stack as the list draws it: a row, with "3 threads" and a
         // chevron by the name.
-        <span key={i} className="welcome-stack-row" aria-hidden="true">
-          <span className={"welcome-stack-avatar is-" + row.tone}>{row.initials}</span>
-          <span className="welcome-stack-body">
-            <span className="welcome-stack-line">
-              <strong>{row.sender}</strong>
-              {row.count ? <span className="welcome-stack-count">{row.count} ›</span> : null}
-              <span className="welcome-stack-time">{row.time}</span>
+        <React.Fragment key={i}>
+          <span
+            className={"welcome-stack-row" + (row.threads ? " is-stack" : "")}
+            aria-hidden="true"
+            // The click goes on to the option too: trying the stack chooses it.
+            onClick={row.threads ? () => setUnfolded((v) => !v) : undefined}
+          >
+            <span className={"welcome-stack-avatar is-" + row.tone}>{row.initials}</span>
+            <span className="welcome-stack-body">
+              <span className="welcome-stack-line">
+                <strong>{row.sender}</strong>
+                {row.count ? (
+                  <span className="welcome-stack-count">
+                    {row.count} {row.threads && unfolded ? "⌄" : "›"}
+                  </span>
+                ) : null}
+                <span className="welcome-stack-time">{row.time}</span>
+              </span>
+              <span className="welcome-stack-subject">{row.subject}</span>
             </span>
-            <span className="welcome-stack-subject">{row.subject}</span>
           </span>
-        </span>
+          {row.threads && unfolded ? (
+            <span className="welcome-stack-threads" aria-hidden="true">
+              {row.threads.map((th, j) => (
+                <span key={j} className={"welcome-stack-thread" + (j === 0 ? " is-open" : "")}>
+                  <span className="welcome-stack-thread-subject">{th.subject}</span>
+                  <span className="welcome-stack-time">{th.time}</span>
+                </span>
+              ))}
+            </span>
+          ) : null}
+        </React.Fragment>
       ))}
     </button>
   );
@@ -476,6 +508,7 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                           initials: "NA",
                           tone: "teal",
                           count: t.stacksThreadCount.replace("{count}", String(t.stacksAirlineSubjects.split("|").length)),
+                          threads: t.stacksAirlineSubjects.split("|").map((subject, i) => ({ subject, time: STACK_TIMES[i] })),
                           time: STACK_TIMES[0],
                           subject: t.stacksAirlineSubjects.split("|")[0],
                         },

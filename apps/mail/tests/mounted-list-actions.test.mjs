@@ -37,6 +37,8 @@
  * - A reply the provider is holding stands at the end of its thread.
  * - A pinned thread archived or deleted loses its pin, and Command+Z puts
  *   both back; an archive the provider refuses keeps the row and its pin.
+ * - Offline, on an Exchange mailbox, an archive runs the app's own action:
+ *   the row stays gone, no toast says it failed, and it waits in the queue.
  * - In the people view, archiving the last conversation of the open
  *   person opens the next person.
  * - In Trash: Restore, and Delete forever, which asks first, waits out

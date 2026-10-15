@@ -4,9 +4,10 @@
  *
  * An action names a thread, and each one must take only the items it is
  * about: archive the inbox items and not the Sent copy, delete forever only
- * what is in Trash. The server is told first, with the EWS commands; then
- * the copy changes (a moved item under its new id, with its new label);
- * then the worker is woken. Nothing goes over fetch.
+ * what is in Trash. The copy changes and the action is queued; online, the
+ * queue goes to the server at once, with the EWS commands, and a moved item
+ * takes its new id with its new label. Delete forever still goes to the
+ * server first. Nothing goes over fetch. Offline: offline-actions-internal.
  *
  * The commands are faked at the shell. Built as the internal app.
  */
@@ -17,6 +18,7 @@ import { invalidateConnectedMailAccountsCache } from "@/lib/mail/connected-accou
 import { archiveMailThread, deleteMailThreadForever, fetchMailMessageSource, markMailThreadRead, trashMailThread } from "@/lib/mail/inbox";
 import { createMailFolder, deleteMailFolder, moveMailThreadToFolder, renameMailFolder } from "@/lib/mail/folders";
 
+import { fakeActionQueue } from "./fake-action-queue.mjs";
 import { check, suite } from "./harness.mjs";
 
 const EX = "someone@mail.example.com";
@@ -77,7 +79,10 @@ globalThis.fetch = async (url) => {
   return new Response("{}", { status: 500 });
 };
 
+const queue = fakeActionQueue({ onRows: (_account, written) => upserts.push(...written) });
+
 function storeCall(op, args) {
+  if (queue.isQueueOp(op)) return queue.call(op, args);
   switch (op) {
     case "accounts.exists":
       return args.provider === "exchange" && args.email === EX;
@@ -167,8 +172,11 @@ suite(async () => {
   const move = last("mail_ews_move");
   check("archive moves the inbox items to Archive", move?.toFolderId === "f-arch" && move.itemIds.join(",") === "i1,i2");
   check("the old rows go", removed.join(",") === "i1,i2");
-  check("they come back under their new ids", upserts.map((r) => r.messageId).join(",") === "i1-new,i2-new");
-  check("with no folder label, and the flag kept", upserts[1]?.labels.join(",") === "STARRED" && upserts[0]?.labels.length === 0);
+  const arrived = upserts.filter((r) => r.messageId.endsWith("-new"));
+  check("the copy changes first, under the old ids", upserts.slice(0, 2).map((r) => r.messageId).join(",") === "i1,i2" && upserts[0].labels.length === 0);
+  check("they come back under their new ids", arrived.map((r) => r.messageId).join(",") === "i1-new,i2-new");
+  check("with no folder label, and the flag kept", arrived[1]?.labels.join(",") === "STARRED" && arrived[0]?.labels.length === 0);
+  check("and the queue is empty again", queue.rows.length === 0, queue.rows.map((r) => r.kind));
   check("the rows are written without their bodies", upserts.every((r) => !("body" in r)));
 
   // ---- Trash, read, move to a folder ---------------------------------------------

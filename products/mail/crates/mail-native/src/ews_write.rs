@@ -39,6 +39,10 @@ pub struct Failure {
 pub struct Changed {
   pub done: Vec<String>,
   pub failed: Vec<Failure>,
+  /// The ids in `done` that were already gone (`ErrorItemNotFound`). A
+  /// change made now cannot matter to them; a change queued while offline
+  /// has to put its row back, since the copy still shows it changed.
+  pub gone: Vec<String>,
 }
 
 /// One moved item: its id before, and its id now. `new_id` is null for an
@@ -50,6 +54,7 @@ pub struct Moved {
   pub new_id: Option<String>,
 }
 
+/// An item that was gone is among `moved`, with no new id.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct MoveResult {
   pub moved: Vec<Moved>,
@@ -195,7 +200,10 @@ fn changed_from<R: OperationResponse>(xml: &str, ids: &[String]) -> EwsResult<Ch
   for (index, id) in ids.iter().enumerate() {
     match messages.get(index) {
       Some(ResponseClass::Success(_)) | Some(ResponseClass::Warning(_)) => out.done.push(id.clone()),
-      Some(ResponseClass::Error(e)) if gone(e) => out.done.push(id.clone()),
+      Some(ResponseClass::Error(e)) if gone(e) => {
+        out.done.push(id.clone());
+        out.gone.push(id.clone());
+      }
       Some(ResponseClass::Error(e)) => out.failed.push(Failure { id: id.clone(), error: message_error(e).to_string() }),
       None => out.failed.push(Failure { id: id.clone(), error: "ews:parse: The server did not answer for this item.".into() }),
     }
@@ -239,6 +247,7 @@ pub async fn set_read(client: &EwsClient, ids: &[String], is_read: bool) -> EwsR
     let part = read_update(&client.call_many(&read_flag_request(batch, is_read)?).await?, batch)?;
     out.done.extend(part.done);
     out.failed.extend(part.failed);
+    out.gone.extend(part.gone);
   }
   Ok(out)
 }
@@ -250,6 +259,7 @@ pub async fn set_flag(client: &EwsClient, ids: &[String], flagged: bool) -> EwsR
     let part = read_update(&client.call_many(&flag_request(batch, flagged)?).await?, batch)?;
     out.done.extend(part.done);
     out.failed.extend(part.failed);
+    out.gone.extend(part.gone);
   }
   Ok(out)
 }
@@ -272,6 +282,7 @@ pub async fn delete_forever(client: &EwsClient, ids: &[String]) -> EwsResult<Cha
     let part = read_delete(&client.call_many(&delete_request(batch)?).await?, batch)?;
     out.done.extend(part.done);
     out.failed.extend(part.failed);
+    out.gone.extend(part.gone);
   }
   Ok(out)
 }

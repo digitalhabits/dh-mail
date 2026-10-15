@@ -265,6 +265,12 @@ impl MailDb {
     Ok(db)
   }
 
+  /// A store on disk with no keychain, for a test that closes and opens it.
+  #[cfg(test)]
+  pub fn open_file_for_tests(path: &std::path::Path) -> DbResult<Self> {
+    Self::from_connection(Connection::open(path)?, Box::new(tests::MemoryVault::default()))
+  }
+
   #[cfg(test)]
   pub fn open_in_memory() -> DbResult<Self> {
     Self::from_connection(
@@ -461,7 +467,7 @@ pub(crate) fn now_ms() -> i64 {
 // Operations
 // ---------------------------------------------------------------------------
 
-/// Operations this build answers. The TypeScript side lists 39 in all.
+/// Operations this build answers: every one the TypeScript side lists.
 ///
 /// The test `every_listed_operation_answers` reads it, and so does anyone
 /// checking progress against the contract. It has no caller in the app.
@@ -523,6 +529,14 @@ pub const IMPLEMENTED: &[&str] = &[
   "messages.removeMessages",
   "sync.list",
   "sync.set",
+  "actions.enqueue",
+  "actions.pending",
+  "actions.done",
+  "actions.failed",
+  "actions.doneRenaming",
+  "actions.cancel",
+  "actions.replay",
+  "actions.restore",
 ];
 
 /// Nothing is pending. Every operation the contract states is answered here.
@@ -552,6 +566,14 @@ impl MailDb {
       "messages.removeMessages" => self.messages_remove_messages(args),
       "sync.list" => self.sync_list(),
       "sync.set" => self.sync_set(args),
+      "actions.enqueue" => self.actions_enqueue_op(args),
+      "actions.pending" => self.actions_pending_op(args),
+      "actions.done" => self.actions_done_op(args),
+      "actions.failed" => self.actions_failed_op(args),
+      "actions.doneRenaming" => self.actions_done_renaming_op(args),
+      "actions.cancel" => self.actions_cancel_op(args),
+      "actions.replay" => self.actions_replay_op(args),
+      "actions.restore" => self.actions_restore_op(args),
       "listSync.load" => self.list_sync_load(args),
       "listSync.save" => self.list_sync_save(args),
       "listSync.clear" => self.list_sync_clear(),

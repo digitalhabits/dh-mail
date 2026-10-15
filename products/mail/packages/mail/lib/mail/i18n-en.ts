@@ -202,6 +202,11 @@ export const en = {
   syncOffline: "Mail cannot reach {provider} for {account}",
   syncOfflineHelp:
     "Mail tries again by itself. Your internet can work while this shows: some networks block mail connections.",
+  offlineTitle: "You are offline",
+  offlineServersTitle: "Mail cannot reach your mail servers",
+  offlineHelp: "Mail keeps what you do and sends it when you are online again.",
+  offlineWaitingOne: "1 change waits to be sent.",
+  offlineWaitingMany: "{count} changes wait to be sent.",
   syncNeedsReconnect:
     "{account} needs a new permission. Mail now keeps a copy of this mailbox on this computer, which the old connection cannot fill. Reconnect once and the copy starts.",
   actionRefused: "{provider} refused \"{kind}\" on a thread in {account}",

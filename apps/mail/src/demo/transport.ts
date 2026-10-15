@@ -73,7 +73,7 @@ function demoInviteIcs(): string {
     "DTSTAMP:20260817T090000Z",
     "DTSTART:20260820T090000Z",
     "DTEND:20260820T100000Z",
-    "SUMMARY:Studio visit — Kanin Kunsthal",
+    "SUMMARY:Studio visit — Karen Kanin",
     "LOCATION:Værkstedet, yard entrance",
     "DESCRIPTION:A group of six, about an hour.",
     "END:VEVENT",

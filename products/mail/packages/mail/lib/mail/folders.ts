@@ -10,6 +10,7 @@ import {
 } from "@/lib/mail/exchange-folder-edits";
 import { applyLocalAction, localStoreServes, queueLocalAction } from "@/lib/mail/local-store";
 import { wakeOutlookSync } from "@/lib/mail/outlook-sync";
+import { queueOutlookAction } from "@/lib/mail/outlook-queue";
 import { mailStore } from "@/lib/mail/store";
 import "server-only";
 
@@ -44,6 +45,7 @@ import {
   deleteOutlookFolder,
   ensureOutlookFolder,
   findOutlookFolder,
+  findOutlookFolderKnown,
   listOutlookFolders,
   moveOutlookThreadToFolder,
   moveOutlookThreadToInbox,
@@ -623,23 +625,28 @@ export async function moveMailThreadToFolder(input: {
   }
 
   if ((await resolveMailProvider(input.account)) === "outlook") {
-    let folder = await findOutlookFolder(input.account, name);
+    // Offline, the last folder list read: the move waits in the queue with
+    // the folder's id. A folder that must be made first needs Graph.
+    let folder = await findOutlookFolderKnown(input.account, name);
     if (!folder) {
       if (!input.create) throw new PlanError("Folder not found", 404);
       folder = await ensureOutlookFolder(input.account, name);
-    }
-    try {
-      await moveOutlookThreadToFolder(input.account, input.threadId, folder.id);
-    } catch (err) {
-      translateOutlookError(err, input.account);
     }
     /*
       The copy is told now, as it is for archive, junk and trash. The folder's
       own view reads the copy, and without this the mail was in that view only
       after the next walk of every folder, up to a minute later. The label of
-      an Outlook folder in the copy is its path.
+      an Outlook folder in the copy is its path. Into the copy and the queue
+      (outlook-queue.ts); Graph first only while the copy does not serve yet.
     */
-    await applyLocalAction(input.account, input.threadId, "move", { label: folder.path });
+    if (!(await queueOutlookAction(input.account, input.threadId, "move", { label: folder.path, folderId: folder.id }))) {
+      try {
+        await moveOutlookThreadToFolder(input.account, input.threadId, folder.id);
+      } catch (err) {
+        translateOutlookError(err, input.account);
+      }
+      await applyLocalAction(input.account, input.threadId, "move", { label: folder.path });
+    }
     wakeOutlookSync(input.account);
     invalidateInboxCache();
     return { folderName: folder.path, movedOut: true };
@@ -682,14 +689,17 @@ export async function unmoveMailThreadFromFolder(input: {
   }
 
   if ((await resolveMailProvider(input.account)) === "outlook") {
-    try {
-      await moveOutlookThreadToInbox(input.account, input.threadId);
-    } catch (err) {
-      translateOutlookError(err, input.account);
-    }
     // Back in the inbox of the copy at once, for the same reason as above.
-    const folder = name ? await findOutlookFolder(input.account, name).catch(() => null) : null;
-    await applyLocalAction(input.account, input.threadId, "unmove", { label: folder?.path ?? name });
+    const folder = name ? await findOutlookFolderKnown(input.account, name).catch(() => null) : null;
+    const label = folder?.path ?? name;
+    if (!(await queueOutlookAction(input.account, input.threadId, "unmove", { label }))) {
+      try {
+        await moveOutlookThreadToInbox(input.account, input.threadId);
+      } catch (err) {
+        translateOutlookError(err, input.account);
+      }
+      await applyLocalAction(input.account, input.threadId, "unmove", { label });
+    }
     wakeOutlookSync(input.account);
     invalidateInboxCache();
     return;

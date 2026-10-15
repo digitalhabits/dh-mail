@@ -46,7 +46,7 @@ import { connectMailbox } from "./connect-mailbox";
 import { DEMO_MAILBOXES } from "./demo/data";
 import { isDemoMode } from "./demo/mode";
 import { connectConfigError } from "./oauth-config";
-import { startLocalStoreSync } from "./local-store";
+import { startLocalStoreSync, wakeEverySyncWhenOnline } from "./local-store";
 import {
   findMailboxProblems,
   type MailboxProblem,
@@ -166,6 +166,9 @@ export function App() {
 
   /** Mail changed the account list from its settings panel. Read it again. */
   React.useEffect(() => onMailRefresh(() => void load()), [load]);
+
+  /** Back online: every mailbox sends what was done offline, at once. */
+  React.useEffect(() => wakeEverySyncWhenOnline(), []);
 
   /**
    * Fill the address book once a mailbox is connected.

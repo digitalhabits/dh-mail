@@ -202,6 +202,11 @@ export const da: Record<keyof typeof en, string> = {
   syncOffline: "Mail kan ikke få forbindelse til {provider} for {account}",
   syncOfflineHelp:
     "Mail prøver igen af sig selv. Dit internet kan godt virke imens: nogle netværk blokerer forbindelser til mail.",
+  offlineTitle: "Du er offline",
+  offlineServersTitle: "Mail kan ikke få forbindelse til dine mailservere",
+  offlineHelp: "Mail gemmer det, du gør, og sender det, når du er online igen.",
+  offlineWaitingOne: "1 ændring venter på at blive sendt.",
+  offlineWaitingMany: "{count} ændringer venter på at blive sendt.",
   syncNeedsReconnect:
     "{account} har brug for en ny tilladelse. Mail gemmer nu en kopi af denne postkasse på din computer, og den gamle forbindelse kan ikke fylde den. Forbind igen én gang, så starter kopien.",
   actionRefused: "{provider} afviste \"{kind}\" på en tråd i {account}",
