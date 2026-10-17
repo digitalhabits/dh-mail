@@ -26,9 +26,9 @@ import { teamWord } from "@/lib/mail/i18n-team";
 import { unpinMailThread } from "@/lib/mail/pins";
 import { threadDraftKey } from "@/lib/mail/local-drafts";
 import { rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
-import { type MailStringKey } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import { rowTime } from "@/lib/mail/date-format";
+import { type MailStringKey } from "@/lib/mail/i18n";
 import { PersonAvatar } from "@/components/mail/PersonAvatar";
 import { PersonRowActions } from "@/components/mail/PersonRowActions";
 import { Highlighted } from "@/components/mail/Highlighted";
@@ -456,12 +456,6 @@ export function PeopleRows({
                 className={cn(
                   // Relative: the hover actions float over its right end.
                   "group relative flex w-full transition-colors",
-                  // A folded stack keeps a thin deck edge under it: the
-                  // threads it holds (2026-10-17). Over the row below.
-                  row.threads.length > 1 &&
-                    !stackOpen &&
-                    !listNarrow &&
-                    "z-[1] shadow-[0_4px_0_-1px_var(--mail-deck-1),0_8px_0_-2px_var(--mail-deck-2)]",
                   listNarrow
                     ? "items-center justify-center px-1 py-1.5"
                     : listRowWide && listDensity !== "compact"

@@ -51,7 +51,15 @@ export function rowTime(iso: string, options?: { withYear?: boolean }): string {
   if (bucket === "bucketEarlierThisWeek") {
     return d.toLocaleDateString(locale, { weekday: "short" });
   }
-  return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  // A day in an earlier year says which year. Under one "Earlier" heading,
+  // 18 Oct of last year stood below 9 Sep of this one as if it came first
+  // (2026-10-17).
+  const withinYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    ...(withinYear || bucket === "bucketLastWeek" ? null : { year: "numeric" }),
+  });
 }
 
 /**

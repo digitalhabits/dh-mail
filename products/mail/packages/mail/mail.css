@@ -598,9 +598,6 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-segment-active-fg: #1c1917;
   /* The open folder in the folder rail: a fill, and a bold name with its
      icon in the name's colour. Its own hover, a step quieter. */
-  /* The edges of the threads under a folded stack's row. */
-  --mail-deck-1: #e3dfd6;
-  --mail-deck-2: #ebe7df;
   /* A row that moved when Stacks was switched, for a moment. */
   --mail-stack-tint: #e3efec;
   /* A switch that is on, in the chrome (Stacks): the slate of a chosen
@@ -739,8 +736,6 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-autoreply-fg: #16202b;
   --mail-segment-active: #33465c;
   --mail-segment-active-fg: #f3f6fa;
-  --mail-deck-1: rgba(255, 255, 255, 0.16);
-  --mail-deck-2: rgba(255, 255, 255, 0.09);
   --mail-stack-tint: rgba(42, 157, 143, 0.22);
   /* The same slate would vanish on the navy chrome: a lighter step of it. */
   --mail-switch-on: #6f8aa6;

@@ -11,8 +11,8 @@
  *        250 ms   each slides up onto its sender's newest row: 600 ms,
  *                 90 ms apart, above the other rows.
  *        1050 ms  they drop under that row and go (200 ms). Only now does
- *                 the row take the tint, its "N threads" and its deck
- *                 edge, and the gaps close (400 ms).
+ *                 the row take the tint and its "N threads", and the
+ *                 gaps close (400 ms).
  *        1800 ms  the tint fades (900 ms).
  *
  *   Off  0 ms     the stack's row takes the tint; gaps open where its
@@ -40,7 +40,6 @@
 const ATTR = "data-glide-keys";
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const LIFT_SHADOW = "0 10px 24px rgba(30,45,62,.18)";
-const DECK = "0 4px 0 -1px var(--mail-deck-1), 0 8px 0 -2px var(--mail-deck-2)";
 const TINT = "var(--mail-stack-tint)";
 
 export type GlideWords = {
@@ -222,11 +221,10 @@ function stackOn(
     }
     const keys = keysOf(el);
     if (keys.length > 1) {
-      // The stack's row: its count, deck edge and tint, only once the
+      // The stack's row: its count and tint, only once the
       // threads are under it.
       const count = el.querySelector<HTMLElement>("[data-stack-count]");
       if (count) play(count, [{ opacity: 0 }, { opacity: 1 }], { duration: 250, delay: 1050, fill: "backwards" });
-      play(el, [{ boxShadow: "none" }, { boxShadow: DECK }], { duration: 200, delay: 1050, fill: "backwards" });
       tintThenFade(el, play, 1050, 1800);
     }
   }

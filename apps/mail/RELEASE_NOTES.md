@@ -35,3 +35,4 @@
 - New mail is shown in green and white on the Sync button.
 - Add Account… is in the app menu.
 - When you show a hidden mailbox early, Mail says for how long.
+- A date in the list from an earlier year shows the year.
