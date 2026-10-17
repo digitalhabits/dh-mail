@@ -285,8 +285,77 @@ pub async fn send_now(client: &EwsClient, item_id: &str) -> EwsResult<()> {
   Ok(())
 }
 
+/// What became of a draft sent at its time (docs/mail-send-later.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DraftSent {
+  Sent,
+  /// No such draft: sent or deleted elsewhere, or an earlier try of ours
+  /// went through. Nothing was sent now.
+  Gone,
+}
+
+/// `GetItem` for one item's id and its current `ChangeKey`, and no more.
+fn change_key_request(item_id: &str) -> EwsResult<String> {
+  if item_id.trim().is_empty() {
+    return Err(EwsError::Invalid("No draft was named. Nothing was sent to the server.".into()));
+  }
+  Ok(envelope(&format!(
+    concat!(
+      r#"<GetItem xmlns="{m}"><ItemShape><t:BaseShape>IdOnly</t:BaseShape></ItemShape>"#,
+      r#"<ItemIds><t:ItemId Id="{id}"/></ItemIds></GetItem>"#
+    ),
+    m = MESSAGES_NS,
+    id = escape(item_id)
+  )))
+}
+
+/// The `ChangeKey` on the first item id of an answer.
+fn read_change_key(xml: &str) -> Option<String> {
+  let at = xml.find(":ItemId ").or_else(|| xml.find("<ItemId "))?;
+  let rest = &xml[at..];
+  let rest = &rest[..rest.find('>')?];
+  let start = rest.find("ChangeKey=\"")? + "ChangeKey=\"".len();
+  let end = rest[start..].find('"')? + start;
+  Some(rest[start..end].to_string()).filter(|k| !k.is_empty())
+}
+
+fn is_not_found(err: &EwsError) -> bool {
+  matches!(err, EwsError::Fault { code, .. } if code.contains("ErrorItemNotFound"))
+}
+
+/// Send a draft at its time: read its current `ChangeKey` (the KU server
+/// refuses a `SendItem` without one, and refuses an old one), then send it
+/// and keep the copy in Sent Items. A draft that is not there is `Gone`,
+/// not an error: the message must never go twice.
+pub async fn send_draft(client: &EwsClient, item_id: &str) -> EwsResult<DraftSent> {
+  let key = match client.call(&change_key_request(item_id)?).await {
+    Ok(xml) => read_change_key(&xml)
+      .ok_or_else(|| EwsError::Parse("The server named the draft but gave no change key.".into()))?,
+    Err(err) if is_not_found(&err) => return Ok(DraftSent::Gone),
+    Err(err) => return Err(err),
+  };
+  match client.call(&send_item_request(item_id, &key)?).await {
+    Ok(_) => Ok(DraftSent::Sent),
+    Err(err) if is_not_found(&err) => Ok(DraftSent::Gone),
+    Err(err) => Err(err),
+  }
+}
+
 pub mod commands {
   use super::*;
+
+  /// Send a draft this computer scheduled (docs/mail-send-later.md).
+  #[tauri::command]
+  pub async fn mail_ews_send_draft(
+    secrets: tauri::State<'_, Secrets>,
+    accounts: tauri::State<'_, EwsAccounts>,
+    account: String,
+    item_id: String,
+  ) -> Result<DraftSent, String> {
+    let client = accounts.client(&secrets, &account).map_err(|e| e.to_string())?;
+    send_draft(&client, &item_id).await.map_err(|e| e.to_string())
+  }
 
   #[tauri::command]
   pub async fn mail_ews_held(

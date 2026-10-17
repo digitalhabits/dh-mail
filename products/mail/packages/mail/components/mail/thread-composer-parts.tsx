@@ -9,6 +9,7 @@
  * is the band's own, word for word.
  */
 
+import { EditingScheduledNote } from "@/components/mail/ScheduledMessageView";
 import { forwardSizeWarning } from "@/lib/mail/forward-size";
 import { useSenderProvider } from "@/lib/mail/use-outlook-accounts";
 import { Check, Expand, Maximize2, Minimize2, Minus, PictureInPicture2 } from "lucide-react";
@@ -175,12 +176,14 @@ export function ComposerFooter({
     t,
     updateRecordsAfterSend,
     setUpdateRecordsAfterSend,
+    editingScheduled,
   } = m;
   const sizeWarning = forwardSizeWarning(useSenderProvider(fromAccount), attachTotalBytes);
   // Off for a mailbox whose owner keeps it private (Settings → Accounts).
   const assistOn = useAccountAssist(fromAccount);
   return (
     <>
+      <EditingScheduledNote original={editingScheduled} />
       {/* Under the box, outside the card.
           Facts about the message, not the writing of it. Preview,
           Outlook and a build's own actions sit on the Send chevron. */}

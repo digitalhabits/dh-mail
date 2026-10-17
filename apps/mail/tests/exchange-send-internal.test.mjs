@@ -6,9 +6,10 @@
  * with the Bcc addresses beside it (the server can drop a Bcc header). This
  * decodes what Rust would get and reads it: the headers of a reply, the
  * forward below the words, a file, and the name on From from the copy of
- * Sent Items. Send later is refused (section 17.1: on KU a held message
- * cannot be cancelled), and held messages still list, cancel, and go now
- * (section 16.4). Nothing goes over
+ * Sent Items. Send later never asks the server to hold the message (section
+ * 17.1: on KU a held message cannot be cancelled): it is saved as a draft,
+ * and the app sends that draft at its time (docs/mail-send-later.md). Held
+ * messages another client left still list, cancel, and go now (16.4). Nothing goes over
  * fetch.
  *
  * Built as the internal app.
@@ -36,6 +37,8 @@ globalThis.fetch = async (url) => {
 const sent = [];
 const later = [];
 const heldCalls = [];
+const drafts = [];
+const scheduled = [];
 function storeCall(op, args) {
   switch (op) {
     case "accounts.exists":
@@ -66,6 +69,15 @@ globalThis.window = {
           sent.push(args);
           return { sent: true };
         }
+        if (cmd === "mail_ews_save_draft") {
+          drafts.push(args);
+          return { itemId: "sched-draft-1" };
+        }
+        if (cmd === "mail_scheduled_add") {
+          scheduled.push(args);
+          return 1;
+        }
+        if (cmd === "mail_scheduled_list") return [];
         if (cmd === "mail_ews_send_later") {
           later.push(args);
           return null;
@@ -140,13 +152,19 @@ suite(async () => {
 
   // ---- Send later (section 16.4) -----------------------------------------------------
   sent.length = 0;
-  let refused = "";
-  try {
-    await sendMailMessage({ account: EX, to: ["dana@example.com"], subject: "Later", body: "x", sendAt: new Date(Date.now() + 3_600_000).toISOString() });
-  } catch (err) {
-    refused = err.message;
-  }
-  check("send later from Exchange is refused, and nothing goes", refused.includes("Send later") && later.length === 0 && sent.length === 0, refused);
+  const at = new Date(Date.now() + 3_600_000).toISOString();
+  await sendMailMessage({ account: EX, to: ["dana@example.com"], subject: "Later", body: "x", sendAt: at });
+  check(
+    "send later saves the whole message as a draft, and nothing goes now",
+    drafts.length === 1 && decode(drafts[0].mime).includes("Subject: Later") && sent.length === 0 && later.length === 0
+  );
+  check(
+    "and schedules that draft for its time",
+    scheduled[0]?.message.draftId === "sched-draft-1" &&
+      scheduled[0]?.message.provider === "exchange" &&
+      scheduled[0]?.message.sendAt === Date.parse(at),
+    JSON.stringify(scheduled[0])
+  );
 
   const all = await listAllScheduledMailMessages({ clerkUserId: "local" });
   const row = all.find((r) => r.account === EX);

@@ -672,7 +672,24 @@ export const en = {
   matchOfCount: "{index} of {count}",
   undo: "Undo",
   couldNotUndo: "Couldn't undo",
-  sendsWhen: "Sends {when}",
+  sendLaterNeedsApp: "Send later needs the Mail app on this computer",
+  sendLaterTimePassed: "That time has passed. Pick a later time.",
+  scheduledWasDue: "It was due {time}, when Mail was not open",
+  draftSendLaterHint:
+    "It is sent at that time if this computer is on and Mail is open. If not, it waits in Drafts.",
+  scheduledGroup: "Scheduled",
+  keepAsDraft: "Keep as draft",
+  sendAtWhen: "Send at {when}",
+  sendNowInstead: "Send now instead",
+  sendsAtWhen: "Sends at {when}",
+  sendsAtWhenIfOpen: "Sends at {when}, if this computer is on and Mail is open",
+  changeTime: "Change time",
+  noSubject: "(no subject)",
+  editingScheduledNote:
+    "You are editing a scheduled message. The original still goes at {when} unless you send this one. To keep the original, delete this draft.",
+  scheduledOriginalGone:
+    "The original was already sent or cancelled, so this one was not sent. Send it again if you still want it to go.",
+  sendsWhen: "Sends at {when}",
   outlookHoldsIt:
     "Your mail server holds it and sends it. This computer does not have to be on.",
   heldCannotCancel: "Your mail server has it, and it cannot be cancelled",

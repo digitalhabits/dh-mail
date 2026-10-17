@@ -42,6 +42,14 @@ import { useOlderMail } from "@/components/mail/use-older-mail";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/mail/mail-list-rows";
 
+/** The scheduled group above the list, in the views it belongs in. */
+function ScheduledOnTop({ m }: { m: MailPageModel }) {
+  const { draftsView, debouncedSearch, accountEmails, tab } = m;
+  if (draftsView || debouncedSearch || !accountEmails.length) return null;
+  if (["outbox", "snoozed", "sent", TRIAGE_TAB].includes(tab)) return null;
+  return <OutboxGroup m={m} onTop />;
+}
+
 /** The rows, with the banners over them and the load-more under them. */
 
 export function ThreadListColumn({
@@ -108,6 +116,10 @@ export function ThreadListColumn({
           )}
         >
           <ListNotices m={m} />
+          {/* What this computer or the server will send later, at the top
+              of the list, where the reader sees it every time they look —
+              not only in the Outbox view (docs/mail-send-later.md, 4.7). */}
+          <ScheduledOnTop m={m} />
           {draftsView ? (
             <DraftsListView m={m} />
           ) : loadingList &&

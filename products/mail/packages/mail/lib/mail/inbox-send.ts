@@ -13,6 +13,15 @@ import { cancelExchangeHeld, listExchangeHeld, sendExchangeHeldNow } from "@/lib
 import { exchangeSenderName, sendExchangeMessage } from "@/lib/mail/exchange-send";
 import { discardExchangeDraft, discardOwnDraftCopiesInThread } from "@/lib/mail/exchange-drafts";
 import { localStoreServes } from "@/lib/mail/local-store";
+import {
+  canScheduleFromDraft,
+  cancelScheduledDraft,
+  isScheduledDraftId,
+  listScheduledDrafts,
+  rescheduleScheduledDraft,
+  scheduleAsDraft,
+  sendScheduledDraftNow,
+} from "@/lib/mail/scheduled-drafts";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { sendRawMessage } from "@/lib/gmail/api";
 import {
@@ -21,7 +30,7 @@ import {
 } from "@/lib/mail/account-scope";
 import { extractInlineImages } from "@/lib/mail/inline-images";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
-import { draftOutlookMailMessage, sendOutlookMailMessage, listScheduledOutlookMessages, cancelScheduledOutlookMessage, sendScheduledOutlookMessageNow } from "@/lib/mail/outlook-inbox";
+import { draftOutlookMailMessage, sendOutlookMailMessage, listScheduledOutlookMessages, cancelScheduledOutlookMessage, sendScheduledOutlookMessageNow, rescheduleScheduledOutlookMessage } from "@/lib/mail/outlook-inbox";
 import {
   listConnectedMailAccounts,
   resolveMailProvider,
@@ -181,9 +190,18 @@ export async function listScheduledMailMessages(input: {
   threadId?: string;
 }): Promise<MailScheduledMessage[]> {
   const provider = await resolveMailProvider(input.account);
-  // Exchange holds them in Outbox on the server (section 16.4).
-  if (provider === "exchange") return listExchangeHeld(input.account, input.threadId);
-  if (provider !== "outlook") return [];
+  // Exchange: what another client left held in Outbox (section 16.4), and
+  // the drafts this computer sends later (docs/mail-send-later.md).
+  if (provider === "exchange") {
+    const [held, drafts] = await Promise.all([
+      listExchangeHeld(input.account, input.threadId),
+      listScheduledDrafts(input.account, input.threadId),
+    ]);
+    return [...held, ...drafts];
+  }
+  // Gmail: the drafts this computer sends later. Not the outbox: a message
+  // there is on its way, and the thread shows it already.
+  if (provider !== "outlook") return listScheduledDrafts(input.account, input.threadId);
   return listScheduledOutlookMessages(input.account, input.threadId);
 }
 
@@ -275,9 +293,9 @@ export async function listAllScheduledMailMessages(input: {
       try {
         const list =
           a.provider === "exchange"
-            ? listExchangeHeld(a.email)
+            ? Promise.all([listExchangeHeld(a.email), listScheduledDrafts(a.email)]).then((p) => p.flat())
             : a.provider !== "outlook"
-              ? heldInOutbox(a.email)
+              ? Promise.all([heldInOutbox(a.email), listScheduledDrafts(a.email)]).then((p) => p.flat())
               : listScheduledOutlookMessages(a.email);
         return await withinTime(list, HELD_LIST_WAIT_MS, a.email);
       } catch (err) {
@@ -295,6 +313,11 @@ export async function cancelScheduledMailMessage(input: {
   account: string;
   id: string;
 }): Promise<void> {
+  if (isScheduledDraftId(input.id)) {
+    await cancelScheduledDraft(input.account, input.id);
+    invalidateInboxCache();
+    return;
+  }
   const provider = await resolveMailProvider(input.account);
   if (provider === "exchange") {
     await cancelExchangeHeld(input.account, input.id);
@@ -312,11 +335,36 @@ export async function cancelScheduledMailMessage(input: {
   invalidateInboxCache();
 }
 
+/**
+ * Give it another time: a draft this computer sends, or one Outlook holds
+ * in Drafts. One held in an Exchange Outbox is changed with Edit.
+ */
+export async function rescheduleScheduledMailMessage(input: {
+  account: string;
+  id: string;
+  sendAt: string;
+}): Promise<void> {
+  if (Date.parse(input.sendAt) <= Date.now()) throw new PlanError("That time has passed. Pick a later time.", 400);
+  if (isScheduledDraftId(input.id)) {
+    await rescheduleScheduledDraft(input.account, input.id, input.sendAt);
+  } else if ((await resolveMailProvider(input.account)) === "outlook") {
+    await rescheduleScheduledOutlookMessage(input.account, input.id, input.sendAt);
+  } else {
+    throw new PlanError("This message's time cannot be changed here. Use Edit.", 400);
+  }
+  invalidateInboxCache();
+}
+
 /** Send it now instead of when it was set for. */
 export async function sendScheduledMailMessageNow(input: {
   account: string;
   id: string;
 }): Promise<void> {
+  if (isScheduledDraftId(input.id)) {
+    await sendScheduledDraftNow(input.account, input.id);
+    invalidateInboxCache();
+    return;
+  }
   const provider = await resolveMailProvider(input.account);
   if (provider === "exchange") {
     await sendExchangeHeldNow(input.account, input.id);
@@ -656,14 +704,36 @@ export async function buildExchangeDraftMime(input: OutgoingMail): Promise<strin
 }
 
 /**
- * Send from an Exchange mailbox (exchange-send.ts). No send later: on
- * Exchange 2019 a held message cannot be cancelled (docs/mail-exchange-ews.md,
- * 17.1), and the app does not hold mail itself.
+ * Save the message, as it would be sent, as a draft on the server, and
+ * schedule that draft. The words go with the schedule, for the list and for
+ * Edit (docs/mail-send-later.md, 4.7).
+ */
+async function scheduleFromDraft(input: OutgoingMail, provider: "gmail" | "exchange", raw: string): Promise<void> {
+  await scheduleAsDraft({
+    account: input.account,
+    provider,
+    raw,
+    bcc: input.bcc ?? [],
+    threadId: input.threadId,
+    subject: input.subject,
+    to: input.to,
+    cc: input.cc ?? [],
+    bodyText: input.body,
+    bodyHtml: input.html,
+    sendAt: input.sendAt ?? "",
+  });
+}
+
+/**
+ * Send from an Exchange mailbox (exchange-send.ts). Send later does not ask
+ * the server to hold it — on Exchange 2019 a held message cannot be
+ * cancelled (docs/mail-exchange-ews.md, 17.1). It waits as a draft, and
+ * this computer sends it (docs/mail-send-later.md).
  */
 async function sendFromExchange(input: OutgoingMail): Promise<{ threadId?: string }> {
-  if (input.sendAt) throw new PlanError("Send later is not available for Exchange accounts", 400);
   const mime = await buildOutgoingMime(input, await exchangeSenderName(input.account));
-  await sendExchangeMessage(input.account, mime, input.bcc ?? []);
+  if (input.sendAt) await scheduleFromDraft(input, "exchange", mime);
+  else await sendExchangeMessage(input.account, mime, input.bcc ?? []);
   // The server draft this send came from, after the send and never before.
   if (input.discardProviderDraft) await discardExchangeDraft(input.account, input.discardProviderDraft, true);
   // And this app's own copy of the draft, wherever it was kept.
@@ -752,11 +822,11 @@ export async function sendMailMessage(input: {
   if (provider === "exchange") return sendFromExchange(input);
   // The outbox holds a Gmail message for its time; the API never could.
   const viaOutbox = provider === "gmail" && Boolean(tauriInvoke()) && (await localStoreServes(input.account));
-  if (input.sendAt && provider !== "outlook" && !viaOutbox) {
-    throw new PlanError(
-      "Only Outlook accounts can send later. Gmail has no way to hold a message for us.",
-      400
-    );
+  // Gmail over the API: the message waits as a draft and this computer
+  // sends it (docs/mail-send-later.md). Not in a browser, which has no
+  // store to keep the schedule in.
+  if (input.sendAt && provider !== "outlook" && !viaOutbox && !canScheduleFromDraft()) {
+    throw new PlanError("Send later needs the Mail app on this computer.", 400);
   }
 
   if (provider === "outlook") {
@@ -799,14 +869,29 @@ export async function sendMailMessage(input: {
   // cannot ask sends with the bare address, the way every send did before.
   // A Gmail on an app password has no token: its name was given when it
   // was connected, and it sends through the outbox.
-  const senderName = await senderNameFor(input.account, {
-    token: await tokenFor().catch((err: unknown) => {
-      if (isGmailAppPasswordError(err)) return undefined;
-      throw err;
-    }),
-    provider: "gmail",
+  const gmailToken = await tokenFor().catch((err: unknown) => {
+    if (isGmailAppPasswordError(err)) return undefined;
+    throw err;
   });
+  const senderName = await senderNameFor(input.account, { token: gmailToken, provider: "gmail" });
   const raw = await buildOutgoingMime(input, senderName);
+
+  // Send later, on a Gmail with a sign-in: as a draft this computer sends
+  // (docs/mail-send-later.md), local copy or not. The draft keeps the words
+  // the list and Edit show, and cannot go twice. Only a Gmail on an app
+  // password, which has no API to keep a draft, uses the outbox's time.
+  if (input.sendAt && gmailToken && canScheduleFromDraft()) {
+    try {
+      await scheduleFromDraft(input, "gmail", raw);
+    } catch (err) {
+      translateGmailError(err, input.account);
+    }
+    if (input.discardProviderDraft) {
+      await discardGmailDraft(gmailToken, input.discardProviderDraft, input.threadId);
+    }
+    invalidateInboxCache();
+    return { threadId: input.threadId };
+  }
 
   if (viaOutbox) {
     // Written to the outbox and shown as sent; the worker carries it over

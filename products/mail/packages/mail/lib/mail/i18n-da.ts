@@ -668,7 +668,24 @@ export const da: Record<keyof typeof en, string> = {
   matchOfCount: "{index} af {count}",
   undo: "Fortryd",
   couldNotUndo: "Kunne ikke fortryde",
-  sendsWhen: "Sendes {when}",
+  sendLaterNeedsApp: "Send senere kræver Mail-appen på denne computer",
+  sendLaterTimePassed: "Det tidspunkt er passeret. Vælg et senere tidspunkt.",
+  scheduledWasDue: "Den skulle sendes {time}, mens Mail ikke var åben",
+  draftSendLaterHint:
+    "Den sendes på det tidspunkt, hvis computeren er tændt og Mail er åben. Ellers venter den i Kladder.",
+  scheduledGroup: "Planlagt",
+  keepAsDraft: "Behold som kladde",
+  sendAtWhen: "Send {when}",
+  sendNowInstead: "Send nu i stedet",
+  sendsAtWhen: "Sendes kl. {when}",
+  sendsAtWhenIfOpen: "Sendes kl. {when}, hvis computeren er tændt og Mail er åben",
+  changeTime: "Skift tidspunkt",
+  noSubject: "(intet emne)",
+  editingScheduledNote:
+    "Du redigerer en planlagt mail. Originalen sendes stadig kl. {when}, medmindre du sender denne. Slet denne kladde for at beholde originalen.",
+  scheduledOriginalGone:
+    "Originalen var allerede sendt eller annulleret, så denne blev ikke sendt. Send den igen, hvis den stadig skal af sted.",
+  sendsWhen: "Sendes kl. {when}",
   outlookHoldsIt:
     "Din mailserver holder den og sender den. Denne computer behøver ikke være tændt.",
   heldCannotCancel: "Din mailserver har den, og den kan ikke annulleres",

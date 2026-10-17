@@ -28,6 +28,8 @@
  * New work on sending goes in this file, not in ThreadPane.
  */
 
+import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
+import { sendLaterNotice } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { promisesAnAttachment } from "@/lib/mail/attachment-hint";
@@ -37,7 +39,7 @@ import {
 } from "@/lib/mail/reaction-message";
 import { sendWithUndo } from "@/components/mail/undo-send";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
-import { notifyScheduledChanged } from "@/lib/mail/scheduled-events";
+import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled, notifyScheduledChanged } from "@/lib/mail/scheduled-events";
 import { bodyToEmailHtml } from "@/lib/client-email-html";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import type { MailChatRef } from "@/lib/mail/chat-types";
@@ -424,12 +426,41 @@ export function useThreadSend(input: {
      of the dispatch rather than the one closed over when it was shown. */
   dispatchOutboxSendRef.current = dispatchOutboxSend;
 
+  /*
+   * A time set in the Send later menu, not sent yet: the Send button says
+   * "Send at …" and the next send — the button or the keys — goes then.
+   */
+  const [armedSendAt, setArmedSendAt] = React.useState<string | null>(null);
+  const armedSendAtRef = React.useRef<string | null>(null);
+  armedSendAtRef.current = armedSendAt;
+  /*
+   * Opened with Edit on a scheduled reply: the one this replaces when it is
+   * sent, and not before (lib/mail/scheduled-replace). A closed composer
+   * replaces nothing and has no time on its Send.
+   */
+  const replacesRef = React.useRef<ScheduledOriginal | null>(null);
+  const [editingScheduled, setEditingScheduled] = React.useState<ScheduledOriginal | null>(null);
+  const setReplacesScheduled = React.useCallback((original: ScheduledOriginal | null) => {
+    replacesRef.current = original;
+    setEditingScheduled(original);
+    setArmedSendAt(original && Date.parse(original.sendAt) > Date.now() ? original.sendAt : null);
+  }, []);
+  React.useEffect(() => {
+    if (mode) return;
+    replacesRef.current = null;
+    setEditingScheduled(null);
+    setArmedSendAt(null);
+  }, [mode]);
+
   const send = React.useCallback(async (
-    sendAt?: string,
+    sendAtPicked?: string,
     extras?: { updateRecords?: boolean },
     /* Set by the reminder's own Send, so the question is asked once. */
     pastAttachmentCheck?: boolean
   ) => {
+    const sendAt = sendAtPicked ?? armedSendAtRef.current ?? undefined;
+    // Taken now: the composer closes below, and closing forgets it.
+    const original = replacesRef.current;
     const attachments = attachmentPayload();
     const flatTo = flattenRecipientsForSend(toList);
     const flatCc = flattenRecipientsForSend(ccList);
@@ -573,36 +604,58 @@ export function useThreadSend(input: {
      * thread would be showing the reader something they have not said.
      */
     if (sendAt) {
-      setSending(true);
-      try {
-        await apiJson("/api/mail/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(entry.request),
-        });
-        // See the composer: say where it waits, not only when it goes.
-        toast.success(
-          mailSay("sendsWhen", { when: formatSnoozeWakeLabel(sendAt) }),
-          { description: mailSay("outlookHoldsIt") }
-        );
-        closeComposer();
-        closeFloatingCardRef.current();
-        // Twice: the message is held as a draft, and Exchange takes a moment
-        // to have it. The first look usually finds it; the second is for
-        // when it does not.
-        void loadScheduled();
-        notifyScheduledChanged();
-        window.setTimeout(() => {
-          void loadScheduled();
-          notifyScheduledChanged();
-        }, 1500);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Couldn't schedule the message"
-        );
-      } finally {
-        setSending(false);
-      }
+      // As a send: the composer closes, and for a few seconds nothing has
+      // been handed to anybody, so Undo puts the words back as they were.
+      // One notice, which says the one condition: a message this computer
+      // sends goes only if it is on with Mail open (docs/mail-send-later.md).
+      const when = formatSnoozeWakeLabel(sendAt);
+      const notice = await sendLaterNotice(entry.request.account, when);
+      setArmedSendAt(null);
+      closeComposer();
+      const pendingId = showPendingScheduled({
+        sendAt,
+        account: entry.request.account,
+        threadId: entry.request.threadId ?? "",
+        toName: flatTo.emails[0] ?? "",
+        subject: entry.request.subject,
+        bodyText: composed.text,
+        to: flatTo.emails,
+        cc: flatCc.emails,
+        status: "waiting",
+      }, original);
+      sendWithUndo({
+        label: () => notice,
+        onSend: () =>
+          void (async () => {
+            try {
+              if (original) await takeOffScheduledOriginal(original);
+              await apiJson("/api/mail/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(entry.request),
+              });
+              settlePendingScheduled(pendingId);
+              closeFloatingCardRef.current();
+              // Twice: the message is held as a draft, and Exchange takes a
+              // moment to have it. The first look usually finds it; the
+              // second is for when it does not.
+              void loadScheduled();
+              notifyScheduledChanged();
+              window.setTimeout(() => {
+                void loadScheduled();
+                notifyScheduledChanged();
+              }, 1500);
+            } catch (err) {
+              dropPendingScheduled(pendingId);
+              toast.error(err instanceof Error ? err.message : "Couldn't schedule the message");
+              putBackFromOutbox(localId, entry);
+            }
+          })(),
+        onUndo: () => {
+          dropPendingScheduled(pendingId);
+          putBackFromOutbox(localId, entry);
+        },
+      });
       return;
     }
 
@@ -660,7 +713,17 @@ export function useThreadSend(input: {
      */
     sendWithUndo({
       onSend: () => {
-        void dispatchOutboxSend(localId, entry);
+        // An edit of a scheduled reply, sent now: the original goes first,
+        // and if it cannot, this one is put back rather than sent.
+        if (original) {
+          void takeOffScheduledOriginal(original).then(
+            () => void dispatchOutboxSend(localId, entry),
+            (err: unknown) => {
+              toast.error(err instanceof Error ? err.message : "Couldn't take the scheduled message off");
+              putBackFromOutbox(localId, entry);
+            }
+          );
+        } else void dispatchOutboxSend(localId, entry);
         // And now the card, which was this message and nothing else. The
         // send takes what it needs with it, so nothing here is waited for.
         closeFloatingCardRef.current();
@@ -952,6 +1015,10 @@ export function useThreadSend(input: {
   );
 
   return {
+    armedSendAt,
+    setArmedSendAt,
+    setReplacesScheduled,
+    editingScheduled,
     sending,
     outbox,
     confirmingIds,

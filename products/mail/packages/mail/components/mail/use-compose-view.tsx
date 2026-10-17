@@ -10,6 +10,8 @@
  * hooks run in the same order as before.
  */
 
+import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
+import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled } from "@/lib/mail/scheduled-events";
 import * as React from "react";
 import { sendsFromHere, shortcutMatchesEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
@@ -24,8 +26,7 @@ import { composeFromDefault } from "@/lib/mail/compose-from";
 import { sendWithUndo } from "@/components/mail/undo-send";
 import {
   useCanSendLater,
-  useOutlookAccounts,
-} from "@/lib/mail/use-outlook-accounts";
+  useOutlookAccounts, sendLaterNotice } from "@/lib/mail/use-outlook-accounts";
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 import { useComposeAssistant } from "@/components/mail/team-layer";
 import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
@@ -388,7 +389,9 @@ export function useComposeView(props: ComposeViewProps) {
   /** This message's own copy of the signature; null until it is changed. */
   const [signatureHtml, setSignatureHtml] = React.useState<string | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
-  const [sending, setSending] = React.useState(false);
+  // Every send, a scheduled one too, closes the composer and is held for
+  // Undo, so this composer is never seen sending.
+  const [sending] = React.useState(false);
   const [sigSettings, setSigSettings] = React.useState<SignatureSettings | null>(
     null
   );
@@ -510,6 +513,7 @@ export function useComposeView(props: ComposeViewProps) {
           ? { signatureHtml: snapshot.signatureHtml }
           : null),
         attachments: readyAttachmentsForDraft(snapshot.attachItems),
+        ...(replacesRef.current ? { replacesScheduled: replacesRef.current } : null),
         updatedAt: Date.now(),
       };
       void saveComposeDraft(draft);
@@ -628,6 +632,12 @@ export function useComposeView(props: ComposeViewProps) {
         setIncludeSignature(raw.includeSignature);
         setSignatureHtml(raw.signatureHtml ?? null);
         replaceAttachments(raw.attachments);
+        // Opened with Edit on a scheduled message: its time is on Send.
+        if (raw.replacesScheduled) {
+          replacesRef.current = raw.replacesScheduled;
+          setEditingScheduled(raw.replacesScheduled);
+          if (Date.parse(raw.replacesScheduled.sendAt) > Date.now()) setArmedSendAt(raw.replacesScheduled.sendAt);
+        }
         setEditorKey((k) => k + 1);
         sigTouchedRef.current = true;
       }
@@ -740,8 +750,16 @@ export function useComposeView(props: ComposeViewProps) {
     setSubject,
     t,
   });
-  const send = async (sendAt?: string) => {
+  /* A time Set in the Send later menu, not sent yet: the Send button says
+     "Send at …" (docs/mail-send-later.md). */
+  const [armedSendAt, setArmedSendAt] = React.useState<string | null>(null);
+  /** Opened with Edit on a scheduled message: the one it replaces. */
+  const replacesRef = React.useRef<ScheduledOriginal | null>(null);
+  const [editingScheduled, setEditingScheduled] = React.useState<ScheduledOriginal | null>(null);
+  const send = async (sendAtPicked?: string) => {
     if (!canSend) return;
+    // A time Set in the menu goes with the next send, by button or keys.
+    const sendAt = sendAtPicked ?? armedSendAt ?? undefined;
     if (!attachmentsReady) {
       toast.error(mailSay("stillPreparingAttachments"));
       return;
@@ -775,22 +793,37 @@ export function useComposeView(props: ComposeViewProps) {
      * holds everything it needs. The draft is only dropped here: until the
      * mail is away it is what the reader gets back.
      */
+    // A message for later stands in the Scheduled group from the moment
+    // Send is pressed, while Undo is still offered (scheduled-events.ts).
+    const pendingId = sendAt
+      ? showPendingScheduled({
+          sendAt,
+          account: from,
+          threadId: "",
+          toName: flatTo.emails[0] ?? "",
+          subject: subject.trim(),
+          bodyText,
+          to: flatTo.emails,
+          cc: flatCc.emails,
+          status: "waiting",
+        }, replacesRef.current)
+      : null;
     const deliver = async () => {
       try {
+        // An edit of a scheduled message: the original goes first, and if
+        // it cannot, this one is not sent (lib/mail/scheduled-replace).
+        if (replacesRef.current) {
+          await takeOffScheduledOriginal(replacesRef.current);
+          replacesRef.current = null;
+        }
         await apiJson("/api/mail/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: payload,
         });
-        if (sendAt) {
-          // Where it is waiting, not just when it goes. The whole point of
-          // handing the time to Exchange is that this machine can be shut,
-          // and a reader who does not know that will leave it running.
-          toast.success(
-            mailSay("sendsWhen", { when: formatSnoozeWakeLabel(sendAt) }),
-            { description: mailSay("outlookHoldsIt") }
-          );
-        } else {
+        // A message for later had its notice in the Undo pill: one is enough.
+        if (pendingId) settlePendingScheduled(pendingId);
+        if (!sendAt) {
           toast.success(mailSay("sent"));
         }
         onSent?.(from);
@@ -802,6 +835,7 @@ export function useComposeView(props: ComposeViewProps) {
            when Send was pressed, so it needs nothing from the composer,
            which closed before the count ran out. The draft is still there
            until a send succeeds, so nothing is lost either way. */
+        if (pendingId) dropPendingScheduled(pendingId);
         const firstTo = flatTo.emails[0] ?? "the recipient";
         toast.error(`Your message to ${firstTo} did not send`, {
           description: err instanceof Error ? err.message : undefined,
@@ -811,24 +845,6 @@ export function useComposeView(props: ComposeViewProps) {
       }
     };
 
-    // A time was picked: the provider does the waiting, and there is nothing
-    // for a countdown to hold back.
-    if (sendAt) {
-      setSending(true);
-      try {
-        await deliver();
-        draftDiscardedRef.current = true;
-        if (draftSaveTimerRef.current) {
-          clearTimeout(draftSaveTimerRef.current);
-          draftSaveTimerRef.current = null;
-        }
-        onClose();
-      } finally {
-        setSending(false);
-      }
-      return;
-    }
-
     // The composer is finished with either way, so it closes now. The draft
     // stays until `deliver` runs, which is what Undo comes back to.
     if (draftSaveTimerRef.current) {
@@ -836,11 +852,18 @@ export function useComposeView(props: ComposeViewProps) {
       draftSaveTimerRef.current = null;
     }
     onClose();
+    // A message for later is held the same few seconds: Undo puts it back
+    // in the composer before anything is scheduled.
+    const notice = sendAt ? await sendLaterNotice(from, formatSnoozeWakeLabel(sendAt)) : "";
     sendWithUndo({
+      ...(sendAt ? { label: () => notice } : null),
       onSend: () => void deliver(),
       // With the key, because a composer opened with nothing looks for the
       // shared draft and this one was written under its own.
-      onUndo: () => onUndoSend?.(draftKeyRef.current),
+      onUndo: () => {
+        if (pendingId) dropPendingScheduled(pendingId);
+        onUndoSend?.(draftKeyRef.current);
+      },
     });
   };
   /**
@@ -1127,6 +1150,9 @@ export function useComposeView(props: ComposeViewProps) {
   }, [subject, cardW]);
 
   return {
+    armedSendAt,
+    setArmedSendAt,
+    editingScheduled,
     accounts,
     addAttachFiles,
     draftNotes,

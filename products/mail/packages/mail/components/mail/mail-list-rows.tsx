@@ -8,6 +8,10 @@
  * names it needs from it. The JSX is the list's own, word for word.
  */
 
+import { isMailboxScopeAll } from "@/components/mail/mail-list-state";
+import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
+import { openScheduledMessage } from "@/components/mail/ScheduledMessageView";
+import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
 import * as React from "react";
 
 import { isMailPersonPinned } from "@/lib/mail/person-pins";
@@ -1033,11 +1037,27 @@ export function ListNotices({
  * server refused. Its own view since 2026-09-29, opened from the folder
  * rail while it holds anything; it was a group at the top of the list.
  */
-export function OutboxGroup({ m }: { m: MailPageModel }) {
-  const { heldMessages, listNarrow, listExpanded, t, actOnHeld, setSelected, chromeDark } = m;
+export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: boolean }) {
+  const { listNarrow, listExpanded, t, actOnHeld, setSelected, chromeDark, accountEmails, mailboxScopeEmails } = m;
+  // Above the list, on one mailbox's tab: that mailbox's. On All: every
+  // one, a hidden mailbox's too — hiding a mailbox holds its incoming mail,
+  // and what it will send is still the reader's to see.
+  const oneMailbox = onTop && !isMailboxScopeAll(mailboxScopeEmails, accountEmails);
+  const inView = new Set(mailboxScopeEmails.map((e) => e.trim().toLowerCase()));
+  const heldMessages = oneMailbox
+    ? m.heldMessages.filter((held) => inView.has(held.account.trim().toLowerCase()))
+    : m.heldMessages;
   const [menu, setMenu] = React.useState<OutboxMenuAt | null>(null);
+  // A reply opens its thread, where it stands as a dashed bubble. A new
+  // message has no thread yet: it opens on a page of its own.
   const open = (held: MailScheduledMessage) => {
-    if (!held.threadId) return;
+    // Still in its Undo seconds: nothing is scheduled to open yet.
+    if (isPendingScheduledId(held.id)) return;
+    if (!held.threadId) {
+      setSelected(null);
+      openScheduledMessage(held);
+      return;
+    }
     setSelected({ account: held.account, threadId: held.threadId, inPeople: true });
   };
   return (
@@ -1048,7 +1068,7 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
                 "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
                 listExpanded ? "pt-2" : "pt-4"
               )}>
-                {t("outbox")} · {heldMessages.length}
+                {t(onTop ? "scheduledGroup" : "outbox")} · {heldMessages.length}
               </p>
               {/* The Outbox: what is on its way out, until it has gone.
                   A message waiting for its time, one being sent, and
@@ -1067,6 +1087,7 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
                   onClick={() => open(held)}
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    if (isPendingScheduledId(held.id)) return;
                     setMenu({ held, x: event.clientX, y: event.clientY });
                   }}
                 >
@@ -1093,9 +1114,9 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
                   >
                     {held.subject || "(no subject)"}
                   </span>
-                  {/* The time is the row's point, so it is the one
-                      thing in it wearing a colour. A failed one wears
-                      its two ways out instead. */}
+                  {/* The time, in the list's own grey, as a thread row's
+                      date: the teal clock already says it is waiting. A
+                      failed one shows its two ways out instead. */}
                   {held.status === "failed" ? (
                     <span className="flex shrink-0 items-center gap-2 text-xs font-semibold">
                       <span className="text-amber-700">{t("notSent")}</span>
@@ -1133,7 +1154,8 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
                           }
                         }}
                       >
-                        {t("delete")}
+                        {/* A scheduled draft let go stays in Drafts. */}
+                        {t(isScheduledDraftId(held.id) ? "keepAsDraft" : "delete")}
                       </span>
                     </span>
                   ) : held.status === "sending" ? (
@@ -1141,7 +1163,12 @@ export function OutboxGroup({ m }: { m: MailPageModel }) {
                       {t("sendingNow")}
                     </span>
                   ) : (
-                    <span className="shrink-0 text-xs font-semibold tabular-nums text-teal-700/90">
+                    <span
+                      className={cn(
+                        "shrink-0 text-xs tabular-nums",
+                        chromeDark ? "text-white/45" : "text-[#908985]"
+                      )}
+                    >
                       {formatSnoozeWakeLabel(held.sendAt)}
                     </span>
                   )}

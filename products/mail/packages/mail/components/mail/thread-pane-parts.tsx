@@ -8,6 +8,8 @@
  * returns come in as props. The JSX is ThreadPane's own, word for word.
  */
 
+import { ChangeTimeMenu } from "@/components/mail/ScheduledMessageView";
+import { ownMailIdentity } from "@/lib/own-addresses";
 import * as React from "react";
 import { Archive, ArchiveRestore, ChevronDown, Clock, Forward, Loader2, Maximize2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
 import { openThreadFullWindow } from "@/components/mail/thread-full-window";
@@ -528,7 +530,7 @@ export function ThreadMessages({
                 </div>
                 <div className="flex items-center gap-1.5 pr-1 text-xs text-stone-500">
                   <Clock className="h-3.5 w-3.5" aria-hidden />
-                  <span>Sends {formatSnoozeWakeLabel(held.sendAt)}</span>
+                  <span>{t("sendsWhen", { when: formatSnoozeWakeLabel(held.sendAt) })}</span>
                   {held.cancellable === false ? (
                     <>
                       <span aria-hidden className="text-stone-300">·</span>
@@ -544,6 +546,15 @@ export function ThreadMessages({
                   >
                     {t("edit")}
                   </button>
+                  {held.reschedulable ? (
+                    <>
+                      <span aria-hidden className="text-stone-300">·</span>
+                      <ChangeTimeMenu
+                        account={held.account}
+                        onPick={(iso) => void actOnScheduled(held.id, "reschedule", iso)}
+                      />
+                    </>
+                  ) : null}
                   <span aria-hidden className="text-stone-300">·</span>
                   <button
                     type="button"
@@ -898,7 +909,7 @@ function ThreadTitleBlock({
         */}
         <p className="max-w-[50%] shrink-0 truncate text-[13px] text-[var(--mail-thread-meta)]">
           <ThreadParticipants
-            people={participantsWithAddresses(thread.messages, [account, ...accounts], account, oneMailbox)}
+            people={participantsWithAddresses(thread.messages, [account, ...accounts, ...ownMailIdentity().addresses], account, oneMailbox)}
             others={threadOthers}
             leadEmail={thread.messages[0]?.fromEmail}
             // The count and the dates are in the strip above, by the files.

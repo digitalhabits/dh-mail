@@ -113,6 +113,11 @@ export type ComposeMailDraft = DraftBase & {
    * back; nothing sets it now.
    */
   chatStyle?: boolean;
+  /**
+   * Opened with Edit on a scheduled message: that message, which this one
+   * replaces when it is sent, and not before (lib/mail/scheduled-replace).
+   */
+  replacesScheduled?: { account: string; id: string; sendAt: string };
 };
 
 export type MailDraft = ThreadMailDraft | ComposeMailDraft;

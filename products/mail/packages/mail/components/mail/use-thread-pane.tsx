@@ -1058,7 +1058,7 @@ export function useThreadPane(props: ThreadPaneProps) {
      effects. It reads the composer's fields one by one, and writes the
      composer only through `closeComposer` and `restoreComposer`. */
   const {
-    sending,
+    armedSendAt, setArmedSendAt, setReplacesScheduled, editingScheduled, sending,
     outbox,
     confirmingIds,
     forgottenAttachment,
@@ -1155,10 +1155,10 @@ export function useThreadPane(props: ThreadPaneProps) {
           ? dropRemoteImagesForEditing(message.bodyHtml)
           : message.bodyText,
       });
-      void actOnScheduled(message.id, "cancel");
-      focusReply();
+      // A copy to work on: the original stays until this one is sent.
+      setReplacesScheduled({ account, id: message.id, sendAt: message.sendAt }); focusReply();
     },
-    [actOnScheduled, focusReply, openComposer]
+    [account, focusReply, openComposer, setReplacesScheduled]
   );
   const bubbleActions = React.useCallback(
     (m: MailMessage) => ({
@@ -1313,6 +1313,7 @@ export function useThreadPane(props: ThreadPaneProps) {
     bubbleActions,
     canLoadOlderAcrossParts,
     canOpenInOutlook,
+    armedSendAt, setArmedSendAt, editingScheduled,
     canSendLater,
     card,
     cardHadComposer,

@@ -253,6 +253,25 @@ export async function clearOutlookDeferredSend(
   });
 }
 
+/**
+ * Hold it until another time: the same two steps as Send now (change the
+ * time on the draft, then send it), with a new time rather than none. The
+ * send hands the draft back to Exchange, which holds it to the new time.
+ */
+export async function rescheduleOutlookDeferredSend(
+  accessToken: string,
+  messageId: string,
+  sendAt: string
+): Promise<void> {
+  await graphFetch(accessToken, `/me/messages/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      singleValueExtendedProperties: [{ id: DEFERRED_SEND_TIME, value: sendAt }],
+    }),
+  });
+  await sendOutlookDraftNow(accessToken, messageId);
+}
+
 /** Send a draft the mailbox is already holding, as it stands. */
 export async function sendOutlookDraftNow(
   accessToken: string,

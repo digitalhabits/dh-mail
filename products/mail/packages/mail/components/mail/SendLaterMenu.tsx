@@ -3,16 +3,18 @@
 /**
  * What happens when the message leaves.
  *
- * One menu on the Send chevron. Outlook can hold the mail and send it later
- * — Exchange keeps it, so the machine that wrote it can be shut. Gmail has
- * nothing we can ask for the same thing, so that half of the menu stays
- * off. See `sendMailMessage`.
+ * One menu on the Send chevron. Outlook holds the mail on Microsoft's
+ * server and sends it later, so the machine that wrote it can be shut.
+ * Gmail and Exchange keep it as a draft that this computer sends at the
+ * time (docs/mail-send-later.md), and the menu says so.
  *
  * The other actions are the same on every mailbox: preview the mail, an
  * action a build adds, or finish it in Outlook. They used to sit under
  * the box as a second row of chrome.
  */
 
+import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
+import { useSendLaterHolder } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
 import { Clock } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
@@ -71,14 +73,38 @@ export type SendMenuExtra = {
 const EXTRA_BUTTON =
   "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40";
 
+/** The Send button's word: Sending…, Forward, Send at Sun 08:00, or Send. */
+export function sendButtonWord(
+  t: (key: "sending" | "actionForward" | "sendAtWhen" | "send", vars?: Record<string, string>) => string,
+  state: { sending: boolean; forwarding?: boolean; armed?: string | null }
+): string {
+  if (state.sending) return t("sending");
+  if (state.forwarding) return t("actionForward");
+  if (state.armed) return t("sendAtWhen", { when: formatSnoozeWakeLabel(state.armed) });
+  return t("send");
+}
+
 export function SendLaterMenu({
+  account = "",
+  armed = null,
+  onArm,
   onPick,
   trigger,
   schedule = false,
   extras,
 }: {
-  /** ISO 8601 time to hold the message until. Outlook only. */
+  /** The mailbox it goes from: it decides who keeps it until the time. */
+  account?: string;
+  /** ISO 8601 time to hold the message until. */
   onPick?: (iso: string) => void;
+  /**
+   * A time picked, quick or Set: it is not sent yet. The Send button takes
+   * the time ("Send at …"), and the message goes when it is pressed.
+   * Without this (Change time), a pick is acted on at once.
+   */
+  onArm?: (iso: string | null) => void;
+  /** The time Set gave, if any: the menu offers to take it off. */
+  armed?: string | null;
   /**
    * What opens the menu. Given by the caller rather than made here, because
    * it is part of the Send button — one control that sends, with a second
@@ -86,13 +112,14 @@ export function SendLaterMenu({
    */
   trigger: React.ReactNode;
   /**
-   * Offer the Outlook times. Off for Gmail, and off on a forward, which
-   * leaves through a path that has nowhere to put a time.
+   * Offer the times. Off where there is no send later (a browser), and off
+   * on a forward, which leaves through a path that has nowhere to put a time.
    */
   schedule?: boolean;
   extras?: SendMenuExtra[];
 }) {
   const t = useMailT();
+  const holder = useSendLaterHolder(account);
   const [open, setOpen] = React.useState(false);
   const [custom, setCustom] = React.useState(defaultCustomValue);
   const extraItems = extras?.filter(Boolean) ?? [];
@@ -106,10 +133,13 @@ export function SendLaterMenu({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = React.useMemo(() => snoozeOptions(), [open]);
 
+  // With `onArm`, every time — a quick one or one Set — goes on the Send
+  // button first ("Send at …"), and nothing is sent until it is pressed.
   const choose = (iso: string) => {
     setOpen(false);
     setCustom(defaultCustomValue());
-    onPick?.(iso);
+    if (onArm) onArm(iso);
+    else onPick?.(iso);
   };
 
   const submitCustom = () => {
@@ -134,11 +164,23 @@ export function SendLaterMenu({
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
               {t("sendLater")}
             </p>
+            {armed && onArm ? (
+              <button
+                type="button"
+                className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
+                onClick={() => {
+                  setOpen(false);
+                  onArm(null);
+                }}
+              >
+                <span className="font-semibold text-stone-800">{t("sendNowInstead")}</span>
+              </button>
+            ) : null}
             {options.map((option) => (
               <button
                 key={option.id}
                 type="button"
-                className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-stone-100"
+                className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
                 onClick={() => choose(option.iso)}
               >
                 <span className="font-semibold text-stone-800">
@@ -181,7 +223,7 @@ export function SendLaterMenu({
                 Said in the same words as the toast that follows, and not
                 "this Mac": the standalone app runs on Windows too. */}
             <p className="px-2.5 pb-1.5 pt-0.5 text-[11px] leading-snug text-stone-400">
-              {t("outlookHoldsIt")}
+              {t(holder === "computer" ? "draftSendLaterHint" : "outlookHoldsIt")}
             </p>
           </>
         ) : null}

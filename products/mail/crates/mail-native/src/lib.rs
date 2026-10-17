@@ -55,6 +55,7 @@ pub mod messages;
 pub mod mime;
 pub mod older_search;
 pub mod outbox;
+pub mod scheduled_sends;
 pub mod smtp;
 pub mod sync;
 pub mod downloads;

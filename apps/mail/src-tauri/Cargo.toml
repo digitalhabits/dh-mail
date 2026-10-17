@@ -2,7 +2,7 @@
 name = "digital-habits-mail"
 # Not the version the app shows: Tauri takes that from tauri.conf.json, which
 # reads ../package.json. Kept in step by scripts/check-version.sh.
-version = "0.11.25"
+version = "0.11.26"
 description = "Digital Habits: Mail — Mac desktop app"
 authors = ["Digital Habits"]
 license = ""
@@ -25,6 +25,8 @@ tauri = { version = "2.11.3", features = ["macos-private-api"] }
 urlencoding = "2.1"
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2.5.4"
+# The question on Quit while messages are scheduled (quit_guard in lib.rs).
+tauri-plugin-dialog = "2"
 # The native side of mail (SQLite store, keychain, OAuth loopback, images,
 # attachments, printing).
 mail-native = { path = "../../../products/mail/crates/mail-native" }

@@ -52,15 +52,20 @@ export function useThreadScheduled({
     void loadScheduled();
   }, [loadScheduled]);
   const actOnScheduled = React.useCallback(
-    async (id: string, action: "cancel" | "sendNow") => {
+    async (id: string, action: "cancel" | "sendNow" | "reschedule", sendAt?: string) => {
       // Off the screen first: the reader has decided, and a row that lingers
-      // while the provider is asked reads as a button that did nothing.
-      setScheduled((current) => current.filter((m) => m.id !== id));
+      // while the provider is asked reads as a button that did nothing. A
+      // new time keeps it, with the time.
+      setScheduled((current) =>
+        action === "reschedule" && sendAt
+          ? current.map((m) => (m.id === id ? { ...m, sendAt } : m))
+          : current.filter((m) => m.id !== id)
+      );
       try {
         await apiJson("/api/mail/scheduled", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account, id, action }),
+          body: JSON.stringify({ account, id, action, sendAt }),
         });
         if (action === "sendNow") {
           toast.success(mailSay("sent"));

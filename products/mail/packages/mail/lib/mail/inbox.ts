@@ -47,6 +47,7 @@ export {
   listAllScheduledMailMessages,
   cancelScheduledMailMessage,
   sendScheduledMailMessageNow,
+  rescheduleScheduledMailMessage,
   draftMailInOutlook,
   sendMailMessage,
 } from "@/lib/mail/inbox-send";

@@ -8,6 +8,7 @@
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { ScheduledMessageView, useOpenHeldMessage } from "@/components/mail/ScheduledMessageView";
 import { HiddenMailboxesNotice } from "@/components/mail/mail-thread-list";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { ComposeView } from "@/components/mail/ComposeView";
@@ -123,6 +124,8 @@ export function ReadingPaneContent({
     viewerId,
     zoom,
   } = m;
+  // A scheduled message opened from the list, while no thread is open.
+  const openHeld = useOpenHeldMessage(m.heldMessages, Boolean(selected));
   const draftSelection = useDraftSelection();
   // For the Drafts view: a discarded draft opens the next one.
   const draftRows = draftsInView(drafts, draftsAccount, debouncedSearch).filter(
@@ -526,6 +529,8 @@ export function ReadingPaneContent({
           />
         ) : !accountEmails.length ? (
           <NoMailboxPane m={m} hide={hide} />
+        ) : openHeld ? (
+          <ScheduledMessageView m={m} held={openHeld} />
         ) : (
           /*
             No spinner here while the list loads.

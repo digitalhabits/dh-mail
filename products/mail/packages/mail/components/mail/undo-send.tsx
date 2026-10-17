@@ -75,7 +75,7 @@ export function CountdownPill({
       </span>
       <button
         type="button"
-        className="rounded-full px-2 py-0.5 text-sm font-semibold text-teal-300 hover:text-teal-200"
+        className="shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-sm font-semibold text-teal-300 hover:text-teal-200"
         onClick={onUndo}
       >
         {t("undo")}
@@ -95,6 +95,8 @@ export function sendWithUndo(options: {
   onSend: () => void;
   onUndo: () => void;
   seconds?: number;
+  /** What the pill says; "Sending in 5…" when left out. */
+  label?: (left: number) => string;
 }): void {
   const seconds = options.seconds ?? UNDO_SEND_SECONDS;
   bindFlush();
@@ -120,7 +122,7 @@ export function sendWithUndo(options: {
     () => (
       <CountdownPill
         seconds={seconds}
-        label={(left) => `Sending in ${left}…`}
+        label={options.label ?? ((left) => `Sending in ${left}…`)}
         onUndo={() => finish("undo")}
       />
     ),

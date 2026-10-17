@@ -422,6 +422,8 @@ impl MailDb {
     crate::messages::migrate(&conn)?;
     conn.execute_batch(crate::actions::SCHEMA)?;
     conn.execute_batch(crate::outbox::SCHEMA)?;
+    conn.execute_batch(crate::scheduled_sends::SCHEMA)?;
+    crate::scheduled_sends::migrate(&conn);
     Ok(())
   }
 }

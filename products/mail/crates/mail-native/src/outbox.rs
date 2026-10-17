@@ -81,15 +81,26 @@ pub struct OutboxRow {
 }
 
 impl OutboxRow {
-  /// "waiting" for its time, "sending" when due, "failed" when given up.
+  /// "waiting" for its time, "sending" when due, "failed" when given up,
+  /// "late" when a scheduled message waits for the person (`is_late`).
   pub fn status(&self, now: i64) -> &'static str {
     if self.failed_at.is_some() {
       "failed"
     } else if self.send_at > now {
       "waiting"
+    } else if self.is_late(now) {
+      "late"
     } else {
       "sending"
     }
+  }
+
+  /// A message sent later, more than 30 minutes past its time: not sent
+  /// without a question (docs/mail-send-later.md, 4.5). Only a message
+  /// that was given a time: an ordinary send waiting for the network has
+  /// its time on the moment it was written, and goes when it can.
+  pub fn is_late(&self, now: i64) -> bool {
+    self.send_at > self.created_at && now - self.send_at > crate::scheduled_sends::LATE_AFTER_MS
   }
 }
 
@@ -132,9 +143,11 @@ impl MailDb {
       "{OUTBOX_SELECT}, raw FROM outbox
        WHERE account_email = ?1 AND send_at <= ?2 AND failed_at IS NULL
          AND (claimed_at IS NULL OR claimed_at <= ?3)
+         AND NOT (send_at > created_at AND send_at < ?4)
        ORDER BY send_at, id"
     ))?;
-    let rows = stmt.query_map(params![account, now, now - CLAIM_STALE_MS], |r| {
+    let late_before = now - crate::scheduled_sends::LATE_AFTER_MS;
+    let rows = stmt.query_map(params![account, now, now - CLAIM_STALE_MS, late_before], |r| {
       Ok((read_row(r)?, r.get::<_, String>(12)?))
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -204,6 +217,17 @@ impl MailDb {
       params![id, account, now_ms()],
     )?;
     Ok(n > 0)
+  }
+
+  /// Messages given a time that is still to come, in every mailbox, and the
+  /// first time. For the question on Quit: only this computer sends them.
+  pub fn outbox_scheduled_waiting(&self, now: i64) -> DbResult<(i64, Option<i64>)> {
+    let conn = self.conn_mut();
+    Ok(conn.query_row(
+      "SELECT COUNT(*), MIN(send_at) FROM outbox WHERE send_at > created_at AND send_at > ?1 AND failed_at IS NULL",
+      params![now],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )?)
   }
 
   pub fn outbox_count_due(&self, account: &str, now: i64) -> DbResult<i64> {
@@ -285,6 +309,30 @@ mod tests {
     assert_eq!(again[0].0.status(now_ms()), "sending");
     assert!(db.outbox_cancel("vera@example.com", later).unwrap());
     assert!(db.outbox_list("vera@example.com").unwrap().is_empty());
+  }
+
+  #[test]
+  fn a_scheduled_message_forty_minutes_late_waits_and_an_ordinary_send_goes() {
+    let db = MailDb::open_in_memory().unwrap();
+    let now = now_ms();
+    let ordinary = db
+      .outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], "raw1", "Now", &["ann@x.test".into()], None, None)
+      .unwrap();
+    let scheduled = db
+      .outbox_enqueue("vera@example.com", None, &["bo@x.test".into()], "raw2", "Later", &["bo@x.test".into()], Some(now + 1_000), None)
+      .unwrap();
+    // Forty-one minutes on: the computer was asleep.
+    let then = now + 41 * 60_000;
+    let due: Vec<i64> = db.outbox_due("vera@example.com", then).unwrap().iter().map(|r| r.0.id).collect();
+    assert_eq!(due, vec![ordinary]);
+    let rows = db.outbox_list("vera@example.com").unwrap();
+    assert_eq!(rows.iter().find(|r| r.id == scheduled).unwrap().status(then), "late");
+    // Twenty minutes late still goes.
+    let soon = now + 21 * 60_000;
+    assert_eq!(db.outbox_due("vera@example.com", soon).unwrap().len(), 2);
+    // Send now makes the late one due.
+    assert!(db.outbox_send_now("vera@example.com", scheduled).unwrap());
+    assert!(db.outbox_due("vera@example.com", now_ms() + 1).unwrap().iter().any(|r| r.0.id == scheduled));
   }
 
   #[test]

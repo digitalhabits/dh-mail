@@ -48,6 +48,11 @@ export function fakeMailStore({ snoozes = [], settings = {} } = {}) {
       if (cmd === "oauth_token_request") {
         return { status: 200, body: { access_token: "ms-at" } };
       }
+      // The schedule of a send later from a draft (scheduled_sends.rs).
+      if (cmd.startsWith("mail_scheduled_")) {
+        calls.push({ op: cmd, args });
+        return cmd === "mail_scheduled_add" ? 1 : null;
+      }
       if (cmd !== "mail_store_call") return null;
       calls.push({ op: args.op, args: args.args });
       switch (args.op) {
@@ -226,6 +231,10 @@ export function fakeMailProviders() {
       }
       if (url.endsWith("/messages/send")) {
         return json({ id: "sent-1", threadId: body?.threadId ?? "new-thread" });
+      }
+      // A send later waits as a draft (docs/mail-send-later.md).
+      if (url.endsWith("/drafts") && method === "POST") {
+        return json({ id: "draft-1", message: { id: "draft-msg-1", threadId: body?.message?.threadId ?? "new-thread" } });
       }
       const m = url.match(/users\/me\/(threads|messages)(?:\/([^/?]+))?(\/modify)?/);
       if (!m) return json({ error: `unexpected Gmail path ${url}` }, 404);

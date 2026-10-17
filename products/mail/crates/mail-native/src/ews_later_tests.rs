@@ -117,3 +117,52 @@ fn now_is_utc_to_the_second() {
   assert!(now.as_str() > "2026-01-01T00:00:00Z", "{now}");
 }
 
+
+/// A server with one draft, item 7, whose change key is 507.
+fn draft_server(sent: bool) -> Handler {
+  Arc::new(move |operation, body| match operation {
+    "GetItem" if body.contains(&item_id(7)) => (200, get_items(&[Some(format!(
+      r#"<t:Message><t:ItemId Id="{}" ChangeKey="{}"/></t:Message>"#,
+      item_id(7),
+      change_key(507)
+    ))])),
+    "GetItem" => (200, get_items(&[None])),
+    // As KU: no SendItem without the change key.
+    "SendItem" if !body.contains(&change_key(507)) => (500, fault("ErrorChangeKeyRequiredForWriteOperations", "A change key is required.")),
+    "SendItem" if sent => (200, response("SendItem", &[error("SendItem", "ErrorItemNotFound", "The specified object was not found in the store.")])),
+    "SendItem" => (200, response("SendItem", &[success("SendItem", "")])),
+    _ => (500, fault("ErrorInvalidRequest", "The request is invalid.")),
+  })
+}
+
+#[test]
+fn a_scheduled_draft_is_sent_with_its_fresh_change_key() {
+  let server = serve(draft_server(false));
+  assert_eq!(run(send_draft(&client(&server.url), &item_id(7))).unwrap(), DraftSent::Sent);
+  let requests = server.requests.lock().unwrap().clone();
+  assert_eq!(requests.len(), 2);
+  assert!(requests[0].contains("<GetItem") && requests[0].contains("IdOnly"), "{}", requests[0]);
+  assert!(requests[1].contains(&format!(r#"Id="{}" ChangeKey="{}""#, item_id(7), change_key(507))), "{}", requests[1]);
+  assert!(requests[1].contains(r#"<t:DistinguishedFolderId Id="sentitems"/>"#));
+}
+
+#[test]
+fn a_draft_that_is_gone_sends_nothing() {
+  let server = serve(draft_server(false));
+  assert_eq!(run(send_draft(&client(&server.url), &item_id(8))).unwrap(), DraftSent::Gone);
+  // Only the look: no SendItem went.
+  assert_eq!(server.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_draft_gone_between_the_look_and_the_send_is_gone_too() {
+  let server = serve(draft_server(true));
+  assert_eq!(run(send_draft(&client(&server.url), &item_id(7))).unwrap(), DraftSent::Gone);
+}
+
+#[test]
+fn a_send_with_no_change_key_is_refused_as_on_ku() {
+  let server = serve(draft_server(false));
+  let err = run(async { client(&server.url).call(&send_item_request(&item_id(7), &change_key(1)).unwrap()).await }).unwrap_err();
+  assert!(err.to_string().contains("ErrorChangeKeyRequiredForWriteOperations"), "{err}");
+}

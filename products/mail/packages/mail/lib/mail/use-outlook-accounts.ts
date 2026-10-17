@@ -14,6 +14,7 @@
  * view that holds them.
  */
 
+import { mailSay } from "@/lib/mail/i18n-strings";
 import * as React from "react";
 
 import { mailApiJson as apiJson } from "@/lib/mail/api";
@@ -114,22 +115,6 @@ function loadOutlookAccounts(): Promise<Set<string>> {
 }
 
 /**
- * True when this mailbox can be asked to hold a message until a time.
- *
- * Outlook only, and not because Gmail lacks the feature — Gmail has had
- * Schedule send in its own web UI since 2019, and a Scheduled view to go
- * with it. The Gmail API does not expose it: `users.messages.send` takes a
- * message and sends it, with no field for a send time, and there is no
- * other call that will make one. Exchange has a message property for
- * exactly this (PR_DEFERRED_SEND_TIME — see `lib/outlook/api`), so the
- * server holds the message and sends it itself with nothing of ours
- * running.
- *
- * Which is why this cannot be widened without building a scheduler: with
- * no provider to hold the message, something of ours has to be awake at
- * the send time.
- */
-/**
  * The connected Outlook mailboxes, in the order the app knows them.
  *
  * Asked because of the hand-over to Outlook: a draft made over Graph has to
@@ -144,12 +129,41 @@ export function useOutlookAccounts(): string[] {
   return outlook;
 }
 
+/**
+ * Who keeps a message sent later until its time.
+ *
+ * - "server": Outlook. Microsoft's server holds it and sends it, with
+ *   nothing of ours running.
+ * - "computer": Gmail and Exchange, in the desktop app. Gmail's API has no
+ *   send time, and on Exchange 2019 a held message cannot be cancelled
+ *   (docs/mail-exchange-ews.md, 17.1). So the message waits as a draft on
+ *   the server, and this computer sends it (docs/mail-send-later.md). A
+ *   Gmail mailbox with a local copy keeps it in the outbox instead.
+ *
+ * Null: no send later here — Gmail or Exchange in a browser, which has no
+ * store to keep the schedule in.
+ */
+export type SendLaterHolder = "server" | "computer";
+
+export function useSendLaterHolder(account: string): SendLaterHolder | null {
+  const [outlook, setOutlook] = React.useState<Set<string>>(() => new Set());
+  useProviderLists((set) => setOutlook(new Set(set)));
+  if (outlook.has(account.trim().toLowerCase())) return "server";
+  return tauriInvoke() ? "computer" : null;
+}
+
 export function useCanSendLater(account: string): boolean {
-  const [holders, setHolders] = React.useState<Set<string>>(() => new Set());
-  // Not an on-prem Exchange mailbox: there a held message cannot be
-  // cancelled (docs/mail-exchange-ews.md, 17.1).
-  useProviderLists((outlook) => setHolders(new Set(outlook)));
-  return holders.has(account.trim().toLowerCase());
+  return useSendLaterHolder(account) !== null;
+}
+
+/**
+ * The one notice after Send later, in the Undo pill: when it goes, and, for
+ * a message this computer sends, the condition it goes on.
+ */
+export async function sendLaterNotice(account: string, when: string): Promise<string> {
+  const outlook = await loadOutlookAccounts();
+  const key = outlook.has(account.trim().toLowerCase()) ? "sendsAtWhen" : "sendsAtWhenIfOpen";
+  return mailSay(key, { when });
 }
 
 /**

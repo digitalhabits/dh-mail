@@ -17,7 +17,7 @@ import * as React from "react";
 
 import { toast } from "@/lib/mail/toast";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
-import { onScheduledChanged } from "@/lib/mail/scheduled-events";
+import { isBeingReplaced, onScheduledChanged, pendingScheduled } from "@/lib/mail/scheduled-events";
 import type { MailScheduledMessage } from "@/lib/mail/types";
 
 export function useHeldMessages() {
@@ -36,7 +36,12 @@ export function useHeldMessages() {
       const json = await apiJson<{ messages?: MailScheduledMessage[] }>(
         "/api/mail/scheduled"
       );
-      setHeldMessages(json.messages ?? []);
+      // The rows scheduled a moment ago and still in their Undo seconds
+      // stand first; one that is now in the answer gives way to it.
+      setHeldMessages([
+        ...pendingScheduled(true),
+        ...(json.messages ?? []).filter((m) => !isBeingReplaced(m)),
+      ]);
     } catch (err) {
       // No Outlook, or the provider would not say. Show no group. Said in the
       // console, so a group that never shows can be traced.
@@ -46,12 +51,12 @@ export function useHeldMessages() {
   }, []);
   /** Try a failed message again, or let it go. */
   const actOnHeld = React.useCallback(
-    async (held: MailScheduledMessage, action: "sendNow" | "cancel") => {
+    async (held: MailScheduledMessage, action: "sendNow" | "cancel" | "reschedule", sendAt?: string) => {
       try {
         await apiJson("/api/mail/scheduled", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account: held.account, id: held.id, action }),
+          body: JSON.stringify({ account: held.account, id: held.id, action, sendAt }),
         });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Couldn't change the message");
@@ -76,7 +81,8 @@ export function useHeldMessages() {
       __TAURI__?: { event?: { listen: (name: string, cb: () => void) => Promise<() => void> } };
     }).__TAURI__?.event;
     if (tauriEvent?.listen) {
-      for (const name of ["mail-sync-sent", "mail-sync-send-failed"]) {
+      // A scheduled draft sent, cancelled or given up (scheduled_sends.rs).
+      for (const name of ["mail-sync-sent", "mail-sync-send-failed", "mail-scheduled-changed"]) {
         void tauriEvent
           .listen(name, () => void loadHeldMessages())
           .then((fn) => {

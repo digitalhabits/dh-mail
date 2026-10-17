@@ -26,7 +26,12 @@
 //! 4. If the person quits instead, the update is installed on the way out
 //!    (`install_on_exit`), and the next start is the new version.
 //!
-//! A failed check says nothing to the person. The app works as before, and
+//! 5. "Check for Updates…" in the app menu asks at once (`check_now`) and
+//!    answers in a dialog: a newer version is downloaded and offered with
+//!    Restart Now, or the app says it is up to date, or that it could not
+//!    check.
+//!
+//! A failed background check says nothing to the person. The app works as before, and
 //! the next check tries again. A dev build never checks: it must not replace
 //! itself with a release.
 //!
@@ -34,6 +39,7 @@
 //! repository. It writes `latest.json` into the draft release, and
 //! publishing the draft is what sends the update out.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -69,6 +75,13 @@ struct Ready {
   update: tauri_plugin_updater::Update,
   bytes: Vec<u8>,
 }
+
+/// Where this app asks. Kept so that Check for Updates… can ask the same
+/// place at once. Not in state in a dev build, which never checks.
+struct Asking(Source);
+
+/// A Check for Updates… is running. A second click waits for its answer.
+static CHECKING_NOW: AtomicBool = AtomicBool::new(false);
 
 /// A downloaded update waiting to be installed. One at most.
 #[derive(Default)]
@@ -108,7 +121,13 @@ fn run(app: &tauri::AppHandle, source: Source) {
     log::warn!("team update: the updater did not start: {err}");
     return;
   }
+  if app.try_state::<tauri_plugin_dialog::Dialog<tauri::Wry>>().is_none() {
+    if let Err(err) = app.plugin(tauri_plugin_dialog::init()) {
+      log::warn!("team update: the dialogs did not start: {err}");
+    }
+  }
   app.manage(TeamUpdate::default());
+  app.manage(Asking(source));
   // A thread of its own, which mostly sleeps. Each check runs on the async
   // runtime and is waited for here.
   let app = app.clone();
@@ -204,6 +223,87 @@ async fn check(app: &tauri::AppHandle, source: Source) -> Result<Checked, String
   log::info!("team update: {} ready", info.version);
   let _ = app.emit(READY_EVENT, info);
   Ok(Checked::Done)
+}
+
+/// Check for Updates…: ask now, and say what was found in a dialog.
+pub fn check_now(app: &tauri::AppHandle) {
+  let Some(source) = app.try_state::<Asking>().map(|asking| asking.0) else {
+    // A dev build: it must not replace itself with a release.
+    log::info!("team update: this build does not update itself");
+    return;
+  };
+  if CHECKING_NOW.swap(true, Ordering::SeqCst) {
+    return;
+  }
+  let app = app.clone();
+  std::thread::spawn(move || {
+    let result = tauri::async_runtime::block_on(check(&app, source));
+    CHECKING_NOW.store(false, Ordering::SeqCst);
+    let current = app.package_info().version.to_string();
+    match result {
+      Ok(Checked::Done) => match waiting_version(&app) {
+        Some(version) => offer_restart(&app, &version),
+        None => tell(
+          &app,
+          "You have the latest version",
+          &format!("Version {current} is the newest version."),
+        ),
+      },
+      #[cfg(feature = "team")]
+      Ok(Checked::NoSession) => tell(
+        &app,
+        "Could not check for updates",
+        "Sign in to the app first, then try again.",
+      ),
+      Err(err) => {
+        log::warn!("team update: check now: {err}");
+        tell(
+          &app,
+          "Could not check for updates",
+          "Check your internet connection and try again.",
+        );
+      }
+    }
+  });
+}
+
+/// The version downloaded and waiting to be installed, if any.
+fn waiting_version(app: &tauri::AppHandle) -> Option<String> {
+  let state = app.try_state::<TeamUpdate>()?;
+  let guard = state.0.lock().ok()?;
+  guard.as_ref().map(|ready| ready.update.version.clone())
+}
+
+fn tell(app: &tauri::AppHandle, title: &str, text: &str) {
+  use tauri_plugin_dialog::DialogExt;
+  app.dialog().message(text).title(title).show(|_| {});
+}
+
+/// A newer version is ready: restart now, or later. Later keeps the bar in
+/// the window and installs on quit, as a version found in the background.
+fn offer_restart(app: &tauri::AppHandle, version: &str) {
+  use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+  let restart_app = app.clone();
+  app
+    .dialog()
+    .message(format!(
+      "Version {version} is downloaded. Restart the app to use it."
+    ))
+    .title("A new version is ready")
+    .buttons(MessageDialogButtons::OkCancelCustom(
+      "Restart Now".into(),
+      "Later".into(),
+    ))
+    .show(move |restart| {
+      if !restart {
+        return;
+      }
+      tauri::async_runtime::spawn(async move {
+        if let Err(err) = team_update_install(restart_app).await {
+          log::warn!("team update: restart from the dialog: {err}");
+        }
+      });
+    });
 }
 
 /// The update waiting to be installed, if any. The interface asks at load,

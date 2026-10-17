@@ -12,6 +12,7 @@
  * walks in mounted-new-mail-card and mounted-composer-send drive it.
  */
 
+import { EditingScheduledNote } from "@/components/mail/ScheduledMessageView";
 import { useRef, type RefObject } from "react";
 import { formatShortcut } from "@/lib/mail/shortcuts";
 import {
@@ -41,7 +42,7 @@ import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMen
 import { writeComposeFrom } from "@/lib/mail/compose-from";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import { RecipientDropZone, withRecipient } from "@/components/mail/recipient-carry";
-import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
+import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
 import { DraftAssistMenu, DraftAssistNotes, useAccountAssist } from "@/components/mail/team-layer";
 import { SignatureDialog } from "@/components/mail/SignatureDialog";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
@@ -72,6 +73,9 @@ export function ComposeView(props: ComposeViewProps) {
     bodyText,
     canOpenInOutlook,
     canSend,
+    editingScheduled,
+    armedSendAt,
+    setArmedSendAt,
     canSendLater,
     card,
     cardH,
@@ -566,9 +570,12 @@ export function ComposeView(props: ComposeViewProps) {
                         16px the button gives its icons — see the reply
                         box, which explains the `!`. */}
                     <SendHorizontal aria-hidden className="!size-3.5" />
-                    {sending ? t("sending") : t("send")}
+                    {sendButtonWord(t, { sending, armed: armedSendAt })}
                   </Button>
                   <SendLaterMenu
+                    account={from}
+                    armed={armedSendAt}
+                    onArm={setArmedSendAt}
                     schedule={canSendLater}
                     onPick={(iso) => void send(iso)}
                     extras={[
@@ -636,6 +643,7 @@ export function ComposeView(props: ComposeViewProps) {
               cannot move reads as broken. */}
           {floating ? null : <CardResizeHandles start={startCardResize} />}
           </div>
+          <EditingScheduledNote original={editingScheduled} width={cardW * zoom} />
           {/* Under the box, outside the card — where a reply keeps them.
               A signature to write is about the message, not about typing
               it. Preview and Outlook sit on the Send chevron. */}

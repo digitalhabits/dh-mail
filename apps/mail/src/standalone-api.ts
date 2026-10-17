@@ -95,6 +95,7 @@ import {
   listAllScheduledMailMessages,
   cancelScheduledMailMessage,
   sendScheduledMailMessageNow,
+  rescheduleScheduledMailMessage,
 } from "@/lib/mail/inbox";
 import { listConnectedMailAccounts } from "@/lib/mail/providers";
 import { invalidateMailCaches, invalidateInboxCache } from "@/lib/mail/inbox-cache";
@@ -266,12 +267,16 @@ async function scheduled({ q, method, body }: RouteContext): Promise<Response> {
     const input = await body<{
       account?: string;
       id?: string;
-      action?: "cancel" | "sendNow";
+      action?: "cancel" | "sendNow" | "reschedule";
+      sendAt?: string;
     }>();
     if (!input.account || !input.id) {
       return failed("account and id are required", 400);
     }
-    if (input.action === "sendNow") {
+    if (input.action === "reschedule") {
+      if (!input.sendAt) return failed("sendAt is required", 400);
+      await rescheduleScheduledMailMessage({ account: input.account, id: input.id, sendAt: input.sendAt });
+    } else if (input.action === "sendNow") {
       await sendScheduledMailMessageNow({
         account: input.account,
         id: input.id,

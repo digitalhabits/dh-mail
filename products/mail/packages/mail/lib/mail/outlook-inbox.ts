@@ -21,6 +21,7 @@ import {
   createOutlookDraft,
   sendOutlookMail,
   clearOutlookDeferredSend,
+  rescheduleOutlookDeferredSend,
   listOutlookScheduledMessages,
   sendOutlookDraftNow,
 } from "@/lib/outlook/send";
@@ -603,6 +604,7 @@ export async function listScheduledOutlookMessages(
       ...(html ? { bodyHtml: html } : null),
       to: to.map((p) => p.email),
       cc: graphAddresses(message.ccRecipients).map((p) => p.email),
+      reschedulable: true,
     };
   });
 }
@@ -614,6 +616,16 @@ export async function cancelScheduledOutlookMessage(
 ): Promise<void> {
   const token = await outlookAccessTokenFor(account);
   await deleteOutlookMessage(token, messageId);
+}
+
+/** Hold it until another time (`rescheduleOutlookDeferredSend`). */
+export async function rescheduleScheduledOutlookMessage(
+  account: string,
+  messageId: string,
+  sendAt: string
+): Promise<void> {
+  const token = await outlookAccessTokenFor(account);
+  await rescheduleOutlookDeferredSend(token, messageId, new Date(sendAt).toISOString());
 }
 
 /** Take the time off and let it go now. */

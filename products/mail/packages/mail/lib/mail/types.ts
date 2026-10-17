@@ -212,6 +212,14 @@ export type MailScheduledMessage = {
   bodyHtml?: string;
   to: string[];
   cc: string[];
+  /** Kept by this computer's own schedule, for Edit. */
+  bcc?: string[];
+  /**
+   * Its time can be changed where it is: a draft this computer sends, or
+   * one Outlook holds in Drafts. Not one held in an Exchange Outbox, which
+   * the server will not let go of (docs/mail-exchange-ews.md, 17.1).
+   */
+  reschedulable?: boolean;
   /**
    * Where it is on its way: waiting for its time, being sent, or given
    * up — with the server's words. A provider-held message is "waiting".

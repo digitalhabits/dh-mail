@@ -430,6 +430,33 @@ export async function findGmailDraftIdForMessage(
   return byThread;
 }
 
+/**
+ * Save a whole message as a Gmail draft, for a send later
+ * (docs/mail-send-later.md). Answers the draft's id, which is what sends it.
+ */
+export async function createGmailDraft(
+  accessToken: string,
+  rawRfc822: string,
+  threadId?: string
+): Promise<{ id: string; message?: { id: string; threadId?: string } }> {
+  const raw = utf8ToBase64Url(rawRfc822);
+  return gmailFetch(accessToken, "/drafts", {
+    method: "POST",
+    body: { message: threadId ? { raw, threadId } : { raw } },
+  });
+}
+
+/**
+ * Send a draft as it is. Gmail takes it out of Drafts, so the same id sent
+ * twice answers 404 the second time: never a second message.
+ */
+export async function sendGmailDraft(
+  accessToken: string,
+  draftId: string
+): Promise<{ id: string; threadId?: string }> {
+  return gmailFetch(accessToken, "/drafts/send", { method: "POST", body: { id: draftId } });
+}
+
 /** Remove a draft from Gmail. */
 export async function deleteGmailDraft(
   accessToken: string,

@@ -9,7 +9,7 @@
  * Gmail path sent it styled.
  */
 
-import { sendMailMessage } from "@/lib/mail/inbox";
+import { rescheduleScheduledMailMessage, sendMailMessage } from "@/lib/mail/inbox";
 import {
   ALMA,
   fakeMailProviders,
@@ -35,7 +35,7 @@ const message = (account, extra = {}) => ({
 
 suite(async () => {
   // ---- Gmail -----------------------------------------------------------------
-  fakeMailStore();
+  let { calls } = fakeMailStore();
   let { requests } = fakeMailProviders();
   let result = await sendMailMessage(message(GMAIL, {
     threadId: "g3",
@@ -70,7 +70,7 @@ suite(async () => {
     SIGNATURE_BLOCK.test(decoded), decoded.match(/<div style="margin-top:16px[^>]*>[^<]*/)?.[0]);
 
   // ---- Outlook, a reply ---------------------------------------------------------
-  fakeMailStore();
+  ({ calls } = fakeMailStore());
   ({ requests } = fakeMailProviders());
   result = await sendMailMessage(message(OUTLOOK, { threadId: "o1" }));
   const createReply = requests.find((r) => r.url.endsWith("/createReply"));
@@ -114,14 +114,20 @@ suite(async () => {
   // A morning far in the future, on purpose: a scheduled time that has
   // passed is refused before the provider is asked, so the day this date
   // arrived, the test began failing about the wrong thing.
-  refused = null;
-  try {
-    await sendMailMessage(message(GMAIL, { sendAt: "2033-04-05T09:00:00.000Z" }));
-  } catch (err) {
-    refused = err;
-  }
-  check("gmail: send later is refused, with the reason",
-    refused?.status === 400 && /Gmail/.test(refused?.message), refused?.message);
+  // Gmail has no send time: the message waits as a draft on the server,
+  // and the app sends that draft at the time (docs/mail-send-later.md).
+  ({ requests } = fakeMailProviders());
+  const scheduledBefore = calls.length;
+  await sendMailMessage(message(GMAIL, { sendAt: "2033-04-05T09:00:00.000Z" }));
+  const draft = requests.find((r) => r.url.endsWith("/drafts") && r.method === "POST");
+  check("gmail: send later saves the whole message as a draft, and sends nothing",
+    Boolean(draft?.body?.message?.raw) && !requests.some((r) => r.url.endsWith("/messages/send")));
+  const added = calls.slice(scheduledBefore).find((c) => c.op === "mail_scheduled_add");
+  check("gmail: and schedules that draft for its time",
+    added?.args.message.draftId === "draft-1" &&
+      added?.args.message.provider === "gmail" &&
+      added?.args.message.sendAt === Date.parse("2033-04-05T09:00:00.000Z"),
+    JSON.stringify(added?.args));
 
   ({ requests } = fakeMailProviders());
   await sendMailMessage(message(OUTLOOK, { sendAt: "2033-04-05T09:00:00.000Z" }));
@@ -129,4 +135,15 @@ suite(async () => {
   check("outlook: send later hands the time to Exchange",
     held?.body.message.singleValueExtendedProperties?.[0]?.value === "2033-04-05T09:00:00.000Z",
     JSON.stringify(held?.body.message.singleValueExtendedProperties));
+
+  // Change time on Outlook: the held draft gets its new time, and is
+  // handed back to Exchange — the two steps Send now takes, with a time.
+  ({ requests } = fakeMailProviders());
+  await rescheduleScheduledMailMessage({ account: OUTLOOK, id: "held-ol-1", sendAt: "2033-04-06T10:00:00.000Z" });
+  const patched = requests.find((r) => r.method === "PATCH" && r.url.includes("/me/messages/held-ol-1"));
+  const resent = requests.find((r) => r.method === "POST" && r.url.endsWith("/me/messages/held-ol-1/send"));
+  check("outlook: change time sets the new time on the held draft, then sends it",
+    patched?.body?.singleValueExtendedProperties?.[0]?.value === "2033-04-06T10:00:00.000Z" &&
+      Boolean(resent) && requests.indexOf(patched) < requests.indexOf(resent),
+    JSON.stringify(requests.map((r) => `${r.method} ${r.url}`)));
 });

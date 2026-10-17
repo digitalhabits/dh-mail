@@ -7,6 +7,7 @@
  * which is why 2,389 lines could leave MailPage without untangling anything.
  */
 
+import { ownMailIdentity } from "@/lib/own-addresses";
 import { headingWithHeld } from "@/lib/mail/held-thread-header";
 import { createPortal } from "react-dom";
 import { useMailColorMode } from "@/lib/mail/theme";
@@ -176,7 +177,7 @@ export function ThreadPane(props: ThreadPaneProps) {
   /* Everyone on the thread but us — who a saved list would hold. Plainly,
      not memoized: this sits after the early returns above, where a hook
      would change the order React counts. */
-  const threadOthers = threadPeople(thread.messages, [account, ...accounts])
+  const threadOthers = threadPeople(thread.messages, [account, ...accounts, ...ownMailIdentity().addresses])
     .others;
   // A thread with only a held message so far takes its heading from it.
   const heading = headingWithHeld(

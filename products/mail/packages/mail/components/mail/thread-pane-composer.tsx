@@ -25,7 +25,7 @@ import {
 import { reactionQuoteText } from "@/lib/mail/reaction-message";
 import { currentMailLocale } from "@/lib/mail/i18n";
 import { formatShortcut } from "@/lib/mail/shortcuts";
-import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
+import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
 import { readImageChoices, useLoadImagesByDefault } from "@/components/mail/MailBubble";
@@ -751,6 +751,8 @@ function ComposerSendBar({
     attachItems,
     attachmentsReady,
     canOpenInOutlook,
+    armedSendAt,
+    setArmedSendAt,
     canSendLater,
     discardComposer,
     forwarding,
@@ -828,11 +830,12 @@ function ComposerSendBar({
                 the icon as a descendant and so outranks a plain
                 class on it. */}
             <SendHorizontal aria-hidden className="!size-3.5" />
-            {sending
-              ? t("sending")
-              : t(forwarding ? "actionForward" : "send")}
+            {sendButtonWord(t, { sending, forwarding, armed: armedSendAt })}
           </Button>
           <SendLaterMenu
+            account={fromAccount}
+            armed={forwarding ? null : armedSendAt}
+            onArm={setArmedSendAt}
             schedule={canSendLater && !forwarding}
             onPick={(iso) => void send(iso)}
             extras={[

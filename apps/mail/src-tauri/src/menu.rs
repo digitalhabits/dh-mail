@@ -9,6 +9,10 @@
 //! Under it, "Add Account…", which opens the same Settings on its Accounts
 //! page: people look for adding an account in that menu too.
 //!
+//! Under "About", "Check for Updates…", in a build that updates itself (the
+//! direct downloads and Mail (Internal), never a store package). It asks at
+//! once and answers in a dialog (mail_native::team_update::check_now).
+//!
 //! In the Help menu, three ways to reach us — the same three the blocker and
 //! To-Do apps carry — and the version above them. Somebody reporting a problem
 //! has to be able to say which build they are on, and until now the only way
@@ -99,6 +103,13 @@ pub fn install(app: &App) -> tauri::Result<()> {
       app_menu.insert(&settings, 2)?;
       app_menu.insert(&add_account, 3)?;
       app_menu.insert(&PredefinedMenuItem::separator(app)?, 4)?;
+      // Where Mac apps keep it: right under About.
+      #[cfg(any(feature = "team-updater", feature = "public-updater"))]
+      {
+        let check_updates =
+          MenuItem::with_id(app, "app_check_updates", "Check for Updates…", true, None::<&str>)?;
+        app_menu.insert(&check_updates, 1)?;
+      }
     }
     None => log::warn!("menu: no app submenu to add Settings to"),
   }
@@ -193,6 +204,11 @@ pub fn install(app: &App) -> tauri::Result<()> {
             log::warn!("menu: could not ask the page to open settings: {err}");
           }
         }
+        return;
+      }
+      #[cfg(any(feature = "team-updater", feature = "public-updater"))]
+      "app_check_updates" => {
+        mail_native::team_update::check_now(app);
         return;
       }
       "app_add_account" => {

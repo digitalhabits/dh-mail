@@ -223,6 +223,15 @@ macro_rules! mail_commands {
       mail_native::sync::mail_sync_outbox,
       mail_native::sync::mail_sync_outbox_cancel,
       mail_native::sync::mail_sync_outbox_send_now,
+      // Send later from a server draft (docs/mail-send-later.md).
+      mail_native::scheduled_sends::mail_scheduled_add,
+      mail_native::scheduled_sends::mail_scheduled_list,
+      mail_native::scheduled_sends::mail_scheduled_take_due,
+      mail_native::scheduled_sends::mail_scheduled_done,
+      mail_native::scheduled_sends::mail_scheduled_failed,
+      mail_native::scheduled_sends::mail_scheduled_cancel,
+      mail_native::scheduled_sends::mail_scheduled_send_now,
+      mail_native::scheduled_sends::mail_scheduled_reschedule,
       // Exchange on-prem over EWS. Internal flavor only, by the feature.
       #[cfg(feature = "exchange")]
       mail_native::ews::commands::mail_ews_connect,
@@ -278,6 +287,8 @@ macro_rules! mail_commands {
       #[cfg(feature = "exchange")]
       mail_native::ews_later::commands::mail_ews_send_held_now,
       #[cfg(feature = "exchange")]
+      mail_native::ews_later::commands::mail_ews_send_draft,
+      #[cfg(feature = "exchange")]
       mail_native::ews_directory::commands::mail_ews_resolve_names,
       mail_native::ews_directory::commands::mail_ews_own_addresses,
       #[cfg(feature = "exchange")]
@@ -323,9 +334,56 @@ const WRITE_DRAIN_CAP_MS: u64 = 8000;
 static EXIT_AFTER_DRAIN: std::sync::atomic::AtomicBool =
   std::sync::atomic::AtomicBool::new(false);
 
+/// Quit or close while this computer has messages to send later: ask first
+/// (docs/mail-send-later.md, 4.6). Closing the main window quits, on the
+/// Mac and on Windows, so both come here. True when the exit must wait for
+/// the answer; "Quit Anyway" then exits again with the question answered.
+mod quit_guard {
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  use tauri::Manager as _;
+  use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+  static ANSWERED: AtomicBool = AtomicBool::new(false);
+  static ASKING: AtomicBool = AtomicBool::new(false);
+
+  pub fn must_ask(app: &tauri::AppHandle) -> bool {
+    if ANSWERED.load(Ordering::SeqCst) {
+      return false;
+    }
+    if ASKING.load(Ordering::SeqCst) {
+      return true;
+    }
+    let Some(db) = app.try_state::<mail_native::db::MailDb>() else {
+      return false;
+    };
+    let Ok(Some(text)) = mail_native::scheduled_sends::quit_question_now(&db) else {
+      return false;
+    };
+    ASKING.store(true, Ordering::SeqCst);
+    let quit_app = app.clone();
+    app
+      .dialog()
+      .message(text)
+      .title("Quit while messages are scheduled?")
+      .kind(MessageDialogKind::Warning)
+      .buttons(MessageDialogButtons::OkCancelCustom("Quit Anyway".into(), "Cancel".into()))
+      .show(move |quit| {
+        ASKING.store(false, Ordering::SeqCst);
+        if quit {
+          ANSWERED.store(true, Ordering::SeqCst);
+          quit_app.exit(0);
+        }
+      });
+    true
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+  let builder = tauri::Builder::default()
+    .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_dialog::init());
   // The chat popout is a non-activating panel, so clicking it does not take
   // the front from a slideshow behind it. mail-native reclasses the window;
   // this is the plugin that lets it.
@@ -370,6 +428,9 @@ pub fn run() {
         if window.label() == "main" {
           use tauri::Manager as _;
           api.prevent_close();
+          if quit_guard::must_ask(window.app_handle()) {
+            return;
+          }
           window.app_handle().exit(0);
           return;
         }
@@ -522,6 +583,14 @@ pub fn run() {
       // Quit (⌘Q) skips the windows' own close events, so the same wait
       // happens here: the exit is prevented once, the writes drain, and
       // the drain thread asks again with the flag set.
+      // Messages this computer sends later: ask before they are left
+      // behind. Not on a restart for an update, which comes straight back.
+      if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event {
+        if *code != Some(tauri::RESTART_EXIT_CODE) && quit_guard::must_ask(_app) {
+          api.prevent_exit();
+          return;
+        }
+      }
       if let tauri::RunEvent::ExitRequested { api, .. } = &_event {
         if !EXIT_AFTER_DRAIN.load(std::sync::atomic::Ordering::SeqCst)
           && mail_native::pending::pending_total() > 0

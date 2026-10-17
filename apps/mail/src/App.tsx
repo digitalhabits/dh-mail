@@ -10,6 +10,7 @@
  * after each, and `onMailRefresh` turns that into a re-read here.
  */
 
+import { startScheduledSender } from "@/lib/mail/scheduled-drafts";
 import * as React from "react";
 import {
   refreshExchangeOwnAddresses,
@@ -152,6 +153,9 @@ export function App() {
       void startLocalStoreSync(all).catch((err: unknown) => {
         console.warn("[mail] local store sync did not start:", err);
       });
+      // Messages sent later from a draft (docs/mail-send-later.md): this
+      // window sends them at their time. Once; later loads change nothing.
+      startScheduledSender();
       // One token refresh per mailbox, which the first request would do anyway.
       setProblems(await findMailboxProblems(all));
     } catch (err) {

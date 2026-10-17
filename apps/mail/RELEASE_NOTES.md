@@ -1,38 +1,19 @@
 ## What is new
 
-**Stacks**
-- **A Stacks switch in the title bar.** It is right of the search field. It is the same setting as Settings > Reading.
-- **See the threads move.** When you switch Stacks on, each thread moves into its sender's stack. When you switch it off, the threads move back to their dates. If you set Reduce Motion, the rows fade instead.
-- **A thread row names everyone in the thread,** with Stacks on or off.
-- **A stack shows its sender's logo.**
-- **The archive key on a closed stack archives all of its threads.**
+**Send later for Gmail and Exchange**
+- **Send later now works for Gmail and Exchange,** as it does for Outlook. The message waits as a draft on your mail server, and this computer sends it at that time. It is sent only if this computer is on and Mail is open. If not, it waits in Drafts and nothing is lost.
+- **A message that is more than 30 minutes late is not sent by itself.** Mail shows it as Not sent, and you choose Try again or Keep as draft.
+- **Quit asks first** when this computer has messages to send later.
 
-**Files**
-- **The file list of a thread shows a picture of each file,** with Preview, Open and Download buttons.
-- **Drag a file out of a message** as soon as the pointer moves. This also works for pictures.
-- A file that you drop where nothing takes it is ignored.
+**Scheduled messages**
+- **Scheduled messages are at the top of the list,** under Scheduled, from the moment you press Send.
+- **Click a scheduled message to see it,** with Send now, Change time, Edit and Cancel.
+- **Change time** works for Gmail, Exchange and Outlook.
+- **Edit keeps the original until you send the new one.** If you delete the edit, the original is still sent at its time.
+- **Pick a time first.** A time in the Send later menu goes on the Send button ("Send at 17:20"). Nothing is sent until you press it.
+- **Undo** after Send later, as after any send.
 
-**Reading and writing**
-- **Snooze several mails at once.** Select them, then use the Snooze button or the snooze key.
-- **In the Reader, drag the edge of a message** to make it wider, up to the window.
-- **The reply card over a thread can be put away,** and you can change its height from its top edge.
-- A reply that you open from the Reader stays on top of it.
-- A thread with a reply draft opens at the bottom.
-- The heading of a thread names who started it and counts the others.
-- Right-click a person to copy their name.
-- A forward from one message carries the files of that message.
-
-**Working offline**
-- **Read, archive, delete and move with no internet.** This works for Gmail, Outlook and Exchange. Mail shows the change at once, keeps it, and sends it to the server when you are online again.
-- **Mail says when you are offline.** A line above the list says so, and says how many changes wait to be sent.
-- **A change the server refuses.** If the server refuses a change, or the mail is no longer there, Mail puts the mail back as it was and tells you.
-- **Move a recipient.** Drag a recipient between To, Cc and Bcc.
-
-**Fixes**
-- Letters such as ä, ö and ü in some mails are shown correctly. Before, they showed as marks.
-- A Safe Links link in plain-text mail shows where it goes.
-- Letting go of a file before it is ready no longer stops the app.
-- New mail is shown in green and white on the Sync button.
-- Add Account… is in the app menu.
-- When you show a hidden mailbox early, Mail says for how long.
-- A date in the list from an earlier year shows the year.
+**Other**
+- **Check for Updates** is in the app menu.
+- An Exchange mailbox's other address now counts as you in a thread's heading.
+- The words still to type, when you show a hidden mailbox early, are easier to read.
