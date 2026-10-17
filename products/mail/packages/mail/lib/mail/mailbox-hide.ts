@@ -29,6 +29,7 @@ import {
   readPauseState,
   type MailQuietWindow,
 } from "@/lib/mail/quiet-hours";
+import type { MailT } from "@/lib/mail/i18n-strings";
 import { normaliseUnpauseWords } from "@/lib/mail/unpause-friction";
 
 /** One mailbox's timed hiding. */
@@ -58,6 +59,24 @@ export const HIDE_AGAIN_OPTIONS = Object.freeze([0, 5, 10, 15, 30, 60, 120, 240,
 /** One of the menu's values, or 0 (Never) for anything else. */
 export function normaliseHideAgainMinutes(value: unknown): number {
   return typeof value === "number" && HIDE_AGAIN_OPTIONS.includes(value) ? value : 0;
+}
+
+/** A "Hide again after" length in words: Never, 15 minutes, 1 hour, 8 hours. */
+export function hideAgainLabel(minutes: number, t: MailT): string {
+  if (minutes === 0) return t("hideAgainNever");
+  if (minutes < 60) return t("hideAgainMinutes", { count: minutes });
+  if (minutes === 60) return t("hideAgainOneHour");
+  return t("hideAgainHours", { count: minutes / 60 });
+}
+
+/**
+ * Whether "Hide again after" is what ends an early show: set, and sooner
+ * than the end of the mailbox's own time or window. Then the question
+ * before showing it names how long (Ulrik, 2026-10-17).
+ */
+export function hideAgainEndsShow(ownEnd: number | null, hideAgainMinutes: number, now: Date): boolean {
+  if (hideAgainMinutes <= 0) return false;
+  return ownEnd == null || ownEnd - now.getTime() > hideAgainMinutes * 60_000;
 }
 
 /**

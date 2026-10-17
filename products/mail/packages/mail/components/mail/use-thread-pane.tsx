@@ -27,6 +27,7 @@ import {
 import { useChatStyle } from "@/components/mail/use-chat-style";
 import { useComposerAttachments } from "@/components/mail/use-composer-attachments";
 import { useForwardFiles } from "@/components/mail/use-forward-files";
+import { findLoadedMessage } from "@/components/mail/thread-messages";
 import { useThreadSend } from "@/components/mail/use-thread-send";
 import { useComposerHome } from "@/components/mail/use-composer-home";
 import {
@@ -894,10 +895,7 @@ export function useThreadPane(props: ThreadPaneProps) {
       } else {
         // Answering one message answers the person who wrote it. On our own
         // message there is nobody to answer, so the thread decides.
-        const picked = [
-          ...olderParts.flatMap((p) => p.messages),
-          ...(thread?.messages ?? []),
-        ].find((m) => m.id === messageId);
+        const picked = findLoadedMessage(thread, olderParts, messageId);
         const to =
           picked && !picked.own && picked.fromEmail
             ? [picked.fromEmail]
@@ -938,8 +936,11 @@ export function useThreadPane(props: ThreadPaneProps) {
       // Forwards start without recipients, so open the chip editor right away.
       editRecipients: true,
     });
+    // The files on the message go with it, as they do for a forward from the
+    // header. Without this, a forward from a bubble left them behind.
+    beginForwardFiles(findLoadedMessage(thread, olderParts, messageId));
     requestAnimationFrame(() => recipientInputRef.current?.focus());
-  }, [openComposer]);
+  }, [openComposer, beginForwardFiles, olderParts, thread]);
   const startForward = () => {
     if (mode === "forward") {
       closeComposer();
@@ -988,10 +989,8 @@ export function useThreadPane(props: ThreadPaneProps) {
   });
   /** The message being forwarded or quoted: the newest one in the thread. */
   const forwardSource =
-    (quoteMessageId
-      ? [...olderParts.flatMap((p) => p.messages), ...(thread?.messages ?? [])]
-          .find((m) => m.id === quoteMessageId)
-      : undefined) ?? thread?.messages[thread.messages.length - 1];
+    (quoteMessageId ? findLoadedMessage(thread, olderParts, quoteMessageId) : undefined) ??
+    thread?.messages[thread.messages.length - 1];
   /**
    * What each message still has to say above itself, and where a day turns.
    *

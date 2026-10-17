@@ -12,6 +12,8 @@ import { tauriInvoke } from "@/lib/mail/store/tauri";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
 import * as React from "react";
+import { glideToNewPlaces } from "@/lib/mail/stack-glide";
+import { TRIAGE_TAB, TriageListPane } from "@/components/mail/team-layer";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
@@ -79,6 +81,10 @@ export function ThreadListColumn({
     viewMode,
   } = m;
   const older = useOlderSearch(m);
+  // Stacks switched: the rows glide from where they were (lib/mail/stack-glide).
+  React.useLayoutEffect(() => {
+    glideToNewPlaces(listScrollRef.current);
+  }, [viewMode, listScrollRef]);
   return (
         <div
           ref={threadListRef}
@@ -95,6 +101,7 @@ export function ThreadListColumn({
         <div className="relative min-h-0 flex-1">
         <div
           ref={listScrollRef}
+          data-mail-list-scroller
           className={cn(
             "h-full min-h-0 overflow-y-auto overscroll-none",
             listExpanded ? "pb-4" : "pb-6"
@@ -135,6 +142,10 @@ export function ThreadListColumn({
             ) : (
             <NoMailboxNotice m={m} />
             )
+          ) : tab === TRIAGE_TAB ? (
+            // The ranked list, in the organization's build. It stands in for
+            // the list rather than filtering it: the order is its own.
+            <TriageListPane m={m} />
           ) : tab === "outbox" ? (
             // The Outbox view shows what is on its way out, and nothing of
             // the inbox the list still holds underneath.

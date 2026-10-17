@@ -6,32 +6,21 @@ import { toast } from "@/lib/mail/toast";
 import { SaveAsListControl } from "@/components/mail/recipient-lists";
 import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { copyTextToClipboard } from "@/lib/mail/copy-text";
-import type { MailMessage } from "@/lib/mail/types";
+import type { ParticipantChunk } from "@/lib/mail/thread-heading-people";
 import { useMailT } from "@/lib/mail/i18n";
 import { mailSay } from "@/lib/mail/i18n-strings";
 import { AccountMark } from "@/components/mail/AccountMark";
 import { useAccountMarks } from "@/lib/mail/account-mark";
 import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 
+export { participantsWithAddresses, threadPeople } from "@/lib/mail/thread-heading-people";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
+
 /**
- * The people on the thread, cut down to a line.
- *
- * A club circular goes to thirty addresses, and naming all of them buried
- * the message count, the dates and the mailbox under eight lines of
- * strangers. Four are named and the rest are counted, with the count as the
- * way to see them: "and 25 others" opens, "show fewer" closes.
- *
- * Not a hover or a tooltip. Who a mail went to is worth reading at leisure,
- * and often worth copying, neither of which a thing that vanishes allows.
+ * The people on the thread, in the heading: the one who started it, and
+ * "and N others" as the way to see everyone.
  */
-/** Named in full up to this many; beyond it, the rest are counted. */
-const THREAD_PARTICIPANTS_SHOWN = 4;
-
-type ParticipantChunk =
-  | { kind: "person"; label: string; email: string; name?: string }
-  /** `plain`: "You", the addresses on hover — when one mailbox's tab is chosen, it is no news. */
-  | { kind: "you"; emails: string[]; plain?: boolean };
-
 /**
  * One name on the line, with its address as a way to write to it.
  *
@@ -75,7 +64,18 @@ function ParticipantName({
               onClick={() => requestMailComposeTo(email)}
               onContextMenu={(e) => onAddressMenu(e, email)}
             >
-              <MailboxName email={email} />
+              {/*
+                Only a mailbox connected here has a tab to look like. An
+                address of yours that only sent mail (an alias, an old
+                college address) has no provider we know, and its short
+                name can be a tab's name: dana.fisher@college read as the
+                Gmail tab "dana.fisher", with Gmail's mark (2026-10-16).
+              */}
+              {chunk.mailboxes?.includes(email.trim().toLowerCase()) ?? true ? (
+                <MailboxName email={email} />
+              ) : (
+                email
+              )}
             </button>
           </React.Fragment>
         ))}
@@ -118,224 +118,223 @@ function MailboxName({ email }: { email: string }) {
   );
 }
 
-/** The chunks with ", " written between them, as the join used to do. */
-function ParticipantNames({
-  chunks,
-  onAddressMenu,
-}: {
-  chunks: ParticipantChunk[];
-  onAddressMenu: AddressMenuOpener;
-}) {
-  return (
-    <>
-      {chunks.map((chunk, i) => (
-        <React.Fragment
-          key={chunk.kind === "you" ? "you" : chunk.email}
-        >
-          {i > 0 ? ", " : null}
-          <ParticipantName chunk={chunk} onAddressMenu={onAddressMenu} />
-        </React.Fragment>
-      ))}
-    </>
-  );
-}
-
 export function ThreadParticipants({
   people,
   others,
+  leadEmail,
   meta,
 }: {
   people: ParticipantChunk[];
   /** The same people, addressable — what a saved list would hold. */
   others: { email: string; name?: string }[];
+  /** Who wrote the thread's first message: the one the heading names. */
+  leadEmail?: string;
   /** The rest of the header line: count, dates, which mailbox. */
   meta: React.ReactNode;
 }) {
   const t = useMailT();
-  const [expanded, setExpanded] = React.useState(false);
   const { openAddressMenu, addressMenu } = useAddressMenu();
-  const hidden = people.length - THREAD_PARTICIPANTS_SHOWN;
   /*
-    "Save as list…" waits for the names to be out.
+    One name, and a count for the rest.
 
-    Fifty-two people are counted, not named, and the offer to keep them
-    made no sense beside a line that had four addresses and a number on
-    it: keep whom? Once the reader opens the names they can see what they
-    would be keeping, and that is when it is worth asking. A short thread
-    hides nobody, so there is nothing to wait for.
+    The heading belongs to the whole thread, and its people took the
+    line from the subject: four "Name <address>" pairs left the subject
+    as "Digital Distraction ...". So the heading names who started the
+    thread, and counts the others. The count opens everyone, with their
+    addresses, and the things to do with them.
   */
-  const showSave = others.length > 1 && (hidden <= 0 || expanded);
-  /*
-    Beside the names, not at the end of the line.
-
-    It belongs to the people — it is what to do with the ones just opened —
-    and the rest of the line is a message count and two dates it has
-    nothing to do with. Small letter for the same reason: after "show
-    fewer" it is one more thing this sentence offers, not a control of its
-    own the way it is in the composer.
-  */
-  /*
-    "Copy addresses" does not wait.
-
-    A list is kept for later; the clipboard is for now, and now is often
-    "put these thirty people in a To field somewhere else" — which is the
-    very thread whose names are folded. So it stands whenever there is
-    more than one address to copy, folded or not, and takes the addresses
-    alone: names are what the reader already has on this line.
-  */
-  const copyAddresses =
-    others.length > 1 ? (
-      <>
-        {" · "}
-        <button
-          type="button"
-          className="text-teal-700 hover:underline"
-          onClick={() => {
-            void copyTextToClipboard(
-              // Semicolons: Outlook splits a pasted list on those alone by
-              // default; Gmail and Apple Mail take either.
-              others.map((p) => p.email).join("; ")
-            ).then((ok) =>
-              ok
-                ? toast.success(mailSay("copied"))
-                : toast.error(mailSay("couldNotCopy"))
-            );
-          }}
-        >
-          {t("copyAddressesInline")}
-        </button>
-      </>
-    ) : null;
-  const saveList = showSave ? (
-    <>
-      {" · "}
-      <SaveAsListControl
-        people={others}
-        align="start"
-        noteKey="saveListNoteThread"
-        labelKey="saveAsListInline"
-      />
-    </>
-  ) : null;
-  if (hidden <= 0) {
-    return (
-      <span>
-        <ParticipantNames chunks={people} onAddressMenu={openAddressMenu} />
-        {copyAddresses}
-        {saveList} {meta}
-        {addressMenu}
-      </span>
-    );
-  }
-  const shown = expanded ? people : people.slice(0, THREAD_PARTICIPANTS_SHOWN);
+  const lead = leadChunk(people, leadEmail);
+  const rest = people.filter((c) => c !== lead);
+  const restCount = rest.reduce(
+    (n, c) => n + (c.kind === "you" ? (c.plain ? 1 : c.emails.length) : 1),
+    0
+  );
+  if (!lead) return <span>{meta}</span>;
   return (
     <span>
-      <ParticipantNames chunks={shown} onAddressMenu={openAddressMenu} />{" "}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        // The heading wraps its line for the names, and only for them.
-        data-names-open={expanded ? "" : undefined}
-        className="font-medium text-teal-700 hover:underline"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded
-          ? t("threadShowFewer")
-          : hidden === 1
-            ? t("threadOtherOne")
-            : t("threadOtherMany", { count: hidden })}
-      </button>
-      {copyAddresses}
-        {saveList} {meta}
+      <ParticipantName chunk={shortName(lead)} onAddressMenu={openAddressMenu} />
+      {restCount > 0 ? (
+        <>
+          {" "}
+          {t("threadAnd")}{" "}
+          <EveryoneCard
+            people={people}
+            others={others}
+            label={
+              restCount === 1
+                ? t("threadOthersOne")
+                : t("threadOthersMany", { count: restCount })
+            }
+            onAddressMenu={openAddressMenu}
+          />
+        </>
+      ) : null}
+      {meta ? <> {meta}</> : null}
       {addressMenu}
     </span>
   );
 }
 
+/** The chunk that holds the first sender, else the first one. */
+function leadChunk(
+  people: ParticipantChunk[],
+  leadEmail?: string
+): ParticipantChunk | undefined {
+  const key = leadEmail?.trim().toLowerCase();
+  const found = key
+    ? people.find((c) =>
+        c.kind === "you"
+          ? c.emails.some((e) => e.trim().toLowerCase() === key)
+          : c.email.trim().toLowerCase() === key
+      )
+    : undefined;
+  return found ?? people[0];
+}
+
 /**
- * Who is on the thread, with their addresses: "Roe, Jane
- * (jane.roe@example.org)". A name alone is what the list rows show, and
- * enough there; the header is where the reader checks who a person actually
- * is, and that is the address.
- *
- * Senders and recipients both. Senders alone left a thread of sent mail
- * saying nobody but "You", with no sign of who it went to. A recipient is
- * known by address only unless they wrote in the thread as well, in which
- * case their name comes from that.
- *
- * "You" stands in for every own address — the mailboxes connected here, and
- * whoever sent the messages marked as ours — and says which they were:
- * "You (you@work.example, you@home.example)". Own is not one address, and
- * is the one place to see which of yours a thread ran through.
+ * The heading's name without the job a sender puts after it: "Claire
+ * Cockcroft (SC MTST Programme Director)" is "Claire Cockcroft" there.
+ * The card keeps the whole name.
  */
-export function threadPeople(
-  messages: MailMessage[],
-  ownAddresses: string[]
-): { others: { email: string; name?: string }[]; yours: string[] } {
-  const own = new Set(ownAddresses.map((a) => a.trim().toLowerCase()));
-  for (const m of messages) {
-    if (m.own && m.fromEmail) own.add(m.fromEmail.trim().toLowerCase());
-  }
-  const nameByAddress = new Map<string, string>();
-  for (const m of messages) {
-    const key = m.fromEmail.trim().toLowerCase();
-    const name = m.fromName.split("<")[0].trim();
-    if (key && name && name.toLowerCase() !== key && !nameByAddress.has(key)) {
-      nameByAddress.set(key, name);
-    }
-  }
-  const others: { email: string; name?: string }[] = [];
-  const yours: string[] = [];
-  const seen = new Set<string>();
-  const add = (raw: string) => {
-    const email = raw.trim();
-    const key = email.toLowerCase();
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    if (own.has(key)) {
-      yours.push(email);
-      return;
-    }
-    others.push({ email, name: nameByAddress.get(key) });
+function shortName(chunk: ParticipantChunk): ParticipantChunk {
+  if (chunk.kind !== "person" || !chunk.name) return chunk;
+  const name = chunk.name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return name ? { ...chunk, name } : chunk;
+}
+
+/** How long the pointer can be off the count and the card before it closes. */
+const CARD_CLOSE_MS = 200;
+
+/**
+ * Everyone on the thread, from the "N others" count.
+ *
+ * It opens on hover, for a look. A click on the count, or anything inside
+ * the card, keeps it open, because who a mail went to is often worth
+ * copying, and a thing that closes when the pointer moves does not allow
+ * that.
+ */
+function EveryoneCard({
+  people,
+  others,
+  label,
+  onAddressMenu,
+}: {
+  people: ParticipantChunk[];
+  others: { email: string; name?: string }[];
+  label: string;
+  onAddressMenu: AddressMenuOpener;
+}) {
+  const t = useMailT();
+  const [open, setOpen] = React.useState(false);
+  const [kept, setKept] = React.useState(false);
+  const closeTimer = React.useRef<number | null>(null);
+  const cancelClose = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = null;
   };
-  for (const m of messages) {
-    add(m.fromEmail);
-    for (const to of m.toEmails) add(to);
-    for (const cc of m.ccEmails) add(cc);
-  }
-  return { others, yours };
+  const hoverOpen = () => {
+    cancelClose();
+    setOpen(true);
+  };
+  const hoverClose = () => {
+    if (kept) return;
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setOpen(false), CARD_CLOSE_MS);
+  };
+  React.useEffect(() => cancelClose, []);
+  const onOpenChange = (next: boolean) => {
+    cancelClose();
+    setOpen(next);
+    if (!next) setKept(false);
+  };
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-expanded={open}
+          // The heading's own line colour: a quiet pill in both themes.
+          className="rounded-full bg-[var(--mail-thread-chrome-line)] px-2 py-0.5 font-medium hover:underline"
+          onMouseEnter={hoverOpen}
+          onMouseLeave={hoverClose}
+          onClick={(e) => {
+            // The trigger would toggle; a click on an open card keeps it.
+            e.preventDefault();
+            cancelClose();
+            setOpen(true);
+            setKept(true);
+          }}
+        >
+          {label}
+        </button>
+      </PopoverTrigger>
+      <MailPopoverContent
+        align="end"
+        className="w-auto max-w-[min(36rem,90vw)] p-3 text-sm"
+        // A look on hover does not take the focus from the thread.
+        onOpenAutoFocus={(e) => {
+          if (!kept) e.preventDefault();
+        }}
+        onMouseEnter={hoverOpen}
+        onMouseLeave={hoverClose}
+        onPointerDown={() => setKept(true)}
+      >
+        <ul className="max-h-[50vh] space-y-1.5 overflow-y-auto text-stone-800">
+          {people.flatMap((chunk) =>
+            chunk.kind === "you"
+              ? chunk.emails.map((email) => (
+                  <li key={`you:${email}`}>
+                    <button
+                      type="button"
+                      className="text-left hover:underline"
+                      title={t("writeToThisAddress")}
+                      onClick={() => requestMailComposeTo(email)}
+                      onContextMenu={(e) => onAddressMenu(e, email)}
+                    >
+                      {t("threadYouLower")} &lt;{email}&gt;
+                    </button>
+                  </li>
+                ))
+              : [
+                  <li key={chunk.email}>
+                    <ParticipantName chunk={chunk} onAddressMenu={onAddressMenu} />
+                  </li>,
+                ]
+          )}
+        </ul>
+        {others.length > 1 ? (
+          <div className="mt-2.5 flex gap-3 border-t border-stone-200 pt-2.5">
+            <button
+              type="button"
+              className="text-teal-700 hover:underline"
+              onClick={() => {
+                void copyTextToClipboard(
+                  // Semicolons: Outlook splits a pasted list on those alone by
+                  // default; Gmail and Apple Mail take either.
+                  others.map((p) => p.email).join("; ")
+                ).then((ok) =>
+                  ok
+                    ? toast.success(mailSay("copied"))
+                    : toast.error(mailSay("couldNotCopy"))
+                );
+              }}
+            >
+              {t("copyAddresses")}
+            </button>
+            {/*
+              A circular arrives with the whole club on it, and that is a
+              list worth keeping — the same list the composer offers to
+              save when you type the names in yourself.
+            */}
+            <SaveAsListControl
+              people={others}
+              align="start"
+              noteKey="saveListNoteThread"
+              labelKey="saveAsList"
+            />
+          </div>
+        ) : null}
+      </MailPopoverContent>
+    </Popover>
+  );
 }
-
-/**
- * The line's people. "You (…)" always holds the mailbox the thread came in
- * on, which the line no longer names apart: a list's mail or a Bcc names
- * none of your addresses, and the mailbox went with them.
- */
-export function participantsWithAddresses(
-  messages: MailMessage[],
-  ownAddresses: string[],
-  receivedOn?: string,
-  /** One mailbox's tab is chosen: "You" for yours, rather than the mailbox. */
-  plainYou = false
-): ParticipantChunk[] {
-  const { others, yours: named } = threadPeople(messages, ownAddresses);
-  const mailbox = receivedOn?.trim();
-  const yours =
-    mailbox && !named.some((e) => e.trim().toLowerCase() === mailbox.toLowerCase())
-      ? [mailbox, ...named]
-      : named;
-  return [
-    ...others.map(
-      (p): ParticipantChunk => ({
-        kind: "person",
-        label: p.name ? `${p.name} (${p.email})` : p.email,
-        email: p.email,
-        name: p.name,
-      })
-    ),
-    ...(yours.length
-      ? [{ kind: "you", emails: yours, plain: plainYou } satisfies ParticipantChunk]
-      : []),
-  ];
-}
-

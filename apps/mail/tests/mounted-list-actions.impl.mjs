@@ -600,6 +600,61 @@ async function archiveAPersonThenCommandZ() {
   pass("one Command+Z brings them all back");
 }
 
+/** The archive key over a whole person archives every thread with them. */
+async function archiveKeyOnAPerson() {
+  await mount({ people: true });
+  await openPersonPane();
+  assert(
+    [...document.querySelectorAll("button")].some((b) =>
+      (b.getAttribute("title") || "").startsWith("Archive all 2 conversations with Merle Mikkelsen")
+    ),
+    "Merle's pane is open"
+  );
+  press("a", { metaKey: true, shiftKey: true, code: "KeyA" });
+  await sleep(700);
+  assert.deepEqual([...server.postsTo("/api/mail/archive")].sort(), ["choir-1", "robes-1"]);
+  pass("Command+Shift+A over a person archives every thread with them");
+
+  // The way a reader gets there: a click unfolds the stack and opens the
+  // newest, a second click folds it and leaves the person's pane.
+  await mount({ people: true });
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(600);
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(600);
+  const paneShown = [...document.querySelectorAll("button")].some((b) =>
+    (b.getAttribute("title") || "").startsWith("Archive all 2 conversations with Merle Mikkelsen")
+  );
+  assert(paneShown, "folded, her row opens her pane, not the newest thread");
+  press("a", { metaKey: true, shiftKey: true, code: "KeyA" });
+  await sleep(700);
+  assert.deepEqual([...server.postsTo("/api/mail/archive")].sort(), ["choir-1", "robes-1"]);
+  pass("folded by a click, the stack is the person: the archive key takes all their threads");
+}
+
+/** The reply over the thread is put away to a bar, and comes back whole. */
+async function replyCardMinimises() {
+  await mount();
+  await open(CHOIR);
+  const replyButton = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Reply");
+  assert(replyButton, "the reply tray has Reply");
+  clickEl(replyButton);
+  await sleep(500);
+  const away = document.querySelector('button[aria-label="Put this away"]');
+  assert(away, "the reply card has a button to put it away");
+  clickEl(away);
+  await sleep(300);
+  const bar = [...document.querySelectorAll("button")].find((b) => /^Reply to /.test((b.textContent || "").trim()));
+  assert(bar, "put away, it is a bar naming who the reply is to");
+  clickEl(bar);
+  await sleep(300);
+  assert(
+    ![...document.querySelectorAll("button")].some((b) => /^Reply to /.test((b.textContent || "").trim())),
+    "a press on the bar brings the card back"
+  );
+  pass("the reply card puts itself away to a bar, and a press brings it back");
+}
+
 async function commandNOpensANewMessage() {
   await mount();
   const sendButton = () =>
@@ -642,7 +697,8 @@ async function autoReplyLineAndManage() {
   assert(manage, "the line offers Manage");
   clickEl(manage);
   await sleep(500);
-  const toggle = document.querySelector("[role=switch],input[type=checkbox]");
+  // In the dialog: the title bar has a switch of its own (Stacks).
+  const toggle = document.querySelector("[role=dialog] [role=switch],[role=dialog] input[type=checkbox]");
   assert(toggle, "the dialog is open, with its switch");
   pass("Manage opens the auto-reply dialog");
 
@@ -685,6 +741,47 @@ async function commandClickSelection() {
   assert(!inList(CHOIR) && !inList(LOAN));
   assert(reading(2), "the row after the selection opened");
   pass("Backspace deletes the selection and opens the row after it");
+}
+
+/**
+ * The selection pane has Snooze beside Archive and Delete, and the snooze
+ * key opens its times there too. A friend could not snooze several at once:
+ * only the right-click menu did it (2026-10-17).
+ */
+async function selectionPaneSnooze() {
+  await mount();
+  await open(CHOIR);
+  clickEl(rowEl(BIKE), { metaKey: true });
+  await sleep(300);
+  const button = paneAction("Snooze");
+  assert(button, "the selection pane has a Snooze button");
+  clickEl(button);
+  await sleep(500);
+  const tomorrow = () =>
+    [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Tomorrow"));
+  assert(tomorrow(), "the snooze times are up");
+  const before = postsOf("/api/mail/snooze").length;
+  clickEl(tomorrow());
+  await sleep(700);
+  const snoozed = postsOf("/api/mail/snooze").slice(before).map((p) => p.body.threadId).sort();
+  assert.deepEqual(snoozed, ["bike-1", "choir-1"]);
+  assert(!inList(CHOIR) && !inList(BIKE), "both left the list");
+  assert(!(document.body.textContent || "").includes("conversations selected"), "the selection is gone");
+  pass("Snooze in the selection pane snoozes every selected conversation");
+
+  await mount();
+  await open(CHOIR);
+  clickEl(rowEl(LOAN), { metaKey: true });
+  await sleep(300);
+  press("k", { metaKey: true, code: "KeyK" });
+  await sleep(500);
+  assert(tomorrow(), "the snooze key opens the times");
+  const from = postsOf("/api/mail/snooze").length;
+  clickEl(tomorrow());
+  await sleep(700);
+  const keyed = postsOf("/api/mail/snooze").slice(from).map((p) => p.body.threadId).sort();
+  assert.deepEqual(keyed, ["choir-1", "loan-1"]);
+  pass("the snooze key snoozes the whole selection");
 }
 
 /**
@@ -1488,8 +1585,11 @@ async function main() {
     await aSearchShowsTheHiddenList();
     await rangeSelectionArchive();
     await commandClickSelection();
+    await selectionPaneSnooze();
     await rightClickSelection();
     await archiveAPersonThenCommandZ();
+    await archiveKeyOnAPerson();
+    await replyCardMinimises();
     await commandNOpensANewMessage();
     await autoReplyLineAndManage();
     await outboxTryAgain();

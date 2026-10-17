@@ -25,12 +25,19 @@ export function PersonAvatar({
     : row.email
       ? [{ name: row.name, email: row.email }]
       : row.people.slice(0, 1);
+  /*
+    The logo goes on the face it belongs to: the thread's sender, as on a
+    thread row. A group row has no address of its own, so no face in its
+    pile took the logo, and an institution's logo vanished when the list
+    was stacked (Ulrik, 2026-10-17).
+  */
+  const withLogo = row.threads.find((t) => t.crmLogoUrl);
   return (
     <PeopleAvatar
       people={people}
       count={row.participantCount || people.length}
-      logoEmail={row.email}
-      logoUrl={row.crmLogoUrl}
+      logoEmail={row.email || withLogo?.fromEmail || ""}
+      logoUrl={row.crmLogoUrl ?? withLogo?.crmLogoUrl}
       unread={row.unread}
       onNavy={onNavy}
       size={size}

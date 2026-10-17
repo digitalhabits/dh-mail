@@ -26,7 +26,7 @@ import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, su
 import { cn } from "@/lib/utils";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
-import { threadPeople } from "@/lib/mail/person-participants";
+import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
 import type { MailT } from "@/lib/mail/i18n-strings";
 
 /** A finger that has moved this far has said which way it is going. */
@@ -779,7 +779,7 @@ export function ThreadListRow({
   /** The time, and the wake badge: what hover covers with the actions. It keeps its room. */
   const atRestClass = cn("shrink-0 group-hover:invisible", snoozeOpen && "invisible");
   const narrowTitle = [
-    t.fromName,
+    threadPeopleLabel(t),
     t.subject,
     hasDraft ? say("draft") : null,
     t.unread ? say("unread") : null,
@@ -807,6 +807,7 @@ export function ThreadListRow({
     <div
       ref={rowRef}
       data-thread-key={threadKey(t)}
+      data-glide-keys={threadKey(t)}
       draggable={!touch}
       onTouchStart={touch ? onSwipeStart : undefined}
       onTouchMove={touch ? onSwipeMove : undefined}
@@ -912,7 +913,7 @@ export function ThreadListRow({
                 onNavy ? "text-white" : "text-stone-900"
               )}
             >
-              <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+              <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
             </p>
             <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
@@ -1098,7 +1099,7 @@ function StackedRowBody({
               onNavy ? "text-white" : "text-stone-900"
             )}
           >
-            <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+            <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
           {hasDraft ? <DraftBadge /> : null}
@@ -1290,7 +1291,7 @@ function WideRowBody({
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </span>
             <span className={cn("min-w-0 max-w-[40%] shrink-0 truncate", onNavy ? "text-white/60" : "text-stone-500")}>
-              <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+              <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
             </span>
             <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
@@ -1315,7 +1316,7 @@ function WideRowBody({
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex w-[10rem] shrink-0 items-center gap-1.5">
           <p className={cn("min-w-0 truncate text-sm font-semibold", onNavy ? "text-white" : "text-stone-900")}>
-            <Highlighted text={t.fromName} terms={highlight} onNavy={onNavy} />
+            <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
         </span>

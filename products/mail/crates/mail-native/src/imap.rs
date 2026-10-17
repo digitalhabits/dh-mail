@@ -1152,6 +1152,13 @@ fn hex_pair(a: u8, b: u8) -> Option<u8> {
 /// bytes, so bytes that are good UTF-8 are UTF-8. And UTF-8 that holds no
 /// UTF-8 at all, only stray high bytes, is a Latin mail that did not say
 /// so — often a part with no charset, which is read as UTF-8 by default.
+///
+/// Some senders mix the two in one part: a Latin template with UTF-8 put
+/// into it (ScholarOne journal mail, 2026-10-17). There a stray byte beside
+/// an ASCII letter — the "ü" in "f\xFCr" — is a Latin letter, not a broken
+/// one. And the control characters U+0080 to U+009F, which no text uses,
+/// are read as the Windows-1252 marks they stand for: "„" and "“" showed as
+/// empty boxes.
 pub fn decode_charset(bytes: &[u8], charset: &str) -> String {
   let label = charset.trim().trim_matches('"').trim();
   let encoding = encoding_rs::Encoding::for_label(label.as_bytes()).unwrap_or(encoding_rs::UTF_8);
@@ -1159,7 +1166,7 @@ pub fn decode_charset(bytes: &[u8], charset: &str) -> String {
     if std::str::from_utf8(bytes).is_err() && !has_utf8_sequence(bytes) {
       return encoding_rs::WINDOWS_1252.decode_without_bom_handling(bytes).0.into_owned();
     }
-    return String::from_utf8_lossy(bytes).into_owned();
+    return c1_as_windows_1252(utf8_with_latin_strays(bytes));
   }
   if label.eq_ignore_ascii_case("us-ascii") {
     if let Ok(text) = std::str::from_utf8(bytes) {
@@ -1167,6 +1174,54 @@ pub fn decode_charset(bytes: &[u8], charset: &str) -> String {
     }
   }
   encoding.decode_without_bom_handling(bytes).0.into_owned()
+}
+
+/// UTF-8, where a stray byte beside an ASCII letter is read as
+/// Windows-1252. Any other broken byte is the replacement mark.
+fn utf8_with_latin_strays(bytes: &[u8]) -> String {
+  let mut out = String::with_capacity(bytes.len());
+  let mut at = 0;
+  while at < bytes.len() {
+    match std::str::from_utf8(&bytes[at..]) {
+      Ok(text) => {
+        out.push_str(text);
+        break;
+      }
+      Err(err) => {
+        let good = at + err.valid_up_to();
+        // Safe: the bytes up to `good` were just checked.
+        out.push_str(std::str::from_utf8(&bytes[at..good]).unwrap_or_default());
+        let bad = err.error_len().unwrap_or(bytes.len() - good);
+        let letter = |i: Option<usize>| i.and_then(|i| bytes.get(i)).is_some_and(u8::is_ascii_alphabetic);
+        if bad == 1 && (letter(good.checked_sub(1)) || letter(Some(good + 1))) {
+          let (latin, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(&bytes[good..good + 1]);
+          out.push_str(&latin);
+        } else {
+          out.push('\u{fffd}');
+        }
+        at = good + bad;
+      }
+    }
+  }
+  out
+}
+
+/// The C1 control characters as the Windows-1252 marks they stand for.
+fn c1_as_windows_1252(text: String) -> String {
+  if !text.chars().any(|c| ('\u{80}'..='\u{9f}').contains(&c)) {
+    return text;
+  }
+  text
+    .chars()
+    .map(|c| {
+      if !('\u{80}'..='\u{9f}').contains(&c) {
+        return c;
+      }
+      let byte = [c as u32 as u8];
+      let (mark, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(&byte);
+      mark.chars().next().unwrap_or(c)
+    })
+    .collect()
 }
 
 /// Whether the bytes hold at least one well-formed UTF-8 character
@@ -1585,6 +1640,15 @@ mod tests {
     assert_eq!(decode_charset(b"Vi ses p\xe5 fredag", "utf-8"), "Vi ses på fredag");
     // Real UTF-8 with one broken byte stays UTF-8.
     assert_eq!(decode_charset(b"p\xc3\xa5 \xff", "utf-8"), "på \u{fffd}");
+    // A Latin template with UTF-8 put into it: the stray letter is Latin,
+    // and the Windows-1252 quotes sent as C1 characters are quotes.
+    assert_eq!(
+      decode_charset("Tak f\u{e6}r \u{201c}Ja\u{201d} \u{84}Nein\u{93}".as_bytes(), "utf-8"),
+      "Tak fær “Ja” „Nein“"
+    );
+    let mut mixed = b"Gr\xfc\xdfe \xe2\x80\x9cHej\xe2\x80\x9d".to_vec();
+    mixed.extend_from_slice(b" \xc3\xa5");
+    assert_eq!(decode_charset(&mixed, "utf-8"), "Grüße “Hej” å");
     // "us-ascii" cannot hold 8-bit bytes; good UTF-8 is UTF-8.
     assert_eq!(decode_charset("Søren".as_bytes(), "us-ascii"), "Søren");
     assert_eq!(decode_charset(b"S\xf8ren", "us-ascii"), "Søren");

@@ -65,14 +65,15 @@ export function usePersonRows({
   /*
     Who an address belongs to, from the address books — see person-identity.
 
-    Read when the People view is shown, and again when the mailboxes
-    change. A host without the contact mirrors (a web host) answers
-    with nothing, and every address stands for itself as before.
+    Read once, and again when the mailboxes change; not when Stacks is
+    switched. Read on the switch, the rows were grouped by address first
+    and again a moment later by person, under the stacking animation
+    (2026-10-17). A host without the contact mirrors (a web host)
+    answers with nothing, and every address stands for itself as before.
   */
   const [personIdentity, setPersonIdentity] =
     React.useState<PersonIdentity | null>(null);
   React.useEffect(() => {
-    if (viewMode !== "people") return;
     let cancelled = false;
     void (async () => {
       try {
@@ -85,7 +86,7 @@ export function usePersonRows({
     return () => {
       cancelled = true;
     };
-  }, [viewMode, accountEmails]);
+  }, [accountEmails]);
 
   const personRows = React.useMemo(() => {
     if (viewMode !== "people") return [];

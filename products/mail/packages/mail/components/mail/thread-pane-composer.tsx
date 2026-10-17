@@ -12,7 +12,7 @@ import * as React from "react";
 
 import { useComposerRoom } from "@/components/mail/composer-room";
 import { useComposerDrag } from "@/components/mail/composer-drag";
-import { ChevronDown, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
 
 import { DraftAssistNotes } from "@/components/mail/team-layer";
 import { COMPOSER_MAX_SHARE } from "@/components/mail/use-thread-pane-geometry";
@@ -43,6 +43,7 @@ import { teamWord } from "@/lib/mail/i18n-team";
 import { cn } from "@/lib/utils";
 import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
 import { ComposerPreview, ComposerFooter, ComposerAddressRow, ComposerCardButtons } from "@/components/mail/thread-composer-parts";
+import { ComposerMinimiseProvider } from "@/components/mail/composer-minimise";
 import { ComposerFieldRows } from "@/components/mail/thread-composer-rows";
 import { useStickyComposerFoot } from "@/components/mail/use-sticky-composer-foot";
 
@@ -142,6 +143,7 @@ export function ThreadComposerBand({
   const look = composerLook({ inReader, floating, bandFills, replyFocusSliding });
   useComposerRoom(replyBandRef, Boolean(mode) && look.floats);
   const drag = useComposerDrag(look.floats, zoom);
+  const minimiseValue = useBandMinimise(look.floats, bandFills, mode, card.minimised);
   const moreBelow = useStickyComposerFoot(
     composerColumnRef,
     footRef,
@@ -149,7 +151,7 @@ export function ThreadComposerBand({
     `${mode}|${showPreview}|${bandFills}|${editorKey}`
   );
   return (
-    <>
+    <ComposerMinimiseProvider value={minimiseValue}>
       {mode ? (
         /*
           The sweep's frame. Neutral at rest — display: contents, so the
@@ -209,7 +211,7 @@ export function ThreadComposerBand({
                 : "px-8",
             /* The card put away keeps everything it holds — the words, the
                caret, the files picked — and shows none of it. */
-            card.minimised && "hidden",
+            minimiseValue.hideBand && "hidden",
             bandFills && "flex-1",
             !bandFills && "overflow-hidden"
           )}
@@ -311,6 +313,10 @@ export function ThreadComposerBand({
               maxWidth: "100%",
             }}
           >
+          {/* The card's own top edge sizes its height too: standing over the
+              thread, the band's seam is above the card, where nobody looks
+              for it (2026-10-17). */}
+          <CardTopHandle m={m} available={minimiseValue.available} />
           {/* No edges to drag while the box is the whole pane: there is
               nowhere for either to go, and a handle that cannot move is a
               handle that reads as broken. */}
@@ -465,9 +471,10 @@ export function ThreadComposerBand({
           </div>
           </div>
         </div>
+        <MinimisedReplyBar m={m} minimise={minimiseValue} />
         </div>
       ) : null}
-    </>
+    </ComposerMinimiseProvider>
   );
 }
 
@@ -925,6 +932,67 @@ function ComposerSendBar({
           </button>
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Put away to a bar (composer-minimise). Only the card over the thread:
+ * the Reader's and focus mode's reply is the page. A new reply opens: the
+ * state is reset as the mode changes, in the render, not after it.
+ */
+function useBandMinimise(floats: boolean, bandFills: boolean, mode: unknown, cardMinimised: boolean) {
+  const [state, setState] = React.useState({ mode, minimised: false });
+  if (state.mode !== mode) setState({ mode, minimised: false });
+  const available = floats && !bandFills;
+  const minimised = available && state.mode === mode && state.minimised;
+  const setMinimised = React.useCallback((next: boolean) => setState((s) => ({ ...s, minimised: next })), []);
+  return React.useMemo(
+    () => ({ available, minimised, setMinimised, hideBand: cardMinimised || minimised }),
+    [available, minimised, setMinimised, cardMinimised]
+  );
+}
+
+/** The card's top edge, to size its height. Only for the card over the thread. */
+function CardTopHandle({ m, available }: { m: ThreadPaneModel; available: boolean }) {
+  if (!available) return null;
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={m.t("resizeReplyHeight")}
+      title={m.t("dragToResize")}
+      onPointerDown={m.startComposerHeightResize}
+      className="absolute inset-x-3 top-0 z-20 h-2 -translate-y-1/2 cursor-ns-resize touch-none"
+    />
+  );
+}
+
+/**
+ * The reply put away: one bar, right-aligned as the card is, naming who it
+ * is to. A press brings the card back as it was.
+ */
+function MinimisedReplyBar({
+  m,
+  minimise,
+}: {
+  m: ThreadPaneModel;
+  minimise: { minimised: boolean; setMinimised: (next: boolean) => void };
+}) {
+  if (!minimise.minimised) return null;
+  const first = m.toList[0];
+  const name = first?.kind === "email" ? first.name || first.email : first?.name ?? "";
+  return (
+    <div className="mail-composer-region flex shrink-0 justify-end px-8 pb-4 pt-2" style={{ zoom: m.zoom }}>
+      <button
+        type="button"
+        title={m.t("minimisedReplyShow")}
+        onClick={() => minimise.setMinimised(false)}
+        className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-4 py-2 text-sm text-stone-700 shadow-md hover:bg-stone-50"
+      >
+        <span className="truncate">{m.t("minimisedReplyTo", { name })}</span>
+        <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
+      </button>
     </div>
   );
 }

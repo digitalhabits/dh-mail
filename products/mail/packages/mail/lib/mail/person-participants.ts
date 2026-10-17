@@ -89,8 +89,32 @@ function withSenderName(people: PersonParticipant[], t: MailThreadSummary): Pers
   const from = t.fromEmail?.trim().toLowerCase();
   if (!name || !from || name.toLowerCase() === from) return people;
   return people.map((p) =>
-    !p.name?.trim() && p.email.trim().toLowerCase() === from ? { ...p, name } : p
+    !hasRealName(p) && p.email.trim().toLowerCase() === from ? { ...p, name } : p
   );
+}
+
+/**
+ * A name that is more than the address. Outlook writes an address it has
+ * no name for as its own display name ("Sam.Okafor@example.ac.uk"), and
+ * that read as a name, so the sender's real one was never put in its
+ * place (2026-10-17).
+ */
+function hasRealName(p: PersonParticipant): boolean {
+  const name = p.name?.trim().toLowerCase() ?? "";
+  return Boolean(name) && name !== p.email.trim().toLowerCase();
+}
+
+/**
+ * Who a thread is with, as its row names it: the other person, or the
+ * first two of a group and a +N. The same words whether Stacks is on or
+ * off. With Stacks off a row named only whoever sent the newest mail, so
+ * a thread's name changed when Stacks was switched though it was in no
+ * stack (Ulrik, 2026-10-17).
+ */
+export function threadPeopleLabel(t: MailThreadSummary): string {
+  const { isGroup, named, lead } = threadPeople(t);
+  if (isGroup) return groupPeopleLabel(named);
+  return (hasRealName(lead) ? lead.name : "") || t.fromName || lead.email || t.fromEmail;
 }
 
 export function threadPeople(t: MailThreadSummary): {
@@ -211,7 +235,9 @@ export function groupThreadsByPerson(
       rows.set(key, {
         key,
         isGroup,
-        name: isGroup ? groupPeopleLabel(named) : lead.name || lead.email,
+        // The words a thread row uses too, so a thread is named alike
+        // with Stacks on and off.
+        name: threadPeopleLabel(t),
         email: isGroup ? "" : lead.email,
         participantCount: externals.length,
         people: named,

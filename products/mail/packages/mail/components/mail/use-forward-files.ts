@@ -146,13 +146,16 @@ export function useForwardFiles(input: {
    * A forward starts. The files on the message go with it, which is what a
    * forward is usually for. The box under the composer takes them off again.
    */
-  const beginForwardFiles = (forwardSource: MailMessage | undefined) => {
-    preForwardAttachIdsRef.current = new Set(
-      attachItemsRef.current.map((i) => i.id)
-    );
-    setForwardFiles(true);
-    void setForwardIncludeFiles(true, forwardSource);
-  };
+  const beginForwardFiles = React.useCallback(
+    (forwardSource: MailMessage | undefined) => {
+      preForwardAttachIdsRef.current = new Set(
+        attachItemsRef.current.map((i) => i.id)
+      );
+      setForwardFiles(true);
+      void setForwardIncludeFiles(true, forwardSource);
+    },
+    [attachItemsRef, setForwardIncludeFiles]
+  );
 
   /**
    * Undo after Send put a forward back in the composer. The box goes back to

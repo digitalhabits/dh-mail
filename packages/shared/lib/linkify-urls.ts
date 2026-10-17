@@ -83,3 +83,40 @@ export function findLinksInText(text: string): LinkMatch[] {
   );
   return [...urls, ...emails].sort((a, b) => a.start - b.start);
 }
+
+/**
+ * Microsoft Safe Links: an Exchange that checks links rewrites each one
+ * as `https://eur02.safelinks.protection.outlook.com/?url=<the real
+ * address>&data=…`. The click must still go through it, but its host says
+ * nothing about where the link goes.
+ */
+const SAFE_LINKS_HOST_RE = /(^|\.)safelinks\.protection\./i;
+
+/** The address a Safe Links address stands for, or the address itself. */
+export function linkTarget(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!SAFE_LINKS_HOST_RE.test(u.hostname)) return url;
+    const inner = u.searchParams.get("url");
+    return inner && /^https?:\/\//i.test(inner) ? inner : url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * A short label for a link: its host, with "/…" when there is more.
+ *
+ * A Safe Links address is labelled with the host it stands for, so a
+ * reader at KU sees "mc.manuscriptcentral.com/…" and not the same Microsoft
+ * host on every link (2026-10-17).
+ */
+export function linkLabel(url: string): string {
+  try {
+    const u = new URL(linkTarget(url));
+    const host = u.hostname.replace(/^www\./, "");
+    return u.pathname !== "/" || u.search ? `${host}/…` : host;
+  } catch {
+    return url.slice(0, 40);
+  }
+}

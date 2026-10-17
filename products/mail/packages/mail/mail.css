@@ -571,12 +571,13 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      switch in the title bar. */
   --mail-segment-track: var(--cream-section);
   --mail-segment-track-strong: var(--cream-section);
-  /* A mailbox's hours: shown (the eye) and new mail arriving (the tray),
+  /* A mailbox's hours: shown (the eye) and new mail arriving (Sync),
      in their row icons, the week's bars and its key. */
   --mail-shown-tile: #d3ebe6;
   --mail-shown-stroke: #2f7f73;
-  --mail-fetch-tile: #2ab3a0;
-  --mail-fetch-stroke: #0f2f2b;
+  /* The green and white of the app's main buttons (Next, Send). */
+  --mail-fetch-tile: var(--mail-accent);
+  --mail-fetch-stroke: #ffffff;
   --mail-week-shown: #a8d6ce;
   --mail-week-fetch: #2ab3a0;
   --mail-week-hidden: rgba(120, 113, 108, 0.14);
@@ -597,6 +598,14 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-segment-active-fg: #1c1917;
   /* The open folder in the folder rail: a fill, and a bold name with its
      icon in the name's colour. Its own hover, a step quieter. */
+  /* The edges of the threads under a folded stack's row. */
+  --mail-deck-1: #e3dfd6;
+  --mail-deck-2: #ebe7df;
+  /* A row that moved when Stacks was switched, for a moment. */
+  --mail-stack-tint: #e3efec;
+  /* A switch that is on, in the chrome (Stacks): the slate of a chosen
+     folder, not the accent, so "on" reads as "chosen" (2026-10-17). */
+  --mail-switch-on: #2a3d52;
   --mail-folder-active: var(--mail-segment-active);
   --mail-folder-active-fg: var(--mail-segment-active-fg);
   --mail-folder-active-icon: var(--mail-segment-active-fg);
@@ -720,8 +729,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-segment-track-strong: #0f1822;
   --mail-shown-tile: #2b4b55;
   --mail-shown-stroke: #7fd1c4;
-  --mail-fetch-tile: #2ab3a0;
-  --mail-fetch-stroke: #0f2f2b;
+  /* The green and white of the app's main buttons (Next, Send). */
+  --mail-fetch-tile: var(--mail-accent);
+  --mail-fetch-stroke: #ffffff;
   --mail-week-shown: #2b4b55;
   --mail-week-fetch: #2ab3a0;
   --mail-week-hidden: #18222e;
@@ -729,6 +739,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-autoreply-fg: #16202b;
   --mail-segment-active: #33465c;
   --mail-segment-active-fg: #f3f6fa;
+  --mail-deck-1: rgba(255, 255, 255, 0.16);
+  --mail-deck-2: rgba(255, 255, 255, 0.09);
+  --mail-stack-tint: rgba(42, 157, 143, 0.22);
+  /* The same slate would vanish on the navy chrome: a lighter step of it. */
+  --mail-switch-on: #6f8aa6;
   --mail-folder-active: #2b3e55;
   --mail-folder-active-fg: #f3f6fa;
   --mail-folder-active-icon: #f3f6fa;
@@ -1502,27 +1517,52 @@ html[data-dh-os="android"] .mail-phone .mail-phone-fab {
    the drag did nothing here. The 80px is the room beside a message for
    its actions.
 
-   Its left edge stays where it stands at 860px, and only the right edge
-   moves out: grown from the middle, it took the message off to the left
-   as its right edge was dragged to the right. Never past the window. */
+   The column grows toward the edge that was dragged, and the other edge
+   stays where it stands at 860px: grown from the middle, it took the
+   message off to the left as its right edge was dragged to the right.
+   Somebody else's message is dragged by its right edge, one's own by its
+   left (data-mail-bubble-grow on the page root). When the side it grows
+   toward reaches the window, it grows the other way, so a message can be
+   as wide as the window (Ulrik, 2026-10-17). */
 [data-thread-full-window] {
   --mail-full-column: max(860px, calc(var(--mail-bubble-user-width, 0px) + 80px));
+  /* Where the column's left and right edges stand at 860px. */
+  --mail-full-left: max(0px, calc((100% - 860px) / 2));
+  --mail-full-right: min(100%, calc((100% + 860px) / 2));
 }
 [data-thread-full-window] .mail-thread-column {
-  --mail-full-left: max(0px, calc((100% - 860px) / 2));
-  width: min(var(--mail-full-column), calc(100% - var(--mail-full-left)));
+  width: min(var(--mail-full-column), 100%);
   max-width: none;
-  margin-left: var(--mail-full-left);
+  margin-left: max(0px, min(var(--mail-full-left), calc(100% - var(--mail-full-column))));
   margin-right: 0;
+}
+:root[data-mail-bubble-grow="left"] [data-thread-full-window] .mail-thread-column {
+  margin-left: max(0px, calc(var(--mail-full-right) - var(--mail-full-column)));
+}
+/* In the Reader, a width the reader dragged is every message's width.
+   Elsewhere a message is as wide as its words, and the dragged width is
+   only the most it may take: a message with a short note and a file did
+   not move when its edge was dragged (Ulrik, 2026-10-17). The attribute
+   is on the page root only while a width is set. */
+:root[data-mail-bubble-grow] [data-thread-full-window] .mail-bubble-anchor,
+:root[data-mail-bubble-grow] [data-thread-full-window] .mail-bubble-box {
+  width: 100%;
 }
 /* The reply tray, at the right edge of that column. */
 [data-thread-full-window] .mail-thread-reply-tray {
-  right: max(1.5rem, calc(100% - max(0px, (100% - 860px) / 2) - var(--mail-full-column)));
+  right: max(1.5rem, calc(100% - max(0px, min(var(--mail-full-left), calc(100% - var(--mail-full-column)))) - var(--mail-full-column)));
+}
+:root[data-mail-bubble-grow="left"] [data-thread-full-window] .mail-thread-reply-tray {
+  right: max(1.5rem, calc(100% - max(var(--mail-full-right), var(--mail-full-column))));
 }
 /* The reply card, under that column. */
 [data-thread-full-window] .mail-composer-region {
-  padding-left: max(2rem, calc((100% - 860px) / 2));
-  padding-right: max(2rem, calc(100% - max(0px, (100% - 860px) / 2) - var(--mail-full-column)));
+  padding-left: max(2rem, min(var(--mail-full-left), calc(100% - var(--mail-full-column))));
+  padding-right: max(2rem, calc(100% - max(0px, min(var(--mail-full-left), calc(100% - var(--mail-full-column)))) - var(--mail-full-column)));
+}
+:root[data-mail-bubble-grow="left"] [data-thread-full-window] .mail-composer-region {
+  padding-left: max(2rem, calc(var(--mail-full-right) - var(--mail-full-column)));
+  padding-right: max(2rem, calc(100% - max(var(--mail-full-right), var(--mail-full-column))));
 }
 
 /*

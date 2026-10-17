@@ -3,9 +3,11 @@
 /**
  * The reply tray can be dragged to where the reader wants it.
  *
- * Its place is kept as a distance from the bottom right corner of the
- * thread, so it stays in the same corner when the window changes size, and
- * it is kept in this viewer's browser (a convenience, not a record). A
+ * Its place is a distance from the bottom right corner of the thread, so
+ * it stays in the same corner when the window changes size. It is not
+ * kept: it lasts while the thread is open, and the next thread opens the
+ * tray in its usual place. Kept for every thread, a tray moved once stood
+ * somewhere odd in every thread after it (Ulrik, 2026-10-17). A
  * press on a button that moves less than a few pixels is still a press;
  * a drag that starts on a button does not also press it. A double-click on
  * the tray's own edge puts it back in its usual place.
@@ -13,7 +15,8 @@
 
 import * as React from "react";
 
-const KEY = "dh-mail-reply-tray";
+/** Where a place was kept before it was not. Cleared once, so an old one goes. */
+const OLD_KEY = "dh-mail-reply-tray";
 /** How far the pointer moves before a press becomes a drag. */
 const DRAG_SLOP = 4;
 /** The space kept between the tray and the thread's edges. */
@@ -21,26 +24,11 @@ const EDGE = 8;
 
 type Place = { right: number; bottom: number; width: number; height: number };
 
-function readPlace(): Place | null {
+function forgetOldPlace() {
   try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Partial<Place>;
-    if ([p.right, p.bottom, p.width, p.height].every((n) => typeof n === "number" && Number.isFinite(n))) {
-      return p as Place;
-    }
+    window.localStorage.removeItem(OLD_KEY);
   } catch {
-    // No storage here: the tray stays in its usual place.
-  }
-  return null;
-}
-
-function savePlace(place: Place | null) {
-  try {
-    if (place) window.localStorage.setItem(KEY, JSON.stringify(place));
-    else window.localStorage.removeItem(KEY);
-  } catch {
-    // No storage here: the place lasts until the pane closes.
+    // No storage here, so nothing was kept.
   }
 }
 
@@ -62,9 +50,8 @@ export function useReplyTrayDrag(): {
   onClickCapture: (e: React.MouseEvent<HTMLElement>) => void;
   onDoubleClick: (e: React.MouseEvent<HTMLElement>) => void;
 } {
-  const [place, setPlace] = React.useState<Place | null>(() =>
-    typeof window === "undefined" ? null : readPlace()
-  );
+  const [place, setPlace] = React.useState<Place | null>(null);
+  React.useEffect(forgetOldPlace, []);
   const [dragging, setDragging] = React.useState(false);
   const swallowClick = React.useRef(false);
 
@@ -123,7 +110,6 @@ export function useReplyTrayDrag(): {
       }
       swallowClick.current = true;
       setDragging(false);
-      savePlace(last);
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -141,7 +127,6 @@ export function useReplyTrayDrag(): {
   const onDoubleClick = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (e.target !== e.currentTarget) return;
     setPlace(null);
-    savePlace(null);
   }, []);
 
   return { style: placeStyle(place), dragging, onPointerDown, onClickCapture, onDoubleClick };

@@ -1,11 +1,13 @@
 //! The menu bar, on macOS.
 //!
-//! Two additions to the menu Tauri makes by default.
+//! What is added to the menu Tauri makes by default.
 //!
 //! In the app menu, "Settings…" with Cmd+Comma. That is where a Mac user
 //! looks for the settings of any app, and this one kept them behind a button
 //! in the title bar only. The item does not open anything itself: the page
 //! owns the settings panel, so the item tells the page and the page opens it.
+//! Under it, "Add Account…", which opens the same Settings on its Accounts
+//! page: people look for adding an account in that menu too.
 //!
 //! In the Help menu, three ways to reach us — the same three the blocker and
 //! To-Do apps carry — and the version above them. Somebody reporting a problem
@@ -42,6 +44,9 @@ const STORY_URL: &str = "https://digitalhabits.org/story";
 
 /// What the page listens for when Settings… is chosen. See apps/mail/src/main.tsx.
 pub const OPEN_SETTINGS_EVENT: &str = "open-settings";
+/// What the page listens for when Add Account… is chosen: Settings, on its
+/// Accounts page. See apps/mail/src/main.tsx.
+pub const OPEN_ACCOUNTS_EVENT: &str = "open-accounts";
 
 /// What the page listens for when a menu item gives a key back. See apps/mail/src/main.tsx.
 pub const MENU_KEY_EVENT: &str = "menu-key";
@@ -62,6 +67,20 @@ pub fn install(app: &App) -> tauri::Result<()> {
   // by position rather than by text.
   match submenus.first() {
     Some(app_menu) => {
+      // About, Hide and Quit are named after the crate ("digital-habits-mail"),
+      // not the app. Named after the app, as the menu bar's title is.
+      if let Some(product) = app.config().product_name.clone() {
+        let crate_name = app.package_info().crate_name;
+        for item in app_menu.items()? {
+          if let Some(predefined) = item.as_predefined_menuitem() {
+            if let Ok(text) = predefined.text() {
+              if text.contains(crate_name) {
+                let _ = predefined.set_text(text.replace(crate_name, &product));
+              }
+            }
+          }
+        }
+      }
       let settings = MenuItem::with_id(
         app,
         "app_settings",
@@ -72,8 +91,14 @@ pub fn install(app: &App) -> tauri::Result<()> {
       // Where every Mac app puts it: after "About" and its separator, and
       // before Services. That is index 2 in the default menu, and a separator
       // after it keeps Services in a group of its own.
+      // Under Settings…, where a Mac user looks for it too: Mail and
+      // Outlook keep accounts in their settings, and "Add Account…" in a
+      // menu is how people find it (Ulrik, 2026-10-17). It opens the same
+      // Settings, on the Accounts page.
+      let add_account = MenuItem::with_id(app, "app_add_account", "Add Account…", true, None::<&str>)?;
       app_menu.insert(&settings, 2)?;
-      app_menu.insert(&PredefinedMenuItem::separator(app)?, 3)?;
+      app_menu.insert(&add_account, 3)?;
+      app_menu.insert(&PredefinedMenuItem::separator(app)?, 4)?;
     }
     None => log::warn!("menu: no app submenu to add Settings to"),
   }
@@ -166,6 +191,16 @@ pub fn install(app: &App) -> tauri::Result<()> {
           let _ = window.set_focus();
           if let Err(err) = app.emit_to(MAIN_WINDOW, OPEN_SETTINGS_EVENT, ()) {
             log::warn!("menu: could not ask the page to open settings: {err}");
+          }
+        }
+        return;
+      }
+      "app_add_account" => {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+          let _ = window.show();
+          let _ = window.set_focus();
+          if let Err(err) = app.emit_to(MAIN_WINDOW, OPEN_ACCOUNTS_EVENT, ()) {
+            log::warn!("menu: could not ask the page to open the accounts: {err}");
           }
         }
         return;

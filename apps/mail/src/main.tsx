@@ -37,6 +37,7 @@ import { App } from "./App";
 import { ReaderWindow } from "./ReaderWindow";
 import { WindowControls } from "./WindowControls";
 import { showScrollbarsWhileScrolling } from "./scrollbars";
+import { ignoreStrayFileDrops } from "./stray-file-drops";
 import { isDemoMode } from "./demo/mode";
 import { handleDemoMailApi } from "./demo/transport";
 import { handleStandaloneMailApi } from "./standalone-api";
@@ -222,6 +223,7 @@ function applyWindowTheme() {
 applyWindowTheme();
 // After `data-dh-os` is set above — it reads it to decide whether to run.
 showScrollbarsWhileScrolling();
+ignoreStrayFileDrops();
 window.addEventListener(MAIL_COLOR_MODE_EVENT, applyWindowTheme);
 window.addEventListener("storage", applyWindowTheme);
 window
@@ -247,6 +249,10 @@ if (!isPopout && !isReader) {
     }
   ).__TAURI__?.event;
   void tauriEvent?.listen?.("open-settings", openMailAccountsMenu).catch(() => {});
+  // The app menu's Add Account…: Settings, on the Accounts page.
+  void tauriEvent
+    ?.listen?.("open-accounts", () => openMailAccountsMenu({ category: "accounts" }))
+    .catch(() => {});
 }
 
 /**

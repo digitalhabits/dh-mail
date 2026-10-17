@@ -98,6 +98,20 @@ suite(async () => {
     );
   }
 
+  // ---- A link with no address is words ------------------------------------
+  for (const html of [
+    '<a target="_blank" href="">Your account</a>',
+    '<a href="#">Your account</a>',
+    "<a>Your account</a>",
+  ]) {
+    const out = softenAnchorsForParse(html);
+    check(
+      `no address, no link: ${html}`,
+      !out.includes("data-dh-href") && out.includes("Your account</span>"),
+      out
+    );
+  }
+
   // ---- Text is untouched ----------------------------------------------------
   assert.equal(
     softenAnchorsForParse("<p>No links at all</p>"),

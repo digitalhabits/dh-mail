@@ -7,6 +7,7 @@
  * hiding a mailbox.
  */
 
+import { hideAgainLabel } from "@/lib/mail/mailbox-hide";
 import * as React from "react";
 import { ChevronLeft, Plus, X } from "lucide-react";
 
@@ -439,13 +440,7 @@ export function frictionSummary(words: number, t: ReturnType<typeof useMailT>): 
     : t("pauseFrictionSummary", { count: words, minutes: unpauseMinutes(words) });
 }
 
-/** A "Hide again after" length in words: Never, 15 minutes, 1 hour, 8 hours. */
-export function hideAgainLabel(minutes: number, t: ReturnType<typeof useMailT>): string {
-  if (minutes === 0) return t("hideAgainNever");
-  if (minutes < 60) return t("hideAgainMinutes", { count: minutes });
-  if (minutes === 60) return t("hideAgainOneHour");
-  return t("hideAgainHours", { count: minutes / 60 });
-}
+export { hideAgainLabel };
 
 /**
  * Friction to start fetching again: how many random words ending a pause

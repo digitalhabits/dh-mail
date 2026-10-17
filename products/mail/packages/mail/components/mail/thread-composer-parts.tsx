@@ -11,7 +11,8 @@
 
 import { forwardSizeWarning } from "@/lib/mail/forward-size";
 import { useSenderProvider } from "@/lib/mail/use-outlook-accounts";
-import { Check, Expand, Maximize2, Minimize2, PictureInPicture2 } from "lucide-react";
+import { Check, Expand, Maximize2, Minimize2, Minus, PictureInPicture2 } from "lucide-react";
+import { useComposerMinimise } from "@/components/mail/composer-minimise";
 
 import { DraftAssistMenu, SendFollowUpToggle, useAccountAssist } from "@/components/mail/team-layer";
 import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
@@ -438,10 +439,24 @@ export function ComposerAddressRow({
 export function ComposerCardButtons({ m }: { m: ThreadPaneModel }) {
   const { floatReply, floating, onFloatReply, replyFocus, setReplyFocus, shortcuts, t } = m;
   const button = "shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800";
+  const minimise = useComposerMinimise();
   if (floating) return null;
+  // Put away to a bar, first in the corner as on the floating card.
+  const minimiseButton = minimise.available ? (
+    <button
+      type="button"
+      title={t("minimiseReply")}
+      aria-label={t("minimiseReply")}
+      className={button}
+      onClick={() => minimise.setMinimised(true)}
+    >
+      <Minus className="h-4 w-4" />
+    </button>
+  ) : null;
   if (onFloatReply && !replyFocus) {
     return (
       <span className="-mr-1 -mt-0.5 flex shrink-0 items-center gap-0.5">
+        {minimiseButton}
         <button
           type="button"
           title={`${t("writeWhileYouBrowse")} (${formatShortcut(shortcuts.floatMessage)})`}
@@ -467,6 +482,7 @@ export function ComposerCardButtons({ m }: { m: ThreadPaneModel }) {
   }
   return (
     <>
+      {minimiseButton}
       {onFloatReply && !floating ? (
         <button
           type="button"

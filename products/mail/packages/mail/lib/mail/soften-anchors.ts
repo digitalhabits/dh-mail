@@ -51,6 +51,19 @@ export function softenAnchorsForParse(html: string): string {
         /\s*\bdata-dh-plain\s*(?:=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
         ""
       );
+      /*
+        A link with no address goes nowhere, so it is the words it holds,
+        as the sender's other words are. Painted as a link, it promised a
+        click that did nothing, and its right-click menu had no link to
+        open or copy: Vercel's yearly domain notice sends "Vercel account"
+        with href="" (2026-10-17).
+      */
+      const target = href.trim();
+      if (!target || target === "#") {
+        out += `<span${rest}>`;
+        last = index + match[0].length;
+        continue;
+      }
       const escaped = href
         .replace(/&/g, "&amp;")
         .replace(/"/g, "&quot;")

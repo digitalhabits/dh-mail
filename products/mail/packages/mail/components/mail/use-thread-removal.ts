@@ -45,6 +45,13 @@ type OpenThread = {
   focusMessageId?: string;
 };
 
+
+/**
+ * Sent with the thread keys whenever threads leave the inbox: archived,
+ * deleted, moved, snoozed or filed as junk.
+ */
+export const MAIL_THREADS_GONE_EVENT = "dh-mail-threads-gone";
+
 export function useThreadRemoval({
   viewerId,
   listCacheKey,
@@ -97,6 +104,11 @@ export function useThreadRemoval({
         never chose.
       */
       const gone = new Set([key, ...alsoKeys]);
+      // Said aloud, for a list kept apart from this one that names the
+      // thread (the organization's triage list).
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(MAIL_THREADS_GONE_EVENT, { detail: [...gone] }));
+      }
       const isRemoved = (t: MailThreadSummary) =>
         gone.has(threadKey(t)) ||
         (t.alsoIn?.some((c) => gone.has(threadKey(c))) ?? false);

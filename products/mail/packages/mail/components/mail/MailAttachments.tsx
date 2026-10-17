@@ -28,9 +28,11 @@ import {
 } from "@/lib/mail/attachment-save";
 import { isCalendarAttachment } from "@/lib/mail/ics";
 import { useMailT } from "@/lib/mail/i18n";
+import { cn } from "@/lib/utils";
 import type { MailAttachment } from "@/lib/mail/types";
 import {
   TypeBadge,
+  attachmentDownloadProps,
   attachmentDragProps,
   formatFileSize,
   isImageMime,
@@ -61,6 +63,36 @@ const PDF_THUMBNAIL_MAX_BYTES = 8 * 1024 * 1024;
 const PDF_THUMBNAIL_WIDTH = 184;
 
 /**
+ * Each PDF's first page, drawn once. The tile in the message and the row
+ * in the thread's file list show the same picture, and a second drawing
+ * would read the whole file again.
+ */
+const pdfThumbnails = new Map<string, Promise<string | null>>();
+
+function pdfThumbnailOf(path: string): Promise<string | null> {
+  const known = pdfThumbnails.get(path);
+  if (known) return known;
+  const drawing = (async () => {
+    let source: { url: string; release: () => void } | null = null;
+    try {
+      source = await openAttachmentSource(path);
+      const res = await fetch(source.url);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      return (await renderPdfThumbnail(bytes, PDF_THUMBNAIL_WIDTH)) ?? null;
+    } catch (err) {
+      console.warn("mail: no first page for this PDF", err);
+      // Not kept, so a later look tries again.
+      pdfThumbnails.delete(path);
+      return null;
+    } finally {
+      source?.release();
+    }
+  })();
+  pdfThumbnails.set(path, drawing);
+  return drawing;
+}
+
+/**
  * The first page of a PDF, once the tile has been looked at.
  *
  * Not on mount: a message with eight attachments would read eight whole
@@ -87,20 +119,16 @@ function usePdfThumbnail(
     const draw = async () => {
       if (started) return;
       started = true;
-      let source: { url: string; release: () => void } | null = null;
-      try {
-        source = await openAttachmentSource(path);
-        const res = await fetch(source.url);
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (!live) return;
-        const drawn = await renderPdfThumbnail(bytes, PDF_THUMBNAIL_WIDTH);
-        if (live && drawn) setSrc(drawn);
-      } catch (err) {
-        console.warn("mail: no first page for this PDF", err);
-      } finally {
-        source?.release();
-      }
+      const drawn = await pdfThumbnailOf(path);
+      if (live && drawn) setSrc(drawn);
     };
+    // Drawn already, for the tile or the thread's file list: no wait.
+    if (pdfThumbnails.has(path)) {
+      void draw();
+      return () => {
+        live = false;
+      };
+    }
 
     /*
       Asked of the rectangle, not of an observer.
@@ -211,6 +239,10 @@ function AttachmentTile({
           <img
             src={src}
             alt=""
+            /* The tile is what is dragged, as a file. A picture is
+               draggable by itself, and its drag held macOS's one drag
+               at a time, so the file's could not start (2026-10-17). */
+            draggable={false}
             className="absolute inset-0 h-full w-full object-cover"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -225,6 +257,7 @@ function AttachmentTile({
           <img
             src={pdfSrc}
             alt=""
+            draggable={false}
             className="absolute inset-0 h-full w-full bg-white object-cover object-top"
           />
         ) : (
@@ -464,7 +497,7 @@ export function ThreadAttachmentsRollup({
           {items.length}
         </button>
       </PopoverTrigger>
-      <MailPopoverContent align="end" className="w-80 p-2">
+      <MailPopoverContent align="end" className="w-[26rem] max-w-[calc(100vw-2rem)] p-2">
         <div className="flex items-baseline justify-between gap-3 px-2 pb-1.5">
           <p className="text-xs font-medium text-stone-500">
             {t(calendarOnly ? "calendarInvitesInThread" : "allFilesInThread")}
@@ -499,52 +532,138 @@ export function ThreadAttachmentsRollup({
         </div>
         <ul className="max-h-72 overflow-y-auto">
           {items.map(({ messageId, attachment }) => (
-            <li key={`${messageId}:${attachment.attachmentId}`}>
-              <button
-                type="button"
-                {...(attachment.attachmentId.startsWith("local-")
-                  ? null
-                  : attachmentDragProps({
-                      path: attachmentUrl({
-                        account,
-                        messageId,
-                        attachment,
-                        download: true,
-                      }),
-                      filename: attachment.filename,
-                      mimeType: attachment.mimeType,
-                    }))}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-stone-50"
-                onClick={() => onPreview(messageId, attachment)}
-                onContextMenu={(e) => {
-                  if (attachment.attachmentId.startsWith("local-")) return;
-                  openAttachmentMenu(e, {
-                    path: attachmentUrl({
-                      account,
-                      messageId,
-                      attachment,
-                      download: true,
-                    }),
-                    filename: attachment.filename,
-                    onPreview: () => onPreview(messageId, attachment),
-                  });
-                }}
-              >
-                <TypeBadge filename={attachment.filename} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-stone-800">
-                    {attachment.filename}
-                  </span>
-                  <span className="block text-xs text-stone-400">
-                    {formatFileSize(attachment.size)}
-                  </span>
-                </span>
-              </button>
-            </li>
+            <ThreadFileRow
+              key={`${messageId}:${attachment.attachmentId}`}
+              account={account}
+              messageId={messageId}
+              attachment={attachment}
+              onPreview={() => onPreview(messageId, attachment)}
+              onMenu={openAttachmentMenu}
+            />
           ))}
         </ul>
       </MailPopoverContent>
       {attachmentMenu}
     </Popover>
+  );
+}
+
+/**
+ * One file in the thread's file list: the same picture as its tile in the
+ * message, and the three things its right-click menu offers — Preview,
+ * Open and Download — as buttons (Ulrik, 2026-10-17). A click on the row
+ * previews it, as a click on the tile does.
+ */
+function ThreadFileRow({
+  account,
+  messageId,
+  attachment,
+  onPreview,
+  onMenu,
+}: {
+  account: string;
+  messageId: string;
+  attachment: MailAttachment;
+  onPreview: () => void;
+  onMenu: (
+    e: React.MouseEvent,
+    file: { path: string; filename: string; onPreview: () => void }
+  ) => void;
+}) {
+  const t = useMailT();
+  const pending = attachment.attachmentId.startsWith("local-");
+  const image = isImageMime(attachment.mimeType, attachment.filename);
+  const pdf = isPdfMime(attachment.mimeType, attachment.filename);
+  const rowRef = React.useRef<HTMLLIElement | null>(null);
+  const src = useAttachmentSource(
+    pending || !image ? null : attachmentUrl({ account, messageId, attachment })
+  );
+  const pdfSrc = usePdfThumbnail(
+    rowRef,
+    pending || !pdf ? null : attachmentUrl({ account, messageId, attachment }),
+    attachment.size
+  );
+  // Not one still being attached to a draft: there is nothing to fetch.
+  const filePath = pending
+    ? null
+    : attachmentUrl({ account, messageId, attachment, download: true });
+  const picture = image ? src : pdfSrc;
+  const action =
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200/60 hover:text-stone-700";
+  return (
+    <li ref={rowRef} className="flex items-center gap-0.5 rounded-lg pr-1 hover:bg-stone-50">
+      <button
+        type="button"
+        {...(filePath
+          ? attachmentDragProps({
+              path: filePath,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+            })
+          : null)}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left"
+        onClick={onPreview}
+        onContextMenu={(e) => {
+          if (!filePath) return;
+          onMenu(e, { path: filePath, filename: attachment.filename, onPreview });
+        }}
+      >
+        {picture ? (
+          <img
+            src={picture}
+            alt=""
+            draggable={false}
+            className={cn(
+              "h-9 w-9 shrink-0 rounded-md border border-stone-200 bg-white object-cover",
+              pdf && "object-top"
+            )}
+          />
+        ) : (
+          <TypeBadge filename={attachment.filename} />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-stone-800">
+            {attachment.filename}
+          </span>
+          <span className="block text-xs text-stone-400">
+            {formatFileSize(attachment.size)}
+          </span>
+        </span>
+      </button>
+      {/* Beside the row, not in it: a button inside a button is not
+          allowed. Not for a file still being attached. */}
+      {filePath ? (
+        <>
+          <button
+            type="button"
+            title={t("previewFile")}
+            aria-label={`${t("previewFile")} ${attachment.filename}`}
+            className={action}
+            onClick={onPreview}
+          >
+            <Eye className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            title={t("open")}
+            aria-label={`${t("open")} ${attachment.filename}`}
+            className={action}
+            onClick={() =>
+              openAttachmentOutside({ path: filePath, filename: attachment.filename })
+            }
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden />
+          </button>
+          <a
+            {...attachmentDownloadProps({ path: filePath, filename: attachment.filename })}
+            title={t("download")}
+            aria-label={`${t("download")} ${attachment.filename}`}
+            className={action}
+          >
+            <Download className="h-4 w-4" aria-hidden />
+          </a>
+        </>
+      ) : null}
+    </li>
   );
 }

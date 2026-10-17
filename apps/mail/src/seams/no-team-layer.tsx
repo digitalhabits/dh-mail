@@ -159,3 +159,26 @@ export function AccountAssistSwitch(_props: { account: string }): null {
 export function useAccountAssist(_account: string | null | undefined): boolean {
   return true;
 }
+
+/** The tab id the triage list would have. No such tab here. */
+export const TRIAGE_TAB = "triage";
+
+/** Beside the search box. Nothing here. */
+export function TriageButton(_props: { m: unknown }): null {
+  return null;
+}
+
+/** A tab right of Other. None here. */
+export function TriageTab(_props: { m: unknown; tabClass: (active: boolean) => string }): null {
+  return null;
+}
+
+/** The list while that tab is open. Never open here. */
+export function TriageListPane(_props: { m: unknown }): null {
+  return null;
+}
+
+/** Over an open thread. Nothing here. */
+export function TriageBanner(_props: { account: string; threadId: string }): null {
+  return null;
+}

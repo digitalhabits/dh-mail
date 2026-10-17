@@ -6,7 +6,7 @@
  * So a range that is off by one shows up as a broken address in both.
  */
 
-import { findEmailsInText, findLinksInText } from "@/lib/linkify-urls";
+import { findEmailsInText, findLinksInText, linkLabel } from "@/lib/linkify-urls";
 
 import { check, suite } from "./harness.mjs";
 
@@ -100,5 +100,21 @@ suite(async () => {
   check(
     "text with nothing in it yields nothing",
     findLinksInText("just some words").length === 0
+  );
+
+  // Safe Links: the label names the address it stands for, not Microsoft.
+  const safe =
+    "https://eur02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fjournal.example.org%2Freview%3Fid%3D7&data=05%7C02%7Cx&sdata=abc%3D&reserved=0";
+  check("a Safe Links address is labelled with its real host", linkLabel(safe) === "journal.example.org/…", linkLabel(safe));
+  check(
+    "and its link still goes through Safe Links",
+    hrefs(`see ${safe} now`).join("|") === safe,
+    hrefs(`see ${safe} now`).join("|")
+  );
+  check("any other address keeps its own host", linkLabel("https://www.example.org/a") === "example.org/…", linkLabel("https://www.example.org/a"));
+  check(
+    "a Safe Links address with no real address keeps its own host",
+    linkLabel("https://eur02.safelinks.protection.outlook.com/?data=1") === "eur02.safelinks.protection.outlook.com/…",
+    linkLabel("https://eur02.safelinks.protection.outlook.com/?data=1")
   );
 });

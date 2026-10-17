@@ -14,7 +14,7 @@ import { openThreadFullWindow } from "@/components/mail/thread-full-window";
 import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
-import { ThreadAssistMenu, ThreadDiaryDialog, useAccountAssist } from "@/components/mail/team-layer";
+import { ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
   SettingsDialog,
@@ -385,6 +385,9 @@ export function ThreadMessages({
           )}
         >
           <div className="mail-thread-column flex flex-col gap-4" style={{ zoom }}>
+            {/* Where this thread stands in the ranked list, when it is in it
+                (the organization's build). */}
+            <TriageBanner account={account} threadId={thread.threadId} />
             {headHasOlderInPart ||
             canLoadOlderAcrossParts ||
             loadingOlder ? (
@@ -879,7 +882,7 @@ function ThreadTitleBlock({
     <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-2 pl-10 pr-8 pt-2.5">
       <div className="flex items-center gap-4">
         <h2
-          className="min-w-[12rem] flex-1 basis-0 truncate font-serif text-lg font-bold text-stone-900"
+          className="min-w-0 flex-1 truncate font-serif text-lg font-bold text-stone-900"
           title={headerTitle}
         >
           {headerTitle}
@@ -889,23 +892,15 @@ function ThreadTitleBlock({
             contrast; the same step on navy would make this line as loud
             as the subject above it. */}
         {/*
-          Right of the subject, on its line. The subject keeps the left
-          and gives way first (its basis is 0, so it takes only what the
-          details leave); the details give way only once the subject is
-          down to its least width. A list of names opened with "and N
-          others" wraps rather than vanishing into an ellipsis.
+          Right of the subject, on its line. The people are one name and
+          a count now, so the subject has the rest of the line. They take
+          no more than half of it; past that, the name gives way.
         */}
-        <p className="min-w-0 truncate text-[13px] text-[var(--mail-thread-meta)] [&:has([data-names-open])]:whitespace-normal">
-          {/*
-            A circular arrives with the whole club on it, and that is a
-            list worth keeping — the same list the composer offers to save
-            when you type the names in yourself. Here they are already
-            gathered, so the offer belongs here too. It lives inside the
-            participants, which is what knows whether the names are out.
-          */}
+        <p className="max-w-[50%] shrink-0 truncate text-[13px] text-[var(--mail-thread-meta)]">
           <ThreadParticipants
             people={participantsWithAddresses(thread.messages, [account, ...accounts], account, oneMailbox)}
             others={threadOthers}
+            leadEmail={thread.messages[0]?.fromEmail}
             // The count and the dates are in the strip above, by the files.
             meta={null}
           />

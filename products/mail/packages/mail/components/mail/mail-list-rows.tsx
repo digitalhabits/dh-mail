@@ -145,6 +145,10 @@ export function ThreadRows({
             </div>
         ) : null}
         <div
+          // The same room above the first heading as the stacked list has
+          // (its wrapper's pt-2), so the list does not shift when Stacks
+          // is switched (2026-10-17).
+          className={listExpanded ? undefined : "pt-2"}
           onDragOver={(e) => {
             // Accept drops from the pinned band to unpin.
             if (
@@ -324,6 +328,13 @@ export function PeopleRows({
     if (row.threads.length < 2 || e.metaKey || e.ctrlKey || e.shiftKey) return clickPersonRow(row, e);
     toggleStack(row.key);
     if (!openStacks.has(row.key)) openFromStack(row, row.threads[0]);
+    /*
+      Folded, the row is the person again, and so is the reader: their
+      pane, with every thread. The newest thread stayed open behind the
+      folded row, so the archive key took that one thread when the reader
+      meant all of them (Ulrik, 2026-10-17).
+    */
+    else clickPersonRow(row, e);
   };
   return (
     <>
@@ -412,6 +423,9 @@ export function PeopleRows({
             return (
               <React.Fragment key={row.key}>
               <div
+                // The threads this row holds, newest first, for the glide
+                // when Stacks is switched (lib/mail/stack-glide).
+                data-glide-keys={row.threads.map((th) => threadKey(th)).join(" ")}
                 onDoubleClick={(e) => {
                   // The row's own control is the button that fills
                   // it, so that is the container; a double click on
@@ -442,6 +456,12 @@ export function PeopleRows({
                 className={cn(
                   // Relative: the hover actions float over its right end.
                   "group relative flex w-full transition-colors",
+                  // A folded stack keeps a thin deck edge under it: the
+                  // threads it holds (2026-10-17). Over the row below.
+                  row.threads.length > 1 &&
+                    !stackOpen &&
+                    !listNarrow &&
+                    "z-[1] shadow-[0_4px_0_-1px_var(--mail-deck-1),0_8px_0_-2px_var(--mail-deck-2)]",
                   listNarrow
                     ? "items-center justify-center px-1 py-1.5"
                     : listRowWide && listDensity !== "compact"
@@ -558,15 +578,17 @@ export function PeopleRows({
                 ) : (
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
                       <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       <PersonCount threads={row.threads} open={stackOpen} />
                       {personHasDraft ? <DraftBadge /> : null}
                     </span>
-                    {/* The time, away on hover for the actions. */}
-                    <span className="flex shrink-0 items-center gap-2 group-hover:invisible">
+                    {/* The time, away on hover for the actions. As wide a
+                        slot as a thread row keeps for them, so a name is as
+                        long with Stacks on as off (2026-10-17). */}
+                    <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
                       <span className="text-xs text-[var(--mail-chrome-faint)]">
                         {rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),

@@ -13,6 +13,8 @@ import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import {
   attachmentSourceNow,
+  dragAttachmentOut,
+  hostDragsAttachments,
   hostSavesAttachments,
   openAttachmentSource,
   prepareAttachmentDrag,
@@ -194,10 +196,12 @@ export function attachmentDownloadProps(input: {
  * it. What that takes differs by host, so the work is behind the seam and
  * the tiles and rows here only say which file they are showing.
  *
- * The pointer going down is the signal to get ready — see
- * `prepareAttachmentDrag`. It fires on a plain click too, which reads the
- * file for a drag that never happens; that is the same reading a preview
- * does, and it is what makes the drag itself start on time.
+ * The pointer resting on the file is the signal to get ready — see
+ * `prepareAttachmentDrag`. The pointer going down was the only signal, and
+ * a file of a few megabytes was not read by the time the drag began: the
+ * drag waited for it, and a reader who let go in that time got nothing
+ * (2026-10-17). Resting reads the file for a drag that may never happen;
+ * that is the same reading a preview does, once per file.
  */
 export function attachmentDragProps(input: {
   path: string;
@@ -205,15 +209,74 @@ export function attachmentDragProps(input: {
   mimeType: string;
 }): {
   draggable: boolean;
-  onPointerDown: () => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+  onPointerDown: (event: React.PointerEvent) => void;
+  onPointerMove: (event: React.PointerEvent) => void;
+  onPointerUp: () => void;
   onDragStart: (event: React.DragEvent) => void;
 } {
+  const stopResting = () => {
+    if (restTimer) clearTimeout(restTimer);
+    restTimer = null;
+  };
+  /*
+    A desktop host drags the file itself, as soon as the pointer moves a
+    few pixels with the button down. The page's own drag of a button began
+    only after the button was held for a moment, and Finder took nothing
+    from it (Ulrik, 2026-10-17). A browser keeps the page's drag, which is
+    what puts the file on it.
+  */
+  const native = hostDragsAttachments;
   return {
-    draggable: true,
-    onPointerDown: () => prepareAttachmentDrag(input),
-    onDragStart: (event) => startAttachmentDrag(event, input),
+    draggable: !native,
+    onPointerEnter: () => {
+      stopResting();
+      restTimer = setTimeout(() => {
+        restTimer = null;
+        prepareAttachmentDrag(input);
+      }, REST_BEFORE_READING_MS);
+    },
+    onPointerLeave: stopResting,
+    onPointerDown: (event) => {
+      stopResting();
+      prepareAttachmentDrag(input);
+      pressedAt = native && event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+    },
+    onPointerMove: (event) => {
+      if (!pressedAt) return;
+      if ((event.buttons & 1) === 0) {
+        pressedAt = null;
+        return;
+      }
+      const moved = Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y);
+      if (moved < DRAG_START_PX) return;
+      pressedAt = null;
+      dragAttachmentOut(input);
+    },
+    onPointerUp: () => {
+      pressedAt = null;
+    },
+    /*
+      With a native drag, the page's own is only stopped: the file's drag
+      began when the pointer moved, and a second start here was refused
+      while the first ran.
+    */
+    onDragStart: (event) => {
+      if (native) event.preventDefault();
+      else startAttachmentDrag(event, input);
+    },
   };
 }
+
+/** How long the pointer rests on a file before it is read for a drag. */
+const REST_BEFORE_READING_MS = 250;
+/** How far the pointer moves with the button down before a drag starts. */
+const DRAG_START_PX = 4;
+/** Where the button went down on a file, while it is down and not yet a drag. */
+let pressedAt: { x: number; y: number } | null = null;
+/** One pointer, so one file resting at a time. */
+let restTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function TypeBadge({ filename }: { filename: string }) {
   const ext = fileExtension(filename);

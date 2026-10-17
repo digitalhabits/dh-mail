@@ -38,10 +38,15 @@ export function cardWindowClass(view: CardWindowView): string {
       edge past the right of it, and no buttons to press to get out.
       `max-` puts that right on every frame, and for free.
     */
-    return "fixed left-1/2 top-1/2 z-50 h-[calc(100vh-6rem)] max-h-[calc(100vh-2rem)] w-[min(52rem,calc(100vw-4rem))] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2";
+    return "fixed left-1/2 top-1/2 z-[60] h-[calc(100vh-6rem)] max-h-[calc(100vh-2rem)] w-[min(52rem,calc(100vw-4rem))] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2";
   }
+  /*
+    One level over the Reader, which takes the whole window at z-40
+    (thread-full-window). At the same level, the Reader came later in the
+    page and covered a reply popped out of it (Ulrik, 2026-10-17).
+  */
   if (view === "minimised") {
-    return "fixed bottom-0 right-6 z-40 h-auto max-h-none w-[22rem] max-w-[calc(100vw-3rem)] rounded-b-none";
+    return "fixed bottom-0 right-6 z-50 h-auto max-h-none w-[22rem] max-w-[calc(100vw-3rem)] rounded-b-none";
   }
-  return "fixed bottom-4 right-6 z-40 max-h-[calc(100vh-2rem)] w-[34rem] max-w-[calc(100vw-3rem)]";
+  return "fixed bottom-4 right-6 z-50 max-h-[calc(100vh-2rem)] w-[34rem] max-w-[calc(100vw-3rem)]";
 }

@@ -12,6 +12,15 @@ import { sanitizeEmailHtml, stripQuotedHtml } from "@/lib/mail/email-html";
 import { replyHistoryEntry } from "@/lib/mail/reply-history";
 import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
 
+/** A loaded message of the thread by its id: older parts first, then the newest page. */
+export function findLoadedMessage(
+  thread: MailThreadDetail | null | undefined,
+  olderParts: { messages: MailMessage[] }[],
+  id: string
+): MailMessage | undefined {
+  return [...olderParts.flatMap((p) => p.messages), ...(thread?.messages ?? [])].find((m) => m.id === id);
+}
+
 /** What the composer at the bottom of a thread is currently writing. */
 export type ComposerMode = "reply" | "replyAll" | "forward";
 

@@ -10,6 +10,7 @@ import {
   collapseSameNameParticipants,
   groupThreadsByPerson,
   threadPeople,
+  threadPeopleLabel,
 } from "@/lib/mail/person-participants";
 import { mailerIdentityAddress } from "@/lib/mail/person-identity";
 
@@ -191,5 +192,25 @@ suite(async () => {
     "six mails from a tokened mailer are one row on the People view",
     stamped.length === 1 && stamped[0].threads.length === 3 && stamped[0].name === "Acme",
     stamped.map((r) => r.key).join(" | ")
+  );
+
+  // The address as its own display name is no name: the sender's real one
+  // takes its place (Outlook writes "x@y" as the name of an address).
+  const claire = { name: "Claire.Odie@college.example", email: "Claire.Odie@college.example" };
+  const colleague = { name: "rosa@centre.example", email: "rosa@centre.example" };
+  const both = { ...thread([claire, colleague]), fromName: "Claire Odie", fromEmail: claire.email };
+  check(
+    "an address standing as its own name gives way to the sender's name",
+    threadPeopleLabel(both) === "Claire Odie, rosa@centre.example",
+    threadPeopleLabel(both)
+  );
+  // A thread is named alike with Stacks on and off: who is in it, not who
+  // sent the newest mail.
+  const lastFromColleague = { ...thread([claire, colleague], colleague), fromName: "Rosa", fromEmail: colleague.email };
+  const stacked = groupThreadsByPerson([lastFromColleague]);
+  check(
+    "a thread row and its stacked row have the same name",
+    stacked[0].name === threadPeopleLabel(lastFromColleague) && threadPeopleLabel(lastFromColleague).includes(","),
+    `${stacked[0].name} | ${threadPeopleLabel(lastFromColleague)}`
   );
 });

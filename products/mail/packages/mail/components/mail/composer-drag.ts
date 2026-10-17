@@ -7,8 +7,13 @@
  * A drag starts on the card's own ground: its edge, the "Replying to" line,
  * the row under the box. Never in the box you type in, on a button, a link
  * or a field, which keep the pointer for themselves. The card moves by a
- * shift from its usual place, kept in this viewer's browser, and stays
- * inside the thread. A double-click on its edge puts it back.
+ * shift from its usual place, and stays inside the thread. A double-click
+ * on its edge puts it back.
+ *
+ * The place is not kept. It lasts while the thread is open, and the next
+ * thread opens the card in its usual place. Kept for every thread, a card
+ * moved once by a stray drag opened over the middle of every thread after
+ * it, and read as a bug (Ulrik, 2026-10-17).
  *
  * The shift is drawn on the band that holds the card, not on the card:
  * the band cuts off what stands outside it, and a card moved up out of it
@@ -22,7 +27,8 @@
 
 import * as React from "react";
 
-const KEY = "dh-mail-composer-place";
+/** Where a place was kept before it was not. Cleared once, so an old one goes. */
+const OLD_KEY = "dh-mail-composer-place";
 const DRAG_SLOP = 4;
 const EDGE = 8;
 const NOT_A_HANDLE =
@@ -30,26 +36,11 @@ const NOT_A_HANDLE =
 
 type Shift = { x: number; y: number };
 
-function readShift(): Shift | null {
+function forgetOldPlace() {
   try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Partial<Shift>;
-    if (typeof p.x === "number" && typeof p.y === "number" && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-      return { x: p.x, y: p.y };
-    }
+    window.localStorage.removeItem(OLD_KEY);
   } catch {
-    // No storage here: the card stays in its usual place.
-  }
-  return null;
-}
-
-function saveShift(shift: Shift | null) {
-  try {
-    if (shift) window.localStorage.setItem(KEY, JSON.stringify(shift));
-    else window.localStorage.removeItem(KEY);
-  } catch {
-    // No storage here: the place lasts until the pane closes.
+    // No storage here, so nothing was kept.
   }
 }
 
@@ -65,9 +56,8 @@ export function useComposerDrag(
     onDoubleClick?: (e: React.MouseEvent<HTMLElement>) => void;
   };
 } {
-  const [shift, setShift] = React.useState<Shift | null>(() =>
-    typeof window === "undefined" ? null : readShift()
-  );
+  const [shift, setShift] = React.useState<Shift | null>(null);
+  React.useEffect(forgetOldPlace, []);
 
   const onPointerDown = React.useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
@@ -119,7 +109,6 @@ export function useComposerDrag(
         } catch {
           // Already released.
         }
-        if (moved) saveShift(last);
       }
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -133,7 +122,6 @@ export function useComposerDrag(
   const onDoubleClick = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (e.target !== e.currentTarget) return;
     setShift(null);
-    saveShift(null);
   }, []);
 
   if (!enabled) return { transform: undefined, handlers: {} };

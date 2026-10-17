@@ -6,13 +6,14 @@
  * There is nothing to read: a selection is not a conversation, and painting
  * the anchor thread under it would say the wrong thing about what the keys
  * are about to act on. So this stands where the thread would, says how many
- * are held, and takes the same archive and delete keys a single thread
- * takes — one press, all of them.
+ * are held, and takes the same archive, delete and snooze keys a single
+ * thread takes — one press, all of them.
  */
 
 import * as React from "react";
-import { Archive, Mails, Trash2 } from "lucide-react";
+import { Archive, Mails, RotateCwFadingClock, Trash2 } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
+import { SnoozeMenu } from "@/components/mail/SnoozeMenu";
 
 import { actionForEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
@@ -27,6 +28,8 @@ export function SelectionPane({
   people,
   onArchive,
   onDelete,
+  onSnooze,
+  onCancelSnooze,
   onDeleteForever,
   inTrash = false,
   onClear,
@@ -39,6 +42,10 @@ export function SelectionPane({
   people: boolean;
   onArchive: () => void;
   onDelete: () => void;
+  /** Snooze every selected conversation until this time. */
+  onSnooze: (untilIso: string) => void;
+  /** Only when one or more of them is snoozed already. */
+  onCancelSnooze?: () => void;
   /**
    * In Trash and Junk only. It opens the page's question and deletes nothing
    * itself. In Trash the delete key calls it too.
@@ -50,6 +57,8 @@ export function SelectionPane({
 }) {
   const t = useMailT();
   const shortcuts = useMailShortcuts();
+  // The snooze key opens the times, as it does above one thread.
+  const [snoozeSignal, setSnoozeSignal] = React.useState(0);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -63,6 +72,11 @@ export function SelectionPane({
         return;
       }
       const action = actionForEvent(event, shortcuts);
+      if (action === "snooze") {
+        event.preventDefault();
+        if (!inTrash && !event.repeat) setSnoozeSignal((n) => n + 1);
+        return;
+      }
       if (action !== "archive" && action !== "delete") return;
       event.preventDefault();
       // In Trash there is nothing to archive, and the delete key asks the
@@ -138,6 +152,24 @@ export function SelectionPane({
               <Trash2 aria-hidden />
               {t("deleteSelected")}
             </button>
+            <SnoozeMenu
+              onSnooze={onSnooze}
+              onCancelSnooze={onCancelSnooze}
+              openSignal={snoozeSignal}
+              trigger={
+                <button
+                  type="button"
+                  className={cn(
+                    THREAD_ACTION_CLASS,
+                    "inline-flex w-auto items-center gap-2 px-3 text-sm [&_svg]:size-4"
+                  )}
+                  title={`${t("snoozeSelected")} (${formatShortcut(shortcuts.snooze)})`}
+                >
+                  <RotateCwFadingClock aria-hidden />
+                  {t("snoozeSelected")}
+                </button>
+              }
+            />
           </>
         )}
         {onDeleteForever ? (

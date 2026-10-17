@@ -10,6 +10,7 @@ import {
   scheduleWindowEnd,
   shownEarlyEnd,
   shownEarlyUntil,
+  hideAgainEndsShow,
 } from "@/lib/mail/mailbox-hide";
 
 import { check, suite } from "./harness.mjs";
@@ -75,4 +76,12 @@ suite(async () => {
   check("shown early in a window, hidden again when the cut runs out", mailboxHideVerdict(cut, at(20, 11)).hidden);
   check("the setting is read when it is one of the menu's", readHideState({ accounts: {}, hideAgainMinutes: 30 }).hideAgainMinutes === 30);
   check("and dropped when it is not", readHideState({ accounts: {}, hideAgainMinutes: 7 }).hideAgainMinutes === undefined);
+
+  // The question before an early show names how long, when the cut ends it.
+  const t0 = new Date(2026, 9, 17, 9, 0);
+  const inMinutes = (m) => t0.getTime() + m * 60_000;
+  check("15 minutes, with the schedule ending in 2 hours: the cut ends it", hideAgainEndsShow(inMinutes(120), 15, t0));
+  check("15 minutes, with the schedule ending in 10: the schedule ends it", !hideAgainEndsShow(inMinutes(10), 15, t0));
+  check("15 minutes, with no end of its own: the cut ends it", hideAgainEndsShow(null, 15, t0));
+  check("Never: nothing to name", !hideAgainEndsShow(inMinutes(120), 0, t0));
 });

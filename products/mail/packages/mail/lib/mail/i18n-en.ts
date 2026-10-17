@@ -145,6 +145,7 @@ export const en = {
   resumeMailboxSchedule: "Hide again until {time}",
   mailboxHiddenFor: "{email} is hidden from Mail for now",
   showMailboxTitle: "Show {email} again?",
+  showMailboxForTitle: "Show {email} for {time}?",
   showMailboxLead: "To show this mailbox before its hiding ends, type the following:",
   showMailboxConfirm: "Show it",
   nameOnYourMail: "Name on your mail",
@@ -389,6 +390,9 @@ export const en = {
   hideFolders: "Hide folders",
   newList: "New list",
   newListTab: "Create a new list tab",
+  stackMovedAbove: "{count} moved above",
+  stackMovedBelow: "{count} moved below",
+  stacksSwitch: "Stacks",
   stackThreads: "Stack threads from the same sender",
   stackThreadsHint:
     "When someone has several threads in your inbox, they show as one row. Senders with one thread look the same either way.",
@@ -455,6 +459,7 @@ export const en = {
   attachmentReminderBack: "Go back",
   attachmentReminderSend: "Send anyway",
   copyAddress: "Copy address",
+  copyName: "Copy name",
   sendEmail: "Send email",
   removeNamed: "Remove {name}",
   andMoreCount: "and {count} more",
@@ -714,11 +719,13 @@ export const en = {
   signatureForThisMessage: "Changes here are for this message only. To change your saved signature, use Signature under the box.",
   attachmentCountOne: "1 attachment",
   attachmentCountMany: "{count} attachments",
-  // The line under a thread's subject: who is on it, how many messages,
-  // and which mailbox of yours it came to.
-  threadShowFewer: "show fewer",
-  threadOtherOne: "and 1 other",
-  threadOtherMany: "and {count} others",
+  // Beside a thread's subject: who started it "and 2 others", the count
+  // opening everyone.
+  threadAnd: "and",
+  threadOthersOne: "1 other",
+  threadOthersMany: "{count} others",
+  // Your own address in that list: "you <you@example.org>".
+  threadYouLower: "you",
   threadMessageOne: "1 message",
   threadMessageMany: "{count} messages",
   allThreadsWith: "All threads with {name}",
@@ -827,12 +834,9 @@ export const en = {
   manage: "Manage",
   people: "People",
   saveAsList: "Save as list…",
-  // Inline after "show fewer", where it is part of a sentence rather than
-  // a control of its own — so it takes that sentence's small letter.
-  saveAsListInline: "save as list…",
-  // Same sentence, same small letter. What goes on the clipboard is the
-  // addresses alone, comma-separated, ready for a To field anywhere.
-  copyAddressesInline: "copy addresses",
+  // What goes on the clipboard is the addresses alone, ready for a To
+  // field anywhere.
+  copyAddresses: "Copy addresses",
   sendAsBcc: "Send as Bcc",
   listDeleted: "List deleted",
   listUpdated: "List updated",
@@ -959,6 +963,9 @@ export const en = {
     "Answer under a different subject. It starts a new conversation and keeps the quoted history",
   newSubjectStartsConversation:
     "A new subject starts a new conversation. The history stays quoted below.",
+  minimiseReply: "Put this away",
+  minimisedReplyTo: "Reply to {name}",
+  minimisedReplyShow: "Show the reply",
   minimiseTheMessage: "Put this away",
   showTheMessage: "Show this again",
   fullScreen: "Fill the window",
@@ -1099,6 +1106,7 @@ export const en = {
   someCouldNotBeArchived: "{failed} of {count} couldn't be archived",
   archiveSelected: "Archive",
   deleteSelected: "Delete",
+  snoozeSelected: "Snooze",
   conversationsDeletedWith: "{count} conversations with {name} deleted",
   conversation: "Conversation",
   hasAttachments: "Has attachments",

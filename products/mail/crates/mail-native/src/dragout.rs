@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use drag::{DragItem, DragMode, Image, Options};
-use objc2_app_kit::NSWorkspace;
+use objc2_app_kit::{NSEvent, NSWorkspace};
 use objc2_foundation::NSString;
 
 use crate::downloads::{decode_base64, safe_file_name, unique_path};
@@ -103,20 +103,51 @@ pub fn drag_files(window: tauri::Window, paths: Vec<String>) -> Result<(), Strin
   let Some(first) = files.first().cloned() else {
     return Err("there is no file to drag".to_string());
   };
+  /*
+    The mouse button must still be down. A file not staged when the drag
+    began is staged first, and a reader can let go while it downloads.
+    AppKit then refuses the drag and returns nothing, and the drag crate
+    takes that as impossible: the app stopped (2026-10-17).
+  */
+  if NSEvent::pressedMouseButtons() & 1 == 0 {
+    log::warn!("dragout: the button was up before {} was ready", first.display());
+    return Err("The file was not ready before you let go. Drag it again.".to_string());
+  }
 
-  drag::start_drag(
-    &window,
-    DragItem::Files(files),
-    Image::Raw(file_icon(&first)?),
-    // Where it landed is Finder's business, and the page has nothing to
-    // change either way: the copy stays until the sweep takes it.
-    |_result, _cursor| {},
-    Options {
-      skip_animatation_on_cancel_or_failure: false,
-      mode: DragMode::Copy,
-    },
-  )
-  .map_err(|e| format!("Couldn't start the drag: {e}"))
+  let icon = file_icon(&first)?;
+  /*
+    AppKit can still refuse the drag, and the drag crate panics on the empty
+    answer. Unwound here, before the panic reaches AppKit's own frames, it is
+    an error the page can show; past them, it stopped the app.
+  */
+  let started = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    drag::start_drag(
+      &window,
+      DragItem::Files(files),
+      Image::Raw(icon),
+      // Where it landed is Finder's business, and the page has nothing to
+      // change either way: the copy stays until the sweep takes it.
+      |_result, _cursor| {},
+      Options {
+        skip_animatation_on_cancel_or_failure: false,
+        mode: DragMode::Copy,
+      },
+    )
+  }));
+  match started {
+    Ok(Ok(())) => {
+      log::info!("dragout: drag of {} started", first.display());
+      Ok(())
+    }
+    Ok(Err(e)) => {
+      log::warn!("dragout: drag of {} not started: {e}", first.display());
+      Err(format!("Couldn't start the drag: {e}"))
+    }
+    Err(_) => {
+      log::warn!("dragout: macOS refused the drag of {}", first.display());
+      Err("macOS did not start the drag. Drag the file again.".to_string())
+    }
+  }
 }
 
 /// What the pointer carries: the icon Finder would show for this file.

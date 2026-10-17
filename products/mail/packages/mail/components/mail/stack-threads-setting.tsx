@@ -1,39 +1,82 @@
 "use client";
 
 /**
- * Settings > Reading: stack the threads from one sender into one row.
+ * Stack the threads from one sender into one row: a switch in the title
+ * bar, left of the settings button.
  *
- * It was a pair of buttons in the title bar ("By thread", "By person"). It
- * is one behaviour, not a second view, and most people set it once, so it
- * is a toggle here, on by default (2026-09-29). The preview shows what it
- * does: three threads from one sender fold into one row, and a sender with
- * one thread does not change. The mail in it is invented.
+ * It was a pair of buttons in the title bar ("By thread", "By person"),
+ * then a toggle in Settings > Reading (2026-09-29). Stacks change the list
+ * more than any setting there, so the switch is back where the list is
+ * looked at, as one control (Ulrik, 2026-10-17). On by default.
+ *
+ * On, the switch is the slate of a chosen folder (--mail-switch-on), not
+ * the accent: "on" here reads as "chosen" in the folder rail.
  */
 
+import { GalleryVerticalEnd } from "lucide-react";
+
 import { useMailViewMode } from "@/components/mail/mail-list-state";
-import { SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
+import { takeGlidePlaces } from "@/lib/mail/stack-glide";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 
-export function StackThreadsSetting() {
+export function StacksSwitch({
+  onDark = false,
+  openKey = null,
+}: {
+  onDark?: boolean;
+  /** The open thread, kept still on screen as the list changes. */
+  openKey?: string | null;
+}) {
   const t = useMailT();
   const [mode, setMode] = useMailViewMode();
   const on = mode === "people";
   return (
-    <div>
-      <SettingsRow
-        label={t("stackThreads")}
-        hint={t("stackThreadsHint")}
-        control={
-          <SettingsToggle
-            checked={on}
-            onChange={(next) => setMode(next ? "people" : "threads")}
-            label={t("stackThreads")}
-          />
-        }
-      />
-      <StackPreview on={on} className="mx-4 mb-3" />
-    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={t("stackThreads")}
+      title={t("stackThreads")}
+      onClick={() => {
+        // Where the rows are now, so they can glide to where they go.
+        takeGlidePlaces(
+          document.querySelector<HTMLElement>("[data-mail-list-scroller]"),
+          !on,
+          {
+            movedAbove: (count) => t("stackMovedAbove", { count }),
+            movedBelow: (count) => t("stackMovedBelow", { count }),
+          },
+          openKey
+        );
+        setMode(on ? "threads" : "people");
+      }}
+      className={cn(
+        // Less on the right: the settings button follows, and the switch's
+        // own end is edge enough.
+        "flex h-7 shrink-0 items-center gap-1.5 rounded-full pl-2.5 pr-1 text-xs font-medium",
+        onDark
+          ? "text-[var(--mail-chrome-muted)] hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)]"
+          : "text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+      )}
+    >
+      <GalleryVerticalEnd className="h-3.5 w-3.5" aria-hidden />
+      {t("stacksSwitch")}
+      <span
+        aria-hidden
+        className={cn(
+          "relative ml-0.5 block h-4 w-7 shrink-0 rounded-full transition-colors",
+          on ? "bg-[var(--mail-switch-on)]" : onDark ? "bg-white/25" : "bg-stone-300"
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-[left]",
+            on ? "left-3.5" : "left-0.5"
+          )}
+        />
+      </span>
+    </button>
   );
 }
 

@@ -13,8 +13,11 @@ import { Search, SquarePen, X } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { cn } from "@/lib/utils";
 import { SyncControl } from "@/components/mail/SyncControl";
+import { StacksSwitch } from "@/components/mail/stack-threads-setting";
+import { threadKey } from "@/lib/mail/thread-copies";
 import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
 import { mailSearchPlaceholder } from "@/components/mail/mail-list-state";
+import { TriageButton } from "@/components/mail/team-layer";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 
 /** The row the window is dragged by: search, sync, pause and the view controls. */
@@ -106,7 +109,6 @@ export function MailTitleBar({
             {t("newEmail")}
           </button>
           <SyncControl m={m} />
-          {layoutMenu}
           <label
             className={cn(
               "mail-titlebar-search",
@@ -170,6 +172,15 @@ export function MailTitleBar({
               </button>
             ) : null}
           </label>
+          {/* The organization's build ranks the inbox from here: it reads
+              the whole mailbox shown, as the search beside it does. */}
+          <TriageButton m={m} />
+          {/* Right of the search: the list's switch, then the settings
+              button at the end of the row (Ulrik, 2026-10-17). Stacks
+              change the list more than anything in Settings, so the switch
+              is out here. */}
+          <StacksSwitch onDark={chromeDark} openKey={m.selected ? threadKey(m.selected) : null} />
+          {layoutMenu}
           {/* Beside the search field, because it is about this mailbox as a
               whole rather than about any list in it — and because a mailbox
               that has stopped fetching has to say so where the eye already

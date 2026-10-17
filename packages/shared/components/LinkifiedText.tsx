@@ -1,17 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { findLinksInText } from "@/lib/linkify-urls";
-
-function linkLabel(url: string): string {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "");
-    return u.pathname !== "/" || u.search ? `${host}/…` : host;
-  } catch {
-    return url.slice(0, 40);
-  }
-}
+import { findLinksInText, linkLabel } from "@/lib/linkify-urls";
 
 const LINK_CLASS =
   "break-all font-medium text-teal-700 underline underline-offset-2 hover:text-teal-900";

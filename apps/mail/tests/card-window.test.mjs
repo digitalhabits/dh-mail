@@ -49,8 +49,13 @@ suite(async () => {
     "filling the window, it is in the middle and over everything",
     full.includes("left-1/2") &&
       full.includes("top-1/2") &&
-      full.includes("z-50"),
+      full.includes("z-[60]"),
     full
+  );
+  check(
+    "a card is over the Reader, which takes the whole window at z-40",
+    normal.includes("z-50") && away.includes("z-50"),
+    normal
   );
   check(
     "as wide as the window allows, up to a readable width",
@@ -84,7 +89,9 @@ suite(async () => {
 
   check(
     "the card put away shows none of what it holds",
-    pane.includes('card.minimised && "hidden"') &&
+    // The pane's card also hides while the reply over the thread is put
+    // away to its bar (composer-minimise).
+    pane.includes('minimiseValue.hideBand && "hidden"') &&
       compose.includes('card.minimised && "hidden"')
   );
   check(

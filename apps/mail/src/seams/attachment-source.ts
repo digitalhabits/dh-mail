@@ -153,10 +153,10 @@ const staged = new Map<string, Promise<string>>();
 /**
  * Read the file and write it where a drag can point at it.
  *
- * Called as the button goes down, not when the drag starts: reading a 20 MB
- * attachment out of Gmail takes long enough that a drag begun afterwards
- * would begin under a pointer that has already arrived somewhere. By
- * `dragstart` the path is usually in hand.
+ * Called when the pointer rests on the file or goes down on it, not when
+ * the drag starts: reading a 20 MB attachment out of Gmail takes long
+ * enough that a drag begun afterwards would begin under a pointer that has
+ * already arrived somewhere. By `dragstart` the path is usually in hand.
  *
  * The promise is kept, so the same file is read once however often it is
  * picked up. A failed read is dropped, so the next attempt tries again.
@@ -207,6 +207,22 @@ export function startAttachmentDrag(
   input: { path: string; filename: string; mimeType: string }
 ): void {
   event.preventDefault();
+  dragAttachmentOut(input);
+}
+
+/**
+ * Drag the staged copy out of the window, as a file.
+ *
+ * Called as soon as the pointer moves with the button down (see
+ * attachmentDragProps), not on the page's `dragstart`. WebKit starts the
+ * page's drag of a button only after the button has been held for a
+ * moment, and what it carried could not be dropped in Finder (Ulrik,
+ * 2026-10-17).
+ */
+export function dragAttachmentOut(input: {
+  path: string;
+  filename: string;
+}): void {
   prepareAttachmentDrag(input);
   const file = staged.get(input.path);
   if (!file) return;
@@ -217,8 +233,13 @@ export function startAttachmentDrag(
       await invoke("drag_files", { paths: [path] });
     })
     .catch((err: unknown) => {
+      // The bridge rejects with the command's own words, as a string.
       toast.error(
-        err instanceof Error ? err.message : "Couldn't drag that file out"
+        err instanceof Error
+          ? err.message
+          : typeof err === "string" && err
+            ? err
+            : "Couldn't drag that file out"
       );
     });
 }

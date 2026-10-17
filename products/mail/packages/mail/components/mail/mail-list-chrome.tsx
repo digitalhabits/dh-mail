@@ -10,6 +10,7 @@
 
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import * as React from "react";
+import { TriageTab } from "@/components/mail/team-layer";
 import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
@@ -530,8 +531,8 @@ export function FilterChips({
                   ? custom.name
                   : mailBuiltinTabLabels(t)[id] ?? id;
                 return (
+                  <React.Fragment key={id}>
                   <SortableMailListTab
-                    key={id}
                     id={id}
                     label={label}
                     icon={tabIcons[id]}
@@ -548,6 +549,10 @@ export function FilterChips({
                     // to it. Pressing it again used to, and now takes it off.
                     onEdit={() => setListEditor(custom ? custom.id : id)}
                   />
+                  {/* The organization's build puts its ranked list here,
+                      right of Other, once there is one. */}
+                  {id === "other" ? <TriageTab m={m} tabClass={viewTabClass} /> : null}
+                  </React.Fragment>
                 );
               })}
               {tab === "sent" ? (
@@ -639,9 +644,12 @@ export function FilterChips({
                     : "text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
                 )}
               >
+                {/* 2px down: centred on the row it sat on the middle of
+                    the capitals, and read as higher than "Other" beside
+                    it, whose letters are mostly lower case (2026-10-17). */}
                 <span
                   className={cn(
-                    "flex h-5 w-5 items-center justify-center rounded",
+                    "flex h-5 w-5 translate-y-0.5 items-center justify-center rounded",
                     listEditor != null
                       ? "border border-teal-600"
                       : "border border-transparent"

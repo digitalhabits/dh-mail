@@ -46,7 +46,13 @@ export function BubbleWidthHandle({
       In the box's own pixels: the stream is zoomed, the pointer is not.
     */
     const fromEdge = box.getBoundingClientRect().width / (zoom || 1);
-    const fromLimit = column.getBoundingClientRect().width / (zoom || 1);
+    /*
+      In the Reader a dragged width is the message's own width (mail.css),
+      so the drag goes from the edge both ways: from the limit, the
+      message jumped out to it at the first move.
+    */
+    const inReader = Boolean(box.closest("[data-thread-full-window]"));
+    const fromLimit = inReader ? fromEdge : column.getBoundingClientRect().width / (zoom || 1);
     let last = fromLimit;
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
@@ -54,13 +60,13 @@ export function BubbleWidthHandle({
       const dx = (ev.clientX - startX) / (zoom || 1);
       const outward = own ? -dx : dx;
       last = Math.max(MIN_BUBBLE_WIDTH, outward >= 0 ? fromLimit + outward : fromEdge + outward);
-      showBubbleWidth(last);
+      showBubbleWidth(last, own ? "left" : "right");
     };
     const onUp = () => {
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
       handle.removeEventListener("pointercancel", onUp);
-      saveBubbleWidth(last);
+      saveBubbleWidth(last, own ? "left" : "right");
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);

@@ -9,7 +9,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
-import { MessageAttachmentChips } from "@/components/mail/MailAttachments";
+import { MessageAttachmentChips, ThreadAttachmentsRollup } from "@/components/mail/MailAttachments";
 import { AttachmentPreviewDialog } from "@/components/mail/attachment-preview";
 
 const pass = (line) => console.log(`PASS  ${line}`);
@@ -90,6 +90,31 @@ async function main() {
     pass("Next and the arrow keys step through the files; Escape closes");
 
     root.unmount();
+
+    // The thread's file list: each row has Preview, Open and Download.
+    document.body.innerHTML = '<div id="r2"></div>';
+    const picked = [];
+    const root2 = createRoot(document.getElementById("r2"));
+    root2.render(
+      React.createElement(ThreadAttachmentsRollup, {
+        account: ACCOUNT,
+        items: FILES.map((attachment) => ({ messageId: "m1", attachment })),
+        onPreview: (_id, file) => picked.push(file.filename),
+      })
+    );
+    await sleep(150);
+    document.querySelector('button[aria-label="3 attachments"]').click();
+    await sleep(200);
+    for (const name of ["notes.txt", "choir-plan.zip", "rehearsal.csv"]) {
+      for (const action of ["Preview", "Open", "Download"]) {
+        assert(document.querySelector(`[aria-label="${action} ${name}"]`), `${action} for ${name}`);
+      }
+    }
+    document.querySelector('[aria-label="Preview rehearsal.csv"]').click();
+    assert.deepEqual(picked, ["rehearsal.csv"], "Preview opens that file");
+    pass("each file in the thread's list offers Preview, Open and Download");
+
+    root2.unmount();
     process.exit(0);
   } catch (err) {
     console.error("the message files walk failed:", err);

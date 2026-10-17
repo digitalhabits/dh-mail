@@ -734,7 +734,9 @@ export function MailBubble({
       <div
         ref={railAnchorRef}
         className={cn(
-          "relative min-w-0",
+          // `mail-bubble-anchor` and `mail-bubble-box`: in the Reader, a
+          // width the reader dragged is the message's width (mail.css).
+          "mail-bubble-anchor relative min-w-0",
           // A message sizes to its words, the way a messaging app does — a
           // three-word reply in a full-width bubble looks like a form. An
           // HTML message does it through its frame, which measures how
@@ -773,7 +775,7 @@ export function MailBubble({
           // shape at all, and it is enough to say who is talking without a
           // tail or a name over every message.
           message.own ? "rounded-br-md" : "rounded-bl-md",
-          "relative",
+          "mail-bubble-box relative",
           "w-fit max-w-full",
           showHtml ? undefined : "px-3 py-2",
           sendingOut &&

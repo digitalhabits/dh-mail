@@ -221,6 +221,18 @@ export function ReadingPaneContent({
             people={viewMode === "people"}
             onArchive={() => void actOnSelection("archive")}
             onDelete={() => void actOnSelection("trash")}
+            onSnooze={(untilIso) => {
+              for (const th of selectedThreadsNow()) void snooze(th, untilIso);
+              clearMultiSelection();
+            }}
+            onCancelSnooze={
+              selectedThreadsNow().some((th) => th.snoozedUntil)
+                ? () => {
+                    for (const th of selectedThreadsNow()) if (th.snoozedUntil) void unsnooze(th);
+                    clearMultiSelection();
+                  }
+                : undefined
+            }
             onDeleteForever={
               askDeleteForever ? () => askDeleteForever(selectedThreadsNow()) : undefined
             }

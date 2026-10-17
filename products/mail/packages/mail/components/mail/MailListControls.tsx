@@ -19,7 +19,6 @@ import { SnoozeOptionsPanel } from "@/components/mail/SnoozeOptionsPanel";
 import { readUsagePingEnabled, writeUsagePingEnabled } from "@/lib/mail/usage-ping";
 import { useShowFolderCounts, writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
-import { StackThreadsSetting } from "@/components/mail/stack-threads-setting";
 import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
 import { DraftsFolderSetting } from "@/components/mail/drafts-folder-setting";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
@@ -450,7 +449,6 @@ export function MailLayoutMenu({
           onDone={close}
         >
           <SettingsGroup>
-            <StackThreadsSetting />
             <SettingsRow
               label={t("readingPane")}
               hint={t("readingPaneHint")}
@@ -530,8 +528,10 @@ export function MailLayoutMenu({
           )}
           onPointerDown={beginNativeWindowDragOnMove}
         >
-          {/* A cog: the sign for settings that people already know. */}
-          <Settings className="h-4 w-4" aria-hidden />
+          {/* A cog: the sign for settings that people already know. A
+              step larger than the row's 14px marks: at the end of the row
+              it is the one control drawn with no word (2026-10-17). */}
+          <Settings className="h-[18px] w-[18px]" aria-hidden />
         </button>
       </PopoverTrigger>
       {/*

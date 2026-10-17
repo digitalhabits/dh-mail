@@ -24,6 +24,7 @@ import { toast } from "@/lib/mail/toast";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { afterMailPaneSlide } from "@/lib/mail/pane-slide";
 import { openLandingMessageId } from "@/lib/mail/open-landing";
+import { hasThreadDraft } from "@/lib/mail/local-drafts";
 import type { MailChatPartSummary } from "@/lib/mail/chat-types";
 import {
   getCachedMailThread,
@@ -1050,6 +1051,13 @@ export function useThreadStream(
     let placed = -1;
     // Read once, at the open: reading the thread marks it read.
     const landOn = openLandingMessageId(thread.messages, newestMessageId);
+    /*
+      A reply waiting in the box (a draft of the reader's, or one triage
+      wrote) is the end of the conversation: the thread opens at the
+      bottom, the newest message just above the draft. Opened on an older
+      unread message, the draft covered what it answers (Ulrik, 2026-10-17).
+    */
+    const toTheEnd = hasThreadDraft(thread.account, thread.threadId);
     const landSelector = `[data-message-id="${landOn.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
 
     /*
@@ -1098,7 +1106,9 @@ export function useThreadStream(
         return;
       }
       const target = el.querySelector<HTMLElement>(landSelector) ?? newest;
-      if (bubbles.length === 1) {
+      if (toTheEnd) {
+        el.scrollTop = el.scrollHeight;
+      } else if (bubbles.length === 1) {
         el.scrollTop = 0;
       } else {
         // The strip above, in screen pixels; the margin is drawn zoomed.

@@ -12,6 +12,8 @@ import * as React from "react";
 import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
 import { useMailT } from "@/lib/mail/i18n";
 import {
+  hideAgainEndsShow,
+  hideAgainLabel,
   hideKey,
   hideStep,
   mailboxHideVerdict,
@@ -252,29 +254,38 @@ export function useMailboxHide({
       const row = state.accounts[key];
       const now = new Date();
       const verdict = mailboxHideVerdict(row, now);
+      /*
+        Shown until its own time or window would have ended, or sooner
+        with "Hide again after" set. A time kept with the hide-again cut
+        stays, so the mailbox hides again when the cut runs out; with no
+        cut it goes, as before.
+      */
+      const ownEnd =
+        verdict.reason === "schedule"
+          ? scheduleWindowEnd(row?.hours, now)
+          : verdict.reason === "until"
+            ? (row?.hiddenUntil ?? null)
+            : null;
+      const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, hideAgainMinutes, now) : null;
+      /*
+        The question names how long, when "Hide again after" is what ends
+        it: "Show … for 15 minutes?" says the mailbox goes again, which
+        "again?" did not (Ulrik, 2026-10-17). When its own time or window
+        ends first, that is when it goes, and the cut says nothing true.
+      */
+      const cutEndsIt = hideAgainEndsShow(ownEnd, hideAgainMinutes, now);
       void (async () => {
         // Early is only early against a time: a mailbox hidden by hand asks nothing.
         if (verdict.hidden && showWords > 0) {
           const ok = await requestUnpauseChallenge(showWords, {
-            title: t("showMailboxTitle", { email }),
+            title: cutEndsIt
+              ? t("showMailboxForTitle", { email, time: hideAgainLabel(hideAgainMinutes, t) })
+              : t("showMailboxTitle", { email }),
             lead: t("showMailboxLead"),
             confirm: t("showMailboxConfirm"),
           });
           if (!ok) return;
         }
-        /*
-          Shown until its own time or window would have ended, or sooner
-          with "Hide again after" set. A time kept with the hide-again cut
-          stays, so the mailbox hides again when the cut runs out; with no
-          cut it goes, as before.
-        */
-        const ownEnd =
-          verdict.reason === "schedule"
-            ? scheduleWindowEnd(row?.hours, now)
-            : verdict.reason === "until"
-              ? (row?.hiddenUntil ?? null)
-              : null;
-        const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, hideAgainMinutes, now) : null;
         patchRow(email, (r) => ({
           ...r,
           hiddenUntil: verdict.reason === "until" && hideAgainMinutes > 0 ? r.hiddenUntil : undefined,

@@ -8,7 +8,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
-import { StackThreadsSetting } from "@/components/mail/stack-threads-setting";
+import { StacksSwitch } from "@/components/mail/stack-threads-setting";
 
 const pass = (line) => console.log(`PASS  ${line}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,7 +29,7 @@ async function main() {
     localStorage.clear();
     document.body.innerHTML = '<div id="r"></div>';
     const root = createRoot(document.getElementById("r"));
-    await act(() => root.render(React.createElement(React.Fragment, null, React.createElement(StackThreadsSetting), React.createElement(List))));
+    await act(() => root.render(React.createElement(React.Fragment, null, React.createElement(StacksSwitch), React.createElement(List))));
     const toggle = () => document.querySelector("[role=switch]");
     const list = () => document.getElementById("list").textContent;
     assert.equal(toggle().getAttribute("aria-checked"), "true");
@@ -40,7 +40,7 @@ async function main() {
     assert.equal(toggle().getAttribute("aria-checked"), "false");
     assert.equal(list(), "threads", "the list follows at once");
     assert.equal(localStorage.getItem("redd-plan-mail-view-mode"), "threads");
-    pass("the toggle turns stacking off for the list at once, and it is kept");
+    pass("the title-bar switch turns stacking off for the list at once, and it is kept");
 
     await act(() => toggle().click());
     assert.equal(list(), "people");

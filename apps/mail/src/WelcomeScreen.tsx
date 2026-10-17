@@ -77,7 +77,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     stacksThreadCount: "{count} threads",
     stacksLibrary: "Library",
     stacksLibrarySubject: "Your books are due",
-    stacksLater: "You can change this later in Settings > Reading.",
+    stacksLater: "You can change this later with the Stacks switch at the top.",
     aroundTitle: "Find your way around",
     hideListTitle: "Hide the mail list",
     hideListBody:
@@ -132,7 +132,7 @@ const COPY: Record<MailLang, Record<string, string>> = {
     stacksThreadCount: "{count} tråde",
     stacksLibrary: "Biblioteket",
     stacksLibrarySubject: "Dine bøger skal afleveres",
-    stacksLater: "Du kan ændre det senere under Indstillinger > Læsning.",
+    stacksLater: "Du kan ændre det senere med Stakke-kontakten øverst.",
     aroundTitle: "Sådan finder du rundt",
     hideListTitle: "Skjul postlisten",
     hideListBody:
@@ -324,17 +324,26 @@ type StackRow = {
 const STACK_TIMES = ["09:12", "08:40", "07:05"];
 const LIBRARY_TIME = "06:30";
 
-/** One side of the stacking choice: its name, a radio dot, and the list it gives. */
+/**
+ * One side of the stacking choice: its name, the Stacks switch as it
+ * stands for this side, and the list it gives.
+ *
+ * The switch, not a radio dot: it is the control the title bar has, so
+ * the reader meets it here first and knows it there (2026-10-17).
+ */
 function StackOption({
   label,
   chosen,
   onChoose,
   rows,
+  switchOn,
 }: {
   label: string;
   chosen: boolean;
   onChoose: () => void;
   rows: StackRow[];
+  /** Which way the title bar's Stacks switch stands for this side. */
+  switchOn: boolean;
 }) {
   // A stack here unfolds as it does in the list: try it before choosing.
   const [unfolded, setUnfolded] = React.useState(false);
@@ -348,7 +357,9 @@ function StackOption({
     >
       <span className="welcome-stack-option-head">
         <span>{label}</span>
-        <span className="welcome-radio" aria-hidden="true" />
+        <span className={"welcome-switch" + (switchOn ? " is-on" : "")} aria-hidden="true">
+          <span className="welcome-switch-knob" />
+        </span>
       </span>
       {/* Rows as the mail list draws them: initials, the sender, "3 threads"
           when stacked, the time, and the subject under them. */}
@@ -481,10 +492,11 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                 <>
                   <h2 className="eula-privacy-title">{t.stacksTitle}</h2>
                   <p className="eula-privacy-lead">{t.stacksLead}</p>
-                  {/* The real setting, Settings > Reading: pick one. */}
+                  {/* The real setting, the title bar's Stacks switch: pick one. */}
                   <div className="welcome-stack-choice" role="radiogroup" aria-label={t.stacksTry}>
                     <StackOption
                       label={t.stacksOff}
+                      switchOn={false}
                       chosen={viewMode === "threads"}
                       onChoose={() => setViewMode("threads")}
                       rows={[
@@ -500,6 +512,7 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                     />
                     <StackOption
                       label={t.stacksOnRecommended}
+                      switchOn
                       chosen={viewMode === "people"}
                       onChoose={() => setViewMode("people")}
                       rows={[

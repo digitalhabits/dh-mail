@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * What a right-click on an address offers: copy it, or write to it.
+ * What a right-click on an address offers: copy it, copy the name that
+ * goes with it, or write to it.
  *
  * The same two things a right-click on a mailto link in a message offers,
  * for the addresses the interface itself shows — the people on a thread's
@@ -38,6 +39,14 @@ export function AddressContextMenu({
   onDismiss: () => void;
 }) {
   const t = useMailT();
+  const name = at.name?.trim();
+  const hasName = Boolean(name) && name !== at.email;
+  const copy = (text: string) => {
+    onDismiss();
+    void copyTextToClipboard(text).then((ok) =>
+      ok ? toast.success(mailSay("copied")) : toast.error(mailSay("couldNotCopy"))
+    );
+  };
   return (
     <MenuShell x={at.x} y={at.y} label={at.email} onDismiss={onDismiss}>
       {/* The address itself first, to be read: the line that was clicked
@@ -46,25 +55,30 @@ export function AddressContextMenu({
         className="max-w-[min(24rem,calc(100vw-1rem))] truncate px-3 pb-1.5 pt-1 text-xs text-stone-500"
         title={at.email}
       >
-        {at.name && at.name !== at.email ? `${at.name} · ${at.email}` : at.email}
+        {hasName ? `${name} · ${at.email}` : at.email}
       </div>
       <div className="mb-1 border-t border-stone-200" />
       <button
         type="button"
         role="menuitem"
         className={MENU_ITEM}
-        onClick={() => {
-          onDismiss();
-          void copyTextToClipboard(at.email).then((ok) =>
-            ok
-              ? toast.success(mailSay("copied"))
-              : toast.error(mailSay("couldNotCopy"))
-          );
-        }}
+        onClick={() => copy(at.email)}
       >
         <Copy className={MENU_ICON} aria-hidden />
         {t("copyAddress")}
       </button>
+      {/* Only when there is a name: a bare address has none to copy. */}
+      {hasName ? (
+        <button
+          type="button"
+          role="menuitem"
+          className={MENU_ITEM}
+          onClick={() => copy(name!)}
+        >
+          <Copy className={MENU_ICON} aria-hidden />
+          {t("copyName")}
+        </button>
+      ) : null}
       <button
         type="button"
         role="menuitem"

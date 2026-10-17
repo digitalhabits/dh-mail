@@ -10,7 +10,16 @@
  */
 
 const KEY = "dh-mail-bubble-width";
+const SIDE_KEY = "dh-mail-bubble-grow";
 const VAR = "--mail-bubble-user-width";
+/**
+ * Which way the Reader's column grows (thread-full-window in mail.css):
+ * toward the edge that was dragged. One's own message is dragged by its
+ * left edge, and the column grew to the right, so the edge did not follow
+ * the pointer (Ulrik, 2026-10-17).
+ */
+const SIDE_ATTR = "data-mail-bubble-grow";
+export type BubbleGrowSide = "left" | "right";
 /** Narrower than this, a line of mail is a few words. */
 export const MIN_BUBBLE_WIDTH = 280;
 
@@ -23,24 +32,42 @@ export function readBubbleWidth(): number | null {
   }
 }
 
+function readGrowSide(): BubbleGrowSide {
+  try {
+    return window.localStorage.getItem(SIDE_KEY) === "left" ? "left" : "right";
+  } catch {
+    return "right";
+  }
+}
+
 /** Put the width on the page, without keeping it: for the drag as it goes. */
-export function showBubbleWidth(px: number | null): void {
+export function showBubbleWidth(px: number | null, side: BubbleGrowSide = "right"): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  if (px == null) root.style.removeProperty(VAR);
-  else root.style.setProperty(VAR, `${Math.round(Math.max(MIN_BUBBLE_WIDTH, px))}px`);
+  if (px == null) {
+    root.style.removeProperty(VAR);
+    root.removeAttribute(SIDE_ATTR);
+    return;
+  }
+  root.style.setProperty(VAR, `${Math.round(Math.max(MIN_BUBBLE_WIDTH, px))}px`);
+  root.setAttribute(SIDE_ATTR, side);
 }
 
 /** Keep the width, and show it. Null goes back to the default. */
-export function saveBubbleWidth(px: number | null): void {
+export function saveBubbleWidth(px: number | null, side: BubbleGrowSide = "right"): void {
   const kept = px == null ? null : Math.round(Math.max(MIN_BUBBLE_WIDTH, px));
   try {
-    if (kept == null) window.localStorage.removeItem(KEY);
-    else window.localStorage.setItem(KEY, String(kept));
+    if (kept == null) {
+      window.localStorage.removeItem(KEY);
+      window.localStorage.removeItem(SIDE_KEY);
+    } else {
+      window.localStorage.setItem(KEY, String(kept));
+      window.localStorage.setItem(SIDE_KEY, side);
+    }
   } catch {
     /* not kept: it holds until the window closes */
   }
-  showBubbleWidth(kept);
+  showBubbleWidth(kept, side);
 }
 
 /** The kept width, on the page. Once, when the mail first draws. */
@@ -48,5 +75,5 @@ let applied = false;
 export function applyStoredBubbleWidth(): void {
   if (applied || typeof window === "undefined") return;
   applied = true;
-  showBubbleWidth(readBubbleWidth());
+  showBubbleWidth(readBubbleWidth(), readGrowSide());
 }

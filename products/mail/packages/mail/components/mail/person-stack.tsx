@@ -36,6 +36,9 @@ export function StackCount({
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <span
+      // Shown only once the threads have gone under it, when Stacks is
+      // switched on (lib/mail/stack-glide).
+      data-stack-count=""
       className={cn(
         // The chosen mailbox tab's fill and words: clear, and the one
         // thing that says this row is several threads.
