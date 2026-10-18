@@ -574,6 +574,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   /* A mailbox's hours: shown (the eye) and new mail arriving (Sync),
      in their row icons, the week's bars and its key. */
   --mail-shown-tile: #d3ebe6;
+  /* The hours editor (2026-10-18): a softer green on warm greys. */
+  --mail-hours-accent: #457b70;
+  --mail-hours-accent-hover: #3a685f;
+  --mail-hours-track: #eeece7;
+  --mail-hours-card: #f7f5f0;
   --mail-shown-stroke: #2f7f73;
   /* The green and white of the app's main buttons (Next, Send). */
   --mail-fetch-tile: var(--mail-accent);
@@ -725,6 +730,10 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-segment-track: #18222e;
   --mail-segment-track-strong: #0f1822;
   --mail-shown-tile: #2b4b55;
+  --mail-hours-accent: #5f9a8e;
+  --mail-hours-accent-hover: #73ab9f;
+  --mail-hours-track: rgb(255 255 255 / 0.07);
+  --mail-hours-card: rgb(255 255 255 / 0.04);
   --mail-shown-stroke: #7fd1c4;
   /* The green and white of the app's main buttons (Next, Send). */
   --mail-fetch-tile: var(--mail-accent);

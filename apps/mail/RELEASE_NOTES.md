@@ -1,19 +1,16 @@
 ## What is new
 
-**Send later for Gmail and Exchange**
-- **Send later now works for Gmail and Exchange,** as it does for Outlook. The message waits as a draft on your mail server, and this computer sends it at that time. It is sent only if this computer is on and Mail is open. If not, it waits in Drafts and nothing is lost.
-- **A message that is more than 30 minutes late is not sent by itself.** Mail shows it as Not sent, and you choose Try again or Keep as draft.
-- **Quit asks first** when this computer has messages to send later.
+**Hours for a mailbox and for new mail**
+- **See your week.** The hours editor shows a chart of the week, a row for each day, with the hours a change adds drawn in stripes.
+- **Suggestions beside the hours.** Twice a day, Work hours, Quiet nights, and the hours of your other mailboxes, each with the mailbox's logo. Use puts them in place of your hours.
+- **One way to pick a time.** Send later, Snooze and the hours use the same calendar and the same time box. Type a time, or pick the hour and the minutes from a list.
+- **A locked mailbox says so.** While a mailbox is hidden with words to type, its hours show Locked. A change that shows it at more times waits for Unlock to save, and asks for the words. A change to fewer times is saved at once.
+- The friction settings say once how a schedule can change, and "Hide again after" is now "Automatically hide again after".
+- The hours panels scroll when they are taller than the window, and stay open when you switch to another app.
 
-**Scheduled messages**
-- **Scheduled messages are at the top of the list,** under Scheduled, from the moment you press Send.
-- **Click a scheduled message to see it,** with Send now, Change time, Edit and Cancel.
-- **Change time** works for Gmail, Exchange and Outlook.
-- **Edit keeps the original until you send the new one.** If you delete the edit, the original is still sent at its time.
-- **Pick a time first.** A time in the Send later menu goes on the Send button ("Send at 17:20"). Nothing is sent until you press it.
-- **Undo** after Send later, as after any send.
+**Updates**
+- **What's new.** When a new version is ready, What's new shows its changes, with a link to all the release notes.
 
 **Other**
-- **Check for Updates** is in the app menu.
-- An Exchange mailbox's other address now counts as you in a thread's heading.
-- The words still to type, when you show a hidden mailbox early, are easier to read.
+- In the welcome tour, Next stays in the same place on each step. The Stacks step shows the Stacks icon and name beside the switch.
+- When you delete a Gmail message while Trash is open, Mail finds it at once.

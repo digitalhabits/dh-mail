@@ -42,7 +42,7 @@ function Friction({ lock }) {
   return React.createElement(FrictionPanel, { words: count, lock, onChange: setCount, onBack: () => {} });
 }
 
-const rows = () => [...document.querySelectorAll("div.rounded-lg.bg-stone-50")];
+const rows = () => [...document.querySelectorAll("div.rounded-lg.p-2\\.5")];
 const rowCount = () => rows().length;
 const dayIn = (row, label) => rows()[row].querySelector(`button[aria-label="${label}"]`);
 // 5 Oct 2026 is a Monday.
@@ -69,24 +69,29 @@ async function main() {
     assert(rowCount() === 3, `three rules: ${rowCount()}`);
     await act(() => dayIn(2, "Mon").click());
     assert(!arrives(MONDAY_10), "Monday 10:00 is still quiet");
-    assert(challengeWords().split(" ").length === 2, `two words asked: "${challengeWords()}"`);
-    pass("more hours for new mail wait for the words (a tester's case)");
+    assert(byText("Unlock to save"), "the change waits at the foot");
+    assert(/fetches new mail at times it was paused before/.test(text()), `it says why: ${text()}`);
+    assert(!challengeWords(), "no words until Unlock to save");
+    pass("more hours for new mail wait at the foot, with why (a tester's case)");
 
+    await act(() => byText("Cancel").click());
+    assert(!byText("Unlock to save") && !dayIn(2, "Mon").getAttribute("aria-pressed").includes("true"), "Cancel puts the hours back");
     await act(() => dayIn(2, "Sat").click());
     assert(!arrives(SATURDAY_NOON), "Saturday noon is quiet at once");
-    assert(!document.querySelector("textarea"), "the Monday change waiting is dropped");
-    pass("fewer hours go through at once, and drop the change waiting");
+    assert(!byText("Unlock to save"), "nothing waits");
+    pass("Cancel drops the change; fewer hours go through at once");
 
     await act(() => dayIn(2, "Mon").click());
-    assert(challengeWords(), "Monday asks again");
-
+    await act(() => byText("Unlock to save").click());
+    assert(challengeWords().split(" ").length === 2, `two words asked: "${challengeWords()}"`);
     await act(() => typeInto(document.querySelector("textarea"), "wrong words"));
-    assert(byText("Make the change").disabled, "wrong words do not unlock");
+    assert(byText("Save").disabled, "wrong words do not unlock");
     await act(() => typeInto(document.querySelector("textarea"), challengeWords()));
-    await act(() => byText("Make the change").click());
+    await act(() => byText("Save").click());
     assert(arrives(MONDAY_10), "Monday 10:00 now has new mail");
     assert(!arrives(SATURDAY_NOON), "Saturday noon is still quiet");
-    pass("typed right, the change waiting is made, and Saturday stays quiet");
+    assert(!document.body.textContent.includes("Locked"), "the lock chip goes");
+    pass("typed right, the change waiting is saved, and Saturday stays quiet");
 
     await act(() => dayIn(2, "Tue").click());
     assert(arrives(TUESDAY_10), "Tuesday 10:00 has new mail at once");

@@ -16,50 +16,15 @@
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { useSendLaterHolder } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
-import { Clock } from "lucide-react";
-import { toast } from "@/lib/mail/toast";
+import { ChevronDown } from "lucide-react";
+import { CalendarTimePicker, MenuHeading, PresetRow, pickedLabel } from "@/components/mail/date-time-pick";
 
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { snoozeOptions } from "@/components/mail/SnoozeMenu";
-import { mailSay, useMailT } from "@/lib/mail/i18n";
+import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 
-/** `datetime-local` wants local wall-clock, not the ISO string we send. */
-function localInputValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate()
-  )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/**
- * What the box starts on: tomorrow morning.
- *
- * It started empty, which the browser fills in with today — a date that is
- * behind by the time anybody reads it, on a control whose whole subject is
- * the future. Tomorrow at eight is both a real answer and the commonest one.
- */
-function defaultCustomValue(): string {
-  const at = new Date();
-  at.setDate(at.getDate() + 1);
-  at.setHours(8, 0, 0, 0);
-  return localInputValue(at);
-}
-
-/**
- * Now, to the next whole minute.
- *
- * Rounded up rather than down: a time that has just passed is refused, and a
- * button that fills the box with something the next click rejects is worse
- * than no button.
- */
-function nowValue(): string {
-  const at = new Date();
-  at.setSeconds(0, 0);
-  at.setMinutes(at.getMinutes() + 1);
-  return localInputValue(at);
-}
 
 export type SendMenuExtra = {
   id: string;
@@ -121,49 +86,42 @@ export function SendLaterMenu({
   const t = useMailT();
   const holder = useSendLaterHolder(account);
   const [open, setOpen] = React.useState(false);
-  const [custom, setCustom] = React.useState(defaultCustomValue);
+  // "Pick date and time…" opens the calendar inside this card.
+  const [picking, setPicking] = React.useState(false);
   const extraItems = extras?.filter(Boolean) ?? [];
-  // Recomputed on open, or the offer goes stale overnight.
-  React.useEffect(() => {
-    if (open) setCustom(defaultCustomValue());
-  }, [open]);
 
   // The same times the snooze menu offers, recomputed each time this opens.
   // `open` is in the list for that purpose, although the body does not read it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = React.useMemo(() => snoozeOptions(), [open]);
 
-  // With `onArm`, every time — a quick one or one Set — goes on the Send
-  // button first ("Send at …"), and nothing is sent until it is pressed.
+  // With `onArm`, every time goes on the Send button first ("Send at …"),
+  // and nothing is sent until it is pressed. Without (Change time), at once.
   const choose = (iso: string) => {
     setOpen(false);
-    setCustom(defaultCustomValue());
+    setPicking(false);
     if (onArm) onArm(iso);
     else onPick?.(iso);
   };
-
-  const submitCustom = () => {
-    const at = new Date(custom);
-    if (!Number.isFinite(at.getTime())) {
-      toast.error(mailSay("pickADateAndTime"));
-      return;
-    }
-    if (at.getTime() <= Date.now()) {
-      toast.error(mailSay("pickTimeNotPassed"));
-      return;
-    }
-    choose(at.toISOString());
-  };
+  /** The calendar opens on today, an hour from now: the first time offered. */
+  const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setPicking(false);
+      }}
+    >
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <MailPopoverContent align="start" className="w-72 rounded-xl p-1.5">
+      <MailPopoverContent
+        align="start"
+        className="max-h-[var(--radix-popover-content-available-height)] w-72 overflow-y-auto rounded-xl p-1.5"
+      >
         {schedule && onPick ? (
           <>
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">
-              {t("sendLater")}
-            </p>
+            <MenuHeading>{t("sendLater")}</MenuHeading>
             {armed && onArm ? (
               <button
                 type="button"
@@ -177,52 +135,33 @@ export function SendLaterMenu({
               </button>
             ) : null}
             {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
-                onClick={() => choose(option.iso)}
-              >
-                <span className="font-semibold text-stone-800">
-                  {option.label}
-                </span>
-                <span className="text-sm tabular-nums text-stone-400">
-                  {option.detail}
-                </span>
-              </button>
+              <PresetRow key={option.id} label={option.label} detail={option.detail} onClick={() => choose(option.iso)} />
             ))}
-            <div className="flex items-center gap-2 px-2.5 py-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-stone-200 pl-2 pr-1">
-                <input
-                  type="datetime-local"
-                  className="min-w-0 flex-1 bg-transparent py-1 text-sm text-stone-800 outline-none"
-                  value={custom}
-                  min={localInputValue(new Date())}
-                  onChange={(e) => setCustom(e.target.value)}
+            <PresetRow
+              label={t("pickDateAndTime")}
+              onClick={() => setPicking((v) => !v)}
+              trailing={
+                <ChevronDown
+                  className={cn("h-4 w-4 shrink-0 text-stone-400 transition-transform", picking && "rotate-180")}
+                  aria-hidden
                 />
-                <button
-                  type="button"
-                  title={t("now")}
-                  aria-label={t("setToNow")}
-                  className="shrink-0 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                  onClick={() => setCustom(nowValue())}
-                >
-                  <Clock className="h-3.5 w-3.5" aria-hidden />
-                </button>
+              }
+            />
+            {picking ? (
+              <div className="pt-1">
+                <CalendarTimePicker
+                  initial={inAnHour()}
+                  action={(at) =>
+                    t(onArm ? "useWhen" : "changeToWhen", { when: pickedLabel(at, t("todayLower")) })
+                  }
+                  onPick={(at) => choose(at.toISOString())}
+                />
               </div>
-              <button
-                type="button"
-                className="shrink-0 rounded-lg bg-teal-600 px-2.5 py-1 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
-                disabled={!custom}
-                onClick={submitCustom}
-              >
-                {t("set")}
-              </button>
-            </div>
+            ) : null}
             {/* The one thing a reader has to be able to trust about this.
                 Said in the same words as the toast that follows, and not
                 "this Mac": the standalone app runs on Windows too. */}
-            <p className="px-2.5 pb-1.5 pt-0.5 text-[11px] leading-snug text-stone-400">
+            <p className="px-2.5 pb-1.5 pt-1 text-[11px] leading-snug text-stone-400">
               {t(holder === "computer" ? "draftSendLaterHint" : "outlookHoldsIt")}
             </p>
           </>

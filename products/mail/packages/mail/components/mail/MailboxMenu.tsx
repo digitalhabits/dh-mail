@@ -132,7 +132,8 @@ export function MailboxMenu({
 
   if (panel === "schedule" && hide) {
     return (
-      <PointerMenu x={x} y={y} onDismiss={onDismiss} className="w-[22rem] py-0">
+      // Its own key: a new menu measures again, wider than the others.
+      <PointerMenu key="schedule" x={x} y={y} onDismiss={onDismiss} className="w-[44rem] max-w-[calc(100vw-16px)] py-0">
         <QuietHoursPanel
           hiding
           title={t("hoursShownTitle")}
@@ -141,7 +142,7 @@ export function MailboxMenu({
           account={null}
           accountLabel={null}
           followAll={false}
-          what={t("hideScheduleWhat")}
+          what={t("hideScheduleWhatFor", { email })}
           onBack={() => setPanel(scheduleFrom)}
           onChange={(windows) => hide.setHours(email, windows)}
           onDone={onDismiss}
@@ -164,6 +165,7 @@ export function MailboxMenu({
             options: HIDE_AGAIN_OPTIONS,
             onChange: hide.setHideAgainMinutes,
           }}
+          rule={t("hideRuleText")}
         />
       </PointerMenu>
     );

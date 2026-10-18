@@ -9,7 +9,11 @@ import { cn } from "@/lib/utils";
 /**
  * A menu at the pointer, on <body>: the account tabs' menus and a message's
  * right-click menu. It moves itself inside the window, and goes on a press
- * outside, Escape, a scroll or the window losing focus.
+ * outside, Escape, a scroll, or focus moving into a message.
+ *
+ * Not when the window loses focus to another app: a reader who looks
+ * something up elsewhere comes back to the menu as they left it, with a
+ * half-made change in the hours editor still there (2026-10-18).
  *
  * A press inside a message counts as outside too. The message is drawn in
  * a frame of its own, whose presses never reach this window, and a menu
@@ -39,7 +43,9 @@ export function PointerMenu({
     const box = el.getBoundingClientRect();
     setPlaced({
       left: Math.min(x, window.innerWidth - box.width - 8),
-      top: Math.min(y, window.innerHeight - box.height - 8),
+      // Never above the window: a panel taller than it starts at the top
+      // and scrolls inside (the class below caps its height).
+      top: Math.max(8, Math.min(y, window.innerHeight - box.height - 8)),
     });
   }, [x, y]);
 
@@ -59,7 +65,17 @@ export function PointerMenu({
       onDismiss();
     };
     window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("blur", onDismiss);
+    // A blur that lands in a message frame is a press in the message; one
+    // that leaves for another app is not. Which is known once it is over.
+    const onBlur = () => {
+      window.setTimeout(() => {
+        const focused = document.activeElement;
+        if (!(focused instanceof HTMLIFrameElement)) return;
+        if (ref.current?.contains(focused)) return;
+        onDismiss();
+      }, 0);
+    };
+    window.addEventListener("blur", onBlur);
     // The message frames (same origin), as they are at the open.
     const frameDocs: Document[] = [];
     for (const frame of Array.from(document.querySelectorAll("iframe"))) {
@@ -82,7 +98,7 @@ export function PointerMenu({
       window.removeEventListener("mousedown", onDown, true);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("blur", onDismiss);
+      window.removeEventListener("blur", onBlur);
     };
   }, [onDismiss]);
 
@@ -106,7 +122,7 @@ export function PointerMenu({
       */
       style={{ left: placed.left, top: placed.top, pointerEvents: "auto" }}
       data-theme={colorMode}
-      className={cn("mail-shell mail-popover fixed z-[70] w-max rounded-lg border border-stone-200 bg-white py-1 shadow-lg", className)}
+      className={cn("mail-shell mail-popover fixed z-[70] max-h-[calc(100vh-16px)] w-max overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg", className)}
     >
       {children}
     </div>,

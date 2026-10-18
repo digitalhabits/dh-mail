@@ -22,7 +22,7 @@ const REFERENCE_MONDAY = { year: 2026, month: 0, day: 5 };
 const MINUTES_PER_DAY = 24 * 60;
 
 /** True when `windows` cover this minute of the week (0 is Monday 00:00). */
-function covers(windows: MailQuietWindow[], minuteOfWeek: number): boolean {
+export function covers(windows: MailQuietWindow[], minuteOfWeek: number): boolean {
   const day = Math.floor(minuteOfWeek / MINUTES_PER_DAY);
   const minute = minuteOfWeek % MINUTES_PER_DAY;
   const at = new Date(

@@ -7,9 +7,14 @@
  * hiding a mailbox.
  */
 
+import { TIME_FIELD_CLASS, TimeField } from "@/components/mail/date-time-pick";
 import { hideAgainLabel } from "@/lib/mail/mailbox-hide";
 import * as React from "react";
-import { ChevronLeft, Plus, X } from "lucide-react";
+import { ChevronLeft, Lock, X } from "lucide-react";
+import { AccountMark } from "@/components/mail/AccountMark";
+import { useAccountMarks } from "@/lib/mail/account-mark";
+import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
+import { LockedChip, LockedSaveBar, RuleText, UnlockBox, WeekChart } from "@/components/mail/hours-editor-parts";
 
 import {
   SCHEDULE_DAY_LABELS,
@@ -22,28 +27,19 @@ import {
   daysPhrase,
   isAllDay,
   isOvernight,
-  keptCovers,
   keptFromOnHours,
   onHoursFromKept,
-  onRulePhrase,
   sameWeek,
   type OnHoursWords,
 } from "@/lib/mail/account-rhythm";
 import { MenuSelect } from "@/components/mail/menu-select";
-import {
-  addQuietSuggestion,
-  quietHoursFromElsewhere,
-  readPauseState,
-  MAIL_QUIET_SUGGESTIONS,
-  type MailQuietWindow,
-} from "@/lib/mail/quiet-hours";
+import { readPauseState, type MailQuietWindow } from "@/lib/mail/quiet-hours";
 import { cn } from "@/lib/utils";
 import { readHideState } from "@/lib/mail/mailbox-hide";
 import { MAIL_PAUSE_KEY } from "@/components/mail/use-mail-pause";
 import { MAILBOX_HIDE_KEY } from "@/components/mail/use-mailbox-hide";
-import { MAX_UNPAUSE_WORDS, randomUnpauseWords, unpauseMinutes } from "@/lib/mail/unpause-friction";
+import { MAX_UNPAUSE_WORDS, unpauseMinutes } from "@/lib/mail/unpause-friction";
 import { frictionLowered, scheduleLoosened, type PauseLock } from "@/lib/mail/pause-lock";
-import { ChallengeTyping } from "@/components/mail/UnpauseChallenge";
 
 /**
  * The standing hours: a card each, days as circles, and a new one folded
@@ -52,6 +48,10 @@ import { ChallengeTyping } from "@/components/mail/UnpauseChallenge";
  * Saved as they are edited rather than behind a button — every change here
  * is one press of a circle or one time, and a panel that hoards them until
  * Done is a panel that loses them when it is dismissed.
+ *
+ * Except while a lock is on: a change that adds hours waits at the foot,
+ * with how much it adds, for Unlock to save (2026-10-18). The week chart
+ * shows those hours hatched until then.
  */
 export function QuietHoursPanel({
   hiding = false,
@@ -112,21 +112,39 @@ export function QuietHoursPanel({
     return on.length ? on : [ALWAYS_RULE];
   };
   const [rows, setRows] = React.useState<MailQuietWindow[]>(() => rowsFor(windows));
+  /** Hours that add time while the lock is on: kept here until Unlock to save. */
+  const [waiting, setWaiting] = React.useState<MailQuietWindow[] | null>(null);
   const keptRef = React.useRef(windows);
+  // The hours as last seen from outside: a fresh array of the same hours is
+  // not a change, and must not throw away a change waiting for the words.
+  const seenRef = React.useRef(windows);
   React.useEffect(() => {
-    if (!sameWeek(windows, keptRef.current)) setRows(rowsFor(windows));
+    if (sameWeek(windows, seenRef.current)) return;
+    seenRef.current = windows;
+    if (!sameWeek(windows, keptRef.current)) {
+      setRows(rowsFor(windows));
+      setWaiting(null);
+    }
     keptRef.current = windows;
   }, [windows]);
 
-  /** Every change goes through here: a looser one waits for the words. */
-  const keep = (nextKept: MailQuietWindow[], nextRows: MailQuietWindow[]) =>
-    locked.attempt(scheduleLoosened(windows, nextKept), () => {
-      keptRef.current = nextKept;
-      setRows(nextRows.length ? nextRows : [ALWAYS_RULE]);
-      onChange(nextKept);
-    });
+  /** Every change goes through here: one that adds hours waits for the words. */
+  const keep = (nextKept: MailQuietWindow[], nextRows: MailQuietWindow[]) => {
+    keptRef.current = nextKept;
+    setRows(nextRows.length ? nextRows : [ALWAYS_RULE]);
+    if (locked.active && scheduleLoosened(windows, nextKept)) {
+      setWaiting(nextKept);
+      return;
+    }
+    setWaiting(null);
+    onChange(nextKept);
+  };
   const keepRows = (nextRows: MailQuietWindow[]) => keep(keptFromOnHours(nextRows), nextRows);
-  const keepKept = (nextKept: MailQuietWindow[]) => keep(nextKept, rowsFor(nextKept));
+  const cancelWaiting = () => {
+    keptRef.current = windows;
+    setRows(rowsFor(windows));
+    setWaiting(null);
+  };
 
   const toggleFollowAll = onFollowAll
     ? (follow: boolean) =>
@@ -138,22 +156,56 @@ export function QuietHoursPanel({
           () => onFollowAll(follow)
         )
     : undefined;
-  const [adding, setAdding] = React.useState<MailQuietWindow | null>(null);
-  const suggestions = MAIL_QUIET_SUGGESTIONS.filter((suggestion) => !keptCovers(windows, suggestion.windows));
   // Hours set for another mailbox, for All, or for hiding: offered here too.
-  const elsewhere = React.useMemo(() => quietHoursFromElsewhere(storedQuietHours(), windows), [windows]);
+  // Read again when the hours change: one saved here is no longer "elsewhere".
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const elsewhere = React.useMemo(() => storedSchedules(t), [windows, t]);
+  // A mailbox's hours carry its mark, as its tab does: "Same as vera" is
+  // two mailboxes for someone with vera@ at two places.
+  const marks = useAccountMarks();
+  const isOutlookAccount = useIsOutlookAccount();
+  const markOf = (email: string) => (
+    <AccountMark
+      mark={marks[email.trim().toLowerCase()]}
+      provider={mailProviderFor(email, isOutlookAccount)}
+      className="h-3.5 w-3.5"
+    />
+  );
   /** Only the one rule that means always: nothing to take away. */
   const alwaysOnly = rows.length === 1 && isAllDay(rows[0]) && rows[0].days.length === 7;
-  const lineKey = hiding ? "hoursShownLine" : "hoursNewMailLine";
+  const ownHours = !(followAll && account);
 
   const patch = (index: number, part: Partial<MailQuietWindow>) =>
     keepRows(rows.map((window, i) => (i === index ? { ...window, ...part } : window)));
-  const note = (window: MailQuietWindow) =>
-    isAllDay(window) ? words.allDay : isOvernight(window) ? words.nextDay : "";
+  /** One rule in the panel's words: "07:00 – 18:00 · weekdays", "18:00 – 07:00 +1 day · weekdays". */
+  const rulePhrase = (window: MailQuietWindow) =>
+    `${isAllDay(window) ? words.allDay.toLocaleLowerCase() : `${window.start} – ${window.end}${isOvernight(window) ? ` ${t("hoursPlusDay")}` : ""}`} · ${daysPhrase(window.days, words, SCHEDULE_DAY_LABELS)}`;
+  /**
+   * What Use offers: the suggestions, then hours set elsewhere, named by
+   * where. Use puts them in place of the hours there are. Never the hours
+   * standing now, nor one twice. One that adds time while the lock is on
+   * carries the lock.
+   */
+  const offers = (() => {
+    const seen = new Set<string>();
+    return [
+      ...ON_SUGGESTIONS.map((s) => ({ key: s.id, name: t(s.name), email: null as string | null, rules: s.rules })),
+      // Not the hours saved here: they are this setting's own, not elsewhere.
+      ...elsewhere
+        .filter((source) => !sameWeek(source.kept, windows))
+        .map((source, i) => ({ key: `elsewhere-${i}`, name: source.name, email: source.email, rules: rowsFor(source.kept) })),
+    ].flatMap((offer) => {
+      const id = JSON.stringify(keptFromOnHours(offer.rules));
+      const nextKept = keptFromOnHours(offer.rules);
+      if (seen.has(id) || sameWeek(nextKept, keptFromOnHours(rows))) return [];
+      seen.add(id);
+      return [{ ...offer, locks: locked.active && scheduleLoosened(windows, nextKept) }];
+    });
+  })();
 
   return (
     <div className="p-3">
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 border-b border-stone-100 pb-2">
         <button
           type="button"
           aria-label={t("back")}
@@ -165,190 +217,226 @@ export function QuietHoursPanel({
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
           {title ?? t(hiding ? "hoursShownTitle" : "hoursNewMailTitle")}
         </p>
+        {hiding ? null : (
+          <span className="min-w-0 truncate text-xs text-stone-400">{accountLabel ?? t("hoursAllMailboxes")}</span>
+        )}
+        {locked.active ? <LockedChip /> : null}
       </div>
       {tabs ? <div className="mt-2">{tabs}</div> : null}
-      <p className="mt-2 border-t border-stone-100 pt-2 text-xs text-stone-600">
-        {what ?? t(hiding ? "hideScheduleWhat" : "quietHoursWhat")}
-      </p>
-      {locked.box}
-      {account && toggleFollowAll ? (
-        <label className="mt-2 flex items-center gap-2 text-xs text-stone-700">
-          <input
-            type="checkbox"
-            checked={followAll}
-            onChange={(e) => toggleFollowAll(e.target.checked)}
-            className="rounded border-stone-300 text-teal-700 focus:ring-teal-600"
-          />
-          {t("quietHoursFollowAll")}
-        </label>
-      ) : null}
 
-      <div className="mt-2 flex flex-col gap-2">
-        {followAll && account ? (
-          <p className="text-xs text-stone-500">{t("quietHoursUsesAll")}</p>
-        ) : null}
-        {followAll && account
-          ? null
-          : rows.map((window, index) => (
-          <div key={index} className="rounded-lg bg-stone-50 p-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="time"
-                aria-label={t("rhythmFrom")}
-                value={window.start}
-                onChange={(e) => patch(index, { start: e.target.value })}
-                className={quietTimeClass}
+      {/* The week and its hours on the left, the suggestions in a rail on
+          the right: one above the other made the panel taller than the
+          window (2026-10-18). */}
+      <div className={cn("mt-3 grid gap-x-9 gap-y-5", ownHours && offers.length && "sm:grid-cols-[minmax(0,1fr)_14rem]")}>
+        <div className="min-w-0">
+          {ownHours ? (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">{t("hoursYourWeek")}</p>
+              <WeekChart
+                saved={windows}
+                draft={waiting ?? windows}
+                onLabel={t(hiding ? "hoursLegendShown" : "hoursLegendNewMail")}
               />
-              <span className="text-stone-400">–</span>
+            </>
+          ) : null}
+          <p className="mt-2 text-xs leading-relaxed text-stone-600">
+            {what ?? t(hiding ? "hideScheduleWhat" : "quietHoursWhat")}
+          </p>
+          {locked.box}
+          {account && toggleFollowAll ? (
+            <label className="mt-2 flex items-center gap-2 text-xs text-stone-700">
               <input
-                type="time"
-                aria-label={t("rhythmTo")}
-                value={window.end}
-                onChange={(e) => patch(index, { end: e.target.value })}
-                className={quietTimeClass}
+                type="checkbox"
+                checked={followAll}
+                onChange={(e) => toggleFollowAll(e.target.checked)}
+                className="rounded border-stone-300 text-teal-700 focus:ring-teal-600"
               />
-              <span className="min-w-0 flex-1 truncate text-xs text-stone-500">{note(window)}</span>
-              {alwaysOnly ? null : (
+              {t("quietHoursFollowAll")}
+            </label>
+          ) : null}
+
+          <div className="mt-2 flex flex-col gap-2">
+            {ownHours ? null : <p className="text-xs text-stone-500">{t("quietHoursUsesAll")}</p>}
+            {ownHours ? rows.map((window, index) => (
+              <div key={index} className="rounded-lg bg-[var(--mail-hours-card)] p-2.5">
+                <div className="flex items-center gap-2">
+                  <TimeField
+                    label={t("rhythmFrom")}
+                    value={window.start}
+                    onChange={(start) => patch(index, { start })}
+                    className={isAllDay(window) ? "opacity-40" : undefined}
+                  />
+                  <span className="text-stone-400">–</span>
+                  <TimeField
+                    label={t("rhythmTo")}
+                    value={window.end}
+                    onChange={(end) => patch(index, { end })}
+                    className={isAllDay(window) ? "opacity-40" : undefined}
+                  />
+                  <span className="min-w-0 flex-1" />
+                  {/* All day as a switch, not 00:00 – 00:00 (2026-10-18). Off
+                      again goes back to the working day. */}
+                  <SmallSwitch
+                    label={t("hoursAllDay")}
+                    on={isAllDay(window)}
+                    onChange={(on) => patch(index, on ? { start: "00:00", end: "00:00" } : { start: "08:00", end: "17:00" })}
+                  />
+                  {alwaysOnly || rows.length < 2 ? null : (
+                    <button
+                      type="button"
+                      aria-label={t("rhythmRemoveHours")}
+                      title={t("rhythmRemoveHours")}
+                      className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
+                      onClick={() => keepRows(rows.filter((_, i) => i !== index))}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <DayCircles days={window.days} onToggle={(day) => patch(index, { days: toggleDay(window.days, day) })} />
+              </div>
+            )) : null}
+
+            {ownHours ? (
+              <button
+                type="button"
+                className="self-start px-1 text-xs font-semibold text-[var(--mail-hours-accent)] hover:text-[var(--mail-hours-accent-hover)]"
+                onClick={() => keepRows(alwaysOnly ? [WORKING_DAY] : [...rows, WORKING_DAY])}
+              >
+                {t("addMoreHours")}
+              </button>
+            ) : null}
+          </div>
+
+            {waiting && lock ? (
+              <LockedSaveBar
+                words={lock.words}
+                hiding={hiding}
+                onCancel={cancelWaiting}
+                onSave={() => {
+                  locked.unlock();
+                  setWaiting(null);
+                  onChange(waiting);
+                }}
+              />
+            ) : (
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-100 pt-3">
                 <button
                   type="button"
-                  aria-label={t("rhythmRemoveHours")}
-                  title={t("rhythmRemoveHours")}
-                  className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
-                  onClick={() => keepRows(rows.filter((_, i) => i !== index))}
+                  className="rounded-md bg-[var(--mail-hours-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
+                  onClick={onDone}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  {t("done")}
                 </button>
-              )}
-            </div>
-            <DayCircles days={window.days} onToggle={(day) => patch(index, { days: toggleDay(window.days, day) })} />
-          </div>
-        ))}
+              </div>
+            )}
+        </div>
 
-        {/* Hours to take rather than hours to invent. One press each; a
-            suggestion already standing is not a suggestion, so it leaves. */}
-        {followAll && account ? null : suggestions.length || elsewhere.length ? (
-          <div className="pt-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+        {/* Hours to take rather than hours to invent: Use puts them in
+            place of the fields. Hours already standing are not offered. */}
+        {ownHours && offers.length ? (
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
               {t("quietSuggestions")}
             </p>
-            <div className="mt-1.5 flex flex-col gap-2">
-              {suggestions.map((suggestion) => (
-                <SuggestionCard
-                  key={suggestion.id}
-                  name={t(SUGGESTION_WORDS[suggestion.id].name)}
-                  line={t(lineKey, { hours: t(SUGGESTION_WORDS[suggestion.id].on) })}
-                  onAdd={() => keepKept(addQuietSuggestion(windows, suggestion))}
-                />
-              ))}
-              {elsewhere.map((window) => (
-                <SuggestionCard
-                  key={`${window.start}-${window.end}-${window.days.join()}`}
-                  name={t("quietSetElsewhere")}
-                  line={t(lineKey, {
-                    hours: t("hoursExcept", {
-                      hours: `${window.start} – ${window.end}${isOvernight(window) ? ` ${words.nextDay}` : ""}`,
-                      days: daysPhrase(window.days, words, SCHEDULE_DAY_LABELS),
-                    }),
-                  })}
-                  onAdd={() => keepKept([...windows, window])}
+            <div className="mt-1 flex flex-col gap-1">
+              {offers.map((offer) => (
+                <SuggestionRow
+                  key={offer.key}
+                  mark={offer.email ? markOf(offer.email) : null}
+                  name={offer.name}
+                  lines={offer.rules.map(rulePhrase)}
+                  action={t("useSuggestion")}
+                  locks={offer.locks}
+                  onUse={() => keepRows(offer.rules)}
                 />
               ))}
             </div>
           </div>
         ) : null}
-
-        {followAll && account ? null : adding ? (
-          <div className="rounded-lg border-2 border-teal-600/70 p-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-stone-500">{t("mailSleepFrom")}</span>
-              <input
-                type="time"
-                value={adding.start}
-                onChange={(e) => setAdding({ ...adding, start: e.target.value })}
-                className={quietTimeClass}
-              />
-              <span className="text-xs text-stone-500">{t("mailSleepTo")}</span>
-              <input
-                type="time"
-                value={adding.end}
-                onChange={(e) => setAdding({ ...adding, end: e.target.value })}
-                className={quietTimeClass}
-              />
-            </div>
-            <DayCircles days={adding.days} onToggle={(day) => setAdding({ ...adding, days: toggleDay(adding.days, day) })} />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-xs text-stone-500">
-                {adding.days.length ? onRulePhrase(adding, words, SCHEDULE_DAY_LABELS) : ""}
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <button type="button" className="text-xs text-stone-500 hover:text-stone-800" onClick={() => setAdding(null)}>
-                  {t("cancel")}
-                </button>
-                <button
-                  type="button"
-                  disabled={!adding.days.length}
-                  className="rounded-md bg-teal-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
-                  onClick={() => {
-                    // Hours added to "always" are the hours now, not more of always.
-                    keepRows(alwaysOnly ? [adding] : [...rows, adding]);
-                    setAdding(null);
-                  }}
-                >
-                  {t("add")}
-                </button>
-              </span>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="rounded-lg border border-dashed border-teal-600/50 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50"
-            onClick={() => setAdding({ start: "08:00", end: "17:00", days: [...WEEKDAY_DAYS] })}
-          >
-            {accountLabel ? t("quietHoursAddFor", { account: accountLabel }) : t("quietHoursAdd")}
-          </button>
-        )}
-      </div>
-
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          className="rounded-md bg-teal-700 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-800"
-          onClick={onDone}
-        >
-          {t("done")}
-        </button>
       </div>
     </div>
   );
 }
 
-/** Each suggestion's name, and its hours said as the hours on. */
-const SUGGESTION_WORDS: Record<string, { name: MailStringKey; on: MailStringKey }> = {
-  nights: { name: "quietNightsName", on: "quietNightsOn" },
-  worklife: { name: "quietWorkLifeName", on: "quietWorkLifeOn" },
-  mornings: { name: "quietFocusMorningsName", on: "quietFocusMorningsOn" },
-  weekend: { name: "quietWeekendsOffName", on: "quietWeekendsOffOn" },
-};
+/** The hours a new row starts with: the working day. */
+const WORKING_DAY: MailQuietWindow = { start: "08:00", end: "17:00", days: [...WEEKDAY_DAYS] };
 
-function SuggestionCard({ name, line, onAdd }: { name: string; line: string; onAdd: () => void }) {
-  const t = useMailT();
+/**
+ * The hours offered, as the hours on (2026-10-18). Add puts them with the
+ * fields above.
+ */
+const ON_SUGGESTIONS: { id: string; name: MailStringKey; rules: MailQuietWindow[] }[] = [
+  {
+    id: "twice",
+    name: "quietTwiceADayName",
+    rules: [
+      { start: "09:00", end: "11:00", days: [...WEEKDAY_DAYS] },
+      { start: "15:00", end: "17:00", days: [...WEEKDAY_DAYS] },
+    ],
+  },
+  { id: "work", name: "quietWorkHoursName", rules: [{ start: "08:00", end: "17:00", days: [...WEEKDAY_DAYS] }] },
+  { id: "nights", name: "quietNightsName", rules: [{ start: "08:00", end: "22:00", days: [0, 1, 2, 3, 4, 5, 6] }] },
+];
+
+/** A suggestion in the rail: its name, its hours a rule a line, and Use — with the lock when it adds time while locked. */
+function SuggestionRow({
+  mark,
+  name,
+  lines,
+  action,
+  locks,
+  onUse,
+}: {
+  /** The mailbox's mark, for hours set on a mailbox. */
+  mark: React.ReactNode;
+  name: string;
+  lines: string[];
+  action: string;
+  locks: boolean;
+  onUse: () => void;
+}) {
   return (
     <button
       type="button"
-      title={t("quietSuggestionUse")}
-      className="group flex items-center gap-2 rounded-lg border border-dashed border-stone-300 p-2 text-left hover:border-teal-600/60 hover:bg-teal-50/60"
-      onClick={onAdd}
+      className="mail-menu-pick flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+      onClick={onUse}
     >
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-stone-900">{name}</span>
-        <span className="block text-xs text-stone-500">{line}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-stone-900">
+          {mark}
+          <span className="truncate">{name}</span>
+        </span>
+        {lines.map((line) => (
+          <span key={line} className="block text-xs tabular-nums text-stone-500">
+            {line}
+          </span>
+        ))}
       </span>
-      <span
-        aria-hidden
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-teal-600/60 text-teal-700 group-hover:bg-teal-700 group-hover:text-white"
-      >
-        <Plus className="h-3.5 w-3.5" />
+      {locks ? <Lock className="h-3.5 w-3.5 shrink-0 text-stone-400" aria-hidden /> : null}
+      <span className="shrink-0 text-sm font-semibold text-[var(--mail-hours-accent)]">{action}</span>
+    </button>
+  );
+}
+
+/** A small on/off switch, drawn as the Stacks switch is. */
+function SmallSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className="flex shrink-0 items-center gap-1.5 text-xs text-stone-600"
+      onClick={() => onChange(!on)}
+    >
+      {label}
+      <span className={cn("relative block h-4 w-7 rounded-full transition-colors", on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300")}>
+        <span
+          className={cn(
+            "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left]",
+            on ? "left-3.5" : "left-0.5"
+          )}
+        />
       </span>
     </button>
   );
@@ -389,7 +477,7 @@ export function DayCircles({
             className={cn(
               "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold",
               on
-                ? "bg-teal-700 text-white"
+                ? "bg-[var(--mail-hours-accent)] text-white"
                 : "border border-stone-300 bg-white text-stone-500 hover:border-stone-400"
             )}
             onClick={() => onToggle(day)}
@@ -402,22 +490,31 @@ export function DayCircles({
   );
 }
 
-/** Every schedule kept on this machine: the pause's, All's and each mailbox's, and the hiding ones. */
-function storedQuietHours(): MailQuietWindow[] {
-  const out: MailQuietWindow[] = [];
+/**
+ * Every schedule kept on this machine, as kept (the hours off), named by
+ * where it is set: new mail's, each mailbox's new mail, and each mailbox's
+ * hours shown. "Same as team" for team@….
+ */
+function storedSchedules(
+  t: ReturnType<typeof useMailT>
+): { name: string; email: string | null; kept: MailQuietWindow[] }[] {
+  const out: { name: string; email: string | null; kept: MailQuietWindow[] }[] = [];
+  const sameAs = (email: string) => t("sameAsSource", { name: email.split("@")[0] || email });
   try {
     const pause = readPauseState(JSON.parse(window.localStorage.getItem(MAIL_PAUSE_KEY) ?? "null"));
-    out.push(...pause.quietHours, ...Object.values(pause.accounts ?? {}).flatMap((a) => a.quietHours ?? []));
+    out.push({ name: t("sameAsNewMail"), email: null, kept: pause.quietHours });
+    for (const [email, a] of Object.entries(pause.accounts ?? {})) out.push({ name: sameAs(email), email, kept: a.quietHours ?? [] });
   } catch {
     /* no storage: nothing to offer */
   }
   try {
     const hide = readHideState(JSON.parse(window.localStorage.getItem(MAILBOX_HIDE_KEY) ?? "null"));
-    out.push(...Object.values(hide.accounts).flatMap((a) => a.hours ?? []));
+    for (const [email, a] of Object.entries(hide.accounts)) out.push({ name: sameAs(email), email, kept: a.hours ?? [] });
   } catch {
     /* no storage: nothing to offer */
   }
-  return out;
+  // A schedule with nothing kept is Always: nothing to add.
+  return out.filter((source) => source.kept.some((w) => w.days.length));
 }
 
 function toggleDay(
@@ -429,8 +526,8 @@ function toggleDay(
     : [...days, day].sort((a, b) => a - b);
 }
 
-export const quietTimeClass =
-  "h-7 w-[5.5rem] rounded-md border border-stone-300 bg-white px-1.5 text-sm font-semibold text-stone-900 focus:border-teal-600 focus:outline-none";
+/** The hours' time boxes: the one time field (date-time-pick). */
+export const quietTimeClass = `${TIME_FIELD_CLASS} w-28`;
 
 /** "None", or "Type 5 random words · ~1 min". */
 export function frictionSummary(words: number, t: ReturnType<typeof useMailT>): string {
@@ -454,6 +551,7 @@ export function FrictionPanel({
   title,
   explain,
   after,
+  rule,
 }: {
   words: number;
   /** While a pause runs: fewer words wait for the words (pause-lock.ts). */
@@ -469,6 +567,11 @@ export function FrictionPanel({
    * looser setting, held back like fewer words while a lock is on.
    */
   after?: { minutes: number; options: readonly number[]; onChange: (minutes: number) => void };
+  /**
+   * How a schedule may change, said once here: less time is free, more asks
+   * for the words. In the editor, the lock chip and Unlock to save carry it.
+   */
+  rule?: string;
 }) {
   const t = useMailT();
   const locked = useLockedEdits(lock);
@@ -530,6 +633,12 @@ export function FrictionPanel({
           />
         </div>
       ) : null}
+      {rule ? (
+        <div className="mt-3 border-t border-stone-100 pt-3">
+          <p className="text-sm text-stone-800">{t("hideRuleTitle")}</p>
+          <RuleText text={rule} className="mt-0.5 text-xs leading-relaxed text-stone-600" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -546,6 +655,10 @@ export function FrictionPanel({
 function useLockedEdits(lock: PauseLock | undefined): {
   attempt: (loosens: boolean, apply: () => void) => void;
   box: React.ReactNode;
+  /** The lock is on and not yet opened in this visit. */
+  active: boolean;
+  /** The words were typed elsewhere in the panel: open it for this visit. */
+  unlock: () => void;
 } {
   const [unlocked, setUnlocked] = React.useState(false);
   const [pending, setPending] = React.useState<(() => void) | null>(null);
@@ -574,52 +687,5 @@ function useLockedEdits(lock: PauseLock | undefined): {
         onCancel={() => setPending(null)}
       />
     ) : null;
-  return { attempt, box };
-}
-
-function UnlockBox({
-  words,
-  onUnlocked,
-  onCancel,
-}: {
-  words: number;
-  onUnlocked: () => void;
-  onCancel: () => void;
-}) {
-  const t = useMailT();
-  const [target] = React.useState(() => randomUnpauseWords(words));
-  const [typed, setTyped] = React.useState("");
-  const done = typed === target;
-  return (
-    <div className="mt-2 rounded-lg border border-stone-200 bg-white p-2.5">
-      <p className="text-xs text-stone-700">{t("pauseLockAsk")}</p>
-      <ChallengeTyping
-        target={target}
-        typed={typed}
-        onTyped={setTyped}
-        label={t("pauseLockAsk")}
-        rows={2}
-        onEnter={() => {
-          if (done) onUnlocked();
-        }}
-      />
-      <div className="mt-2 flex justify-end gap-2">
-        <button
-          type="button"
-          className="rounded-md px-2.5 py-1 text-xs text-stone-500 hover:bg-stone-100"
-          onClick={onCancel}
-        >
-          {t("cancel")}
-        </button>
-        <button
-          type="button"
-          disabled={!done}
-          className="rounded-md bg-teal-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-50"
-          onClick={onUnlocked}
-        >
-          {t("pauseLockConfirm")}
-        </button>
-      </div>
-    </div>
-  );
+  return { attempt, box, active, unlock: () => setUnlocked(true) };
 }

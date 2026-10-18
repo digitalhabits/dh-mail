@@ -644,6 +644,16 @@ impl MailDb {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
   }
 
+  /// How many messages with a UID the copy holds in a folder.
+  pub fn messages_count_known(&self, account: &str, folder: &str) -> DbResult<i64> {
+    let conn = self.conn_mut();
+    Ok(conn.query_row(
+      "SELECT COUNT(*) FROM messages WHERE account_email = ?1 AND folder = ?2 AND uid IS NOT NULL",
+      params![account, folder],
+      |r| r.get(0),
+    )?)
+  }
+
   /// The highest UID and modseq the copy holds in a folder, for the next live pass.
   pub fn messages_high_water(&self, account: &str, folder: &str) -> DbResult<(Option<i64>, Option<i64>)> {
     let conn = self.conn_mut();

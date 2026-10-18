@@ -397,6 +397,26 @@
   color: var(--text-primary);
 }
 
+/* The switch with its icon and name, in the title bar's grey and size. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-switch-control {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-switch-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-switch-control .welcome-switch {
+  margin-left: 2px;
+}
+
 /* The Stacks switch, as the title bar draws it: grey and to the left for
    Off, slate and to the right for On. The chosen side is the card's
    border, not the switch. */
@@ -716,4 +736,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+  The tour's steps on top of each other in one cell: the card takes the
+  tallest step's height, so Back, the dots and Next do not move between
+  steps. The others are hidden but keep their size (2026-10-18).
+*/
+.mail-shell.mail-welcome #eula-onboarding .welcome-tour-panes {
+  display: grid;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-tour-pane {
+  grid-area: 1 / 1;
+  min-width: 0;
+  visibility: hidden;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-tour-pane.is-current {
+  visibility: visible;
 }

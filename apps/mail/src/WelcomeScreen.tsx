@@ -13,7 +13,7 @@
  * there shows it to everyone again.
  */
 import * as React from "react";
-import { Folder, PanelLeft, Users } from "lucide-react";
+import { Folder, GalleryVerticalEnd, PanelLeft, Users } from "lucide-react";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
 import { useMailLang, type MailLang } from "@/lib/mail/i18n";
@@ -78,13 +78,14 @@ const COPY: Record<MailLang, Record<string, string>> = {
     stacksLibrary: "Library",
     stacksLibrarySubject: "Your books are due",
     stacksLater: "You can change this later with the Stacks switch at the top.",
+    stacksSwitchLabel: "Stacks",
     aroundTitle: "Find your way around",
     hideListTitle: "Hide the mail list",
     hideListBody:
       "Then you see only the email you read. Bring the pointer to the left edge, and the list comes back.",
     foldersTitle: "Folders",
     foldersBody: "Click to show the folders of all your mailboxes.",
-    filterTitle: "Filter",
+    filterTitle: "Filters",
     filterBody: "Click In Contacts to see only mail from people in your contacts. With + you make a list of your own.",
     quietTitle: "Check mails on your own terms",
     pauseTitle: "Pause new mail",
@@ -133,13 +134,14 @@ const COPY: Record<MailLang, Record<string, string>> = {
     stacksLibrary: "Biblioteket",
     stacksLibrarySubject: "Dine bøger skal afleveres",
     stacksLater: "Du kan ændre det senere med Stakke-kontakten øverst.",
+    stacksSwitchLabel: "Stakke",
     aroundTitle: "Sådan finder du rundt",
     hideListTitle: "Skjul postlisten",
     hideListBody:
       "Så ser du kun den e-mail, du læser. Før markøren til venstre kant, så kommer listen frem igen.",
     foldersTitle: "Mapper",
     foldersBody: "Klik for at vise mapperne fra alle dine postkasser.",
-    filterTitle: "Filter",
+    filterTitle: "Filtre",
     filterBody: "Klik på I Kontakter for kun at se post fra personer i dine kontakter. Med + laver du din egen liste.",
     quietTitle: "Tjek din post på dine egne præmisser",
     pauseTitle: "Sæt ny post på pause",
@@ -337,11 +339,14 @@ function StackOption({
   onChoose,
   rows,
   switchOn,
+  switchLabel,
 }: {
   label: string;
   chosen: boolean;
   onChoose: () => void;
   rows: StackRow[];
+  /** The switch's name in the title bar: "Stacks". */
+  switchLabel: string;
   /** Which way the title bar's Stacks switch stands for this side. */
   switchOn: boolean;
 }) {
@@ -357,8 +362,14 @@ function StackOption({
     >
       <span className="welcome-stack-option-head">
         <span>{label}</span>
-        <span className={"welcome-switch" + (switchOn ? " is-on" : "")} aria-hidden="true">
-          <span className="welcome-switch-knob" />
+        {/* The switch with its icon and name, as the title bar has it, so
+            the reader knows it there (2026-10-18). */}
+        <span className="welcome-switch-control" aria-hidden="true">
+          <GalleryVerticalEnd className="welcome-switch-icon" />
+          {switchLabel}
+          <span className={"welcome-switch" + (switchOn ? " is-on" : "")}>
+            <span className="welcome-switch-knob" />
+          </span>
         </span>
       </span>
       {/* Rows as the mail list draws them: initials, the sender, "3 threads"
@@ -488,62 +499,77 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                 (step < TOUR_STEPS ? " is-tour" : "")
               }
             >
-              {step === 0 ? (
-                <>
-                  <h2 className="eula-privacy-title">{t.stacksTitle}</h2>
-                  <p className="eula-privacy-lead">{t.stacksLead}</p>
-                  {/* The real setting, the title bar's Stacks switch: pick one. */}
-                  <div className="welcome-stack-choice" role="radiogroup" aria-label={t.stacksTry}>
-                    <StackOption
-                      label={t.stacksOff}
-                      switchOn={false}
-                      chosen={viewMode === "threads"}
-                      onChoose={() => setViewMode("threads")}
-                      rows={[
-                        ...t.stacksAirlineSubjects.split("|").map((subject, i) => ({
-                          sender: t.stacksAirline,
-                          initials: "NA",
-                          tone: "teal" as const,
-                          time: STACK_TIMES[i],
-                          subject,
-                        })),
-                        { sender: t.stacksLibrary, initials: "LI", tone: "amber", time: LIBRARY_TIME, subject: t.stacksLibrarySubject },
-                      ]}
-                    />
-                    <StackOption
-                      label={t.stacksOnRecommended}
-                      switchOn
-                      chosen={viewMode === "people"}
-                      onChoose={() => setViewMode("people")}
-                      rows={[
-                        {
-                          sender: t.stacksAirline,
-                          initials: "NA",
-                          tone: "teal",
-                          count: t.stacksThreadCount.replace("{count}", String(t.stacksAirlineSubjects.split("|").length)),
-                          threads: t.stacksAirlineSubjects.split("|").map((subject, i) => ({ subject, time: STACK_TIMES[i] })),
-                          time: STACK_TIMES[0],
-                          subject: t.stacksAirlineSubjects.split("|")[0],
-                        },
-                        { sender: t.stacksLibrary, initials: "LI", tone: "amber", time: LIBRARY_TIME, subject: t.stacksLibrarySubject },
-                      ]}
-                    />
-                  </div>
-                  <p className="welcome-step-note">{t.stacksLater}</p>
-                </>
-              ) : step === 1 ? (
-                <>
-                  <h2 className="eula-privacy-title">{t.quietTitle}</h2>
-                  <QuietStep t={t} dark={colorMode === "dark"} />
-                </>
-              ) : step === 2 ? (
-                <>
-                  <h2 className="eula-privacy-title">{t.aroundTitle}</h2>
-                  <AroundStep
-                    t={t}
-                    pictureUrl={colorMode === "dark" ? aroundPictureDarkUrl : aroundPictureLightUrl}
-                  />
-                </>
+              {/* The tour's steps lie on top of each other, the one shown on
+                  top: the card is as tall as the tallest, so Back, the dots
+                  and Next stay in one place from step to step (2026-10-18). */}
+              {step < TOUR_STEPS ? (
+                <div className="welcome-tour-panes">
+                  {[
+                    <>
+                      <h2 className="eula-privacy-title">{t.stacksTitle}</h2>
+                      <p className="eula-privacy-lead">{t.stacksLead}</p>
+                      {/* The real setting, the title bar's Stacks switch: pick one. */}
+                      <div className="welcome-stack-choice" role="radiogroup" aria-label={t.stacksTry}>
+                        <StackOption
+                          label={t.stacksOff}
+                          switchOn={false}
+                          switchLabel={t.stacksSwitchLabel}
+                          chosen={viewMode === "threads"}
+                          onChoose={() => setViewMode("threads")}
+                          rows={[
+                            ...t.stacksAirlineSubjects.split("|").map((subject, i) => ({
+                              sender: t.stacksAirline,
+                              initials: "NA",
+                              tone: "teal" as const,
+                              time: STACK_TIMES[i],
+                              subject,
+                            })),
+                            { sender: t.stacksLibrary, initials: "LI", tone: "amber", time: LIBRARY_TIME, subject: t.stacksLibrarySubject },
+                          ]}
+                        />
+                        <StackOption
+                          label={t.stacksOnRecommended}
+                          switchOn
+                          switchLabel={t.stacksSwitchLabel}
+                          chosen={viewMode === "people"}
+                          onChoose={() => setViewMode("people")}
+                          rows={[
+                            {
+                              sender: t.stacksAirline,
+                              initials: "NA",
+                              tone: "teal",
+                              count: t.stacksThreadCount.replace("{count}", String(t.stacksAirlineSubjects.split("|").length)),
+                              threads: t.stacksAirlineSubjects.split("|").map((subject, i) => ({ subject, time: STACK_TIMES[i] })),
+                              time: STACK_TIMES[0],
+                              subject: t.stacksAirlineSubjects.split("|")[0],
+                            },
+                            { sender: t.stacksLibrary, initials: "LI", tone: "amber", time: LIBRARY_TIME, subject: t.stacksLibrarySubject },
+                          ]}
+                        />
+                      </div>
+                      <p className="welcome-step-note">{t.stacksLater}</p>
+                    </>,
+                    <>
+                      <h2 className="eula-privacy-title">{t.quietTitle}</h2>
+                      <QuietStep t={t} dark={colorMode === "dark"} />
+                    </>,
+                    <>
+                      <h2 className="eula-privacy-title">{t.aroundTitle}</h2>
+                      <AroundStep
+                        t={t}
+                        pictureUrl={colorMode === "dark" ? aroundPictureDarkUrl : aroundPictureLightUrl}
+                      />
+                    </>,
+                  ].map((pane, i) => (
+                    <div
+                      key={i}
+                      className={"welcome-tour-pane" + (i === step ? " is-current" : "")}
+                      aria-hidden={i === step ? undefined : true}
+                    >
+                      {pane}
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <>
                   <h2 className="eula-privacy-title">{t.privacyTitle}</h2>

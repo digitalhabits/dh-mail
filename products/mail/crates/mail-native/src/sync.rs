@@ -865,9 +865,18 @@ fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -
         states[i].last_ok_at = Some(crate::db::now_ms());
         publish(Some(app), &db, &states[i])?;
       }
-      client.select(&all_mail)?;
       side_at = Instant::now();
       look_aside = false;
+      if back_to_all_mail(&db, &mut client, &targets[0], email)? {
+        // Something left All Mail while another folder was selected: look
+        // now, not at the hourly sweep. What Trash and Junk changed is
+        // told first.
+        if changed {
+          let _ = app.emit(CHANGED_EVENT, json!({ "account": email }));
+        }
+        sweep_now = true;
+        continue;
+      }
     }
 
     if changed {
@@ -1052,6 +1061,22 @@ fn fetch_new_above(
   }
   db.messages_upsert(email, &rows)?;
   Ok(true)
+}
+
+/// Select All Mail again after a look at Trash and Junk. True when it holds
+/// fewer messages than the copy: something was deleted meanwhile.
+///
+/// A server tells of a deletion (EXPUNGE) only in the folder that is
+/// selected, and Gmail does not replay them (no QRESYNC). A message deleted
+/// in All Mail while Trash was open — a send undone in Gmail on the web,
+/// which takes the sent message back out — went unnoticed until the hourly
+/// sweep, and stood in the list as sent until then (2026-10-18). The count
+/// SELECT gives is the cheap check: fewer than the copy holds means a sweep
+/// is due. More is only new mail, which the next pass fetches anyway.
+fn back_to_all_mail(db: &MailDb, client: &mut Client, all_mail: &SyncFolder, email: &str) -> Result<bool, SyncError> {
+  let info = client.select(&all_mail.raw)?;
+  let known = db.messages_count_known(email, &all_mail.logical)?;
+  Ok((info.exists as i64) < known)
 }
 
 /// What is new above the highest UID, what changed since the highest
@@ -1585,6 +1610,29 @@ mod tests {
     let mut uids = db.messages_known_uids(ME, "").unwrap();
     uids.sort();
     uids
+  }
+
+  #[test]
+  fn coming_back_to_all_mail_with_fewer_messages_than_the_copy_asks_for_a_sweep() {
+    let db = MailDb::open_in_memory().unwrap();
+    let folder = all_mail();
+    let stop = AtomicBool::new(false);
+    // The copy holds two; the server says 2 EXISTS, then 2 again, then 1.
+    let stream = fake_server(vec![
+      ("SELECT", select_reply(7, 100)),
+      ("UID SEARCH ALL", "* SEARCH 1 2\r\n{tag} OK\r\n"),
+      ("UID FETCH 2,1", leak(format!("{}{}{{tag}} OK\r\n", fetched(2, 2, 0x22, 0x20, false, 90, "Second"), fetched(1, 1, 0x11, 0x10, false, 80, "First")))),
+      ("SELECT", select_reply(7, 100)),
+      ("SELECT", "* 1 EXISTS\r\n* OK [UIDVALIDITY 7] UIDs valid\r\n{tag} OK [READ-WRITE] selected\r\n"),
+    ]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    catch_up(None, &db, &mut client, &folder, ME, &stop, None).unwrap();
+    assert_eq!(uids_of(&db), vec![1, 2]);
+    assert!(!back_to_all_mail(&db, &mut client, &folder, ME).unwrap(), "as many as the copy: nothing to sweep");
+    assert!(
+      back_to_all_mail(&db, &mut client, &folder, ME).unwrap(),
+      "one fewer: a message left while Trash was open, so the sweep runs now"
+    );
   }
 
   #[test]

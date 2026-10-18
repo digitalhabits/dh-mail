@@ -31,6 +31,7 @@ import { requestExchangeConnect } from "@/lib/mail/exchange-connect";
 import { announceMailboxConnected } from "@/lib/mail/mailbox-connected";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { useTeamUpdate } from "@/lib/mail/team-update";
+import { UpdateBar } from "./UpdateBar";
 import { useWindowBackdrop } from "@/lib/mail/window-backdrop";
 // What a build adds around the interface, if anything. See build-aliases.mjs.
 import { useTeamSessionBar } from "@/team-shell";
@@ -330,31 +331,13 @@ export function App() {
           against the chrome, not to blend into it. */}
       {teamSessionBar}
       {teamUpdate.update ? (
-        <div className="dh-top-banner flex items-center justify-between gap-4 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
-          <span>
-            {teamUpdate.error
-              ? mailSay("updateFailed", { error: teamUpdate.error })
-              : mailSay("updateReady", { version: teamUpdate.update.version })}
-          </span>
-          <span className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={teamUpdate.later}
-              disabled={teamUpdate.installing}
-              className="rounded-md px-3 py-1 text-xs font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-60"
-            >
-              {mailSay("updateLater")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void teamUpdate.install()}
-              disabled={teamUpdate.installing}
-              className="rounded-md bg-emerald-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-60"
-            >
-              {teamUpdate.installing ? mailSay("updateRestarting") : mailSay("updateRestart")}
-            </button>
-          </span>
-        </div>
+        <UpdateBar
+          update={teamUpdate.update}
+          error={teamUpdate.error}
+          installing={teamUpdate.installing}
+          onLater={teamUpdate.later}
+          onInstall={() => void teamUpdate.install()}
+        />
       ) : null}
       {stale.length ? (
         <div className="dh-top-banner flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">

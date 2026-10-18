@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Check, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { MailAccountTabs } from "@/components/mail/MailAccountTabs";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
@@ -157,7 +158,18 @@ export function MailPauseMenu({
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       {/* From the start of its button, which sits at the left of the list,
           and never flush against the window's edge. */}
-      <MailPopoverContent align="start" collisionPadding={12} className="w-[22rem] p-0">
+      {/* As tall as the window allows, and scrolled inside past that: with
+          suggestions and hours kept elsewhere the hours panel ran off the
+          bottom, out of reach (2026-10-18). */}
+      <MailPopoverContent
+        align="start"
+        collisionPadding={12}
+        className={cn(
+          "max-h-[var(--radix-popover-content-available-height)] max-w-[calc(100vw-24px)] overflow-y-auto p-0",
+          // The hours have a rail of suggestions beside them.
+          panel === "pause" || panel === "friction" ? "w-[22rem]" : "w-[44rem]"
+        )}
+      >
         {panel === "pause" ? (
           <div className="py-1">
             {/* What the panel is about, or what it has already done.
