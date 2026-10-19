@@ -27,7 +27,7 @@ import { isMailPinned, pinMailThread, unpinMailThread } from "@/lib/mail/pins";
 import { invalidateCachedMailThread } from "@/lib/mail/thread-cache";
 import { mailProviderFor, mailProviderLabel, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { hideRow, unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
-import { everyCopy, rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
+import { everyCopy, rowStandsFor, threadKey, withRowsBack } from "@/lib/mail/thread-copies";
 import { releaseRead } from "@/lib/mail/held-reads";
 import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -167,7 +167,7 @@ export function useThreadActions({
         }
       } catch (err) {
         unhideRows([key]);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, [key]));
         throw err;
       }
     },
@@ -253,7 +253,7 @@ export function useThreadActions({
       } catch (err) {
         dropMailUndo(undoId);
         unhideRows(keys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, keys));
         // The rows come back, so the pin does too.
         if (wasPinned && summary) pinMailThread(summary);
         toast.error(err instanceof Error ? err.message : "Couldn't archive");
@@ -329,7 +329,7 @@ export function useThreadActions({
             : mailSay("viewInbox")
         );
       } catch (err) {
-        if (leaves) setThreads(before);
+        if (leaves) setThreads((current) => withRowsBack(current, before, keys));
         toast.error(err instanceof Error ? err.message : "Couldn't move");
       }
     },
@@ -402,7 +402,7 @@ export function useThreadActions({
       try {
         await call("/api/mail/unread", newest);
       } catch (err) {
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, [threadKey(newest)]));
         toast.error(
           err instanceof Error ? err.message : "Couldn't mark unread"
         );
@@ -488,7 +488,7 @@ export function useThreadActions({
       } catch (err) {
         dropMailUndo(undoId);
         unhideRows(keys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, keys));
         // The rows come back, so the pin does too.
         if (wasPinned && summary) pinMailThread(summary);
         toast.error(err instanceof Error ? err.message : "Couldn't delete");
@@ -530,7 +530,7 @@ export function useThreadActions({
         });
         toast.success(mailSay("movedOutOfTrash"));
       } catch (err) {
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, [key]));
         toast.error(
           err instanceof Error ? err.message : mailSay("couldNotRestore")
         );
@@ -575,7 +575,7 @@ export function useThreadActions({
         );
       } catch (err) {
         unhideRows(keys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, keys));
         toast.error(
           err instanceof Error
             ? err.message
@@ -654,7 +654,7 @@ export function useThreadActions({
         }
       } catch (err) {
         unhideRow(hiddenRowsRef.current, key);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, [key]));
         toast.error(err instanceof Error ? err.message : "Couldn't snooze");
       }
     },
@@ -692,7 +692,7 @@ export function useThreadActions({
         });
         toast.success(mailSay("snoozeCancelled"));
       } catch (err) {
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, [key]));
         toast.error(
           err instanceof Error ? err.message : "Couldn't cancel snooze"
         );

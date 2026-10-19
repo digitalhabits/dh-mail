@@ -4,7 +4,7 @@
  * hooks that use it are in components/mail/use-thread-composer.ts.
  */
 
-import type { MailRecipient } from "@/lib/mail/contact-list-types";
+import { recipientsFromEmails, type MailRecipient } from "@/lib/mail/contact-list-types";
 import type { ThreadComposerMode as ComposerMode } from "@/lib/mail/local-drafts";
 
 export type ComposerState = {
@@ -181,4 +181,20 @@ export function snapshotPatch(snapshot: ComposerSnapshot): ComposerPatch {
     if (patch[key] === undefined) delete patch[key];
   }
   return patch;
+}
+
+/**
+ * What Reply or Reply all puts in the composer from the thread: To and Cc,
+ * and the From when the conversation was last answered from another of the
+ * reader's mailboxes (`reply.from`, local-thread.ts).
+ */
+export function replyFields(
+  reply: { to: string[]; cc: string[]; allTo?: string[]; allCc?: string[]; from?: string } | undefined,
+  all: boolean
+): Pick<ComposerState, "toList" | "ccList"> & { fromAccount?: string } {
+  return {
+    toList: recipientsFromEmails(all ? (reply?.allTo ?? []) : (reply?.to ?? [])),
+    ccList: recipientsFromEmails(all ? (reply?.allCc ?? []) : (reply?.cc ?? [])),
+    ...(reply?.from ? { fromAccount: reply.from } : null),
+  };
 }

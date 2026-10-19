@@ -64,6 +64,7 @@ import { signsThisReply } from "@/lib/mail/signature-rules";
 import { dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
 import { type MailChatRef } from "@/lib/mail/chat-types";
 import { recipientsFromEmails } from "@/lib/mail/contact-list-types";
+import { replyFields } from "@/lib/mail/thread-composer-state";
 import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { sameDay } from "@/lib/mail/date-format";
 import {
@@ -747,8 +748,8 @@ export function useThreadPane(props: ThreadPaneProps) {
     readableAttachments,
     replyText,
     replaceWords,
-    // The pane whose reply is in the floating card does not hold it.
-    ownsReply: !replyFloating,
+    recipientState: { toList, ccList, setToList, setCcList, setShowCc },
+    ownsReply: !replyFloating, // the floating card's pane does not hold the reply
   });
   /* Where the message being written lives: this pane, the floating card or
      the pop-out window — see use-composer-home.ts. It stands where the
@@ -827,12 +828,7 @@ export function useThreadPane(props: ThreadPaneProps) {
     // No words in the patch: Reply becomes Reply all with the same editor.
     openComposer({
       mode: next,
-      toList: recipientsFromEmails(
-        all ? (thread?.reply.allTo ?? []) : (thread?.reply.to ?? [])
-      ),
-      ccList: recipientsFromEmails(
-        all ? (thread?.reply.allCc ?? []) : (thread?.reply.cc ?? [])
-      ),
+      ...replyFields(thread?.reply, all),
       editRecipients: false,
       includeSignature: signsReply(),
       updateRecordsAfterSend: false,

@@ -510,7 +510,17 @@ pub fn close_chat_popout(
 const READER_WINDOW_WIDTH: f64 = 840.0;
 const READER_WINDOW_HEIGHT: f64 = 900.0;
 
-fn reader_window_label(account: &str, thread_id: &str, person: Option<&str>) -> String {
+fn reader_window_label(
+  account: &str,
+  thread_id: &str,
+  person: Option<&str>,
+  draft: Option<&str>,
+) -> String {
+  // One window per draft, as one per person and one per thread: the key is
+  // the draft's own.
+  if let Some(key) = draft {
+    return format!("reader-draft-{}", window_safe_thread_key("draft", key));
+  }
   match person {
     // One window per person, as one per thread: the key is the row's own.
     Some(key) => format!("reader-person-{}", window_safe_thread_key("person", key)),
@@ -531,6 +541,7 @@ fn reader_url(
   email: &str,
   subject: &str,
   person: Option<&str>,
+  draft: Option<&str>,
 ) -> String {
   let mut query = format!(
     "account={}&thread={}&name={}&email={}&subject={}",
@@ -545,6 +556,11 @@ fn reader_url(
   if let Some(key) = person {
     query.push_str(&format!("&person={}", urlencoding::encode(key)));
   }
+  // A new message being written — see ComposeDraftWindow. No thread is
+  // named; the page opens a composer on this stored draft.
+  if let Some(key) = draft {
+    query.push_str(&format!("&draft={}", urlencoding::encode(key)));
+  }
   format!("{origin}/index.html?reader=1&{query}")
 }
 
@@ -556,7 +572,8 @@ fn reader_url(
 /// asks for it, the way Outlook opens a message.
 ///
 /// With `person` set, the window holds that person's mail instead — the
-/// people view's pane — and `account` and `thread_id` may be empty.
+/// people view's pane — and `account` and `thread_id` may be empty. With
+/// `draft` set, it holds a composer on that new message's stored draft.
 #[tauri::command]
 pub async fn open_mail_reader_window(
   app: tauri::AppHandle,
@@ -567,12 +584,13 @@ pub async fn open_mail_reader_window(
   email: String,
   subject: String,
   person: Option<String>,
+  draft: Option<String>,
   user_agent: String,
 ) -> Result<(), String> {
   use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
   let origin = document_origin(&webview)?;
-  let label = reader_window_label(&account, &thread_id, person.as_deref());
+  let label = reader_window_label(&account, &thread_id, person.as_deref(), draft.as_deref());
   let url = reader_url(
     &origin,
     &account,
@@ -581,6 +599,7 @@ pub async fn open_mail_reader_window(
     &email,
     &subject,
     person.as_deref(),
+    draft.as_deref(),
   );
   let parsed: tauri::Url = url.parse().map_err(|e| format!("Bad reader URL: {e}"))?;
 
@@ -841,7 +860,7 @@ mod popout_tests {
   #[test]
   fn the_reader_window_asks_the_one_document_for_the_reader() {
     let url = reader_url(
-      "tauri://localhost/mail", "me@x.com", "t1", "A Person", "u@x.com", "test", None,
+      "tauri://localhost/mail", "me@x.com", "t1", "A Person", "u@x.com", "test", None, None,
     );
     let parsed = parse(&url);
     assert_eq!(parsed.path(), "/mail/index.html");
@@ -858,7 +877,7 @@ mod popout_tests {
   fn a_sender_cannot_write_extra_parameters_into_the_reader_url() {
     let url = reader_url(
       "tauri://localhost", "me@x.com", "t/1?x=y",
-      "A & B", "u@x.com", "hi&reader=0#frag", None,
+      "A & B", "u@x.com", "hi&reader=0#frag", None, None,
     );
     let parsed = parse(&url);
     assert_eq!(parsed.fragment(), None, "{url}");
@@ -872,7 +891,7 @@ mod popout_tests {
 
   #[test]
   fn a_reader_label_holds_only_what_a_tauri_label_may() {
-    let label = reader_window_label("möller.o~b@x.com", "AAQkAD/=+ %|1", None);
+    let label = reader_window_label("möller.o~b@x.com", "AAQkAD/=+ %|1", None, None);
     assert!(label.starts_with("reader-"));
     assert!(
       label
@@ -882,8 +901,25 @@ mod popout_tests {
     );
     // Distinct threads must not fold into one window.
     assert_ne!(
-      reader_window_label("a@x.com", "t1", None),
-      reader_window_label("a@x.com", "t2", None)
+      reader_window_label("a@x.com", "t1", None, None),
+      reader_window_label("a@x.com", "t2", None, None)
     );
+  }
+
+  #[test]
+  fn a_draft_window_names_the_draft_and_no_thread() {
+    let url = reader_url("tauri://localhost", "", "", "", "", "Hello", None, Some("compose:abc 1&x=y"));
+    let parsed = parse(&url);
+    let draft: Vec<String> = parsed
+      .query_pairs()
+      .filter(|(k, _)| k == "draft")
+      .map(|(_, v)| v.into_owned())
+      .collect();
+    assert_eq!(draft, vec!["compose:abc 1&x=y".to_string()], "{url}");
+    assert!(!parsed.query_pairs().any(|(k, _)| k == "x"), "{url}");
+    // One window per draft, apart from the threads' windows.
+    let one = reader_window_label("", "", None, Some("compose:1"));
+    assert!(one.starts_with("reader-draft-"), "{one}");
+    assert_ne!(one, reader_window_label("", "", None, Some("compose:2")));
   }
 }

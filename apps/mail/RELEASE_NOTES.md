@@ -1,16 +1,19 @@
 ## What is new
 
-**Hours for a mailbox and for new mail**
-- **See your week.** The hours editor shows a chart of the week, a row for each day, with the hours a change adds drawn in stripes.
-- **Suggestions beside the hours.** Twice a day, Work hours, Quiet nights, and the hours of your other mailboxes, each with the mailbox's logo. Use puts them in place of your hours.
-- **One way to pick a time.** Send later, Snooze and the hours use the same calendar and the same time box. Type a time, or pick the hour and the minutes from a list.
-- **A locked mailbox says so.** While a mailbox is hidden with words to type, its hours show Locked. A change that shows it at more times waits for Unlock to save, and asks for the words. A change to fewer times is saved at once.
-- The friction settings say once how a schedule can change, and "Hide again after" is now "Automatically hide again after".
-- The hours panels scroll when they are taller than the window, and stay open when you switch to another app.
+**Conversations**
+- **Every message of a conversation shows.** A conversation that reached two of your mailboxes now shows the messages from both. Before, a reply you sent from one mailbox could be missing when you opened the other mailbox's copy.
+- When the newest message is your own reply from another mailbox, Reply goes from that mailbox.
+- **Sent shows every mailbox.** Sent now also shows mail from a mailbox that is paused or hidden.
+- **Invites show at once.** A calendar invite in a message is drawn at once, without a wait for the file.
+- Double-click a thread in a stack, or a draft in Drafts, to open it in its own window. The drafts toast has an Open button.
 
-**Updates**
-- **What's new.** When a new version is ready, What's new shows its changes, with a link to all the release notes.
+**Archiving**
+- When an archive, delete or move fails, only that conversation comes back. Before, conversations you archived after it came back too.
 
-**Other**
-- In the welcome tour, Next stays in the same place on each step. The Stacks step shows the Stacks icon and name beside the switch.
-- When you delete a Gmail message while Trash is open, Mail finds it at once.
+**Reading**
+- German and other Latin letters in older mail are read again, so "für" no longer shows a mark in place of "ü".
+- A link that only sets its font now looks like a link: in link colour and underlined.
+
+**Writing**
+- You can drag a person from To to Cc in the reply card.
+- The list of suggestions under a short Cc field shows whole names.

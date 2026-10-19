@@ -22,7 +22,7 @@ import { toast } from "@/lib/mail/toast";
 import { bumpMailFolderCount } from "@/components/mail/MailFolders";
 import { unpinMailThread } from "@/lib/mail/pins";
 import { invalidateCachedMailThread } from "@/lib/mail/thread-cache";
-import { threadKey } from "@/lib/mail/thread-copies";
+import { threadKey, withRowsBack } from "@/lib/mail/thread-copies";
 import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
@@ -114,7 +114,7 @@ export function useBatchActions({
       const failed = results.filter((r) => r.status === "rejected").length;
       if (failed === targets.length) {
         unhideRows(targetKeys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, targetKeys));
         toast.error(`Couldn't archive ${row.name}'s mail`);
         return;
       }
@@ -144,7 +144,7 @@ export function useBatchActions({
               )
             );
             unhideRows(targetKeys);
-            setThreads(before);
+            setThreads((current) => withRowsBack(current, before, targetKeys));
           } catch (err) {
             toast.error(err instanceof Error ? err.message : "Couldn't undo");
           }
@@ -212,7 +212,7 @@ export function useBatchActions({
       const failed = results.filter((r) => r.status === "rejected").length;
       if (failed === targets.length) {
         unhideRows(targetKeys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, targetKeys));
         toast.error(mailSay("couldNotDeletePersonMail", { name: row.name }));
         return;
       }
@@ -249,7 +249,7 @@ export function useBatchActions({
               )
             );
             unhideRows(targetKeys);
-            setThreads(before);
+            setThreads((current) => withRowsBack(current, before, targetKeys));
           } catch (err) {
             toast.error(
               err instanceof Error ? err.message : mailSay("couldNotUndo")
@@ -335,7 +335,7 @@ export function useBatchActions({
       );
       if (failed === targets.length) {
         unhideRows(targetKeys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, targetKeys));
         toast.error(
           mailSay(kind === "archive" ? "couldNotArchiveThese" : "couldNotDeleteThese", {
             what: noun,
@@ -371,7 +371,7 @@ export function useBatchActions({
               )
             );
             unhideRows(targetKeys);
-            setThreads(before);
+            setThreads((current) => withRowsBack(current, before, targetKeys));
           } catch (err) {
             toast.error(
               err instanceof Error ? err.message : mailSay("couldNotUndo")
@@ -453,7 +453,7 @@ export function useBatchActions({
       );
       if (!done.length) {
         unhideRows(keys);
-        setThreads(before);
+        setThreads((current) => withRowsBack(current, before, keys));
         toast.error(mailSay("couldNotMove"));
         return;
       }

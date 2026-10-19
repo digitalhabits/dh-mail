@@ -32,7 +32,16 @@ pub struct PartInfo {
   pub size: usize,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub content_id: Option<String>,
+  /// A calendar invite's own text, kept with the body so the invite card
+  /// draws at once. It waited for the file to be fetched from the server,
+  /// a few seconds on every first open (2026-10-19). Only small invites.
+  #[serde(skip_serializing_if = "Option::is_none", default)]
+  pub text: Option<String>,
 }
+
+/// The largest invite whose text is kept with the body. An invite is a
+/// few kilobytes; a calendar export is not an invite.
+const MAX_CALENDAR_BYTES: usize = 256_000;
 
 #[derive(Debug, Clone, Default)]
 pub struct ParsedMessage {
@@ -98,7 +107,7 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
   let html_ref = out.html.clone().unwrap_or_default();
   let mut inline_total = 0usize;
   for part in &leaves {
-    let (kind, _params) = content_type(&part.headers);
+    let (kind, params) = content_type(&part.headers);
     let filename = filename_of(&part.headers);
     let disposition = disposition_of(&part.headers);
     let content_id = header(&part.headers, "content-id").map(|c| c.trim().trim_matches(|ch| ch == '<' || ch == '>').to_string());
@@ -132,12 +141,18 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
       None if disposition == "attachment" || !kind.starts_with("text/") => default_name(&kind),
       None => continue,
     };
+    let size = decoded_size(part);
+    let text = (is_calendar && size <= MAX_CALENDAR_BYTES).then(|| {
+      let charset = params.get("charset").map(String::as_str).unwrap_or("utf-8");
+      decode_charset(&decode_bytes(part), charset)
+    });
     out.attachments.push(PartInfo {
       section: part.section.clone(),
       filename: name,
       mime_type: if kind.is_empty() { "application/octet-stream".into() } else { kind },
-      size: decoded_size(part),
+      size,
       content_id,
+      text,
     });
   }
   out
@@ -535,6 +550,8 @@ pub struct PartPlan {
   pub html: Option<StructurePart>,
   /// Pictures the HTML may ask for by cid, small enough to keep inline.
   pub inline: Vec<StructurePart>,
+  /// Small calendar invites, fetched with the text: see `PartInfo::text`.
+  pub calendars: Vec<StructurePart>,
   pub attachments: Vec<PartInfo>,
 }
 
@@ -582,12 +599,16 @@ pub fn plan_parts(parts: &[StructurePart]) -> PartPlan {
       None if part.disposition == "attachment" || !part.kind.starts_with("text/") => default_name(&part.kind),
       None => continue,
     };
+    if is_calendar && part.decoded_size() <= MAX_CALENDAR_BYTES {
+      plan.calendars.push(part.clone());
+    }
     plan.attachments.push(PartInfo {
       section: part.section.clone(),
       filename: name,
       mime_type: if part.kind == "/" { "application/octet-stream".into() } else { part.kind.clone() },
       size: part.decoded_size(),
       content_id: part.content_id.clone(),
+      text: None,
     });
   }
   plan
@@ -621,6 +642,12 @@ pub fn assemble(plan: &PartPlan, fetched: &HashMap<String, Vec<u8>>) -> ParsedMe
     out.inline_images.insert(cid.clone(), format!("data:{};base64,{data}", part.kind));
   }
   out.attachments = plan.attachments.clone();
+  for part in &plan.calendars {
+    let text = decode(part);
+    if let Some(info) = out.attachments.iter_mut().find(|a| a.section == part.section) {
+      info.text = text;
+    }
+  }
   out
 }
 
@@ -651,6 +678,50 @@ pub fn part_by_section(raw: &[u8], section: &str) -> Option<(Vec<u8>, String, Op
 mod tests {
   use super::*;
   use crate::imap::Item;
+
+  #[test]
+  fn an_invite_keeps_its_text_with_the_body() {
+    let raw = concat!(
+      "Subject: Meeting\r\n",
+      "Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n",
+      "--b\r\nContent-Type: text/plain\r\n\r\nSee you.\r\n",
+      "--b\r\nContent-Type: text/calendar; charset=utf-8; method=REQUEST\r\n",
+      "Content-Transfer-Encoding: base64\r\n\r\n",
+      "QkVHSU46VkNBTEVOREFSDQpFTkQ6VkNBTEVOREFS\r\n",
+      "--b--\r\n"
+    );
+    let parsed = parse_message(raw.as_bytes());
+    let invite = parsed.attachments.iter().find(|a| a.mime_type == "text/calendar").unwrap();
+    assert_eq!(invite.filename, "invite.ics");
+    assert_eq!(invite.text.as_deref(), Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR"));
+    // The text goes into the stored body with the entry.
+    let json = serde_json::to_value(&parsed.attachments).unwrap();
+    assert!(json[0].get("text").is_some());
+  }
+
+  #[test]
+  fn an_invite_is_fetched_with_the_text_by_its_section() {
+    let calendar = StructurePart {
+      section: "2".into(),
+      kind: "text/calendar".into(),
+      params: HashMap::new(),
+      content_id: None,
+      encoding: "7bit".into(),
+      size: 40,
+      disposition: String::new(),
+      filename: None,
+    };
+    let mut big = calendar.clone();
+    big.section = "3".into();
+    big.size = 10_000_000;
+    let plan = plan_parts(&[calendar, big]);
+    assert_eq!(plan.calendars.iter().map(|p| p.section.as_str()).collect::<Vec<_>>(), vec!["2"]);
+    let mut fetched = HashMap::new();
+    fetched.insert("2".to_string(), b"BEGIN:VCALENDAR".to_vec());
+    let parsed = assemble(&plan, &fetched);
+    assert_eq!(parsed.attachments[0].text.as_deref(), Some("BEGIN:VCALENDAR"));
+    assert_eq!(parsed.attachments[1].text, None);
+  }
 
   #[test]
   fn takes_one_part_by_its_section() {

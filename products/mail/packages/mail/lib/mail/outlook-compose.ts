@@ -15,7 +15,9 @@
  */
 
 import { extractInlineImages } from "@/lib/mail/inline-images";
+import { isPendingLocalMessage } from "@/lib/mail/local-message";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
+import type { MailMessage } from "@/lib/mail/types";
 
 /**
  * Recipients and subject on a mailto: URL, the body deliberately left off.
@@ -382,4 +384,132 @@ export async function openOutlookCompose(mailto: string): Promise<void> {
   const invoke = tauriInvoke();
   if (!invoke) throw new Error("Opening Outlook needs the desktop app");
   await invoke("open_outlook_compose", { mailto });
+}
+
+/**
+ * The message a reply answers in Outlook: the newest one in the thread, as
+ * the quote takes the newest one. A message still on its way is not one.
+ */
+export function replyAnchor(messages: MailMessage[]): MailMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (!isPendingLocalMessage(messages[i].id)) return messages[i];
+  }
+  return null;
+}
+
+/** A subject without its "Re:", "Fw:" and "Fwd:" marks, for comparing. */
+function bareSubject(subject: string): string {
+  return subject.replace(/^(?:\s*(?:re|fwd?|sv|vs|aw|wg)\s*:\s*)+/i, "").trim().toLowerCase();
+}
+
+/**
+ * Whether the reply keeps the thread's subject. A reply with a subject of
+ * its own starts a new thread, so Outlook must not make it a reply.
+ */
+export function replyKeepsSubject(outgoing: string, thread: string): boolean {
+  return bareSubject(outgoing) === bareSubject(thread);
+}
+
+/**
+ * The words above the history, as the send writes them: the history last.
+ * For a new Outlook message, which has no quote of its own.
+ */
+export function withHistory(
+  body: { html: string; text: string },
+  history: { html: string; text: string } | null
+): { html: string; text: string } {
+  if (!history) return body;
+  return {
+    html: `${body.html}${history.html}`,
+    text: body.text.trim() ? `${body.text}\n\n${history.text}` : history.text,
+  };
+}
+
+/**
+ * Make the reply in Outlook, as a reply to its own copy of the message, so
+ * it has Outlook's quote and sits in the conversation. False when Outlook
+ * has no such message or cannot be asked: open a new message instead.
+ * Desktop app only. See `outlook_reply` in handover.rs.
+ */
+export async function replyInOutlook(input: {
+  message: MailMessage;
+  /** The thread's subject: the message's own, as it came. */
+  subject: string;
+  html: string;
+  to: string[];
+  cc: string[];
+}): Promise<boolean> {
+  const invoke = tauriInvoke();
+  if (!invoke) return false;
+  const sentAtMs = input.message.sentAt ? Date.parse(input.message.sentAt) : NaN;
+  if (!Number.isFinite(sentAtMs)) return false;
+  try {
+    return Boolean(
+      await invoke("outlook_reply", {
+        reply: {
+          messageId: input.message.rfcMessageId ?? "",
+          subject: input.subject,
+          from: input.message.fromEmail,
+          sentAtMs,
+          html: input.html,
+          to: input.to,
+          cc: input.cc,
+        },
+      })
+    );
+  } catch (err) {
+    console.warn("[mail] Outlook could not make the reply:", err);
+    return false;
+  }
+}
+
+/**
+ * A reply to a mailbox this app cannot draft in, opened in Outlook.
+ *
+ * First as Outlook's own reply to its copy of the message: a new message
+ * had no quote and no place in the conversation over there (2026-10-19).
+ * Outlook writes its own quote, so the history does not go with it. Only
+ * when the reply keeps the thread's subject: one with a subject of its own
+ * starts a new thread.
+ *
+ * Else a new message, with the history under the words, as a send writes
+ * it. Plain and short, it rides in the URL. Otherwise the pasteboard
+ * carries it, which keeps the formatting a mailto: cannot.
+ */
+export async function openReplyInOutlook(input: {
+  /** The words, without our signature. */
+  own: { html: string; text: string };
+  history: { html: string; text: string } | null;
+  /** The message replied to; null for a forward. */
+  anchor: MailMessage | null;
+  threadSubject: string;
+  subject: string;
+  to: string[];
+  cc: string[];
+}): Promise<"reply" | "url" | "paste"> {
+  if (
+    input.anchor &&
+    replyKeepsSubject(input.subject, input.threadSubject) &&
+    (await replyInOutlook({
+      message: input.anchor,
+      subject: input.threadSubject,
+      html: input.own.html,
+      to: input.to,
+      cc: input.cc,
+    }))
+  ) {
+    return "reply";
+  }
+  const carrying = withHistory(input.own, input.history);
+  const travels = bodyTravels(carrying.html, carrying.text);
+  if (!travels) await copyMessageToClipboard(carrying);
+  await openOutlookCompose(
+    outlookComposeUrl({
+      to: input.to,
+      cc: input.cc,
+      subject: input.subject,
+      body: travels ? carrying.text : undefined,
+    })
+  );
+  return travels ? "url" : "paste";
 }

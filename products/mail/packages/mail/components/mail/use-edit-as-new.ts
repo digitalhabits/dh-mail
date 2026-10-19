@@ -62,7 +62,8 @@ export function useEditAsNew({
       for (const attachment of message.attachments ?? []) {
         try {
           const res = await mailApiFetch(
-            attachmentUrl({ account, messageId: message.id, attachment })
+            // A message merged in from another mailbox is that mailbox's.
+            attachmentUrl({ account: message.account ?? account, messageId: message.id, attachment })
           );
           if (!res.ok) continue;
           const blob = await res.blob();

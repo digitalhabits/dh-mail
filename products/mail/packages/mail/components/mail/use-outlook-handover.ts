@@ -17,16 +17,15 @@ import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import {
-  bodyTravels,
   ccBackToSelf,
-  copyMessageToClipboard,
   handoverFiles,
   saveAttachmentsForHandover,
   withoutTrailingSignature,
-  openOutlookCompose,
-  outlookComposeUrl,
+  openReplyInOutlook,
+  replyAnchor,
 } from "@/lib/mail/outlook-compose";
 import { sanitizeEmailHtml } from "@/lib/mail/email-html";
+import { forwardedHtml, forwardedPlainText } from "@/lib/mail/forwarded-message";
 import { quotedReplyMessage } from "@/lib/mail/reaction-message";
 import { bodyToEmailHtml, htmlToPlainText } from "@/lib/client-email-html";
 import { formatEmailBody } from "@/lib/email-mime";
@@ -40,6 +39,13 @@ import { messageStamp } from "@/lib/mail/date-format";
 import { markDraftHandedOver, threadDraftKey } from "@/lib/mail/local-drafts";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
+
+/** What the toast says, by how the message reached Outlook. */
+const OPENED_SAYS = {
+  reply: "outlookReplyIsOpen",
+  url: "outlookIsOpen",
+  paste: "outlookIsOpenPaste",
+} as const;
 
 /** The quoted message as the send and the hand-over carry it. */
 type QuotePayload = Parameters<typeof quotedReplyMessage>[1];
@@ -196,31 +202,32 @@ export function useOutlookHandover(input: {
       if (!outlookTarget) {
         const html = replyText.trim() || pickedQuote ? composed.html : "";
         // Outlook adds its own signature to what it opens; ours stays here.
-        const carrying = withoutTrailingSignature(
+        const own = withoutTrailingSignature(
           { html: html || composed.text, text: composed.text },
           htmlToPlainText(signature ?? "")
         );
-        // Plain and short: the message rides in the URL and the reader has
-        // nothing left to do. Otherwise the pasteboard, which keeps the
-        // formatting a mailto: cannot.
-        const carried = bodyTravels(carrying.html, carrying.text);
-        if (!carried) {
-          await copyMessageToClipboard(carrying);
-        }
-        await openOutlookCompose(
-          outlookComposeUrl({
-            to: flatTo.emails,
-            // A copy back to the mailbox it was written from, so what goes
-            // out from Outlook lands in this app's mail too.
-            cc: ccBackToSelf({
-              from: fromAccount,
-              to: flatTo.emails,
-              cc: flatCc.emails,
-            }),
-            subject: handoverSubject,
-            body: carried ? carrying.text : undefined,
-          })
-        );
+        // A copy back to the mailbox it was written from, so what goes
+        // out from Outlook lands in this app's mail too.
+        const cc = ccBackToSelf({
+          from: fromAccount,
+          to: flatTo.emails,
+          cc: flatCc.emails,
+        });
+        const opened = await openReplyInOutlook({
+          own,
+          // A forward carries the message it forwards, as a send writes it:
+          // it went to Outlook with the words alone (2026-10-19).
+          history: forwardHandover
+            ? { html: forwardedHtml(forwardHandover), text: forwardedPlainText(forwardHandover) }
+            : noQuote || forwarding
+              ? null
+              : historyAppendix,
+          anchor: forwarding ? null : replyAnchor(thread.messages),
+          threadSubject: thread.subject,
+          subject: handoverSubject,
+          to: flatTo.emails,
+          cc,
+        });
         /*
           The files, which a mailto: cannot carry.
 
@@ -248,10 +255,10 @@ export function useOutlookHandover(input: {
           keeps them as they are: a `cid:` left in a paste is a broken
           picture rather than none, which is worse than the gap.
         */
-        const travelling = handoverFiles(attachments, carrying.html);
+        const travelling = handoverFiles(attachments, own.html);
         const savedFiles = await saveAttachmentsForHandover(travelling);
         toast.success(
-          carried ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
+          mailSay(OPENED_SAYS[opened]),
           {
             ...(travelling.length
               ? {

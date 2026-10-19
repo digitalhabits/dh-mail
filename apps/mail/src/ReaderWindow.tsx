@@ -9,6 +9,7 @@
 
 import * as React from "react";
 
+import { ComposeDraftWindow } from "@/components/mail/ComposeDraftWindow";
 import { PersonReaderWindow } from "@/components/mail/PersonReaderWindow";
 import { ThreadReaderWindow } from "@/components/mail/ThreadReaderWindow";
 import { mailStore } from "@/lib/mail/store";
@@ -27,6 +28,7 @@ export function ReaderWindow({
   email,
   subject,
   person,
+  draft,
 }: {
   account: string;
   threadId: string;
@@ -35,6 +37,8 @@ export function ReaderWindow({
   subject: string;
   /** A person's key: their mail in the window rather than one thread. */
   person?: string;
+  /** A new message's stored draft: a composer in the window. */
+  draft?: string;
 }) {
   const [accounts, setAccounts] = React.useState<string[] | null>(null);
 
@@ -71,6 +75,16 @@ export function ReaderWindow({
   }, [account]);
 
   if (accounts === null) return null;
+
+  if (draft) {
+    return (
+      <ComposeDraftWindow
+        draftKey={draft}
+        accounts={accounts.length ? accounts : account ? [account] : []}
+        subject={subject}
+      />
+    );
+  }
 
   if (person) {
     return (

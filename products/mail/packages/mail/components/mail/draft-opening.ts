@@ -151,6 +151,27 @@ export function openDraftRow(
   if (row.threadId) openDraftThread(row.account, row.threadId, open);
 }
 
+/**
+ * Where a double-click opens a draft in a window of its own. A new message
+ * of ours opens in a composer window; anything with a thread opens that
+ * thread's window, where the composer picks the draft up. A provider draft
+ * with no thread has nowhere to go.
+ */
+export function draftWindowFor(
+  row: MailDraftRow
+):
+  | { kind: "draft"; draftKey: string; subject: string }
+  | { kind: "thread"; account: string; threadId: string; subject: string }
+  | null {
+  if (row.origin === "here" && isStandaloneDraft(row)) {
+    return { kind: "draft", draftKey: row.id, subject: row.subject };
+  }
+  if (row.threadId) {
+    return { kind: "thread", account: row.account, threadId: row.threadId, subject: row.subject };
+  }
+  return null;
+}
+
 function openDraftThread(
   account: string,
   threadId: string,

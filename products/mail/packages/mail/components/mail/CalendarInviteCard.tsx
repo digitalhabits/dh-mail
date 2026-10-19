@@ -195,9 +195,14 @@ function CalendarInviteCard({
     setIcsText(null);
     void (async () => {
       try {
-        const res = await mailApiFetch(inlineHref);
-        if (!res.ok) throw new Error(mailSay("couldNotLoadInvite"));
-        const text = await res.text();
+        // The text the local copy kept with the body, when it did: no wait
+        // for the file to come from the server (2026-10-19).
+        let text = attachment.text ?? null;
+        if (text === null) {
+          const res = await mailApiFetch(inlineHref);
+          if (!res.ok) throw new Error(mailSay("couldNotLoadInvite"));
+          text = await res.text();
+        }
         const parsed = parseCalendarInvite(text);
         if (cancelled) return;
         if (!parsed) {
@@ -217,7 +222,7 @@ function CalendarInviteCard({
     return () => {
       cancelled = true;
     };
-  }, [inlineHref, attachment.attachmentId, onUnavailable]);
+  }, [inlineHref, attachment.attachmentId, attachment.text, onUnavailable]);
 
   const addToCalendar = async (to: CalendarTarget) => {
     if (!icsText || opening) return;

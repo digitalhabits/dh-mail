@@ -18,7 +18,7 @@
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { invalidateCachedMailThread } from "@/lib/mail/thread-cache";
-import { everyCopyOfEach, threadKey } from "@/lib/mail/thread-copies";
+import { everyCopyOfEach, threadKey, withRowsBack } from "@/lib/mail/thread-copies";
 import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
@@ -124,7 +124,7 @@ export function useDeleteForever({
 
     const putBack = () => {
       unhideRows(keys);
-      setThreads(before);
+      setThreads((current) => withRowsBack(current, before, keys));
     };
 
     deleteForeverWithUndo({
@@ -151,7 +151,7 @@ export function useDeleteForever({
         // went is gone, and the list is read again to say so.
         unhideRows(keys);
         if (failed.length === ask.targets.length) {
-          setThreads(before);
+          setThreads((current) => withRowsBack(current, before, keys));
           const first = (failed[0] as PromiseRejectedResult).reason;
           toast.error(
             first instanceof Error ? first.message : mailSay("couldNotDeleteForever")

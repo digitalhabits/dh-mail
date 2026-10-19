@@ -639,6 +639,8 @@ export const en = {
   draftsInboxMade: "{count} new drafts in Drafts, from the drafts folder",
   draftsInboxMadeOne: "1 new draft in Drafts, from the drafts folder",
   draftsInboxNotMade: "A draft from the drafts folder was not made: {reason}",
+  draftsInboxOpenOne: "Open",
+  draftsInboxOpenAll: "Show",
   listIconSearch: "Search all icons",
   listIconNone: "No icon",
   listIconNoMatch: "No icons match",
@@ -1122,6 +1124,7 @@ export const en = {
     "Outlook cannot take files this way — {count} in your Downloads, ready to drag in",
   outlookFilesLeftBehind:
     "Outlook cannot take files this way — {count} did not go with it",
+  outlookReplyIsOpen: "The reply is open in Outlook, in its conversation",
   outlookIsOpen: "Outlook is open on this message",
   discardTheCopyHere: "Discard the copy here",
   couldNotOpenOutlook: "Couldn't open a new Outlook message",

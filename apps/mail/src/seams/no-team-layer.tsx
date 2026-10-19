@@ -123,6 +123,7 @@ export function useThreadAssistant(_input: {
   readableAttachments: ReadableThreadAttachment[];
   replyText: string;
   replaceWords: (html: string) => void;
+  recipientState: unknown;
   ownsReply: boolean;
 }): typeof THREAD_ASSISTANT {
   return THREAD_ASSISTANT;
@@ -174,6 +175,11 @@ export function TriageTab(_props: { m: unknown; tabClass: (active: boolean) => s
 }
 
 /** The list while that tab is open. Never open here. */
+/** The triage list's order. No triage here. */
+export function useTriageOrder(): readonly { key: string; account: string; threadId: string; lastAt: string }[] | null {
+  return null;
+}
+
 export function TriageListPane(_props: { m: unknown }): null {
   return null;
 }

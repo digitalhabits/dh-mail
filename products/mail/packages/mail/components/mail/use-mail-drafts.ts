@@ -107,6 +107,13 @@ export function useMailDrafts(): {
 
   // Ours change as they are typed; the provider's only change when refetched.
   React.useEffect(() => subscribeMailDrafts(refreshLocal), [refreshLocal]);
+  // A draft written, sent or discarded in another window (a draft opened in
+  // its own window) does not reach this window's listeners. Read ours again
+  // when this window comes forward.
+  React.useEffect(() => {
+    window.addEventListener("focus", refreshLocal);
+    return () => window.removeEventListener("focus", refreshLocal);
+  }, [refreshLocal]);
 
   const drafts = React.useMemo(
     () =>

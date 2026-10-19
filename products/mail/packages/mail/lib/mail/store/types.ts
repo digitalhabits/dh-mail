@@ -633,6 +633,13 @@ export type MailMessageStore = {
   ): Promise<(MailStoredMessage & { body: MailStoredBody | null })[]>;
 
   /**
+   * The same conversation in the reader's other mailboxes: each mailbox
+   * and thread outside `account` that holds one of these Message-IDs.
+   * Optional: a store without it shows each mailbox's copy alone.
+   */
+  copies?(account: string, rfcIds: string[]): Promise<{ account: string; threadId: string }[]>;
+
+  /**
    * Full-text search over the copy. Threads, newest first; inside one view
    * when asked. Reads the words Gmail reads: `from:`, `to:`, `subject:`,
    * `has:attachment`, `before:`, `after:`, quotes, `-word`, `OR`.

@@ -109,6 +109,12 @@ export type MailAttachment = {
   mimeType: string;
   /** Declared size in bytes (may be 0 when Gmail omits it). */
   size: number;
+  /**
+   * A calendar invite's own text, when the local copy kept it with the
+   * body. The invite card draws from it at once instead of fetching the
+   * file first.
+   */
+  text?: string;
 };
 
 export type MailMessage = {
@@ -144,6 +150,12 @@ export type MailMessage = {
   inReplyTo?: string;
   /** Raw References header: Message-IDs, whitespace-separated, oldest first. */
   references?: string;
+  /**
+   * The mailbox this message is in, when it is not the thread's own: a
+   * copy of the conversation in another of the reader's mailboxes, merged
+   * in (local-thread.ts). Its body, files and invites are that mailbox's.
+   */
+  account?: string;
 };
 
 /**
@@ -276,5 +288,11 @@ export type MailThreadDetail = {
     /** Reply all: sender plus the other recipients of the newest message. */
     allTo: string[];
     allCc: string[];
+    /**
+     * The mailbox a reply goes from, when not the thread's own: the newest
+     * message is only in another mailbox of the reader's, most often their
+     * own reply sent from there. Absent: the thread's mailbox.
+     */
+    from?: string;
   };
 };

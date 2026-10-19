@@ -531,10 +531,13 @@ export function isMailboxScopeOne(selected: string[], accounts: string[]): boole
 export function accountPassesMailboxScope(
   account: string,
   selected: string[],
-  accounts: string[]
+  accounts: string[],
+  /** Hidden mailboxes All holds too: Sent's (see use-thread-list-data). */
+  allAlso: string[] = []
 ): boolean {
   const key = account.toLowerCase();
   if (isMailboxScopeAll(selected, accounts)) {
+    if (allAlso.some((email) => email.toLowerCase() === key)) return true;
     /*
       All means every mailbox that is shown, not every mailbox in the copy.
       The list is loaded for every connected mailbox, so a hidden one's
@@ -625,6 +628,18 @@ export type ActiveMailFolder = MailFolder & {
    */
   virtual?: boolean;
 };
+
+/**
+ * The list shows sent mail only: the Sent tab, or a mailbox's Sent folder.
+ *
+ * A pause does not hold these back. A pause stops new mail from coming in,
+ * and sent mail is not new mail: Sent is where you check that a message
+ * went, also from a paused mailbox (Mikkel, 2026-10-19).
+ */
+export function listShowsSentOnly(folder: string, activeFolder: ActiveMailFolder | null): boolean {
+  if (activeFolder) return activeFolder.role === "sent";
+  return folder === "sent";
+}
 
 /** A virtual row's role, as the view the thread list already knows. */
 export const ROLE_VIEW: Record<MailFolderRole, string> = {

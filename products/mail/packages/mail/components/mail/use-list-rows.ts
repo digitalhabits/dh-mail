@@ -20,6 +20,7 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 import { dayBucket } from "@/lib/mail/date-format";
 import { MailListTab, MAIL_OFF_TAB_VIEWS, accountPassesMailboxScope, searchTokens, matchesTokens, threadHaystack, type ActiveMailFolder } from "@/components/mail/mail-list-state";
 import type { MailViewMode } from "@/components/mail/MailListControls";
+import { TRIAGE_TAB, useTriageOrder } from "@/components/mail/team-layer";
 
 export function useListRows({
   tab,
@@ -130,7 +131,20 @@ export function useListRows({
   const screenThreadOrder = showPinnedBand
     ? [...pinnedThreads, ...flowThreads]
     : flowThreads;
-  screenThreadOrderRef.current = screenThreadOrder;
+  /*
+    On the Triage tab the list shows the triage rows, in their order. An
+    archive there went to the next row of the inbox instead (2026-10-19).
+    A row the list has not loaded stands in with what it is known by.
+  */
+  const triageOrder = useTriageOrder();
+  screenThreadOrderRef.current =
+    tab === TRIAGE_TAB && triageOrder
+      ? triageOrder.map(
+          (entry) =>
+            threads.find((t) => threadKey(t) === entry.key) ??
+            ({ ...entry } as unknown as MailThreadSummary)
+        )
+      : screenThreadOrder;
   // Warm top-of-list bodies so open / post-delete successor paints from cache.
   // Wait until the list is idle so prefetch does not compete with mailbox refresh.
   const prefetchOrderKey = screenThreadOrder

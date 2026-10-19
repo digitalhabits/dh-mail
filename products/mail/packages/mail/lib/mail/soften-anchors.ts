@@ -81,13 +81,21 @@ export function softenAnchorsForParse(html: string): string {
         the nearest honest answer to that question. A class nothing
         styles is a name and not a dress: Ryanair's links carry one, and
         counting it left "see shops here" as ordinary words.
+
+        An inline style dresses a link only when it gives the link a
+        colour. Every mail client draws `<a style="font-size:14px">` blue
+        and underlined, because the style left the colour to the client.
+        Counting any style drew such a link as ordinary words, the likely
+        cause of a tester's consent link with no mark (2026-10-19). Its
+        other inline rules still hold: an
+        inline style beats the frame's link rule, so `text-decoration:none`
+        keeps the underline off.
       */
       const classMatch = /(?:^|\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(rest);
       const classes = (classMatch?.[1] ?? classMatch?.[2] ?? classMatch?.[3] ?? "")
         .split(/\s+/)
         .filter(Boolean);
-      const dressed =
-        /(?:^|\s)style\s*=/i.test(rest) || classes.some((c) => styled.has(c.toLowerCase()));
+      const dressed = styleSetsColour(rest) || classes.some((c) => styled.has(c.toLowerCase()));
       out += `<span ${MAIL_HREF_ATTR}="${escaped}"${
         dressed ? "" : ` ${MAIL_PLAIN_LINK_ATTR}=""`
       }${rest}>`;
@@ -96,6 +104,13 @@ export function softenAnchorsForParse(html: string): string {
   }
   out += html.slice(last);
   return out;
+}
+
+/** Whether the tag's own `style` gives it a colour. `background-color` is not one. */
+function styleSetsColour(attrs: string): boolean {
+  const match = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+  const style = match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+  return /(?:^|;)\s*color\s*:/i.test(style);
 }
 
 /**

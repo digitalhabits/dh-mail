@@ -228,6 +228,39 @@ export async function openMailPersonWindow(row: PersonRow): Promise<void> {
 }
 
 /**
+ * Open a new message's stored draft in a window of its own: a composer and
+ * nothing else (ComposeDraftWindow). Only the draft's key travels; the
+ * window reads the draft from the store, which every window shares.
+ */
+export async function openMailDraftWindow(input: {
+  draftKey: string;
+  subject: string;
+}): Promise<void> {
+  if (isNativeShell()) {
+    await openMailReaderWindow({
+      account: "",
+      threadId: "",
+      name: "",
+      email: "",
+      subject: input.subject,
+      draft: input.draftKey,
+    });
+    return;
+  }
+  const params = new URLSearchParams({ reader: "1", draft: input.draftKey });
+  const windowName = `mail-reader-draft-${input.draftKey}`.replace(/[^\w-]/g, "_");
+  const popup = window.open(
+    `${window.location.pathname}?${params.toString()}`,
+    windowName,
+    `popup=yes,width=${READER_WINDOW_WIDTH},height=${READER_WINDOW_HEIGHT}`
+  );
+  if (!popup) {
+    throw new Error("Popup blocked — allow popups for this site");
+  }
+  popup.focus();
+}
+
+/**
  * Cross-window "this thread was archived / deleted / moved" signal, so the
  * main list drops the row now rather than at the next poll. The same two
  * channels as the chat popout's sent signal: a localStorage write for

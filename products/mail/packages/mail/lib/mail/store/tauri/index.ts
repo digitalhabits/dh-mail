@@ -131,6 +131,7 @@ export const MAIL_STORE_OPERATIONS = [
   "messages.list",
   "messages.counts",
   "messages.thread",
+  "messages.copies",
   "messages.search",
   "messages.upsertMany",
   "messages.putBody",
@@ -295,6 +296,13 @@ export function createTauriMailStore(): MailStore {
           { account, threadId }
         );
         return out.messages;
+      },
+      copies: async (account, rfcIds) => {
+        const out = await call<{ copies: { account: string; threadId: string }[] }>("messages.copies", {
+          account,
+          rfcIds,
+        });
+        return out.copies;
       },
       search: (input) =>
         call("messages.search", {

@@ -11,6 +11,7 @@ import {
   draftCountForTabs,
   draftOpensHere,
   draftsInView,
+  draftWindowFor,
   isThreadDraftRow,
   openDraftAfter,
   openDraftRow,
@@ -135,4 +136,14 @@ suite(async () => {
   r = recorder();
   openDraftRow(row("r3", { origin: "outlook" }), r.open);
   check("a provider draft with no thread opens nothing", r.calls.length === 0, r.calls);
+
+  // Two clicks: a window of its own. A new message of ours gets a composer
+  // window on its key; a reply, ours or the provider's, its thread's window.
+  const newOne = draftWindowFor(row("compose:w1"));
+  check("a new message opens in a composer window on its key", newOne?.kind === "draft" && newOne.draftKey === "compose:w1", newOne);
+  const reply = draftWindowFor(row("thread:vera@example.com:t7", { threadId: "t7" }));
+  check("a reply of ours opens its thread's window", reply?.kind === "thread" && reply.threadId === "t7" && reply.account === vera, reply);
+  const providerReply = draftWindowFor(row("gmail-1", { origin: "gmail", threadId: "t8" }));
+  check("a provider draft opens its thread's window", providerReply?.kind === "thread" && providerReply.threadId === "t8", providerReply);
+  check("a provider draft with no thread opens no window", draftWindowFor(row("outlook-2", { origin: "outlook" })) === null);
 });

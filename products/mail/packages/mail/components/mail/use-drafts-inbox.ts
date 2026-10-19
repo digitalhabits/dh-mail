@@ -47,9 +47,24 @@ function tauriInvoke(): Invoke | null {
   return core?.invoke ?? null;
 }
 
-export function useDraftsInbox(accounts: readonly string[]) {
+/**
+ * What the toast's button opens: the one draft just made, or (null) the
+ * Drafts list when several were.
+ */
+export type MadeDraft =
+  | { kind: "thread"; account: string; threadId: string }
+  | { kind: "compose"; key: string; to: string[]; subject: string };
+
+export function useDraftsInbox(
+  accounts: readonly string[],
+  openMade: (made: MadeDraft | null) => void
+) {
   const accountsRef = React.useRef(accounts);
   accountsRef.current = accounts;
+  const openMadeRef = React.useRef(openMade);
+  React.useEffect(() => {
+    openMadeRef.current = openMade;
+  });
 
   React.useEffect(() => {
     const invoke = tauriInvoke();
@@ -67,6 +82,7 @@ export function useDraftsInbox(accounts: readonly string[]) {
       try {
         const waiting = ((await invoke("take_drafts_inbox")) as Waiting[] | null) ?? [];
         let made = 0;
+        let last: MadeDraft | null = null;
         for (const item of waiting) {
           const result = draftFromInbox(item.draft, accountsRef.current);
           if (!result.ok) {
@@ -84,13 +100,28 @@ export function useDraftsInbox(accounts: readonly string[]) {
               continue;
             }
             await setDraft({ ...draft, key, attachments: attachmentsOf(item, key), updatedAt: Date.now() });
+            last = { kind: "thread", account: draft.account, threadId: draft.threadId };
           } else {
             const key = newComposeDraftKey();
             await setDraft({ ...draft, key, attachments: attachmentsOf(item, key), updatedAt: Date.now() });
+            last = {
+              kind: "compose",
+              key,
+              to: draft.toList.map((r) => (r.kind === "email" ? r.email : "")).filter(Boolean),
+              subject: draft.subject,
+            };
           }
           made += 1;
         }
-        if (made) toast(mailSay(made === 1 ? "draftsInboxMadeOne" : "draftsInboxMade", { count: made }));
+        if (made) {
+          const target = made === 1 ? last : null;
+          toast(mailSay(made === 1 ? "draftsInboxMadeOne" : "draftsInboxMade", { count: made }), {
+            action: {
+              label: mailSay(made === 1 ? "draftsInboxOpenOne" : "draftsInboxOpenAll"),
+              onClick: () => openMadeRef.current(target),
+            },
+          });
+        }
       } catch (err) {
         console.warn("[mail] could not read the drafts folder:", err);
       } finally {

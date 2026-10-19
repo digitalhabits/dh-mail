@@ -282,6 +282,174 @@ end run
   }
 }
 
+/// A reply to finish in Outlook, as a reply to Outlook's own copy of the
+/// message: see `outlook_reply`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlookReply {
+  /// The Message-ID of the message replied to, angle brackets included.
+  /// Empty when it has none.
+  pub message_id: String,
+  /// Its subject, as it came.
+  pub subject: String,
+  /// Its sender's address.
+  pub from: String,
+  /// When it was sent, in epoch milliseconds.
+  pub sent_at_ms: i64,
+  /// What the reader wrote, as HTML. It goes above Outlook's own quote.
+  pub html: String,
+  pub to: Vec<String>,
+  pub cc: Vec<String>,
+}
+
+/// Make the reply in Outlook, as a reply to its own copy of the message.
+///
+/// A mailto: opens a new message: no quote, and no place in the
+/// conversation. So Outlook is asked to find the message and reply to it
+/// with its own command. The reply then has Outlook's quote and sits in
+/// the conversation, and the reader's words go above the quote. Its To and
+/// Cc are the composer's.
+///
+/// Outlook's copy is found by its Message-ID, or else by the same sender
+/// and subject, sent within two minutes. The second is needed for mail
+/// that reaches this app through a forwarding rule: the rule sends a new
+/// message, with a new Message-ID (2026-10-19).
+///
+/// `Ok(false)` when Outlook has no such message, or cannot be scripted
+/// this way (the new Outlook): the caller then opens a new message, as
+/// before.
+#[tauri::command]
+pub async fn outlook_reply(reply: OutlookReply) -> Result<bool, String> {
+  #[cfg(target_os = "macos")]
+  {
+    const SCRIPT: &str = r#"
+on findIn(h, n)
+  return offset of n in h
+end findIn
+
+on bodyStart(c)
+  set i to offset of "<body" in c
+  if i is 0 then return 1
+  set tail to text i thru -1 of c
+  set j to offset of ">" in tail
+  return i + j
+end bodyStart
+
+on run argv
+  set theId to item 1 of argv
+  set theSubject to item 2 of argv
+  set theSender to item 3 of argv
+  set sentAt to (current date) - ((item 4 of argv) as integer)
+  set theHtml to item 5 of argv
+  set toList to paragraphs of (item 6 of argv)
+  set ccList to paragraphs of (item 7 of argv)
+  tell application "Microsoft Outlook"
+    set found to (every message whose subject is theSubject and time sent > (sentAt - 2 * days))
+  end tell
+  set byId to missing value
+  set byLook to missing value
+  repeat with m in found
+    set m to contents of m
+    tell application "Microsoft Outlook"
+      set h to (headers of m) as string
+      set ts to time sent of m
+      set a to ""
+      try
+        set s to sender of m
+        set a to address of s
+      end try
+    end tell
+    if theId is not "" and my findIn(h, theId) > 0 then
+      set byId to m
+      exit repeat
+    end if
+    set gap to ts - sentAt
+    if gap < 0 then set gap to -gap
+    if byLook is missing value and gap ≤ 120 and a is theSender then set byLook to m
+  end repeat
+  set target to byId
+  if target is missing value then set target to byLook
+  if target is missing value then return ""
+  tell application "Microsoft Outlook"
+    set r to reply to target without opening window
+    delete every recipient of r
+    repeat with x in toList
+      if (contents of x) is not "" then make new to recipient at r with properties {email address:{address:(contents of x)}}
+    end repeat
+    repeat with x in ccList
+      if (contents of x) is not "" then make new cc recipient at r with properties {email address:{address:(contents of x)}}
+    end repeat
+    set c to content of r
+  end tell
+  set k to my bodyStart(c)
+  if k > 1 then
+    set newContent to (text 1 thru (k - 1) of c) & theHtml & (text k thru -1 of c)
+  else
+    set newContent to theHtml & c
+  end if
+  tell application "Microsoft Outlook"
+    set content of r to newContent
+    open r
+    activate
+    return subject of r
+  end tell
+end run
+"#;
+    let args = outlook_reply_args(&reply, now_ms());
+    let was_running = outlook_is_running();
+    let out = tauri::async_runtime::spawn_blocking(move || {
+      std::process::Command::new("/usr/bin/osascript").arg("-e").arg(SCRIPT).args(&args).output()
+    })
+    .await
+    .map_err(|e| format!("Couldn't run the Outlook reply: {e}"))?
+    .map_err(|e| format!("Couldn't ask Outlook for the reply: {e}"))?;
+    if !out.status.success() {
+      // The new Outlook, or a message it would not reply to: the caller
+      // opens a new message instead.
+      log::warn!("[mail] Outlook could not make the reply: {}", String::from_utf8_lossy(&out.stderr).trim());
+      return Ok(false);
+    }
+    let subject = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if subject.is_empty() {
+      return Ok(false);
+    }
+    std::thread::spawn(move || keep_message_in_front(&subject, !was_running));
+    Ok(true)
+  }
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = reply;
+    Ok(false)
+  }
+}
+
+/// The script's arguments: the id, subject, sender, seconds since it was
+/// sent, the words, then To and Cc one per line.
+fn outlook_reply_args(reply: &OutlookReply, now_ms: i64) -> Vec<String> {
+  let seconds_ago = ((now_ms - reply.sent_at_ms) / 1000).max(0);
+  let lines = |list: &[String]| {
+    list.iter().map(|a| a.trim()).filter(|a| !a.is_empty()).collect::<Vec<_>>().join("\n")
+  };
+  vec![
+    reply.message_id.trim().to_string(),
+    reply.subject.clone(),
+    reply.from.trim().to_string(),
+    seconds_ago.to_string(),
+    reply.html.clone(),
+    lines(&reply.to),
+    lines(&reply.cc),
+  ]
+}
+
+#[cfg(target_os = "macos")]
+fn now_ms() -> i64 {
+  std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_millis() as i64)
+    .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
   use super::mailto_subject;
@@ -295,5 +463,22 @@ mod tests {
     assert_eq!(mailto_subject("mailto:a%40b.org?body=hi"), None);
     assert_eq!(mailto_subject("mailto:a%40b.org"), None);
     assert_eq!(mailto_subject("mailto:a%40b.org?subject=%20"), None);
+  }
+
+  #[test]
+  fn the_reply_script_gets_its_arguments_in_order() {
+    let reply = super::OutlookReply {
+      message_id: " <a@b.test> ".into(),
+      subject: "FW: Plans".into(),
+      from: "ann@b.test".into(),
+      sent_at_ms: 1_000_000,
+      html: "<p>Hi</p>".into(),
+      to: vec!["ann@b.test".into(), " ".into()],
+      cc: vec!["me@c.test".into(), "bo@d.test".into()],
+    };
+    let args = super::outlook_reply_args(&reply, 1_090_500);
+    assert_eq!(args, vec!["<a@b.test>", "FW: Plans", "ann@b.test", "90", "<p>Hi</p>", "ann@b.test", "me@c.test\nbo@d.test"]);
+    // A clock behind the message is not a negative wait.
+    assert_eq!(super::outlook_reply_args(&reply, 0)[3], "0");
   }
 }

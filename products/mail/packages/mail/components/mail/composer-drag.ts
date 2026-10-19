@@ -31,8 +31,13 @@ import * as React from "react";
 const OLD_KEY = "dh-mail-composer-place";
 const DRAG_SLOP = 4;
 const EDGE = 8;
-const NOT_A_HANDLE =
-  'input, textarea, select, button, a, label, [contenteditable="true"], [contenteditable=""], .ql-editor, [role="separator"], [role="button"], [role="combobox"], [role="listbox"]';
+/*
+  A recipient field is not the card's ground either: its chips are carried
+  to another field (recipient-carry). A press on a chip started both, and
+  the card took the pointer, so the chip never landed (2026-10-19).
+*/
+export const NOT_A_HANDLE =
+  'input, textarea, select, button, a, label, [contenteditable="true"], [contenteditable=""], .ql-editor, [role="separator"], [role="button"], [role="combobox"], [role="listbox"], [data-recipient-drop]';
 
 type Shift = { x: number; y: number };
 

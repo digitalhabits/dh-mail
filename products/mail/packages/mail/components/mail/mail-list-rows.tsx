@@ -278,6 +278,7 @@ export function PeopleRows({
     multiKeys,
     onPersonSnoozeOpenChange,
     openPersonWindow,
+    expandThreadRow,
     paintedPersonKey,
     pendingTokens,
     personGroups,
@@ -650,6 +651,7 @@ export function PeopleRows({
                   threads={row.threads}
                   isOpen={isOpenThread}
                   onOpen={(th) => openFromStack(row, th)}
+                  onExpand={expandThreadRow}
                   onNavy={chromeDark}
                   highlight={highlightTerms}
                   withYear={Boolean(debouncedSearch)}

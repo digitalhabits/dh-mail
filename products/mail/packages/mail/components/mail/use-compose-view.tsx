@@ -155,6 +155,12 @@ export type ComposeViewProps = {
   /** Refresh Sent for the From mailbox after a successful send. */
   onSent?: (accountEmail: string) => void;
   /**
+   * Send was pressed: the composer closes now and the mail goes when the
+   * Undo count runs out. A window that holds only this composer must stay
+   * open until then, or the mail would go with it (ComposeDraftWindow).
+   */
+  onSending?: () => void;
+  /**
    * The reader took the send back inside the count.
    *
    * Open the composer again on the draft named here. It was deliberately
@@ -186,6 +192,7 @@ export function useComposeView(props: ComposeViewProps) {
   floating,
   onUnfloat,
   onSent,
+  onSending,
   onUndoSend,
   seed,
 } = props;
@@ -851,6 +858,7 @@ export function useComposeView(props: ComposeViewProps) {
       clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
     }
+    onSending?.();
     onClose();
     // A message for later is held the same few seconds: Undo puts it back
     // in the composer before anything is scheduled.

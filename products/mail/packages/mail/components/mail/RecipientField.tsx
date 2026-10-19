@@ -1195,7 +1195,12 @@ export function RecipientField({
                       : "top-full rounded-b-xl"
                   )
                 : cn(
-                    "left-0 right-0 rounded-lg",
+                    /* As wide as the field, and never narrower than a name
+                       and its address. In the reply card the Cc field is a
+                       short strip beside Bcc and From, and its list cut
+                       every name off (2026-10-19). Wider, it runs on to
+                       the right. */
+                    "left-0 right-0 min-w-[18rem] rounded-lg",
                     menuBox.above ? "bottom-full mb-1" : "top-full mt-1"
                   )
             )}

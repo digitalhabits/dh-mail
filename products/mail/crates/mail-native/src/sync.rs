@@ -317,6 +317,7 @@ fn keep_bodies(
         .iter()
         .chain(plan.html.iter())
         .chain(plan.inline.iter())
+        .chain(plan.calendars.iter())
         .map(|p| p.section.clone())
         .collect();
       let mut fetched: HashMap<String, Vec<u8>> = HashMap::new();

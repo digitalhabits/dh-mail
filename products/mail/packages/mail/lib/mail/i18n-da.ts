@@ -635,6 +635,8 @@ export const da: Record<keyof typeof en, string> = {
   draftsInboxMade: "{count} nye kladder i Kladder, fra kladdemappen",
   draftsInboxMadeOne: "1 ny kladde i Kladder, fra kladdemappen",
   draftsInboxNotMade: "En kladde fra kladdemappen blev ikke lavet: {reason}",
+  draftsInboxOpenOne: "Åbn",
+  draftsInboxOpenAll: "Vis",
   listIconSearch: "Søg i alle ikoner",
   listIconNone: "Intet ikon",
   listIconNoMatch: "Ingen ikoner passer",
@@ -1111,6 +1113,7 @@ export const da: Record<keyof typeof en, string> = {
     "Outlook kan ikke tage filer denne vej — {count} ligger i Overførsler, klar til at trække ind",
   outlookFilesLeftBehind:
     "Outlook kan ikke tage filer denne vej — {count} kom ikke med",
+  outlookReplyIsOpen: "Svaret er åbent i Outlook, i sin samtale",
   outlookIsOpen: "Outlook er åben på denne besked",
   discardTheCopyHere: "Kassér kopien her",
   couldNotOpenOutlook: "Kunne ikke åbne en ny Outlook-besked",

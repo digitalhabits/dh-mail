@@ -442,6 +442,7 @@ export function useMailPage(props: MailPageProps) {
     loadThreads,
     scheduleSentRefreshForAccount,
     loadAbortRef,
+    sentHiddenEmails,
   } = useThreadListData({
     viewerId,
     pageSnapKey,
@@ -595,8 +596,9 @@ export function useMailPage(props: MailPageProps) {
   const listScrollRef = React.useRef<HTMLDivElement | null>(null);
   // Mailbox menu only filters what we paint — the fetch always loads every
   // connected mailbox so toggling stays instant.
+  // In Sent, All also holds the hidden mailboxes' sent mail.
   const threadsForAccount = threads.filter((t) =>
-    accountPassesMailboxScope(t.account, mailboxScopeEmails, accountEmails)
+    accountPassesMailboxScope(t.account, mailboxScopeEmails, accountEmails, sentHiddenEmails)
   );
   // "all" = the whole inbox (both piles); "sent" / "snoozed" are folders.
   // Folder view shows every thread in that label (no People split).
@@ -884,7 +886,23 @@ export function useMailPage(props: MailPageProps) {
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
   // Drafts another program left in the drafts folder (use-drafts-inbox).
-  useDraftsInbox(accountEmails);
+  // The toast's button opens Drafts, and the draft itself when it was one.
+  useDraftsInbox(accountEmails, (made) => {
+    setActiveFolder(null);
+    setSelectedPersonKey(null);
+    setTab("drafts");
+    refreshDrafts();
+    if (!made) {
+      closeCompose();
+      setSelected(null);
+    } else if (made.kind === "thread") {
+      closeCompose();
+      setSelected({ account: made.account, threadId: made.threadId, inPeople: false });
+    } else {
+      setSelected(null);
+      startCompose({ to: made.to, subject: made.subject, continuedFromLabel: "", draftKey: made.key });
+    }
+  });
   const { pendingForward, forwardStarted } = useWindowRequests({
     setComposing,
     setSelectedPersonKey,

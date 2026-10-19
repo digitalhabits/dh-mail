@@ -66,6 +66,27 @@ suite(async () => {
     )
   );
 
+  // A style that leaves the colour to the client: every client draws it
+  // blue and underlined, so it is painted as a link here too.
+  check(
+    "a link whose style sets only its font is painted",
+    softenAnchorsForParse(
+      '<a href="https://x.example" style="font-family:Arial;font-size:14px">Klik her</a>'
+    ).includes(PLAIN)
+  );
+  check(
+    "a background colour is not the link's colour",
+    softenAnchorsForParse(
+      '<a href="https://x.example" style="background-color:#eee">Go</a>'
+    ).includes(PLAIN)
+  );
+  check(
+    "a colour after other rules still dresses it",
+    softenAnchorsForParse(
+      "<a href='https://x.example' style='font-size:14px; COLOR: #333'>Go</a>"
+    ).includes(PLAIN) === false
+  );
+
   // `data-style` is not `style` — a stray prefix must not count as dressing.
   check(
     "an attribute that merely ends in style does not count as styling",

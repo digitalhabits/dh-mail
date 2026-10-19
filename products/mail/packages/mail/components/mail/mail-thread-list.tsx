@@ -23,9 +23,11 @@ import { Button } from "@/components/ui/button";
 import { MailDraftsList } from "@/components/mail/MailDraftsList";
 import {
   draftsInView,
+  draftWindowFor,
   openDraftRow,
   openDraftRowId,
 } from "@/components/mail/draft-opening";
+import { openMailDraftWindow, openMailThreadWindow } from "@/lib/mail/reader-window";
 import {
   clearDraftSelection,
   clickDraftRow,
@@ -376,6 +378,29 @@ function DraftsListView({
           setSelectedPersonKey,
           startCompose,
           closeCompose,
+        });
+      }}
+      onExpand={(row) => {
+        // A reply opens its thread in a window of its own, where the
+        // composer picks the draft up. A new message of ours opens in a
+        // window that holds a composer only. The first click opened it here
+        // too, so this composer closes first: one draft, one place to type.
+        const target = draftWindowFor(row);
+        if (!target) return;
+        if (target.kind === "draft") closeCompose();
+        const opening =
+          target.kind === "draft"
+            ? openMailDraftWindow(target)
+            : openMailThreadWindow({
+                account: target.account,
+                threadId: target.threadId,
+                name: row.to[0] ?? "",
+                email: row.to[0] ?? "",
+                subject: target.subject,
+              });
+        void opening.catch((err: unknown) => {
+          console.error("reader window:", err);
+          toast.error(typeof err === "string" && err ? err : err instanceof Error ? err.message : "Couldn't open it");
         });
       }}
     />

@@ -132,6 +132,40 @@ pub fn migrate(conn: &Connection) -> DbResult<()> {
   repair_attachment_flags(conn)?;
   repair_quoted_addresses(conn)?;
   refetch_misread_bodies(conn)?;
+  refetch_invites_without_text(conn)?;
+  Ok(())
+}
+
+/// Bodies that list a calendar invite without its text are fetched again,
+/// once, so the invite card draws at once for mail kept before the text
+/// was kept with the body (2026-10-19). A few messages: the ones with an
+/// invite whose body the copy holds.
+fn refetch_invites_without_text(conn: &Connection) -> DbResult<()> {
+  const MARK: &str = "repair.invite-text";
+  const VERSION: &str = "1";
+  let done: Option<String> = conn
+    .query_row("SELECT value FROM settings WHERE key = ?1", [MARK], |r| r.get(0))
+    .optional()?;
+  if done.as_deref() == Some(VERSION) {
+    return Ok(());
+  }
+  const NO_TEXT: &str = "attachments_json LIKE '%\"text/calendar\"%' AND attachments_json NOT LIKE '%\"text\":%'";
+  let tx = conn.unchecked_transaction()?;
+  tx.execute(
+    &format!(
+      "UPDATE messages SET body_state = 'none'
+       WHERE (account_email, message_id) IN
+         (SELECT account_email, message_id FROM message_bodies WHERE {NO_TEXT})"
+    ),
+    [],
+  )?;
+  tx.execute(&format!("DELETE FROM message_bodies WHERE {NO_TEXT}"), [])?;
+  tx.execute(
+    "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    params![MARK, VERSION, now_ms()],
+  )?;
+  tx.commit()?;
   Ok(())
 }
 
@@ -142,11 +176,16 @@ pub fn migrate(conn: &Connection) -> DbResult<()> {
 /// replacement mark. A kept body with such a mark in it is taken out and
 /// its row marked as having no body, so the worker fetches it again with
 /// the decoder of today; a row's snippet with a mark in it goes too, so
-/// the fresh body gives it new words. Once, because a body can hold a
-/// replacement mark that its sender really sent.
+/// the fresh body gives it new words. Once per version, because a body
+/// can hold a replacement mark that its sender really sent.
+///
+/// Version 2 runs it again for the decoder of 2026-10-17, which reads a
+/// Latin letter inside UTF-8 mail ("f\xFCr"). Version 1 ran before that,
+/// so such a body was fetched again, still misread, and kept: a tester's
+/// journal mail showed "f\u{fffd}r" in the release with the fix.
 fn refetch_misread_bodies(conn: &Connection) -> DbResult<()> {
   const MARK: &str = "repair.charset-bodies";
-  const VERSION: &str = "1";
+  const VERSION: &str = "2";
   let done: Option<String> = conn
     .query_row("SELECT value FROM settings WHERE key = ?1", [MARK], |r| r.get(0))
     .optional()?;
@@ -1445,6 +1484,47 @@ impl MailDb {
       unread += u;
     }
     Ok(json!({ "threads": threads, "unread": unread }))
+  }
+
+  /// The same conversation in the reader's other mailboxes: every
+  /// (mailbox, thread) outside `account` that holds a message with one of
+  /// these Message-IDs. Drafts do not count.
+  ///
+  /// A conversation that reached two mailboxes is one row in the list, and
+  /// the thread view read only that row's mailbox. A message only the other
+  /// mailbox had, most often the reader's own reply in its Sent folder, was
+  /// missing from the conversation (2026-10-19). The view reads these too.
+  pub fn messages_copies(&self, args: &Value) -> DbResult<Value> {
+    let account = str_arg(args, "account")?.to_lowercase();
+    let mut ids: Vec<String> = str_list_arg(args, "rfcIds")?
+      .into_iter()
+      .map(|id| id.trim().to_string())
+      .filter(|id| !id.is_empty())
+      .collect();
+    ids.sort();
+    ids.dedup();
+    // A long thread asks for a few hundred; SQLite's limit is far above.
+    ids.truncate(500);
+    if ids.is_empty() {
+      return Ok(json!({ "copies": [] }));
+    }
+    let marks = std::iter::repeat("?").take(ids.len()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+      "SELECT DISTINCT account_email, thread_id FROM messages
+        WHERE lower(account_email) <> ? AND is_draft = 0 AND rfc_message_id IN ({marks})
+        ORDER BY account_email, thread_id"
+    );
+    let conn = self.conn_mut();
+    let mut stmt = conn.prepare(&sql)?;
+    let mut values: Vec<&dyn rusqlite::ToSql> = vec![&account];
+    for id in &ids {
+      values.push(id);
+    }
+    let rows = stmt.query_map(values.as_slice(), |r| {
+      Ok(json!({ "account": r.get::<_, String>(0)?, "threadId": r.get::<_, String>(1)? }))
+    })?;
+    let copies = rows.collect::<Result<Vec<_>, _>>()?;
+    Ok(json!({ "copies": copies }))
   }
 
   /// One thread, every message, bodies where fetched.
@@ -2872,6 +2952,52 @@ mod tests {
   }
 
   #[test]
+  fn an_invite_kept_without_its_text_is_fetched_again_once() {
+    let db = db();
+    db.messages_upsert("vera@example.com", &[msg("m1", "t1", 1, 1_000, &[INBOX]), msg("m2", "t2", 2, 2_000, &[INBOX])])
+      .unwrap();
+    let invite = json!([{ "section": "2", "filename": "invite.ics", "mimeType": "text/calendar", "size": 9 }]);
+    db.bodies_put("vera@example.com", "m1", &BodyRow { text: Some("Meet".into()), attachments: invite, ..Default::default() })
+      .unwrap();
+    let with_text = json!([{ "section": "2", "filename": "invite.ics", "mimeType": "text/calendar", "size": 9, "text": "BEGIN:VCALENDAR" }]);
+    db.bodies_put("vera@example.com", "m2", &BodyRow { text: Some("Meet".into()), attachments: with_text, ..Default::default() })
+      .unwrap();
+    let conn = db.conn_mut();
+    conn.execute("DELETE FROM settings WHERE key = 'repair.invite-text'", []).unwrap();
+    refetch_invites_without_text(&conn).unwrap();
+    drop(conn);
+    let missing = db.messages_bodies_missing("vera@example.com", 0, i64::MAX, 10).unwrap();
+    assert_eq!(missing, vec![("m1".to_string(), 1)]);
+  }
+
+  #[test]
+  fn the_same_conversation_is_found_in_the_other_mailboxes() {
+    let db = db();
+    let mut here = msg("g1", "gt", 1, 1_000, &[INBOX]);
+    here.rfc_message_id = Some("<a@x.test>".into());
+    db.messages_upsert("vera@gmail.test", &[here]).unwrap();
+    // The other mailbox has the same mail, and the reply sent from it.
+    let mut there = msg("k1", "kt", 1, 1_000, &[INBOX]);
+    there.rfc_message_id = Some("<a@x.test>".into());
+    let mut reply = msg("k2", "kt", 2, 2_000, &[]);
+    reply.rfc_message_id = Some("<b@x.test>".into());
+    let mut draft = msg("k3", "kd", 3, 3_000, &[]);
+    draft.rfc_message_id = Some("<a@x.test>".into());
+    draft.is_draft = true;
+    db.messages_upsert("vera@ku.test", &[there, reply, draft]).unwrap();
+
+    let found = db
+      .messages_copies(&json!({ "account": "Vera@Gmail.test", "rfcIds": ["<a@x.test>", " ", "<a@x.test>"] }))
+      .unwrap();
+    assert_eq!(found["copies"], json!([{ "account": "vera@ku.test", "threadId": "kt" }]));
+    // Nothing shared, nothing found; its own mailbox is never a copy.
+    let none = db.messages_copies(&json!({ "account": "vera@gmail.test", "rfcIds": ["<z@x.test>"] })).unwrap();
+    assert_eq!(none["copies"], json!([]));
+    let own = db.messages_copies(&json!({ "account": "vera@ku.test", "rfcIds": ["<b@x.test>"] })).unwrap();
+    assert_eq!(own["copies"], json!([]));
+  }
+
+  #[test]
   fn bodies_read_with_the_wrong_charset_are_fetched_again_once() {
     let db = db();
     let mut misread = msg("m1", "t1", 1, 1_000, &[INBOX]);
@@ -2902,6 +3028,23 @@ mod tests {
     refetch_misread_bodies(&conn).unwrap();
     drop(conn);
     assert!(db.messages_bodies_missing("vera@example.com", 0, i64::MAX, 10).unwrap().is_empty());
+  }
+
+  #[test]
+  fn a_store_repaired_before_the_latin_letter_decoder_is_repaired_again() {
+    let db = db();
+    db.messages_upsert("vera@example.com", &[msg("m1", "t1", 1, 1_000, &[INBOX])]).unwrap();
+    db.bodies_put("vera@example.com", "m1", &BodyRow { text: Some("Vielen Dank f\u{fffd}r".into()), ..Default::default() })
+      .unwrap();
+    let conn = db.conn_mut();
+    // The store as version 1 left it.
+    conn
+      .execute("UPDATE settings SET value = '1' WHERE key = 'repair.charset-bodies'", [])
+      .unwrap();
+    refetch_misread_bodies(&conn).unwrap();
+    drop(conn);
+    let missing = db.messages_bodies_missing("vera@example.com", 0, i64::MAX, 10).unwrap();
+    assert_eq!(missing, vec![("m1".to_string(), 1)]);
   }
 
   #[test]

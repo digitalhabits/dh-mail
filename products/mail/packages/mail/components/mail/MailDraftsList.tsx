@@ -98,6 +98,7 @@ export function MailDraftsList({
   rows,
   loading,
   onOpen,
+  onExpand,
   openKey,
   selectedKeys,
   onClearHandedOver,
@@ -106,6 +107,8 @@ export function MailDraftsList({
   loading: boolean;
   /** The click comes along: Shift and Cmd select rows rather than open one. */
   onOpen: (row: MailDraftRow, event: React.MouseEvent) => void;
+  /** Two clicks: the draft in a window of its own, as a thread row does. */
+  onExpand?: (row: MailDraftRow) => void;
   /**
    * Rows held by a Shift- or Cmd-click, by `origin:id`. With more than one,
    * these are the marked rows and the open draft is not.
@@ -171,6 +174,15 @@ export function MailDraftsList({
               type="button"
               data-draft-key={row.id}
               onClick={(event) => onOpen(row, event)}
+              onDoubleClick={
+                onExpand
+                  ? (event) => {
+                      if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+                      event.preventDefault();
+                      onExpand(row);
+                    }
+                  : undefined
+              }
               // A Shift-click selects rows, not the text between them.
               onMouseDown={(event) => {
                 if (event.shiftKey) event.preventDefault();

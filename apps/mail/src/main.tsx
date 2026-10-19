@@ -97,6 +97,9 @@ const isReader = params.get("reader") === "1";
 // A person's mail in a reader window rather than one thread — see
 // PersonReaderWindow. With it set, no thread is named.
 const person = params.get("person") ?? "";
+// A new message's stored draft in a reader window — see ComposeDraftWindow.
+// With it set, no thread is named either.
+const draft = params.get("draft") ?? "";
 const account = params.get("account") ?? "";
 const threadId = params.get("thread") ?? "";
 
@@ -135,7 +138,7 @@ function Root() {
       </>
     );
   }
-  if (!(isReader && person) && (!account || !threadId)) {
+  if (!(isReader && (person || draft)) && (!account || !threadId)) {
     return (
       <p className="p-6 text-sm text-stone-500">
         Missing thread reference — open this window from the mail client.
@@ -151,6 +154,7 @@ function Root() {
         email={params.get("email") ?? ""}
         subject={params.get("subject") ?? ""}
         person={person || undefined}
+        draft={draft || undefined}
       />
     );
   }

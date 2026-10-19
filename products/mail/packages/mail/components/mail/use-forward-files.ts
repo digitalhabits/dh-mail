@@ -65,6 +65,8 @@ export function useForwardFiles(input: {
       const refs = messages.flatMap((m) =>
         (m.attachments ?? []).map((attachment) => ({
           messageId: m.id,
+          // A message merged in from another mailbox is that mailbox's.
+          account: m.account ?? account,
           attachment,
         }))
       );
@@ -74,7 +76,7 @@ export function useForwardFiles(input: {
         try {
           const res = await mailApiFetch(
             attachmentUrl({
-              account,
+              account: ref.account,
               messageId: ref.messageId,
               attachment: ref.attachment,
             })

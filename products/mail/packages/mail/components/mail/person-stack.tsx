@@ -58,6 +58,7 @@ export function StackThreadRow({
   thread,
   active,
   onOpen,
+  onExpand,
   onNavy,
   highlight,
   withYear,
@@ -66,6 +67,8 @@ export function StackThreadRow({
   /** The thread open in the reader. */
   active: boolean;
   onOpen: () => void;
+  /** Two clicks: the thread in a window of its own, as a thread row does. */
+  onExpand?: () => void;
   onNavy: boolean;
   highlight: string[] | undefined;
   withYear: boolean;
@@ -76,6 +79,14 @@ export function StackThreadRow({
       type="button"
       data-stack-thread={`${thread.account}|${thread.threadId}`}
       onClick={onOpen}
+      onDoubleClick={
+        onExpand
+          ? (e) => {
+              e.preventDefault();
+              onExpand();
+            }
+          : undefined
+      }
       className={cn(
         // On the stack's line, which the open one's bar covers.
         "-ml-[2px] flex w-full items-start gap-3 rounded-r-md border-l-2 py-1.5 pl-4 pr-2 text-left",
@@ -123,6 +134,7 @@ export function StackThreads({
   threads,
   isOpen,
   onOpen,
+  onExpand,
   onNavy,
   highlight,
   withYear,
@@ -130,6 +142,7 @@ export function StackThreads({
   threads: MailThreadSummary[];
   isOpen: (t: MailThreadSummary) => boolean;
   onOpen: (t: MailThreadSummary) => void;
+  onExpand?: (t: MailThreadSummary) => void;
   onNavy: boolean;
   highlight: string[] | undefined;
   withYear: boolean;
@@ -142,6 +155,7 @@ export function StackThreads({
           thread={th}
           active={isOpen(th)}
           onOpen={() => onOpen(th)}
+          onExpand={onExpand ? () => onExpand(th) : undefined}
           onNavy={onNavy}
           highlight={highlight}
           withYear={withYear}

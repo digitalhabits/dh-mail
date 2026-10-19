@@ -29,7 +29,49 @@ import { participantNames } from "@/lib/mail/thread-participants";
 /** An attachment id that names an IMAP section of the message. */
 export const IMAP_ATTACHMENT_PREFIX = "imap:";
 
-type StoredWithBody = MailStoredMessage & { body: MailStoredBody | null };
+type StoredWithBody = MailStoredMessage & {
+  body: MailStoredBody | null;
+  /** Merged in from this mailbox's copy of the conversation (`withCopies`). */
+  copy?: { account: string; threadId: string };
+};
+
+/** More copies than this are not read: a conversation reaches a few mailboxes at most. */
+const MAX_COPIES = 4;
+
+/**
+ * The conversation's messages from the reader's other mailboxes, added to
+ * this mailbox's rows. Only the ones this mailbox lacks, by Message-ID.
+ *
+ * A conversation that reached two mailboxes is one row in the list, and
+ * the thread view read only that row's mailbox. A message only the other
+ * mailbox had, most often the reader's own reply in its Sent folder, was
+ * missing from the conversation (2026-10-19). A message with no
+ * Message-ID cannot be matched, so it is not merged.
+ */
+async function withCopies(account: string, rows: StoredWithBody[]): Promise<StoredWithBody[]> {
+  const store = mailStore();
+  if (!store.messages.copies) return rows;
+  const key = (id: string | null | undefined) => (id ?? "").trim();
+  const ids = rows.filter((r) => !r.isDraft && key(r.rfcMessageId)).map((r) => key(r.rfcMessageId));
+  if (!ids.length) return rows;
+  const copies = await store.messages.copies(account, ids).catch(() => []);
+  if (!copies.length) return rows;
+  const seen = new Set(ids);
+  const out = [...rows];
+  for (const copy of copies.slice(0, MAX_COPIES)) {
+    const theirs = await store.messages.thread(copy.account, copy.threadId).catch(() => []);
+    for (const row of theirs) {
+      const id = key(row.rfcMessageId);
+      if (row.isDraft || !id || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ ...row, copy });
+    }
+  }
+  return out;
+}
+
+/** The mailbox a row is in. */
+const rowAccount = (row: StoredWithBody, account: string) => row.copy?.account ?? account;
 
 export type LocalThreadOptions = {
   before?: string;
@@ -80,7 +122,8 @@ export async function threadFromLocalStore(
     return null;
   }
   const store = mailStore();
-  let rows = await store.messages.thread(account, threadId);
+  const readRows = async () => withCopies(account, await store.messages.thread(account, threadId));
+  let rows = await readRows();
   if (!rows.length) return null;
 
   // Drafts are the composer's, not the thread's; the newest is offered back.
@@ -92,19 +135,10 @@ export async function threadFromLocalStore(
   if (!window) return emptyThreadDetail(account, threadId);
 
   // Bodies the window lacks, fetched once and kept. The draft's too.
-  const missing = [...window.rows, ...(draft ? [draft] : [])]
-    .filter((r) => !r.body)
-    .map((r) => r.messageId);
-  if (missing.length) {
-    const provider = early ?? (await resolveMailProvider(account));
-    if (!(await fetchMissingBodies(account, provider, missing))) return null;
-    rows = await store.messages.thread(account, threadId);
-    const byId = new Map(rows.map((r) => [r.messageId, r]));
-    window.rows = window.rows.map((r) => byId.get(r.messageId) ?? r);
-    // An Exchange message whose body the server did not give still shows,
-    // with no body: there is no other path to ask.
-    if (provider !== "exchange" && window.rows.some((r) => !r.body)) return null;
-  }
+  const filled = await fillBodies(account, early, window.rows, draft, readRows);
+  if (!filled) return null;
+  window.rows = filled.windowRows;
+  rows = filled.rows ?? rows;
   const draftRow = draft ? (rows.find((r) => r.messageId === draft.messageId) ?? draft) : null;
   const providerDraft = draftRow?.body
     ? {
@@ -122,13 +156,8 @@ export async function threadFromLocalStore(
   // The reply target comes from the thread's newest message, in or out of
   // the window.
   const last = all[all.length - 1];
+  const { reply, replyFrom } = replyOf(last, account);
   const subject = (last.subject ?? "").trim() || "(no subject)";
-  const reply = replyTargets({
-    from: last.fromEmail,
-    to: last.to.map((a) => a.email),
-    cc: last.cc.map((a) => a.email),
-    account,
-  });
   const references = [last.references ?? "", last.rfcMessageId ?? ""]
     .map((s) => s.trim())
     .filter(Boolean)
@@ -139,10 +168,7 @@ export async function threadFromLocalStore(
   // Opening a window marks the thread read in the copy at once; the
   // provider learns it through the action queue.
   if (options?.markRead !== false && !options?.before && !options?.after) {
-    if (all.some((r) => r.unread)) {
-      const queued = await queueLocalAction(account, threadId, "read").catch(() => false);
-      if (!queued) await store.messages.setUnread(account, threadId, false).catch(() => undefined);
-    }
+    await markCopiesRead(all, account, threadId);
   }
 
   let chat = await getChatForThread(account, threadId, names.find((n) => n !== "You") || undefined);
@@ -192,8 +218,79 @@ export async function threadFromLocalStore(
       cc: [],
       allTo: reply.allTo,
       allCc: reply.allCc,
+      ...(replyFrom ? { from: replyFrom } : null),
     },
   };
+}
+
+/**
+ * Whom a reply goes to, from the conversation's newest message, and from
+ * which mailbox. A newest message that only another mailbox has (the
+ * reader's own reply sent from there) is answered from that mailbox, and
+ * this mailbox is not one of the people it goes to.
+ */
+function replyOf(last: StoredWithBody, account: string) {
+  const from = rowAccount(last, account);
+  const targets = replyTargets({
+    from: last.fromEmail,
+    to: last.to.map((a) => a.email),
+    cc: last.cc.map((a) => a.email),
+    account: from,
+  });
+  if (from === account) return { reply: targets, replyFrom: null };
+  const notHere = (list: string[]) => list.filter((e) => normalizeEmail(e) !== normalizeEmail(account));
+  return {
+    reply: { to: notHere(targets.to), allTo: notHere(targets.allTo), allCc: notHere(targets.allCc) },
+    replyFrom: from,
+  };
+}
+
+/**
+ * Fetch the bodies the window lacks, each from its own mailbox: a merged-in
+ * copy's body is that mailbox's. Null when this mailbox's own cannot be
+ * fetched; a copy that cannot be fetched shows with no body.
+ */
+async function fillBodies(
+  account: string,
+  early: string | null,
+  windowRows: StoredWithBody[],
+  draft: StoredWithBody | null,
+  readRows: () => Promise<StoredWithBody[]>
+): Promise<{ windowRows: StoredWithBody[]; rows: StoredWithBody[] | null } | null> {
+  const missing = [...windowRows, ...(draft ? [draft] : [])].filter((r) => !r.body);
+  if (!missing.length) return { windowRows, rows: null };
+  const provider = early ?? (await resolveMailProvider(account));
+  const own = missing.filter((r) => !r.copy).map((r) => r.messageId);
+  if (own.length && !(await fetchMissingBodies(account, provider, own))) return null;
+  for (const other of new Set(missing.filter((r) => r.copy).map((r) => r.copy!.account))) {
+    const ids = missing.filter((r) => r.copy?.account === other).map((r) => r.messageId);
+    await resolveMailProvider(other)
+      .then((p) => fetchMissingBodies(other, p, ids))
+      .catch(() => false);
+  }
+  const rows = await readRows();
+  const at = (r: StoredWithBody) => `${rowAccount(r, account)}|${r.messageId}`;
+  const byId = new Map(rows.map((r) => [at(r), r]));
+  const fresh = windowRows.map((r) => byId.get(at(r)) ?? r);
+  // An Exchange message whose body the server did not give still shows,
+  // with no body: there is no other path to ask.
+  if (provider !== "exchange" && fresh.some((r) => !r.body && !r.copy)) return null;
+  return { windowRows: fresh, rows };
+}
+
+/** Mark the conversation read in every mailbox: the list shows its copies as one row. */
+async function markCopiesRead(all: StoredWithBody[], account: string, threadId: string) {
+  const store = mailStore();
+  const unreadIn = new Map<string, { account: string; threadId: string }>();
+  for (const r of all) {
+    if (!r.unread) continue;
+    const where = r.copy ?? { account, threadId };
+    unreadIn.set(`${where.account}|${where.threadId}`, where);
+  }
+  for (const where of unreadIn.values()) {
+    const queued = await queueLocalAction(where.account, where.threadId, "read").catch(() => false);
+    if (!queued) await store.messages.setUnread(where.account, where.threadId, false).catch(() => undefined);
+  }
 }
 
 
@@ -213,15 +310,17 @@ function pickWindow(
 }
 
 
-type StoredPart = { section: string; filename: string; mimeType: string; size: number };
+type StoredPart = { section: string; filename: string; mimeType: string; size: number; text?: string };
 
-function toMailMessage(row: StoredWithBody, account: string): MailMessage {
+function toMailMessage(row: StoredWithBody, threadAccount: string): MailMessage {
+  const account = rowAccount(row, threadAccount);
   const body = row.body;
   const attachments: MailAttachment[] = ((body?.attachments ?? []) as StoredPart[]).map((p) => ({
     attachmentId: `${IMAP_ATTACHMENT_PREFIX}${p.section}`,
     filename: p.filename,
     mimeType: p.mimeType,
     size: p.size,
+    ...(typeof p.text === "string" ? { text: p.text } : null),
   }));
   const inlineImages = body?.inlineImages ?? {};
   const own =
@@ -242,5 +341,6 @@ function toMailMessage(row: StoredWithBody, account: string): MailMessage {
     ...(row.rfcMessageId ? { rfcMessageId: row.rfcMessageId } : null),
     ...(row.inReplyTo ? { inReplyTo: row.inReplyTo } : null),
     ...(row.references ? { references: row.references } : null),
+    ...(row.copy ? { account: row.copy.account } : null),
   };
 }

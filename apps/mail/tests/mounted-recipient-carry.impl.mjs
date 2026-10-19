@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { setMailApiTransport } from "@/lib/mail/api";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import { RecipientDropZone, withRecipient } from "@/components/mail/recipient-carry";
+import { NOT_A_HANDLE } from "@/components/mail/composer-drag";
 
 const pass = (line) => console.log(`PASS  ${line}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,6 +147,28 @@ async function main() {
     assert.deepEqual(emails(lists.cc), ["otto@berg.example"]);
     assert.equal(document.body.style.cursor, "", "the page's cursor is given back");
     pass("Escape puts a carried chip back");
+
+    /*
+      Carried in the floating reply card: the card's own drag took the
+      pointer, so every move went to the card, not to what was under it
+      (2026-10-19). The field is found by the point. And the card does not
+      start its drag on a recipient field at all.
+    */
+    await mount({ to: [person("asta@holm.example")], cc: [], bcc: [] });
+    assert(chip("asta@holm.example").closest(NOT_A_HANDLE), "the card's drag leaves a chip alone");
+    const card = document.createElement("div");
+    document.body.appendChild(card);
+    const before = document.elementFromPoint;
+    document.elementFromPoint = () => fieldEl(1);
+    try {
+      await carry("asta@holm.example", card);
+    } finally {
+      document.elementFromPoint = before;
+      card.remove();
+    }
+    assert.deepEqual(emails(lists.to), []);
+    assert.deepEqual(emails(lists.cc), ["asta@holm.example"]);
+    pass("a chip lands on the field under the pointer, wherever its events go");
 
     await mount({ to: [person("asta@holm.example")], cc: [], bcc: [], showBcc: false });
     assert(!bccShown);

@@ -429,7 +429,7 @@ export function ThreadMessages({
                     >
                       <MailBubble
                         message={m}
-                        account={account}
+                        account={m.account ?? account}
                         subject={thread.subject}
                         defaultAllowImages={inPeople}
                         zoom={zoom}
@@ -491,7 +491,7 @@ export function ThreadMessages({
                 >
                   <MailBubble
                     message={m}
-                    account={account}
+                    account={m.account ?? account}
                     subject={thread.subject}
                     defaultAllowImages={inPeople}
                     sendStatus={outboxStatus}

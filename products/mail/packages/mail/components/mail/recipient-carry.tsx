@@ -59,13 +59,16 @@ export function withRecipient(list: MailRecipient[], recipient: MailRecipient) {
 }
 
 /**
- * The drop place under the pointer. A mouse sends its events to what is
- * under it; a finger keeps sending them to where it went down, so for a
- * touch the point is looked up.
+ * The drop place under the pointer, looked up by the point.
+ *
+ * Not the event's target: a finger keeps sending its events to where it
+ * went down, and so does a mouse once something has captured the pointer.
+ * The floating reply card did that, and a chip carried in it never found
+ * the field it was over (2026-10-19). The ghost lets the point through.
  */
 function dropIdAt(event: PointerEvent): string | null {
   let el: Element | null = event.target instanceof Element ? event.target : null;
-  if (event.pointerType === "touch" && typeof document.elementFromPoint === "function") {
+  if (typeof document.elementFromPoint === "function") {
     el = document.elementFromPoint(event.clientX, event.clientY) ?? el;
   }
   const place = el?.closest("[data-recipient-drop]");

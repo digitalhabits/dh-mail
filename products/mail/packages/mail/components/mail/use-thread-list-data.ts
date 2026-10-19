@@ -27,6 +27,7 @@ import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { MAIL_POPOUT_SENT_KEY } from "@/lib/mail/popout";
 import { MAIL_CHANGED_KEY } from "@/lib/mail/reader-window";
+import { listHiddenMailboxes } from "@/lib/mail/mailbox-visibility";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { mailListCacheKey, markMailWarm, readCachedList, writeCachedList } from "@/lib/mail/list-cache";
 import { cursorForMailboxScope, decodeCursorTokens, encodeCursorTokens, SERVER_FOLDER_VIEWS, peekMountCachedList, mailboxScopeApiAccount } from "@/components/mail/mail-list-state";
@@ -34,6 +35,7 @@ import type { MailPageSnapshot } from "@/components/mail/MailPage";
 import {
   ROLE_VIEW,
   folderViewToken,
+  listShowsSentOnly,
   type ActiveMailFolder,
 } from "@/components/mail/mail-list-state";
 import type { MailListCacheEntry } from "@/lib/mail/list-cache";
@@ -197,8 +199,42 @@ export function useThreadListData(input: {
     });
   }, [accountEmails, threads, listCacheKey, listCursor, pageSnapKey, viewerId]);
 
-  const pausedRef = React.useRef(noneFetching);
-  pausedRef.current = noneFetching;
+  // Sent is fetched while the mail is paused: see listShowsSentOnly.
+  const sentOnly = listShowsSentOnly(folder, activeFolder);
+  const pausedRef = React.useRef(noneFetching && !sentOnly);
+  pausedRef.current = noneFetching && !sentOnly;
+
+  /*
+    Sent asks the hidden mailboxes too: hiding one takes the mail that
+    comes in off the screen, but Sent is where you check that a message
+    went (2026-10-19). Read when Sent opens, and again when a mailbox is
+    hidden or shown.
+  */
+  const [hiddenMailboxes, setHiddenMailboxes] = React.useState<string[]>([]);
+  const shownKey = accountEmails.map((email) => email.toLowerCase()).sort().join(",");
+  React.useEffect(() => {
+    if (!sentOnly) return;
+    let alive = true;
+    void listHiddenMailboxes()
+      .then((list) => {
+        if (alive) setHiddenMailboxes(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [sentOnly, shownKey]);
+  /** The hidden mailboxes this list shows: in Sent, and only those not shown. */
+  const sentHiddenEmails = React.useMemo(() => {
+    if (!sentOnly) return [];
+    const shown = new Set(shownKey.split(","));
+    return hiddenMailboxes.filter((email) => !shown.has(email.toLowerCase()));
+  }, [sentOnly, hiddenMailboxes, shownKey]);
+  /** Every mailbox the list asks. */
+  const listEmails = React.useMemo(
+    () => (sentHiddenEmails.length ? [...accountEmails, ...sentHiddenEmails] : accountEmails),
+    [accountEmails, sentHiddenEmails]
+  );
   const pauseStateRef = React.useRef(pauseState);
   pauseStateRef.current = pauseState;
 
@@ -405,7 +441,7 @@ export function useThreadListData(input: {
       threadsKeyRef.current = key;
 
       // Nothing connected yet — don't spin a skeleton waiting on an empty inbox.
-      if (!accountEmails.length) {
+      if (!listEmails.length) {
         setThreads([]);
         setListCursor(null);
         setLoadingList(false);
@@ -413,8 +449,9 @@ export function useThreadListData(input: {
         if (!quiet) setListError(null);
         return true;
       }
-      const liveEmails = accountEmails.filter(
+      const liveEmails = listEmails.filter(
         (email) =>
+          sentOnly ||
           !mailPauseVerdictForAccount(
             pauseStateRef.current,
             email,
@@ -472,6 +509,7 @@ export function useThreadListData(input: {
         const scopedAccount = params.get("account");
         return Boolean(
           scopedAccount &&
+            !sentOnly &&
             mailPauseVerdictForAccount(
               pauseStateRef.current,
               scopedAccount,
@@ -505,7 +543,7 @@ export function useThreadListData(input: {
           const now = Date.now();
           pruneHiddenRows(hiddenRowsRef.current, now);
           const visibleAccounts = new Set(
-            accountEmails.map((email) => email.toLowerCase())
+            listEmails.map((email) => email.toLowerCase())
           );
           return rows.filter((t) => {
             if (!visibleAccounts.has(t.account.toLowerCase())) return false;
@@ -688,7 +726,7 @@ export function useThreadListData(input: {
         if (
           !snoozedView &&
           !params.has("account") &&
-          accountEmails.length > 1
+          listEmails.length > 1
         ) {
           return await loadEachMailbox(params);
         }
@@ -729,7 +767,7 @@ export function useThreadListData(input: {
         // Drop rows for mailboxes hidden from Mail (server should already
         // omit them; this covers optimistic hide + any stale cache).
         const visibleAccounts = new Set(
-          accountEmails.map((email) => email.toLowerCase())
+          listEmails.map((email) => email.toLowerCase())
         );
         const threads = snoozedView
           ? rawThreads
@@ -775,7 +813,7 @@ export function useThreadListData(input: {
     // `reconcileSelection` does not change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      accountEmails.length,
+      listEmails.length,
       activeFolder,
       appendListParams,
       debouncedSearch,
@@ -1226,5 +1264,6 @@ export function useThreadListData(input: {
     refreshSentForAccount,
     scheduleSentRefreshForAccount,
     loadAbortRef,
+    sentHiddenEmails,
   };
 }

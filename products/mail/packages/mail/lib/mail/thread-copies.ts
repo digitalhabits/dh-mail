@@ -195,3 +195,27 @@ export function everyCopyOfEach(
   }
   return out;
 }
+
+/**
+ * The list after a failed or undone action: the rows it changed or took
+ * out, back as they were, and nothing else changed.
+ *
+ * It put back the whole list as it was when the action began. Archive a
+ * few quickly, and one that failed brought back every row archived after
+ * it, too: they had left and came back (2026-10-19). `keys` are the rows
+ * the action was on, by their own key or a copy folded into them.
+ */
+export function withRowsBack(
+  current: MailThreadSummary[],
+  before: MailThreadSummary[],
+  keys: readonly string[]
+): MailThreadSummary[] {
+  const wanted = new Set(keys);
+  const named = (t: MailThreadSummary) =>
+    wanted.has(threadKey(t)) || (t.alsoIn?.some((c) => wanted.has(threadKey(c))) ?? false);
+  const old = before.filter(named);
+  if (!old.length) return current;
+  const oldKeys = new Set(old.map(threadKey));
+  const kept = current.filter((t) => !oldKeys.has(threadKey(t)));
+  return [...kept, ...old].sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+}

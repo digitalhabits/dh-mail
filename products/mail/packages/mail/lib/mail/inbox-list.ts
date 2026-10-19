@@ -17,6 +17,7 @@ import type { MailStoredThread, MailStoredView } from "@/lib/mail/store/types";
 import { decodeSnippet, getThreadMetadata, gmailLabelSearchQuery, listGmailHistory, listRecentMessages, listRecentThreads } from "@/lib/gmail/api";
 import {
   filterAccountsForScope,
+  listIncludesHiddenMailboxes,
   type MailAccountScope,
 } from "@/lib/mail/account-scope";
 import { mailStore } from "@/lib/mail/store";
@@ -298,7 +299,15 @@ export async function listUnifiedInbox(options: {
   const hasSearchQuery = Boolean(options.q?.trim());
   const allAccounts = filterAccountsForScope(
     await listConnectedMailAccounts(options.clerkUserId),
-    hasSearchQuery ? "all" : scope
+    hasSearchQuery ? "all" : scope,
+    {
+      withHidden: listIncludesHiddenMailboxes({
+        folder: options.folder ?? "inbox",
+        label: options.label,
+        q: options.q,
+        folderScoped: options.folderScoped,
+      }),
+    }
   );
   const accountEmails = allAccounts
     .map((a) => a.email)

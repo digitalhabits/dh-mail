@@ -60,6 +60,21 @@ import { READER_TEXT_SIZES, useReaderTextSize } from "@/lib/mail/reader-settings
 /** The bubbles' own text size, which the Reader's sizes are counted from. */
 const BUBBLE_TEXT_PX = 14;
 
+
+/**
+ * The mailbox a message on screen is in: its own, when it was merged in
+ * from another of the reader's mailboxes (local-thread.ts), else the thread's.
+ */
+function mailboxOfMessage(
+  thread: { messages: { id: string; account?: string }[] } | null | undefined,
+  message: string | { messageId: string } | null | undefined,
+  account: string
+): string {
+  const messageId = typeof message === "string" ? message : message?.messageId;
+  if (!messageId) return account;
+  return thread?.messages.find((m) => m.id === messageId)?.account ?? account;
+}
+
 /** Reply all reaches more people than Reply. */
 function replyAllReachesMore(reply: { allTo: string[]; allCc: string[] } | undefined): boolean {
   return (
@@ -289,7 +304,7 @@ export function ThreadPane(props: ThreadPaneProps) {
       <div className="relative flex min-h-0 flex-1 flex-col">
       {originalOf ? (
         <OriginalMessageSheet
-          account={account}
+          account={mailboxOfMessage(thread, originalOf, account)}
           messageId={originalOf}
           threadId={threadId}
           subject={thread?.subject ?? ""}
@@ -301,7 +316,7 @@ export function ThreadPane(props: ThreadPaneProps) {
       </ReaderComposerContext.Provider>
 
       <AttachmentPreviewDialog
-        account={account}
+        account={mailboxOfMessage(thread, attachmentPreview, account)}
         messageId={attachmentPreview?.messageId ?? ""}
         attachment={attachmentPreview?.attachment ?? null}
         siblings={

@@ -47,14 +47,31 @@ export function filterEmailsForScope(
  */
 export function filterAccountsForScope<
   T extends { email: string; inMailTab: boolean },
->(accounts: T[], scope: MailAccountScope): T[] {
-  const visible = accounts.filter((a) => a.inMailTab);
+>(accounts: T[], scope: MailAccountScope, options: { withHidden?: boolean } = {}): T[] {
+  const visible = options.withHidden ? accounts : accounts.filter((a) => a.inMailTab);
   if (scope === "personal") {
     const allow = configuredMailEmails();
     if (allow.length === 0) return visible;
     return visible.filter((a) => isDhMailAccountEmail(a.email));
   }
   return visible;
+}
+
+/**
+ * Whether a list asks the hidden mailboxes too: Sent does, browsed or
+ * searched inside Sent. Hiding a mailbox takes the mail that comes in off
+ * the screen, but Sent is where you check that a message went, also from a
+ * hidden mailbox (2026-10-19). A search that is not kept inside Sent
+ * reaches the inbox, so it does not.
+ */
+export function listIncludesHiddenMailboxes(view: {
+  folder: string;
+  label?: string;
+  q?: string;
+  folderScoped?: boolean;
+}): boolean {
+  if (view.folder !== "sent" || view.label?.trim()) return false;
+  return !view.q?.trim() || Boolean(view.folderScoped);
 }
 
 /**

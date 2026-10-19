@@ -22,6 +22,8 @@ export type ReadableThreadAttachment = {
 export type DraftAssistResult = {
   body: string;
   subject?: string;
+  /** Who the reply should go to, when not who it goes to now. */
+  recipients?: { to: string[]; cc: string[] };
   scenario: "cold" | "ongoing" | "resurfacing";
   usedRecords: { source: string; recordId: string; recordName: string }[];
   gaps: string[];

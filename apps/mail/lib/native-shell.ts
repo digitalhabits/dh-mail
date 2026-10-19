@@ -250,6 +250,8 @@ export async function openMailReaderWindow(input: {
   subject: string;
   /** A person's mail instead of one thread — see openMailPersonWindow. */
   person?: string;
+  /** A new message's stored draft instead — see openMailDraftWindow. */
+  draft?: string;
 }): Promise<void> {
   const invoke = tauriInvoke();
   if (!invoke) throw new Error("Not running in the desktop app");
