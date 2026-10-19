@@ -31,15 +31,21 @@ const row = (account, threadId, tipId, lastAt, extra = {}) => ({
   ...extra,
 });
 
-/** The same message in two mailboxes is one row, and the row remembers the other. */
+/**
+ * The same message in two mailboxes is one row, and the row remembers the
+ * other. At the same time, the row stands for the copy whose mailbox and
+ * thread sort first, whichever arrived first (newestFirst): arrival order
+ * shuffled the list on every refresh (2026-10-19).
+ */
 {
   const rows = dedupeThreadsByTip([
     row("ulrik@a.example", "t-a", "<m1@x>", "2026-08-16T10:00:00Z"),
     row("team@a.example", "t-b", "<m1@x>", "2026-08-16T10:00:00Z"),
   ]);
   assert.equal(rows.length, 1);
+  assert.equal(rows[0].account, "team@a.example");
   assert.deepEqual(rows[0].alsoIn, [
-    { account: "team@a.example", threadId: "t-b" },
+    { account: "ulrik@a.example", threadId: "t-a" },
   ]);
 }
 

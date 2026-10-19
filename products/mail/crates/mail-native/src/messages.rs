@@ -1909,7 +1909,7 @@ fn candidate_threads(
   let sql = format!(
     "SELECT m.thread_id, MAX(m.sent_at) AS last_at FROM messages m
      WHERE m.account_email = ?1 {hidden_filter} {membership}
-     GROUP BY m.thread_id HAVING last_at < ?3 ORDER BY last_at DESC LIMIT ?4"
+     GROUP BY m.thread_id HAVING last_at < ?3 ORDER BY last_at DESC, m.thread_id DESC LIMIT ?4"
   );
   let label = view.member_label().unwrap_or_default();
   let mut stmt = conn.prepare(&sql)?;

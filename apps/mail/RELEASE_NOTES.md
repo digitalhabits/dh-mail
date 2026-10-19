@@ -8,6 +8,7 @@
 - Double-click a thread in a stack, or a draft in Drafts, to open it in its own window. The drafts toast has an Open button.
 
 **Archiving**
+- The list keeps its order while you archive. Mail sent at the same second used to swap places after each archive, and the next mail to open was not the one below.
 - When an archive, delete or move fails, only that conversation comes back. Before, conversations you archived after it came back too.
 
 **Reading**

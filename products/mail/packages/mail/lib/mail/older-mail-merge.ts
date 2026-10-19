@@ -4,7 +4,7 @@
  * asks the provider, so the list can import it. See older-search.ts.
  */
 
-import { threadKey } from "@/lib/mail/thread-copies";
+import { threadKey, newestFirst } from "@/lib/mail/thread-copies";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
 /**
@@ -29,7 +29,7 @@ export function olderMailBelow(
     seen.add(key);
     out.push(t);
   }
-  return out.sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+  return out.sort(newestFirst);
 }
 
 /**

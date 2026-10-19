@@ -57,7 +57,7 @@ import { syncMailPinSummaries } from "@/lib/mail/pins";
 import { pruneExpiredMailDrafts } from "@/lib/mail/local-drafts";
 import { mailProviderFor, useMailProviderNames } from "@/lib/mail/use-outlook-accounts";
 import { mailPageCacheKey } from "@/lib/page-snapshot-cache";
-import { rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
+import { rowStandsFor, threadKey, newestFirst } from "@/lib/mail/thread-copies";
 import { useMailT } from "@/lib/mail/i18n";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
@@ -627,7 +627,7 @@ export function useMailPage(props: MailPageProps) {
       tab === "snoozed"
         ? Date.parse(a.snoozedUntil ?? a.lastAt) -
           Date.parse(b.snoozedUntil ?? b.lastAt)
-        : Date.parse(b.lastAt) - Date.parse(a.lastAt)
+        : newestFirst(a, b)
     );
   // On-screen thread order for successor selection after delete/archive/move.
   // Updated below once pinned band + flow list are known; read from the ref

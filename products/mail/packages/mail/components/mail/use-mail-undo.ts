@@ -29,7 +29,7 @@ import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { mailSay } from "@/lib/mail/i18n";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
-import { everyCopy, threadKey } from "@/lib/mail/thread-copies";
+import { everyCopy, threadKey, newestFirst } from "@/lib/mail/thread-copies";
 import { unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { pinMailThread } from "@/lib/mail/pins";
 import { createMailUndoStack } from "@/lib/mail/mail-undo-stack";
@@ -113,9 +113,7 @@ export function useMailUndo({
       setThreads((current) => {
         const key = threadKey(undo.summary);
         if (current.some((t) => threadKey(t) === key)) return current;
-        const next = [...current, undo.summary].sort(
-          (a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt)
-        );
+        const next = [...current, undo.summary].sort(newestFirst);
         patchCachedThreads(viewerId, listCacheKey, next);
         return next;
       });

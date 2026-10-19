@@ -7,6 +7,7 @@
  * app uses, so callers import from there.
  */
 
+import { newestFirst } from "@/lib/mail/thread-copies";
 import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 import { exchangeListTarget } from "@/lib/mail/exchange-folders";
@@ -522,7 +523,7 @@ export async function listUnifiedInbox(options: {
 
   // Dedupe keeps insertion order, but re-sort so the list is always
   // newest-first (important for search, where Gmail's hit order is relevance).
-  deduped.sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+  deduped.sort(newestFirst);
 
   const chatByThread = await getChatsForThreads(
     deduped.map((t) => ({ account: t.account, threadId: t.threadId }))

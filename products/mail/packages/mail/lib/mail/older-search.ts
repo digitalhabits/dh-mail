@@ -20,6 +20,7 @@
  * in one quiet line.
  */
 
+import { newestFirst } from "@/lib/mail/thread-copies";
 import "server-only";
 
 import { filterAccountsForScope } from "@/lib/mail/account-scope";
@@ -73,7 +74,7 @@ export async function searchOlderMail(input: {
   );
   if (input.signal?.aborted) return { threads: [], missed: null };
   const threads = answers.flatMap((a) => a.threads);
-  threads.sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+  threads.sort(newestFirst);
   const missed = answers.some((a) => a.missed === "failed")
     ? "failed"
     : answers.some((a) => a.missed === "offline")

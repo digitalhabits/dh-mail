@@ -25,14 +25,29 @@ export function threadKey(t: ThreadRef): string {
 }
 
 /**
+ * The list's order: newest first, and conversations of the same second in
+ * a fixed order, by mailbox and thread.
+ *
+ * Mail sent in a batch shares a second, and the list had no order for it:
+ * each refresh put those rows in the order the mailboxes happened to
+ * answer, so after every archive the rows below swapped places, and the
+ * next one to open was not the one below (2026-10-19).
+ */
+export function newestFirst(a: ThreadRef & { lastAt: string }, b: ThreadRef & { lastAt: string }): number {
+  const byTime = Date.parse(b.lastAt) - Date.parse(a.lastAt);
+  if (byTime) return byTime;
+  const ka = threadKey(a);
+  const kb = threadKey(b);
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+
+/**
  * Collapse cc'd copies of the same conversation across mailboxes, mirroring
  * the server's unified dedupe: newest-first, first copy wins the row, any
  * copy being unread / carrying an invite marks the kept row.
  */
 export function dedupeThreadsByTip(rows: MailThreadSummary[]): MailThreadSummary[] {
-  const sorted = [...rows].sort(
-    (a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt)
-  );
+  const sorted = [...rows].sort(newestFirst);
   const indexByKey = new Map<string, number>();
   const out: MailThreadSummary[] = [];
   for (const t of sorted) {
@@ -217,5 +232,5 @@ export function withRowsBack(
   if (!old.length) return current;
   const oldKeys = new Set(old.map(threadKey));
   const kept = current.filter((t) => !oldKeys.has(threadKey(t)));
-  return [...kept, ...old].sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+  return [...kept, ...old].sort(newestFirst);
 }
