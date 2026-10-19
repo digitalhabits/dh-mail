@@ -796,7 +796,7 @@ mod tests {
   fn the_envelope_names_the_version() {
     let xml = crate::ews_ops::inbox_request().unwrap();
     assert!(xml.contains(&format!(r#"Version="{REQUEST_SERVER_VERSION}""#)));
-    assert!(xml.contains(r#"<t:DistinguishedFolderId Id="inbox"/>"#), "{xml}");
+    assert!(xml.contains(r#"<t:DistinguishedFolderId Id="inbox"></t:DistinguishedFolderId>"#), "{xml}");
   }
 
   #[test]

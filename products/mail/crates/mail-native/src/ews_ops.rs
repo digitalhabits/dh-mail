@@ -147,7 +147,7 @@ pub(crate) fn folder_ref(id: &str) -> BaseFolderId {
 }
 
 pub(crate) fn distinguished(id: &str) -> BaseFolderId {
-  BaseFolderId::DistinguishedFolderId { id: id.to_string(), change_key: None }
+  BaseFolderId::DistinguishedFolderId { id: id.to_string(), change_key: None, mailbox: None }
 }
 
 fn item_ids(ids: &[String]) -> Vec<BaseItemId> {

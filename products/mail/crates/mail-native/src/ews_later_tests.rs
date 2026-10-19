@@ -24,7 +24,7 @@ fn handler() -> Handler {
         [1u32, 3].iter().filter(|n| body.contains(&item_id(**n))).map(|n| Some(message_row(*n, "Held", true, "NotFlagged"))).collect();
       (200, get_items(&rows))
     }
-    "MoveItem" if body.contains(r#"<t:DistinguishedFolderId Id="drafts"/>"#) => (200, move_answer(&[Some(40)])),
+    "MoveItem" if body.contains(r#"<t:DistinguishedFolderId Id="drafts"></t:DistinguishedFolderId>"#) => (200, move_answer(&[Some(40)])),
     "UpdateItem" => (200, update_answer(&[(40, true)])),
     "SendItem" => (200, response("SendItem", &[success("SendItem", "")])),
     _ => (500, fault("ErrorInvalidRequest", "The request is invalid.")),
@@ -43,8 +43,8 @@ fn the_list_has_the_held_messages_soonest_first() {
   // The whole body, for Edit.
   assert_eq!(list[0].html.as_deref(), Some("<p>The plan for day 3.</p>"));
   let find = server.requests.lock().unwrap()[0].clone();
-  assert!(find.contains(r#"<t:DistinguishedFolderId Id="outbox"/>"#), "{find}");
-  assert!(find.contains(r#"<t:DistinguishedFolderId Id="sentitems"/>"#), "{find}");
+  assert!(find.contains(r#"<t:DistinguishedFolderId Id="outbox"></t:DistinguishedFolderId>"#), "{find}");
+  assert!(find.contains(r#"<t:DistinguishedFolderId Id="sentitems"></t:DistinguishedFolderId>"#), "{find}");
   let json = serde_json::to_value(&list[0]).unwrap();
   assert_eq!(json["sendAt"], "2026-09-30T07:00:00Z");
   assert_eq!(json["subject"], "Held");

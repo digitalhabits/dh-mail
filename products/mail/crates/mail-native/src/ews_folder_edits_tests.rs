@@ -45,7 +45,7 @@ fn a_rename_names_the_change_key() {
 fn delete_is_a_move_to_deleted_items_and_passes_the_guard() {
   let xml = move_request(&fx::folder_id(3), None).unwrap();
   assert!(xml.contains("<MoveFolder"), "{xml}");
-  assert!(xml.contains(r#"<t:DistinguishedFolderId Id="deleteditems"/>"#), "{xml}");
+  assert!(xml.contains(r#"<t:DistinguishedFolderId Id="deleteditems"></t:DistinguishedFolderId>"#), "{xml}");
   assert!(!xml.contains("DeleteFolder"), "{xml}");
   guard_request(&xml).unwrap();
 }

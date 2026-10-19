@@ -53,7 +53,7 @@ fn mime_item(mime_base64: &str, bcc: &[String]) -> EwsResult<RealItem> {
 fn send_create_item(mime_base64: &str, bcc: &[String]) -> EwsResult<CreateItem> {
   Ok(CreateItem {
     message_disposition: Some(MessageDisposition::SendAndSaveCopy),
-    saved_item_folder_id: Some(BaseFolderId::DistinguishedFolderId { id: "sentitems".into(), change_key: None }),
+    saved_item_folder_id: Some(BaseFolderId::DistinguishedFolderId { id: "sentitems".into(), change_key: None, mailbox: None }),
     items: vec![mime_item(mime_base64, bcc)?],
   })
 }
@@ -100,7 +100,7 @@ pub fn save_draft_request(mime_base64: &str, bcc: &[String]) -> EwsResult<String
   message.extended_property = Some(vec![draft_flags()]);
   document(CreateItem {
     message_disposition: Some(MessageDisposition::SaveOnly),
-    saved_item_folder_id: Some(BaseFolderId::DistinguishedFolderId { id: "drafts".into(), change_key: None }),
+    saved_item_folder_id: Some(BaseFolderId::DistinguishedFolderId { id: "drafts".into(), change_key: None, mailbox: None }),
     items: vec![RealItem::Message(message)],
   })
 }

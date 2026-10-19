@@ -18,3 +18,8 @@
 **Writing**
 - You can drag a person from To to Cc in the reply card.
 - The list of suggestions under a short Cc field shows whole names.
+
+**Security**
+- PDF attachments are read and shown with a newer version of the PDF reader, which fixes a known flaw.
+- The app's log no longer records the subject or the addresses of mail you send.
+- Updated security components for secure connections and Exchange.

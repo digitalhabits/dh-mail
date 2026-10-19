@@ -96,7 +96,8 @@ export async function readAttachmentText(
       total += line.length + 1;
     }
   }
-  await doc.destroy();
+  // pdf.js 6 frees a document through the task that loaded it.
+  await doc.loadingTask.destroy();
   const text = parts.join("\n");
   return text.length > maxChars ? `${text.slice(0, maxChars)}\n[cut]` : text;
 }
@@ -178,7 +179,7 @@ async function drawFirstPage(
       return canvas.toDataURL("image/png");
     } finally {
       // The worker holds the whole document until this runs.
-      void doc.destroy();
+      void doc.loadingTask.destroy();
     }
   } catch (err) {
     console.warn("mail: could not draw the first page of a PDF", err);
@@ -248,7 +249,7 @@ export async function mountPdfViewer(
     destroy() {
       observer.disconnect();
       viewer.cleanup();
-      void doc.destroy();
+      void doc.loadingTask.destroy();
       container.replaceChildren();
     },
   };

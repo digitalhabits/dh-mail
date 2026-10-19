@@ -19,7 +19,7 @@ fn mime() -> String {
 fn the_send_request_sends_and_saves_a_copy() {
   let xml = send_request(&mime(), &["hidden@example.com".into()]).unwrap();
   assert!(xml.contains(r#"MessageDisposition="SendAndSaveCopy""#), "{xml}");
-  assert!(xml.contains(r#"<SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"/></SavedItemFolderId>"#), "{xml}");
+  assert!(xml.contains(r#"<SavedItemFolderId><t:DistinguishedFolderId Id="sentitems"></t:DistinguishedFolderId></SavedItemFolderId>"#), "{xml}");
   assert!(xml.contains(r#"<t:MimeContent CharacterSet="UTF-8">"#), "{xml}");
   assert!(
     xml.contains("<t:BccRecipients><t:Mailbox><t:EmailAddress>hidden@example.com</t:EmailAddress></t:Mailbox></t:BccRecipients>"),
@@ -67,7 +67,7 @@ fn a_refused_send_is_an_error() {
 fn a_draft_is_saved_into_drafts_with_the_unsent_flag() {
   let xml = save_draft_request(&mime(), &[]).unwrap();
   assert!(xml.contains(r#"MessageDisposition="SaveOnly""#), "{xml}");
-  assert!(xml.contains(r#"<t:DistinguishedFolderId Id="drafts"/>"#), "{xml}");
+  assert!(xml.contains(r#"<t:DistinguishedFolderId Id="drafts"></t:DistinguishedFolderId>"#), "{xml}");
   assert!(
     xml.contains(r#"<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer"/><t:Value>9</t:Value></t:ExtendedProperty>"#),
     "{xml}"

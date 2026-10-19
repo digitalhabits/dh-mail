@@ -1217,10 +1217,7 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
     match db.outbox_claim(row.id, crate::db::now_ms()) {
       Ok(true) => {}
       Ok(false) => {
-        log::info!(
-          "[mail-sync] {email}: \"{}\" is already being sent by another worker; leaving it",
-          row.subject
-        );
+        log::info!("[mail-sync] {email}: outbox message {} is already being sent by another worker; leaving it", row.id);
         continue;
       }
       Err(e) => {
@@ -1241,12 +1238,14 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
             log::warn!("[mail-sync] {email}: could not discard the sent draft: {e}");
           }
         }
-        log::info!("[mail-sync] {email}: sent \"{}\" to {}", row.subject, row.recipients.join(", "));
+        // By the outbox row, never the subject or the addresses: the log is a
+        // file on disk, and no one's mail belongs in it (CASA, 2026-10-19).
+        log::info!("[mail-sync] {email}: sent outbox message {} to {} recipient(s)", row.id, row.recipients.len());
         let _ = app.emit(SENT_EVENT, json!({ "account": email, "id": row.id, "threadId": row.thread_id }));
       }
       Err(e) => {
         let permanent = e.is_permanent();
-        log::warn!("[mail-sync] {email}: send of \"{}\" failed: {e}", row.subject);
+        log::warn!("[mail-sync] {email}: send of outbox message {} failed: {e}", row.id);
         match db.outbox_failed(row.id, &e.to_string(), permanent) {
           Ok(true) => {
             let _ = app.emit(

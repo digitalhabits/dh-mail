@@ -39,7 +39,7 @@ hmac = { version = "0.12", optional = true }
 getrandom = { version = "0.2", optional = true }
 # The EWS request and answer types, from Thunderbird (MPL-2.0, used as is).
 # See ews_ops.rs. Only with `exchange`.
-ews = { version = "0.1.1", optional = true }
+ews = { version = "0.1.2", optional = true }
 # The public app's direct downloads update themselves from GitHub. See
 # team_update.rs. Only with `public-updater` (or `team-updater`): a store
 # build must not carry an updater at all.
