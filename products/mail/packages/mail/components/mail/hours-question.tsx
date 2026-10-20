@@ -114,7 +114,7 @@ export function HoursQuestion({
           {lock ? <LockRow {...lock} /> : null}
         </div>
 
-        <div className="min-w-0 self-start rounded-xl bg-[var(--mail-hours-card)] p-4">
+        <div className="min-w-0 self-start rounded-surface bg-[var(--mail-hours-card)] p-4">
           <p className="text-xs leading-relaxed text-stone-500">
             <span className="mr-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
               {t("rhythmPreview")}
@@ -153,7 +153,7 @@ function AnswerRow({
       aria-checked={chosen}
       onClick={onPick}
       className={cn(
-        "flex items-center gap-3.5 rounded-xl border px-4 py-3 text-left transition-colors",
+        "flex items-center gap-3.5 rounded-control border px-4 py-3 text-left transition-colors",
         chosen ? "border-teal-600/70 bg-teal-600/10" : "border-stone-200 hover:bg-stone-50"
       )}
     >
@@ -180,7 +180,7 @@ function AnswerRow({
 /** The words to type before going round these hours, as a switch. */
 function LockRow({ on, set, title, what }: { on: boolean; set: (on: boolean) => void; title: string; what: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-stone-200 px-4 py-3">
+    <div className="flex items-center gap-3 rounded-control border border-stone-200 px-4 py-3">
       <Lock className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-stone-900">{title}</span>

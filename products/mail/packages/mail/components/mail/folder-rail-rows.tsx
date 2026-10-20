@@ -79,7 +79,7 @@ export function SystemRow({
         // py-1, and no gap between them: the four are one block naming the
         // four places every mailbox has, and spaced like separate things
         // they took as much room as the whole of somebody's filing.
-        "flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-1 text-left text-sm",
+        "flex w-full items-center gap-2 rounded-inner py-1 pl-2 pr-1 text-left text-sm",
         // A fill and a bold name, the icon in the name's colour
         // (--mail-folder-active). The pinned colours it wore, the chrome
         // turned inside out, shouted it; a pale wash was easy to miss.
@@ -277,7 +277,7 @@ export function FolderRow({
         onFolderDragEnd();
       }}
       className={cn(
-        "group relative flex items-center rounded-md transition-shadow duration-200",
+        "group relative flex items-center rounded-inner transition-shadow duration-200",
         // select-none, or the gesture is read as a text selection and the
         // drag never starts: pulling a folder highlighted its name and the
         // name of whatever it was pulled across. A name in a tree is
@@ -623,7 +623,7 @@ export function FolderContextMenu({
          an inch of nothing to the right of it. */
       /* Chrome, not a sheet of email: it goes dark with the rest (see
          mail.css on .mail-light-surface, which is for email only). */
-      className="fixed z-50 w-max rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+      className="fixed z-50 w-max rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
     >
       {note ? (
         <p className="px-3 py-1.5 text-sm text-stone-500">{note}</p>
@@ -749,7 +749,7 @@ export function FolderDeleteConfirm({
       role="dialog"
       aria-label={t("deleteFolderTitle", { label })}
       style={{ left: placed.left, top: placed.top }}
-      className="mail-light-surface fixed z-50 w-64 rounded-xl border border-stone-200 bg-white p-3 shadow-lg"
+      className="mail-light-surface fixed z-50 w-64 rounded-surface border border-stone-200 bg-white p-3 shadow-lg"
     >
       <p className="text-sm font-semibold text-stone-800">
         {t("deleteFolderAsk", { label })}
@@ -760,7 +760,7 @@ export function FolderDeleteConfirm({
       <div className="flex justify-end gap-2 pt-3">
         <button
           type="button"
-          className="rounded-lg px-2.5 py-1 text-sm font-semibold text-stone-600 hover:bg-stone-100"
+          className="rounded-control px-2.5 py-1 text-sm font-semibold text-stone-600 hover:bg-stone-100"
           onClick={onDismiss}
         >
           {t("keep")}
@@ -769,7 +769,7 @@ export function FolderDeleteConfirm({
           type="button"
           autoFocus
           disabled={busy}
-          className="rounded-lg bg-red-600 px-2.5 py-1 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+          className="rounded-control bg-red-600 px-2.5 py-1 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
           onClick={onConfirm}
         >
           {busy ? t("deleting") : t("delete")}
@@ -882,7 +882,7 @@ export function FolderMovePicker({
       role="dialog"
       aria-label={t("moveFolderTitle", { label: moving.label })}
       style={{ left: placed.left, top: placed.top }}
-      className="mail-light-surface fixed z-50 flex max-h-[22rem] w-72 flex-col rounded-xl border border-stone-200 bg-white p-2 shadow-lg"
+      className="mail-light-surface fixed z-50 flex max-h-[22rem] w-72 flex-col rounded-surface border border-stone-200 bg-white p-2 shadow-lg"
     >
       <p className="shrink-0 px-1 pb-2 text-sm text-stone-700">
         {t("moveFolderToBefore")}
@@ -895,7 +895,7 @@ export function FolderMovePicker({
         onChange={(e) => setQuery(e.target.value)}
         placeholder={t("filterFoldersPlaceholder")}
         aria-label={t("filterFolders")}
-        className="mb-1 w-full shrink-0 rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300"
+        className="mb-1 w-full shrink-0 rounded-inner border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300"
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -981,7 +981,7 @@ function MoveRow({
       onClick={() => onPick?.()}
       style={{ paddingLeft: 8 + depth * 14 }}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-sm",
+        "flex w-full items-center gap-1.5 rounded-inner py-1 pr-2 text-left text-sm",
         // Navy, like the open folder's row and the chip that names it.
         // Teal in this rail means a conversation is about to land on
         // something; nothing is landing here — this is the row that is

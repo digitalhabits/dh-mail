@@ -17,7 +17,7 @@ const PICKER_LIMIT = 180;
 
 const swatch = (on: boolean) =>
   cn(
-    "flex h-7 w-7 items-center justify-center rounded-md border text-stone-600 hover:bg-stone-100",
+    "flex h-7 w-7 items-center justify-center rounded-inner border text-stone-600 hover:bg-stone-100",
     on ? "border-teal-600 bg-teal-50 text-teal-800" : "border-stone-200"
   );
 
@@ -71,7 +71,7 @@ export function TabIconPicker({ value, onChange }: { value: string; onChange: (i
         ) : null}
       </div>
       {searching ? (
-        <div className="mt-2 rounded-lg border border-stone-200 p-2">
+        <div className="mt-2 rounded-control border border-stone-200 p-2">
           <input
             autoFocus
             type="search"
@@ -81,7 +81,7 @@ export function TabIconPicker({ value, onChange }: { value: string; onChange: (i
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("listIconSearch")}
-            className="mb-2 w-full rounded-md border border-stone-200 px-2 py-1 text-sm outline-none focus:border-teal-600"
+            className="mb-2 w-full rounded-inner border border-stone-200 px-2 py-1 text-sm outline-none focus:border-teal-600"
           />
           <div className="grid max-h-40 grid-cols-8 gap-1 overflow-y-auto">
             {found.map((id) => (

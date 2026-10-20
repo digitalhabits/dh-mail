@@ -58,7 +58,7 @@ const BAND_UNDER_CARD = "pointer-events-none absolute inset-x-0 bottom-0 z-20";
 const BAND_ACROSS = "border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)]";
 /** The reply as a card lifted off the bottom of the pane. */
 const COMPOSER_CARD =
-  "pointer-events-auto cursor-grab [&_.ql-editor]:cursor-text [&_button]:cursor-pointer rounded-2xl border border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-4 pb-3 pt-3 shadow-xl";
+  "pointer-events-auto cursor-grab [&_.ql-editor]:cursor-text [&_button]:cursor-pointer rounded-surface border border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-4 pb-3 pt-3 shadow-xl";
 
 /**
  * A card on the thread's own ground, not a band across the pane. Not in
@@ -373,7 +373,7 @@ export function ThreadComposerBand({
               // The card is chrome and takes the theme; only the box you
               // type in is a light island — see below, and the compose
               // window, which is split the same way.
-              "mail-composer-card relative flex flex-1 flex-col rounded-xl border border-teal-700/50 bg-white focus-within:border-teal-700",
+              "mail-composer-card relative flex flex-1 flex-col rounded-surface border border-teal-700/50 bg-white focus-within:border-teal-700",
               // Never shorter than its own floor and the row with Send on
               // it. In focus mode the card is the pane and may shrink.
               bandFills ? "mail-composer-card-focus min-h-0" : "min-h-min"
@@ -532,7 +532,7 @@ function ComposerSubjectRow({
     t,
   } = m;
   return (
-    <label className="mb-1.5 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-2.5 py-[7px]">
+    <label className="mb-1.5 flex items-center gap-2 rounded-control border border-stone-200 bg-white px-2.5 py-[7px]">
       <span className="shrink-0 text-xs text-muted-foreground">
         {t("fieldSubject")}
       </span>
@@ -564,7 +564,7 @@ function QuotedReplyBanner({
   // The caller shows this only with a message picked; said here too for the types.
   if (!quotedForReply) return null;
   return (
-    <div className="mb-2 flex items-start gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+    <div className="mb-2 flex items-start gap-2 rounded-control border border-stone-200 bg-stone-50 px-3 py-2">
       <Reply
         className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-400"
         aria-hidden
@@ -803,7 +803,7 @@ function ComposerSendBar({
         {/* One control: Send, and a section that says when. Not on a
             forward — that leaves through its own path, which has
             nowhere to put a time. */}
-        <div className="inline-flex items-stretch overflow-hidden rounded-lg">
+        <div className="inline-flex items-stretch overflow-hidden rounded-control">
           <Button
             type="button"
             className="h-8 rounded-none bg-teal-600 pl-3 pr-2 text-sm font-semibold text-white hover:bg-teal-700"

@@ -744,7 +744,7 @@ export function FoldersTabMenu({
           className={
             iconOnly
               ? cn(
-                  "rounded-md p-1.5",
+                  "rounded-inner p-1.5",
                   onNavy
                     ? cn(
                         open
@@ -769,13 +769,13 @@ export function FoldersTabMenu({
                         "text-white/60 hover:text-white",
                         open && "text-white",
                         dragOverTrigger &&
-                          "rounded-md border-teal-300/80 bg-white/10 px-1 text-teal-200"
+                          "rounded-inner border-teal-300/80 bg-white/10 px-1 text-teal-200"
                       )
                     : cn(
                         "text-stone-500 hover:text-stone-700",
                         open && "text-stone-800",
                         dragOverTrigger &&
-                          "rounded-md border-teal-600 bg-teal-50 px-1 text-teal-800"
+                          "rounded-inner border-teal-600 bg-teal-50 px-1 text-teal-800"
                       )
                 )
           }
@@ -940,7 +940,7 @@ export function FoldersTabMenu({
               naming ? t("nameForNewFolder") : t("filterFoldersPlaceholder")
             }
             readOnly={saving}
-            className="w-full rounded-lg border border-teal-600 px-2.5 py-1.5 text-sm outline-none read-only:text-stone-400"
+            className="w-full rounded-control border border-teal-600 px-2.5 py-1.5 text-sm outline-none read-only:text-stone-400"
           />
         </div>
         {naming ? (

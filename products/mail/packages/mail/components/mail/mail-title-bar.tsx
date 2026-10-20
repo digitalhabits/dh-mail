@@ -103,7 +103,7 @@ export function MailTitleBar({
             title={t("newEmail")}
             aria-label={t("newEmail")}
             className={cn(
-              "flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold",
+              "flex h-7 shrink-0 items-center gap-1.5 rounded-control border px-3 text-[13px] font-semibold",
               chromeDark
                 ? "border-[var(--mail-action-border)] bg-[var(--mail-action)] text-[var(--mail-action-fg)] hover:bg-[var(--mail-action-hover)]"
                 : "border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] text-[var(--mail-chrome-fg)] shadow-sm hover:bg-[var(--mail-chrome-hover)]"
@@ -122,7 +122,7 @@ export function MailTitleBar({
               // Its own colours, not stone: on the dark theme the blanket
               // rewrite made this the same shade as the bar it sits in, so
               // the box a reader types into had no edges.
-              "relative flex h-7 min-w-0 flex-1 items-center rounded-full border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
+              "relative flex h-7 min-w-0 flex-1 items-center rounded-control border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
               "focus-within:ring-2 focus-within:ring-[var(--mail-title-search-ring)]"
             )}
           >

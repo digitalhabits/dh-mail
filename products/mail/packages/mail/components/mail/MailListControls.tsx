@@ -149,7 +149,7 @@ export function ListDensityToggle({
       aria-label={compact ? t("relaxedDensity") : t("compactDensity")}
       aria-pressed={compact}
       className={cn(
-        "rounded-md p-1.5",
+        "rounded-inner p-1.5",
         onNavy
           ? "text-white/70 hover:bg-white/10 hover:text-white"
           : "text-stone-500 hover:bg-stone-200/60 hover:text-stone-800"
@@ -384,7 +384,7 @@ export function MailLayoutMenu({
                     aria-label={t("theme")}
                     value={theme}
                     onChange={(e) => setTheme(e.target.value as MailTheme)}
-                    className="cursor-pointer appearance-none rounded-md border border-stone-200 bg-white py-1 pl-2.5 pr-7 text-xs text-stone-700 outline-none hover:bg-stone-50"
+                    className="cursor-pointer appearance-none rounded-inner border border-stone-200 bg-white py-1 pl-2.5 pr-7 text-xs text-stone-700 outline-none hover:bg-stone-50"
                   >
                     <option value="system">{t("themeSystem")}</option>
                     <option value="light">{t("themeLight")}</option>
@@ -466,7 +466,7 @@ export function MailLayoutMenu({
                         aria-pressed={selected}
                         onClick={() => setMailListPlacement(option.id)}
                         className={cn(
-                          "rounded-md p-1 transition-colors",
+                          "rounded-inner p-1 transition-colors",
                           selected ? "bg-teal-50" : "hover:bg-stone-100"
                         )}
                       >
@@ -517,7 +517,7 @@ export function MailLayoutMenu({
           aria-expanded={open}
           aria-haspopup="dialog"
           className={cn(
-            "rounded-md p-1.5",
+            "rounded-inner p-1.5",
             onNavy
               ? open
                 ? "bg-white/15 text-white"
@@ -610,7 +610,7 @@ export function MailLayoutMenu({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("settingsSearch")}
               aria-label={t("settingsSearch")}
-              className="h-8 w-full rounded-lg border border-stone-200 bg-white pl-8 pr-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              className="h-8 w-full rounded-control border border-stone-200 bg-white pl-8 pr-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             />
           </label>
           <ul className="-mx-0.5 flex gap-1 overflow-x-auto px-0.5 pb-0.5 md:flex-col md:overflow-visible">
@@ -623,7 +623,7 @@ export function MailLayoutMenu({
                     aria-current={selected ? "page" : undefined}
                     onClick={() => setCategory(id)}
                     className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                      "flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left text-sm transition-colors",
                       selected
                         ? "bg-white font-semibold text-stone-900 shadow-sm"
                         : "text-stone-700 hover:bg-stone-200/50"
@@ -631,7 +631,7 @@ export function MailLayoutMenu({
                   >
                     <span
                       className={cn(
-                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-inner",
                         selected ? "bg-teal-700 text-white" : "bg-stone-200/70 text-stone-500"
                       )}
                     >

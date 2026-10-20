@@ -280,7 +280,7 @@ export function ZoomTextSize({
       canBigger={zoom < MAX_ZOOM}
       onSmaller={() => onAdjust(nextZoomStop(zoom, -1) - zoom)}
       onBigger={() => onAdjust(nextZoomStop(zoom, 1) - zoom)}
-      className={className ?? "mail-chrome-strip shrink-0 rounded-md px-2 py-1 text-[15px] text-stone-600 hover:bg-stone-200/70"}
+      className={className ?? "mail-chrome-strip shrink-0 rounded-inner px-2 py-1 text-[15px] text-stone-600 hover:bg-stone-200/70"}
       letters={!className}
     />
   );

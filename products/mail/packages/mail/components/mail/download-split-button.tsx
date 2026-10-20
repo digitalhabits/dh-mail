@@ -106,7 +106,7 @@ export function DownloadSplitButton({
     (f, i, all): f is string => Boolean(f) && f !== downloads && all.indexOf(f) === i
   );
   const row =
-    "flex w-full items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100";
+    "flex w-full items-baseline gap-2 rounded-control px-2.5 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100";
   const tick = (on: boolean) => (
     <span className="w-4 shrink-0 self-center text-teal-700">{on ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}</span>
   );
@@ -128,7 +128,7 @@ export function DownloadSplitButton({
             <ChevronDown className={style.icon} aria-hidden />
           </button>
         </PopoverTrigger>
-        <MailPopoverContent align="end" className="w-80 rounded-xl p-1.5">
+        <MailPopoverContent align="end" className="w-80 rounded-surface p-1.5">
           <button
             type="button"
             className={row}

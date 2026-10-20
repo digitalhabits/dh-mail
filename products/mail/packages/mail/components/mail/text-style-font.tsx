@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 
 /** A word in a box: the fonts, the sizes, and the three marks. */
 export const PILL =
-  "rounded-lg border px-2.5 py-1 text-sm transition-colors disabled:opacity-50";
+  "rounded-control border px-2.5 py-1 text-sm transition-colors disabled:opacity-50";
 export const PILL_OFF =
   "border-stone-200 text-stone-800 hover:border-stone-300 hover:bg-stone-50";
 export const PILL_ON = "border-[var(--mail-chrome-pinned)] bg-stone-100 text-stone-900";
@@ -105,7 +105,7 @@ function FontItem({
       role="menuitemradio"
       aria-checked={on}
       className={cn(
-        "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[15px] text-stone-800 hover:bg-stone-100",
+        "flex w-full items-center justify-between gap-2 rounded-inner px-2.5 py-1.5 text-left text-[15px] text-stone-800 hover:bg-stone-100",
         on && "bg-stone-100"
       )}
       style={{ fontFamily: fontStack(font) }}
@@ -170,14 +170,14 @@ export function FontPanel({
       <div className="flex items-center gap-1 px-1 pb-1">
         <button
           type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-stone-600 hover:bg-stone-100"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inner text-stone-600 hover:bg-stone-100"
           title={t("fontBack")}
           aria-label={t("fontBack")}
           onClick={onBack}
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
-        <label className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md border border-stone-200 px-2">
+        <label className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-inner border border-stone-200 px-2">
           <Search className="h-3.5 w-3.5 shrink-0 text-stone-400" aria-hidden />
           <input
             autoFocus
@@ -225,7 +225,7 @@ export function SizeRow({
     "flex h-full w-7 items-center justify-center text-stone-600 hover:bg-stone-100 disabled:opacity-40";
   return (
     <>
-      <div className="flex h-[30px] items-stretch overflow-hidden rounded-lg border border-stone-200">
+      <div className="flex h-[30px] items-stretch overflow-hidden rounded-control border border-stone-200">
         <button type="button" className={STEP} disabled={smaller == null} title={t("sizeSmaller")} aria-label={t("sizeSmaller")} onClick={() => smaller != null && onPick(smaller)}>
           <Minus className="h-3.5 w-3.5" aria-hidden />
         </button>
@@ -261,7 +261,7 @@ export function SizeRow({
 function SizeGrid({ current, defaultSize, onPick }: { current: number; defaultSize: number; onPick: (size: number) => void }) {
   const t = useMailT();
   return (
-    <div className="mt-1 w-full rounded-lg border border-stone-200 p-1">
+    <div className="mt-1 w-full rounded-control border border-stone-200 p-1">
       <div className="grid grid-cols-8 gap-0.5">
         {TEXT_SIZES.map((size) => (
           <button
@@ -269,7 +269,7 @@ function SizeGrid({ current, defaultSize, onPick }: { current: number; defaultSi
             type="button"
             aria-pressed={current === size}
             className={cn(
-              "rounded-md py-1 text-sm tabular-nums text-stone-800 hover:bg-stone-100",
+              "rounded-inner py-1 text-sm tabular-nums text-stone-800 hover:bg-stone-100",
               current === size && "bg-stone-100 font-medium text-stone-900",
               size === defaultSize && "underline underline-offset-4"
             )}

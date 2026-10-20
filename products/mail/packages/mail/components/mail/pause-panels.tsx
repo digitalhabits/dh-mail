@@ -270,7 +270,7 @@ export function QuietHoursPanel({
               <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-100 pt-3">
                 <button
                   type="button"
-                  className="rounded-md bg-[var(--mail-hours-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
+                  className="rounded-inner bg-[var(--mail-hours-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
                   onClick={onDone}
                 >
                   {t("done")}
@@ -343,7 +343,7 @@ function SuggestionRow({
   return (
     <button
       type="button"
-      className="mail-menu-pick flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+      className="mail-menu-pick flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left"
       onClick={onUse}
     >
       <span className="min-w-0 flex-1">

@@ -114,7 +114,7 @@ export function AccountRhythmDialog({ email, onClose }: { email: string; onClose
             {step === 2 ? (
               <button
                 type="button"
-                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                className="rounded-control px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
                 onClick={() => setStep(1)}
               >
                 {t("back")}
@@ -178,7 +178,7 @@ function DialogHeading({ email, step }: { email: string; step: 1 | 2 }) {
         provider={mailProviderFor(email, isOutlookAccount)}
         title={t("changeAccountPicture")}
         large
-        className="mr-1 h-8 w-8 rounded-lg"
+        className="mr-1 h-8 w-8 rounded-control"
       />
       <span className="truncate font-semibold text-stone-900">{email}</span>
       <span className="text-stone-500">{t("rhythmConnected")}</span>

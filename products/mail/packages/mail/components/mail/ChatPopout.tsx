@@ -1059,7 +1059,7 @@ export function ChatPopout({
         type="button"
         aria-label={collapsed ? "Expand" : "Collapse"}
         title={collapsed ? "Expand" : "Collapse"}
-        className="rounded-md p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+        className="rounded-inner p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
         onClick={() => void setWindowCollapsed(!collapsed)}
       >
         {collapsed ? (
@@ -1072,7 +1072,7 @@ export function ChatPopout({
         type="button"
         aria-label={t("close")}
         title={t("close")}
-        className="rounded-md p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+        className="rounded-inner p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
         onClick={close}
       >
         <X className="h-4 w-4" />
@@ -1102,7 +1102,7 @@ export function ChatPopout({
             // widen the card past the window via flex min-content sizing.
             // mail-surface-root: the card is the shell itself, so the dark
             // rules for descendants cannot reach it. See mail.css.
-            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-stone-200 bg-white",
+            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-surface border border-stone-200 bg-white",
             // relative: the drop overlay covers the card, not the desktop.
             !collapsed && "relative"
           )}
@@ -1243,7 +1243,7 @@ export function ChatPopout({
                     caret and the quote was invisible until it arrived at the
                     other end. */}
                 {quotedForReply ? (
-                  <div className="mb-1 flex items-start gap-2 rounded-2xl border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-3 py-2">
+                  <div className="mb-1 flex items-start gap-2 rounded-surface border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-3 py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block text-[11px] font-semibold text-stone-500">
                         Replying to{" "}
@@ -1268,7 +1268,7 @@ export function ChatPopout({
                   </div>
                 ) : null}
                 {attachItems.length ? (
-                  <div className="mb-1 rounded-2xl border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-1 pb-1.5 pt-1">
+                  <div className="mb-1 rounded-surface border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-1 pb-1.5 pt-1">
                     <DraftAttachmentThumbs
                       items={attachItems}
                       onRemove={removeAttach}
@@ -1301,7 +1301,7 @@ export function ChatPopout({
                       no room in a window this size for a permanent bar,
                       and this is a window for short messages anyway.
 
-                      rounded-xl, the same as New email in the main window,
+                      rounded-control, the same as New email in the main window,
                       so the two boxes you type into are the same shape.
                       The heights and the room kept for the emoji button
                       are in `mail.css`, on .mail-chat-input. */}

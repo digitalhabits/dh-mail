@@ -283,7 +283,7 @@ export function TypeBadge({ filename }: { filename: string }) {
   return (
     <span
       className={cn(
-        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[10px] font-bold tracking-wide",
+        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-inner text-[10px] font-bold tracking-wide",
         badgeTone(ext)
       )}
     >

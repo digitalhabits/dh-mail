@@ -58,7 +58,7 @@ export function ThreadFullWindowBar({
           // Esc still leaves; the key is said on hover, not on the button.
           title={`${t("readerExit")} (Esc)`}
           onClick={onExit}
-          className="ml-1 flex items-center gap-2 rounded-lg border border-[var(--mail-nav-tint-border)] bg-[var(--mail-nav-tint)] px-3 py-1.5 text-sm text-[var(--mail-thread-fg)] hover:bg-[var(--mail-chrome-hover)]"
+          className="ml-1 flex items-center gap-2 rounded-control border border-[var(--mail-nav-tint-border)] bg-[var(--mail-nav-tint)] px-3 py-1.5 text-sm text-[var(--mail-thread-fg)] hover:bg-[var(--mail-chrome-hover)]"
         >
           <Minimize2 className="h-3.5 w-3.5 text-[var(--mail-thread-muted)]" aria-hidden />
           <span>{t("readerExit")}</span>

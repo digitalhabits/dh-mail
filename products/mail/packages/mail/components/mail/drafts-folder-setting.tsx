@@ -62,7 +62,7 @@ export function DraftsFolderSetting() {
     });
   };
   const button =
-    "rounded-md border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-50";
+    "rounded-inner border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-50";
   return (
     <SettingsRow
       label={t("draftsFolder")}

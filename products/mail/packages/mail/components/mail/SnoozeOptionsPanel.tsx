@@ -119,7 +119,7 @@ const UNIT_LABEL: Record<TimedUnit, Parameters<MailT>[0]> = {
 };
 
 const fieldClass =
-  "h-8 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-800 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
+  "h-8 w-full min-w-0 rounded-control border border-stone-200 bg-white px-2.5 text-sm text-stone-800 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
 
 /**
  * A box whose text can be half typed. It keeps what is typed, saves it once it
@@ -320,7 +320,7 @@ function TimedOptionsEditor({
   };
 
   return (
-    <div className="overflow-hidden rounded-xl bg-[var(--mail-chrome)]">
+    <div className="overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
       <div ref={listRef} className="divide-y divide-stone-200">
         {options.length === 0 ? (
           <p className="px-4 py-3 text-sm text-stone-500">{emptyText}</p>

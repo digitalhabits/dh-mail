@@ -501,7 +501,7 @@ function ContactSourcesList({
           <li
             key={source.key}
             className={cn(
-              "rounded-2xl bg-[var(--mail-chrome)]",
+              "rounded-surface bg-[var(--mail-chrome)]",
               !source.enabled && "opacity-55"
             )}
           >

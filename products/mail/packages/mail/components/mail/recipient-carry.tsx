@@ -246,7 +246,7 @@ export function RecipientDropZone({
     <span
       {...dropProps}
       className={cn(
-        "inline-flex rounded-md",
+        "inline-flex rounded-inner",
         carrying && "text-teal-700",
         over && "ring-2 ring-teal-500/60"
       )}

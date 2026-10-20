@@ -83,7 +83,7 @@ export function MenuSelect<T extends string | number>({
           }
         }}
         className={cn(
-          "flex cursor-pointer items-center gap-1.5 rounded-md border border-stone-200 bg-white py-1 pl-2.5 pr-2 text-xs text-stone-700 outline-none hover:bg-stone-50",
+          "flex cursor-pointer items-center gap-1.5 rounded-inner border border-stone-200 bg-white py-1 pl-2.5 pr-2 text-xs text-stone-700 outline-none hover:bg-stone-50",
           open && "ring-1 ring-teal-600/40"
         )}
       >
@@ -94,7 +94,7 @@ export function MenuSelect<T extends string | number>({
         <div
           role="listbox"
           aria-label={ariaLabel}
-          className="absolute right-0 top-full z-50 mt-1 max-h-72 min-w-full overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1 max-h-72 min-w-full overflow-y-auto rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
           onKeyDown={(e) => {
             if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
             e.preventDefault();
@@ -117,7 +117,7 @@ export function MenuSelect<T extends string | number>({
                 aria-selected={chosen}
                 onClick={() => pick(option.value)}
                 className={cn(
-                  "mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 whitespace-nowrap rounded-md py-1.5 pl-2 pr-3 text-left text-sm text-stone-800 outline-none hover:bg-stone-100 focus:bg-stone-100",
+                  "mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 whitespace-nowrap rounded-inner py-1.5 pl-2 pr-3 text-left text-sm text-stone-800 outline-none hover:bg-stone-100 focus:bg-stone-100",
                   chosen && "font-medium"
                 )}
               >

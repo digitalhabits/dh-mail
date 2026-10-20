@@ -86,7 +86,7 @@ export function StackPreview({ on, className }: { on: boolean; className?: strin
   const sender = t("stackSampleSender");
   const subjects = [t("stackSampleSubject1"), t("stackSampleSubject2"), t("stackSampleSubject3")];
   return (
-    <div aria-hidden className={cn("flex gap-4 rounded-lg bg-stone-100 px-3 py-2.5 text-xs", className)}>
+    <div aria-hidden className={cn("flex gap-4 rounded-control bg-stone-100 px-3 py-2.5 text-xs", className)}>
       <div className="w-16 shrink-0">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">{t("stackPreview")}</div>
         <div className={cn("mt-0.5 font-medium", on ? "text-teal-700" : "text-stone-500")}>
@@ -121,7 +121,7 @@ function PreviewRow({
   count: string | null;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md bg-white px-2 py-1.5">
+    <div className="flex min-w-0 items-center gap-2 rounded-inner bg-white px-2 py-1.5">
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-50 text-[9px] font-semibold text-teal-800">
         {initials}
       </span>

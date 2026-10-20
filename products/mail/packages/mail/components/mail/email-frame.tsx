@@ -310,7 +310,7 @@ export function LinkContextMenu({
       onDoubleClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
-      className="mail-light-surface fixed z-50 w-max max-w-[min(28rem,calc(100vw-1rem))] rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+      className="mail-light-surface fixed z-50 w-max max-w-[min(28rem,calc(100vw-1rem))] rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
     >
       {model ? (
         <>

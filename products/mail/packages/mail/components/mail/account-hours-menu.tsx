@@ -24,6 +24,7 @@ import { ChevronRight, Eye, EyeOff, Lock, Pause, RefreshCw } from "lucide-react"
 
 import { AccountMark } from "@/components/mail/AccountMark";
 import { HoursSchedulePage } from "@/components/mail/hours-schedule-page";
+import { CalendarTimePicker, MenuHeading } from "@/components/mail/date-time-pick";
 import { hiddenStatusText, useHoursLine } from "@/components/mail/hidden-status";
 import { HoursFrictionPage, useFriction } from "@/components/mail/hours-friction-page";
 import { PointerMenu } from "@/components/mail/PointerMenu";
@@ -154,7 +155,7 @@ export function AccountHoursMenu({
 
   if (page.kind === "until") {
     return (
-      <PointerMenu key="until" x={x} y={y} onDismiss={onDismiss} backdrop className="w-[22rem]">
+      <PointerMenu key="until" x={x} y={y} onDismiss={onDismiss} backdrop className="w-[34rem] max-w-[calc(100vw-16px)]">
         <UntilTimePage
           tab={tab}
           onBack={toMain}
@@ -171,7 +172,33 @@ export function AccountHoursMenu({
   return (
     <PointerMenu key="main" x={x} y={y} onDismiss={onDismiss} backdrop className="w-[24rem] max-w-[calc(100vw-16px)] py-0">
       <ScheduleTabs tab={tab} onTab={setTab} />
+      <Section title={forAWhileTitle(tab, account, hide, pause, t)}>
+        <ForAWhile
+          tab={tab}
+          account={account}
+          accounts={accounts}
+          hide={hide}
+          pause={pause}
+          onPickTime={() => setPage({ kind: "until" })}
+          onDone={onDismiss}
+        />
+      </Section>
+      {/* The words to type, between the times and the schedule: they guard
+          both (Ulrik, 2026-10-21). */}
+      <div className="border-t border-stone-100 py-1">
+        <EarlyRow
+          tab={tab}
+          account={account}
+          accounts={accounts}
+          hide={hide}
+          pause={pause}
+          onOpen={() => setPage({ kind: "friction", account })}
+        />
+      </div>
+      {/* The schedule under the times (Ulrik, 2026-10-21): what is done now
+          first, the standing week below it. */}
       <Section
+        divided
         title={t("hoursMenuSchedule")}
         action={
           account
@@ -199,25 +226,6 @@ export function AccountHoursMenu({
             ))}
           </div>
         )}
-        <EarlyRow
-          tab={tab}
-          account={account}
-          accounts={accounts}
-          hide={hide}
-          pause={pause}
-          onOpen={() => setPage({ kind: "friction", account })}
-        />
-      </Section>
-      <Section title={forAWhileTitle(tab, account, hide, pause, t)} divided>
-        <ForAWhile
-          tab={tab}
-          account={account}
-          accounts={accounts}
-          hide={hide}
-          pause={pause}
-          onPickTime={() => setPage({ kind: "until" })}
-          onDone={onDismiss}
-        />
       </Section>
     </PointerMenu>
   );
@@ -251,7 +259,7 @@ function ScheduleTabs({ tab, onTab }: { tab: HoursTab; onTab: (tab: HoursTab) =>
       aria-selected={tab === id}
       onClick={() => onTab(id)}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+        "flex flex-1 items-center justify-center gap-1.5 rounded-control px-3 py-1.5 text-sm transition-colors",
         tab === id
           ? "bg-[var(--mail-segment-active)] font-semibold text-[var(--mail-segment-active-fg)] shadow-sm"
           : "text-[var(--mail-segment-fg)] hover:text-[var(--mail-segment-active-fg)]"
@@ -263,7 +271,7 @@ function ScheduleTabs({ tab, onTab }: { tab: HoursTab; onTab: (tab: HoursTab) =>
   );
   return (
     <div className="p-2 pb-0">
-      <div role="tablist" className="flex gap-1 rounded-xl bg-[var(--mail-segment-track,rgba(0,0,0,0.05))] p-1">
+      <div role="tablist" className="flex gap-1 rounded-surface bg-[var(--mail-segment-track,rgba(0,0,0,0.05))] p-1">
         {option("shown", <Eye className="h-3.5 w-3.5" aria-hidden />, t("hoursShownTitle"))}
         {option("fetch", <RefreshCw className="h-3.5 w-3.5" aria-hidden />, t("hoursNewMailTitle"))}
       </div>
@@ -322,7 +330,7 @@ function MenuRow({
       onClick={onClick}
       className="flex w-full items-center gap-3 px-3.5 py-1.5 text-left hover:bg-stone-100"
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-500">{icon}</span>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-stone-100 text-stone-500">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-stone-900">{title}</span>
         {detail ? <span className="flex min-w-0 items-center gap-1 text-xs text-stone-500">{detail}</span> : null}
@@ -571,41 +579,23 @@ function ShowEarly({ email, hide, onDone }: { email: string; hide: MailboxHideCo
   );
 }
 
-/** Until a time…: the day and time, and the button that sets it. */
+/**
+ * Until a time…: Mail's own picker, the month and the clock side by side, as
+ * in Send later and Snooze. Not the system's date field, which looked like
+ * nothing else in Mail (Ulrik, 2026-10-21).
+ */
 function UntilTimePage({ tab, onBack, onPick }: { tab: HoursTab; onBack: () => void; onPick: (until: number) => void }) {
   const t = useMailT();
-  const [value, setValue] = React.useState("");
-  const until = value ? new Date(value).getTime() : NaN;
-  const ok = Number.isFinite(until) && until > Date.now();
+  const [initial] = React.useState(() => new Date(Date.now() + 60 * 60_000));
   return (
-    <div>
-      <div className="flex items-center gap-1.5 px-3 pb-1 pt-1">
-        <button
-          type="button"
-          aria-label={t("back")}
-          className="rounded p-0.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
-          onClick={onBack}
-        >
-          <ChevronRight className="h-4 w-4 rotate-180" />
-        </button>
-        <p className="text-xs font-medium text-stone-500">{t("pauseUntilTime")}</p>
-      </div>
-      <div className="flex items-center gap-2 px-3 py-2">
-        <input
-          type="datetime-local"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="h-8 min-w-0 flex-1 rounded-md border border-stone-300 bg-white px-1.5 text-sm text-stone-900 focus:border-teal-600 focus:outline-none"
-        />
-        <button
-          type="button"
-          disabled={!ok}
-          className="rounded-md bg-[var(--mail-hours-accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-          onClick={() => ok && onPick(until)}
-        >
-          {t(tab === "shown" ? "hoursMenuHideUntilThen" : "pauseUntilThen")}
-        </button>
-      </div>
+    <div className="p-1">
+      <MenuHeading onBack={onBack}>{t("pauseUntilTime")}</MenuHeading>
+      <CalendarTimePicker
+        wide
+        initial={initial}
+        action={() => t(tab === "shown" ? "hoursMenuHideUntilThen" : "pauseUntilThen")}
+        onPick={(at) => onPick(at.getTime())}
+      />
     </div>
   );
 }

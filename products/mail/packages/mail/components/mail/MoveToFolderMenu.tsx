@@ -313,7 +313,7 @@ export function MoveToFolderMenu({
             }}
             placeholder={naming ? t("nameForNewFolder") : t("moveTo")}
             readOnly={busy}
-            className="w-full rounded-lg border border-teal-600 px-2.5 py-1.5 text-sm outline-none read-only:text-stone-400"
+            className="w-full rounded-control border border-teal-600 px-2.5 py-1.5 text-sm outline-none read-only:text-stone-400"
           />
         </div>
         {/* The rail's four, in the rail's order, above the folders. */}

@@ -44,7 +44,7 @@ export function ThreadFindBar({
   return (
     <div
       role="search"
-      className="absolute right-4 top-3 z-20 flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 py-1.5 shadow-md"
+      className="absolute right-4 top-3 z-20 flex items-center gap-1 rounded-surface border border-stone-200 bg-white px-2 py-1.5 shadow-md"
     >
       <input
         ref={inputRef}

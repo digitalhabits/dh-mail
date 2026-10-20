@@ -92,7 +92,7 @@ export function ConfirmPurgeDialog({
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         onKeyDown={onKeyDown}
-        className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 text-stone-800 shadow-xl"
+        className="w-full max-w-sm rounded-dialog border border-stone-200 bg-white p-5 text-stone-800 shadow-xl"
       >
         <h2 id={titleId} className="text-base font-semibold">
           {title}

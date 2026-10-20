@@ -105,7 +105,7 @@ export function ThreadPaneDialogs({
               <button
                 type="button"
                 autoFocus
-                className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800"
+                className="rounded-control bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800"
                 onClick={() => {
                   const held = forgottenAttachment;
                   clearForgottenAttachment();
@@ -145,7 +145,7 @@ export function ThreadPaneDialogs({
               <button
                 type="button"
                 autoFocus
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+                className="rounded-control bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
                 onClick={() => {
                   setConfirmDiscard(false);
                   discardComposer();
@@ -424,7 +424,7 @@ export function ThreadMessages({
                       className={cn(
                         "min-w-0",
                         highlightMessageId === m.id &&
-                          "mail-search-hit rounded-2xl"
+                          "mail-search-hit rounded-surface"
                       )}
                     >
                       <MailBubble
@@ -485,7 +485,7 @@ export function ThreadMessages({
                   data-message-id={m.id}
                   className={cn(
                     "min-w-0",
-                    highlightMessageId === m.id && "mail-search-hit rounded-2xl",
+                    highlightMessageId === m.id && "mail-search-hit rounded-surface",
                     confirmingIds.has(m.id) && "mail-sent-confirm"
                   )}
                 >
@@ -523,7 +523,7 @@ export function ThreadMessages({
                 undo count says: this has not gone anywhere yet. */}
             {scheduled.map((held) => (
               <div key={held.id} className="flex flex-col items-end gap-1 py-1">
-                <div className="w-full max-w-[85%] self-end rounded-2xl rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-3.5 py-2.5">
+                <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-3.5 py-2.5">
                   <p className="whitespace-pre-wrap break-words text-sm text-stone-600">
                     {held.bodyText}
                   </p>
@@ -934,7 +934,7 @@ function ThreadTitleBlock({
                       key={p.partIndex}
                       type="button"
                       className={cn(
-                        "flex w-full rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-stone-100",
+                        "flex w-full rounded-inner px-2.5 py-1.5 text-left text-sm hover:bg-stone-100",
                         p.partIndex === chat?.partIndex
                           ? "font-semibold text-stone-900"
                           : "text-stone-700"

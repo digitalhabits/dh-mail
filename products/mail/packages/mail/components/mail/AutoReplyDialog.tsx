@@ -604,7 +604,7 @@ export function AutoReplyDialog({
             ) : form && active ? (
               <div className="space-y-4">
                 {onAll && repliesDiffer ? (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+                  <p className="rounded-control bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
                     {t("autoRepliesDiffer", { count: editable.length })}
                   </p>
                 ) : null}
@@ -682,7 +682,7 @@ export function AutoReplyDialog({
                   </div>
 
                   {/* No overflow-hidden: the editor's link card can poke above. */}
-                  <div className="mail-autoreply-card rounded-lg border border-stone-200">
+                  <div className="mail-autoreply-card rounded-surface border border-stone-200">
                     {/* A reply that cannot carry its own subject gets no
                         box for one. A box that changes nothing is worse
                         than no box. */}

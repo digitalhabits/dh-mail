@@ -27,7 +27,7 @@ export function ListNotice({
   return (
     <div
       role="status"
-      className="flex items-start gap-2.5 rounded-lg border border-amber-600/25 bg-amber-500/[0.07] px-3 py-2.5"
+      className="flex items-start gap-2.5 rounded-control border border-amber-600/25 bg-amber-500/[0.07] px-3 py-2.5"
     >
       <Icon className="mt-[1px] h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
       <div className="min-w-0 text-[12px] leading-snug">

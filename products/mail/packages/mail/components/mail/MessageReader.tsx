@@ -188,7 +188,7 @@ function ReaderTopBar({
         ref={backRef}
         type="button"
         onClick={onClose}
-        className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-100"
+        className="flex items-center gap-2 rounded-control border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-100"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
         <span>{t("readerBack")}</span>
@@ -282,7 +282,7 @@ function ReaderEntryView({ item, sizePx }: { item: ReaderItem; sizePx: number })
       <div
         data-reader-bubble
         className={cn(
-          "rounded-2xl border px-5 py-4",
+          "rounded-surface border px-5 py-4",
           own
             ? "rounded-br-md border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)]"
             : "mail-bubble-card rounded-bl-md border-[var(--mail-bubble-other-border)] bg-[var(--mail-bubble-other)] shadow-sm"

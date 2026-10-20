@@ -770,7 +770,7 @@ export function MailBubble({
         onMouseDown={onBubbleMouseDown}
         onContextMenu={onBubbleContextMenu}
         className={cn(
-          "rounded-2xl transition-[background-color,border-color,color] duration-200",
+          "rounded-surface transition-[background-color,border-color,color] duration-200",
           // One corner tighter, on the speaker's own side. It is barely a
           // shape at all, and it is enough to say who is talking without a
           // tail or a name over every message.

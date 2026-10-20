@@ -103,7 +103,7 @@ export function MenuShell({
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => e.stopPropagation()}
       data-theme={colorMode}
-      className="mail-shell mail-popover fixed z-[70] w-max min-w-[11rem] rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+      className="mail-shell mail-popover fixed z-[70] w-max min-w-[11rem] rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
     >
       {children}
     </div>,

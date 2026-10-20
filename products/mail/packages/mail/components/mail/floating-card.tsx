@@ -62,7 +62,7 @@ const CARD_HANDLES: {
 
 /** The heading's button class, so every button in it matches its neighbours. */
 const FLOATING_CARD_BUTTON =
-  "shrink-0 rounded-md p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800";
+  "shrink-0 rounded-inner p-1 text-stone-500 hover:bg-stone-200/70 hover:text-stone-800";
 
 export type FloatingCard = {
   /** False in a pane, which is not a card and has nowhere to go. */

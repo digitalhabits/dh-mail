@@ -811,7 +811,7 @@ export function RecipientField({
              well as from the pointer, so a drag abandoned outside the
              window does not leave a field lit for a drop that is not
              coming. */
-          drop.over && "rounded-xl ring-2 ring-teal-500/60",
+          drop.over && "rounded-control ring-2 ring-teal-500/60",
           /* Block rather than flex when the field has a box round it, so
              "Save as list…" can float into its top right corner: the chips
              wrap around it on the first line and take the whole width
@@ -1200,7 +1200,7 @@ export function RecipientField({
                        short strip beside Bcc and From, and its list cut
                        every name off (2026-10-19). Wider, it runs on to
                        the right. */
-                    "left-0 right-0 min-w-[18rem] rounded-lg",
+                    "left-0 right-0 min-w-[18rem] rounded-surface",
                     menuBox.above ? "bottom-full mb-1" : "top-full mt-1"
                   )
             )}
@@ -1235,7 +1235,7 @@ export function RecipientField({
                           pickItem(item);
                         }}
                       >
-                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-teal-600 text-white">
                           <Users className="h-4 w-4" />
                         </span>
                         <span className="min-w-0">

@@ -276,7 +276,7 @@ export function SignatureDialog({
         }
       >
         <div
-          className="relative rounded-xl bg-white"
+          className="relative rounded-control bg-white"
           {...signatureDropHandlers}
           {...signaturePasteHandlers}
         >
@@ -401,7 +401,7 @@ function SignatureAccountSection({
 
       {/* On white, because the signature is a piece of the mail and the
           mail is white. The card around it is chrome. */}
-      <div className="mail-light-surface mt-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+      <div className="mail-light-surface mt-2 rounded-control border border-stone-200 bg-white px-3 py-2.5">
         {has ? (
           <SignatureContent signature={settings.signature} />
         ) : (
@@ -476,14 +476,14 @@ function RepliesChoice({
   return (
     <div className="flex items-center gap-2 text-sm text-stone-700">
       <span>{t("onRepliesLabel")}</span>
-      <div className="flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5">
+      <div className="flex items-center rounded-control border border-stone-200 bg-stone-50 p-0.5">
         {options.map((option) => (
           <button
             key={option.key}
             type="button"
             aria-pressed={value === option.key}
             className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-medium transition",
+              "rounded-inner px-2.5 py-1 text-xs font-medium transition",
               value === option.key
                 ? "bg-white text-stone-900 shadow-sm"
                 : "text-stone-500 hover:text-stone-800"
@@ -544,7 +544,7 @@ function CopyFromControl({
           <button
             key={account}
             type="button"
-            className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+            className="flex w-full items-center rounded-inner px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
             onClick={() => {
               setOpen(false);
               onPick(account);

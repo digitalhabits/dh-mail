@@ -36,7 +36,7 @@ export type SendMenuExtra = {
 };
 
 const EXTRA_BUTTON =
-  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40";
+  "flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm font-semibold text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40";
 
 /** The Send button's word: Sending…, Forward, Send at Sun 08:00, or Send. */
 export function sendButtonWord(
@@ -134,7 +134,7 @@ export function SendLaterMenu({
       <MailPopoverContent
         align="start"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-xl p-1.5",
+          "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-surface p-1.5",
           // Wide while the date and time are being picked: the month and
           // the clock side by side, so Schedule stays in sight.
           picking ? "w-[34rem]" : "w-72",
@@ -175,7 +175,7 @@ export function SendLaterMenu({
             {armed && onArm ? (
               <button
                 type="button"
-                className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
+                className="flex w-full items-baseline justify-between gap-3 rounded-control px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
                 onClick={() => {
                   setMenuOpen(false);
                   onArm(null);

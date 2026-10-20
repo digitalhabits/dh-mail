@@ -104,7 +104,7 @@ export function PersonThreadCard({
             }
           : undefined
       }
-      className="group/card mail-bubble-card cursor-pointer rounded-xl border border-[var(--mail-bubble-other-border)] bg-[var(--mail-bubble-other)] px-4 py-3 text-left outline-none transition-colors hover:bg-[var(--mail-row-hover)] focus-visible:ring-2 focus-visible:ring-teal-600/50"
+      className="group/card mail-bubble-card cursor-pointer rounded-surface border border-[var(--mail-bubble-other-border)] bg-[var(--mail-bubble-other)] px-4 py-3 text-left outline-none transition-colors hover:bg-[var(--mail-row-hover)] focus-visible:ring-2 focus-visible:ring-teal-600/50"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[var(--mail-thread-fg)]">

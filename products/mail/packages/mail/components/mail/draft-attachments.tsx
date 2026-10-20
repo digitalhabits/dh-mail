@@ -323,7 +323,7 @@ function DraftAttachmentThumb({ item }: { item: DraftAttachment }) {
 
   if (!src || failed) return <TypeBadge filename={item.filename} />;
   return (
-    <span className="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-stone-100">
+    <span className="h-9 w-9 shrink-0 overflow-hidden rounded-inner bg-stone-100">
       <img
         src={src}
         alt=""
@@ -446,7 +446,7 @@ export function DraftAttachmentChips({
           <div
             key={att.id}
             className={cn(
-              "flex min-w-[200px] max-w-[280px] items-center gap-2.5 rounded-xl border bg-white py-2 pl-2 pr-1.5",
+              "flex min-w-[200px] max-w-[280px] items-center gap-2.5 rounded-control border bg-white py-2 pl-2 pr-1.5",
               uploading
                 ? "border-dashed border-stone-300"
                 : "border-stone-200",
@@ -470,7 +470,7 @@ export function DraftAttachmentChips({
             }
           >
             {uploading ? (
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-inner bg-stone-100 text-stone-500">
                 <Paperclip className="h-4 w-4" />
               </span>
             ) : (
@@ -504,7 +504,7 @@ export function DraftAttachmentChips({
               type="button"
               aria-label={`Remove ${att.filename}`}
               title={t("remove")}
-              className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              className="rounded-inner p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove(att.id);
@@ -604,7 +604,7 @@ export function DraftAttachmentThumbs({
           <div
             key={att.id}
             className={cn(
-              "relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border bg-stone-100",
+              "relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-control border bg-stone-100",
               att.error ? "border-red-300" : "border-stone-200",
               openable && "cursor-pointer"
             )}
@@ -685,8 +685,8 @@ export function ComposerDropOverlay({ visible }: { visible: boolean }) {
   const t = useMailT();
   if (!visible) return null;
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-xl bg-teal-50/90 p-6">
-      <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-xl border-2 border-dashed border-teal-500 bg-white px-8 py-10 text-center shadow-sm">
+    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-surface bg-teal-50/90 p-6">
+      <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-surface border-2 border-dashed border-teal-500 bg-white px-8 py-10 text-center shadow-sm">
         <FileUp className="h-8 w-8 text-teal-600" />
         <p className="text-sm font-medium text-stone-800">
           {t("dropToAttach")}

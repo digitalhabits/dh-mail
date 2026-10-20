@@ -20,3 +20,5 @@
 
 **Other changes**
 - Settings shows nothing for an account that works. Reconnect shows only when something is wrong.
+- Buttons, fields, tabs, menus and cards have corners that match.
+- Hiding or pausing "Until a time…" uses Mail's own date and time picker.

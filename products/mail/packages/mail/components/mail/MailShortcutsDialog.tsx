@@ -209,7 +209,7 @@ export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
                             // Not a monospace face: it is the one font on a Mac
                             // that does not carry every modifier glyph, and the
                             // ones it borrows come back the wrong size.
-                            "inline-flex min-w-[86px] items-center justify-center rounded-md border px-2.5 py-1 text-center text-sm font-medium transition-colors",
+                            "inline-flex min-w-[86px] items-center justify-center rounded-inner border px-2.5 py-1 text-center text-sm font-medium transition-colors",
                             capturing === action
                               ? "border-teal-600 bg-teal-50 text-teal-800"
                               : clashing.has(action)

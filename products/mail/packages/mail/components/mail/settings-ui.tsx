@@ -79,7 +79,7 @@ export function SettingsGroup({
         // The cream the title bar and the thread list are painted in, so a
         // panel over them is the same surface rather than a grey card on top.
         // The variable, not the colour: it is what turns navy in dark mode.
-        "divide-y divide-stone-200 overflow-hidden rounded-xl bg-[var(--mail-chrome)]",
+        "divide-y divide-stone-200 overflow-hidden rounded-surface bg-[var(--mail-chrome)]",
         className
       )}
     >
@@ -325,7 +325,7 @@ export function SettingsLanguageRow() {
             className={cn(
               // The theme menu beside it is a native select, so this borrows
               // its box to keep the two rows on one line of type.
-              "flex cursor-pointer items-center gap-2 rounded-md border border-stone-200 bg-white py-1 pl-2.5 pr-2 text-xs text-stone-700 outline-none hover:bg-stone-50",
+              "flex cursor-pointer items-center gap-2 rounded-inner border border-stone-200 bg-white py-1 pl-2.5 pr-2 text-xs text-stone-700 outline-none hover:bg-stone-50",
               open && "ring-1 ring-teal-600/40"
             )}
           >
@@ -337,7 +337,7 @@ export function SettingsLanguageRow() {
             <div
               role="listbox"
               aria-label={t("language")}
-              className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+              className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
             >
               <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-400">
                 {t("languagePickerCurrent")}
@@ -345,7 +345,7 @@ export function SettingsLanguageRow() {
               <div
                 role="option"
                 aria-selected
-                className="mx-1 flex items-center gap-2 rounded-md bg-stone-100 px-2 py-1.5 text-sm text-stone-800"
+                className="mx-1 flex items-center gap-2 rounded-inner bg-stone-100 px-2 py-1.5 text-sm text-stone-800"
               >
                 <LanguageFlag lang={lang} />
                 <span>{LANGUAGE_NATIVE_LABELS[lang]}</span>
@@ -364,7 +364,7 @@ export function SettingsLanguageRow() {
                     setLang(option);
                     setOpen(false);
                   }}
-                  className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100"
+                  className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-inner px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100"
                 >
                   <LanguageFlag lang={option} />
                   <span>{LANGUAGE_NATIVE_LABELS[option]}</span>
@@ -379,10 +379,10 @@ export function SettingsLanguageRow() {
 }
 
 export const settingsPrimaryButton =
-  "rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-60";
+  "rounded-control bg-teal-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-60";
 
 export const settingsSecondaryButton =
-  "rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-60";
+  "rounded-control border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-60";
 
 /**
  * One category's page in Settings.
@@ -578,7 +578,7 @@ export function SettingsDialog({
             Neither is ever too small, so the smaller of the two is the
             window whichever path is in use and whatever has just changed.
           */
-          "relative flex max-h-[calc(min(var(--mail-viewport-h,100dvh),100dvh)*0.88)] max-w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl",
+          "relative flex max-h-[calc(min(var(--mail-viewport-h,100dvh),100dvh)*0.88)] max-w-full flex-col overflow-hidden rounded-dialog bg-white shadow-xl",
           // The card itself still answers the pointer when the shade does not.
           seeThrough && "pointer-events-auto",
           width
@@ -597,7 +597,7 @@ export function SettingsDialog({
               <button
                 type="button"
                 aria-label={t("back")}
-                className="-ml-1.5 flex shrink-0 items-center gap-0.5 rounded-md py-1 pl-0.5 pr-1.5 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+                className="-ml-1.5 flex shrink-0 items-center gap-0.5 rounded-inner py-1 pl-0.5 pr-1.5 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800"
                 onClick={onBack}
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden />
@@ -615,7 +615,7 @@ export function SettingsDialog({
             <button
               type="button"
               aria-label={closeLabel}
-              className="-mr-1.5 shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+              className="-mr-1.5 shrink-0 rounded-inner p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
               onClick={onClose}
             >
               <X className="h-4 w-4" />

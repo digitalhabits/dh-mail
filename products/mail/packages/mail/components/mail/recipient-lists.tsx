@@ -130,14 +130,14 @@ export function SaveAsListControl({
             }
           }}
           placeholder={t("listName")}
-          className="mt-2 w-full rounded-lg border border-teal-600 px-2.5 py-1.5 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-teal-600/20"
+          className="mt-2 w-full rounded-control border border-teal-600 px-2.5 py-1.5 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-teal-600/20"
         />
         <div className="mt-3 flex items-center gap-3">
           <button
             type="button"
             disabled={!name.trim() || saving}
             onClick={() => void save()}
-            className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
+            className="rounded-control bg-teal-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
           >
             {saving ? t("saving") : t("save")}
           </button>
@@ -243,7 +243,7 @@ function EditListPanel({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm font-semibold text-stone-900 outline-none focus:border-teal-600"
+          className="min-w-0 flex-1 rounded-control border border-stone-200 px-2.5 py-1.5 text-sm font-semibold text-stone-900 outline-none focus:border-teal-600"
         />
         <span className="shrink-0 text-xs text-stone-400">
           {members.length === 1
@@ -255,7 +255,7 @@ function EditListPanel({
         {members.map((m) => (
           <li
             key={m.email}
-            className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-stone-50"
+            className="flex items-center gap-2 rounded-control px-1 py-1 hover:bg-stone-50"
           >
             {editingInitialsEmail === m.email ? (
               <input
@@ -324,7 +324,7 @@ function EditListPanel({
         ))}
       </ul>
       <div className="relative mt-2">
-        <div className="flex items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-2 py-1.5">
+        <div className="flex items-center gap-1.5 rounded-control border border-dashed border-stone-300 px-2 py-1.5">
           <span className="text-stone-400">+</span>
           <input
             value={addDraft}
@@ -351,7 +351,7 @@ function EditListPanel({
           />
         </div>
         {addDraft.trim() && addSuggestions.length ? (
-          <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg">
+          <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-y-auto rounded-surface border border-stone-200 bg-white py-1 shadow-lg">
             {addSuggestions.slice(0, 5).map((item) => (
               <li key={item.contact.email}>
                 <button
@@ -389,7 +389,7 @@ function EditListPanel({
           type="button"
           disabled={saving || members.length < 2 || !name.trim()}
           onClick={() => void onDone()}
-          className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
+          className="rounded-control bg-teal-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
         >
           {saving ? t("saving") : t("done")}
         </button>
@@ -704,7 +704,7 @@ export function ListEditorCard({
       // The reply band clips what hangs out of it; see mail.css.
       data-recipient-menu=""
       className={cn(
-        "absolute left-0 right-0 z-30 overflow-y-auto rounded-lg border border-stone-200 bg-white p-3 shadow-lg",
+        "absolute left-0 right-0 z-30 overflow-y-auto rounded-surface border border-stone-200 bg-white p-3 shadow-lg",
         above ? "bottom-full mb-1" : "top-full mt-1"
       )}
       style={{ maxHeight }}
@@ -806,7 +806,7 @@ export function ListsMenu({
           aria-label={t("yourLists")}
           title={t("yourLists")}
           className={cn(
-            "shrink-0 rounded-md p-1 text-[var(--mail-chip-muted)] transition-colors hover:bg-[var(--mail-action-2-hover)] hover:text-[var(--mail-chip-fg)]",
+            "shrink-0 rounded-inner p-1 text-[var(--mail-chip-muted)] transition-colors hover:bg-[var(--mail-action-2-hover)] hover:text-[var(--mail-chip-fg)]",
             open && "bg-[var(--mail-action-2-hover)] text-[var(--mail-chip-fg)]",
             className
           )}
@@ -821,7 +821,7 @@ export function ListsMenu({
         {lists.map((list) => (
           <div
             key={list.id}
-            className="group flex items-center rounded-md hover:bg-stone-100"
+            className="group flex items-center rounded-inner hover:bg-stone-100"
           >
             <button
               type="button"
@@ -831,7 +831,7 @@ export function ListsMenu({
                 onPick(list);
               }}
             >
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-teal-600 text-white">
                 <Users className="h-3.5 w-3.5" aria-hidden />
               </span>
               <span className="min-w-0">
@@ -879,7 +879,7 @@ export function EditListButton({
         onEdit();
       }}
       className={cn(
-        "shrink-0 rounded-md p-1 opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100 focus-visible:opacity-100",
+        "shrink-0 rounded-inner p-1 opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100 focus-visible:opacity-100",
         className
       )}
     >

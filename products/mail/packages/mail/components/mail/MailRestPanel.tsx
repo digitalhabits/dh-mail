@@ -261,7 +261,7 @@ export function MailRestPanel() {
           style={{ width: rest.width, maxWidth: "100%" }}
         >
           <div
-            className="group/img relative w-full overflow-hidden rounded-2xl bg-stone-100 shadow-[0_18px_40px_-24px_rgba(28,25,23,0.45)]"
+            className="group/img relative w-full overflow-hidden rounded-surface bg-stone-100 shadow-[0_18px_40px_-24px_rgba(28,25,23,0.45)]"
             style={{ height: frameHeight }}
           >
             {shownImage ? (
@@ -299,7 +299,7 @@ export function MailRestPanel() {
             <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5 opacity-0 transition-opacity group-hover/img:opacity-100 focus-within:opacity-100">
               <button
                 type="button"
-                className="pointer-events-auto rounded-lg bg-stone-900/80 px-2.5 py-1 text-xs font-medium text-white backdrop-blur hover:bg-stone-900"
+                className="pointer-events-auto rounded-control bg-stone-900/80 px-2.5 py-1 text-xs font-medium text-white backdrop-blur hover:bg-stone-900"
                 onClick={() => fileRef.current?.click()}
               >
                 {t("replace")}
@@ -308,7 +308,7 @@ export function MailRestPanel() {
                 type="button"
                 aria-pressed={editing}
                 className={cn(
-                  "pointer-events-auto rounded-lg px-2.5 py-1 text-xs font-medium text-white backdrop-blur",
+                  "pointer-events-auto rounded-control px-2.5 py-1 text-xs font-medium text-white backdrop-blur",
                   editing ? "bg-teal-600" : "bg-stone-900/80 hover:bg-stone-900"
                 )}
                 onClick={() => setEditing((v) => !v)}

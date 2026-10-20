@@ -99,7 +99,7 @@ export function MacContactsAskCard({
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-stone-900/30" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%-3rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl">
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%-3rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-dialog border border-stone-200 bg-white p-5 shadow-xl">
           <DialogPrimitive.Title className="text-base font-semibold text-stone-900">
             {t("macContactsAsk2")}
           </DialogPrimitive.Title>

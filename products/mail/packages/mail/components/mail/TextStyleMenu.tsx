@@ -145,7 +145,7 @@ function Row({
  * dark theme turns to cream, exactly as Blocker's does.
  */
 const SWATCH =
-  "relative h-6 w-6 shrink-0 rounded-md border-2 border-transparent transition-transform hover:scale-110";
+  "relative h-6 w-6 shrink-0 rounded-inner border-2 border-transparent transition-transform hover:scale-110";
 const SWATCH_ON = "border-[var(--mail-chrome-pinned)]";
 
 function Tick() {
@@ -331,7 +331,7 @@ export function TextStyleMenu({
         // Wide enough for the ten cells of a colour row on one line. The
         // height is capped because the composer can sit in a short window,
         // where the whole menu fits neither above it nor below.
-        className="w-[26rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-xl p-1.5"
+        className="w-[26rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-surface p-1.5"
         // Leave the caret where the writer put it, rather than letting Radix
         // hand focus back to the button when the menu closes.
         onCloseAutoFocus={(e) => e.preventDefault()}

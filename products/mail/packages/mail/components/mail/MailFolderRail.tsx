@@ -228,7 +228,7 @@ export function MailFolderRail(props: FolderRailProps) {
               disabled={saving}
               placeholder={t("newFolderName")}
               aria-label={t("newFolderInside", { name: node.label })}
-              className="mb-1 mt-0.5 w-full rounded-md border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
+              className="mb-1 mt-0.5 w-full rounded-inner border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
               // Where the folder will be: one step in from its parent, in
               // the place the row itself will take once it exists.
               style={{ marginLeft: (depth + 1) * 14 }}
@@ -530,7 +530,7 @@ export function MailFolderRail(props: FolderRailProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("filterFoldersPlaceholder")}
           aria-label={t("filterFolders")}
-          className="w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300"
+          className="w-full rounded-inner border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();
@@ -766,7 +766,7 @@ export function MailFolderRail(props: FolderRailProps) {
                     // menu, and a pull across the heading swept a highlight
                     // over it. The mailbox is something to point at, not
                     // something to copy.
-                    "flex min-w-0 flex-1 select-none items-center gap-1 rounded-md py-0.5 pl-1 pr-1 text-left",
+                    "flex min-w-0 flex-1 select-none items-center gap-1 rounded-inner py-0.5 pl-1 pr-1 text-left",
                     "hover:bg-[var(--mail-chrome-hover)]",
                     // The one being carried. Where it would land is a line
                     // between headings, drawn on the section — see below.
@@ -850,7 +850,7 @@ export function MailFolderRail(props: FolderRailProps) {
                   disabled={saving}
                   placeholder={t("newFolderName")}
                   aria-label={t("newFolderNameOn", { account })}
-                  className="mb-1 w-full rounded-md border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
+                  className="mb-1 w-full rounded-inner border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
                   onChange={(e) => setNewName(e.target.value)}
                   onBlur={() => setCreatingFor(null)}
                   onKeyDown={(e) => {

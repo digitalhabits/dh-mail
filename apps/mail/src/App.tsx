@@ -352,7 +352,7 @@ export function App() {
             // would need two browser windows and two loopback ports.
             onClick={() => void connect(stale[0].provider, stale[0].email)}
             disabled={connecting}
-            className="shrink-0 rounded-md bg-amber-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-60"
+            className="shrink-0 rounded-inner bg-amber-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-60"
           >
             {connecting ? "Waiting for your browser…" : "Reconnect"}
           </button>
@@ -396,7 +396,7 @@ function ConnectButton({
       onClick={onConnect}
       disabled={connecting || configError !== null}
       title={configError ?? undefined}
-      className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+      className="rounded-control bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
     >
       {connecting && provider !== "exchange" ? "Waiting for your browser…" : `Connect ${label}`}
     </button>

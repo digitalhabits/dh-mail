@@ -49,7 +49,7 @@ export function HoursRuleCards({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {rows.map((window, index) => (
-        <div key={index} className="rounded-lg bg-[var(--mail-hours-card)] p-2.5">
+        <div key={index} className="rounded-control bg-[var(--mail-hours-card)] p-2.5">
           <div className="flex items-center gap-2">
             <TimeField
               label={t("rhythmFrom")}

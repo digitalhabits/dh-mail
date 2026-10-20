@@ -211,7 +211,7 @@ export function ThreadListColumn({
                 aria-label={loadingMore ? t("loadingMore") : t("loadMore")}
                 onClick={() => void loadMoreThreads()}
                 className={cn(
-                  "flex w-full items-center justify-center gap-2 rounded-md py-2 text-xs font-medium text-[var(--mail-chrome-muted)] transition-colors hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)] disabled:opacity-60",
+                  "flex w-full items-center justify-center gap-2 rounded-inner py-2 text-xs font-medium text-[var(--mail-chrome-muted)] transition-colors hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)] disabled:opacity-60",
                   listNarrow && "px-0"
                 )}
               >

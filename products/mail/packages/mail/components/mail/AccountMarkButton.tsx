@@ -188,7 +188,7 @@ export function AccountMarkButton({
         aria-label={title}
         className={cn(
           "shrink-0 transition-opacity hover:opacity-80",
-          large ? "relative flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100" : "rounded",
+          large ? "relative flex h-10 w-10 items-center justify-center rounded-control bg-stone-100" : "rounded",
           className
         )}
         onClick={(e) => {
@@ -203,7 +203,7 @@ export function AccountMarkButton({
         <AccountMark
           mark={marks[key]}
           provider={provider}
-          className={large ? (marks[key] ? "h-10 w-10 rounded-xl" : "h-6 w-6") : markClassName}
+          className={large ? (marks[key] ? "h-10 w-10 rounded-control" : "h-6 w-6") : markClassName}
         />
         {large ? (
           <span

@@ -164,7 +164,7 @@ export const FromAccountMenu = React.forwardRef<
                  than walking down it. */
               tabIndex={index === active ? 0 : -1}
               className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none",
+                "flex w-full items-center gap-2 rounded-inner px-2 py-1.5 text-left text-sm outline-none",
                 chosen
                   ? // The navy a folder wears while it is the one open.
                     // This is the same kind of answer: of these, this one.
@@ -192,7 +192,7 @@ export const FromAccountMenu = React.forwardRef<
         {remember ? (
           <>
             <div className="mx-1.5 my-1 border-t border-stone-100" />
-            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-100">
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-100">
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-teal-700"

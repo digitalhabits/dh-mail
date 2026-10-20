@@ -75,7 +75,7 @@ function filterContacts(
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-teal-600 focus:bg-white";
+  "w-full rounded-control border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-teal-600 focus:bg-white";
 
 function TimeField({
   label,
@@ -98,7 +98,7 @@ function TimeField({
         value={value}
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value || DEFAULT_SCHEDULE_FROM)}
-        className="mt-1 w-auto rounded-xl border border-stone-200 bg-white py-1.5 pl-2 pr-[2px] text-sm tabular-nums text-stone-900 outline-none focus:border-teal-600 [&::-webkit-calendar-picker-indicator]:ml-0.5 [&::-webkit-calendar-picker-indicator]:mr-[2px] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:p-0"
+        className="mt-1 w-auto rounded-control border border-stone-200 bg-white py-1.5 pl-2 pr-[2px] text-sm tabular-nums text-stone-900 outline-none focus:border-teal-600 [&::-webkit-calendar-picker-indicator]:ml-0.5 [&::-webkit-calendar-picker-indicator]:mr-[2px] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:p-0"
       />
     </div>
   );
@@ -237,7 +237,7 @@ export function MailCustomListEditor({
   if (!open) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-stone-200 bg-white p-3 shadow-sm">
+    <div className="mt-3 rounded-surface border border-stone-200 bg-white p-3 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-stone-600">
         {title}
       </p>
@@ -281,7 +281,7 @@ export function MailCustomListEditor({
           className={fieldClass}
         />
         {suggestions.length ? (
-          <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-md">
+          <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-surface border border-stone-200 bg-white py-1 shadow-md">
             {suggestions.map((contact, index) => (
               <li key={contact.email}>
                 <button
@@ -400,7 +400,7 @@ export function MailCustomListEditor({
                         setScheduleDays((prev) => toggleDay(prev, day))
                       }
                       className={cn(
-                        "min-w-[2.75rem] rounded-xl px-2.5 py-1.5 text-xs font-semibold",
+                        "min-w-[2.75rem] rounded-control px-2.5 py-1.5 text-xs font-semibold",
                         selected
                           ? "bg-teal-700 text-white"
                           : "border border-stone-200 bg-white text-stone-700 hover:border-stone-300"
@@ -466,7 +466,7 @@ export function MailCustomListEditor({
           type="button"
           size="sm"
           disabled={!canSubmit}
-          className="rounded-lg bg-teal-700 px-3 text-white hover:bg-teal-800 disabled:opacity-50"
+          className="rounded-control bg-teal-700 px-3 text-white hover:bg-teal-800 disabled:opacity-50"
           onClick={() => {
             if (!canSubmit) return;
             onSubmit(name.trim(), members, {

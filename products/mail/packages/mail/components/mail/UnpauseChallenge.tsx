@@ -85,7 +85,7 @@ export function UnpauseChallengeHost() {
         <DialogPrimitive.Content
           // The shell's colours, which the portal on <body> leaves behind: as MenuShell.
           data-theme={colorMode}
-          className="mail-shell mail-popover fixed left-1/2 top-1/2 z-[2201] w-[calc(100%-3rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl"
+          className="mail-shell mail-popover fixed left-1/2 top-1/2 z-[2201] w-[calc(100%-3rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-dialog border border-stone-200 bg-white p-5 shadow-xl"
         >
           <DialogPrimitive.Title className="text-base font-semibold text-stone-900">
             {pending?.copy?.title ?? t("unpauseTitle")}
@@ -144,7 +144,7 @@ export function ChallengeTyping({
     <>
       <p
         aria-hidden
-        className="mt-3 select-none break-words rounded-lg bg-stone-100 px-3 py-2.5 font-mono text-sm leading-relaxed text-stone-600"
+        className="mt-3 select-none break-words rounded-control bg-stone-100 px-3 py-2.5 font-mono text-sm leading-relaxed text-stone-600"
       >
         <span className="text-teal-700">{target.slice(0, correct)}</span>
         {wrongAt >= 0 ? (
@@ -173,7 +173,7 @@ export function ChallengeTyping({
           e.preventDefault();
           onEnter();
         }}
-        className="mt-3 w-full resize-none rounded-lg border border-stone-300 bg-white px-3 py-2 font-mono text-sm text-stone-900 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+        className="mt-3 w-full resize-none rounded-control border border-stone-300 bg-white px-3 py-2 font-mono text-sm text-stone-900 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
       />
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-stone-200">
         <div

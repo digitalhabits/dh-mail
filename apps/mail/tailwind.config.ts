@@ -69,6 +69,21 @@ const config: Config = {
         "warm-grey": "hsl(var(--warm-grey))",
       },
       borderRadius: {
+        /*
+          Mail's four corners (2026-10-21). One size per kind of thing, and
+          nested ones step down by the 4px gap between them, so the gap is
+          even all round: a control in a track, a row in a menu.
+            inner    8px   small things inside a control or a row
+            control 12px   buttons, fields, tabs, menu rows, answer rows
+            surface 16px   menus, popovers, cards, tab tracks, pictures
+            dialog  20px   dialogs and large sheets
+          Pills (rounded-full) only for what is round by nature: avatars,
+          dots, switches, count badges.
+        */
+        inner: "8px",
+        control: "12px",
+        surface: "16px",
+        dialog: "20px",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",

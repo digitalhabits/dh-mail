@@ -441,7 +441,7 @@ export function ComposerAddressRow({
  */
 export function ComposerCardButtons({ m }: { m: ThreadPaneModel }) {
   const { floatReply, floating, onFloatReply, replyFocus, setReplyFocus, shortcuts, t } = m;
-  const button = "shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800";
+  const button = "shrink-0 rounded-inner p-1.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800";
   const minimise = useComposerMinimise();
   if (floating) return null;
   // Put away to a bar, first in the corner as on the floating card.

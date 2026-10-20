@@ -171,7 +171,7 @@ export function ComposeView(props: ComposeViewProps) {
         floating
           ? // The card, in the same corner and the same frame as the
             // reply's card, so the two are the same thing.
-            "mail-floating-reply flex flex-col overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
+            "mail-floating-reply flex flex-col overflow-hidden rounded-surface border border-stone-300 shadow-2xl"
           : "min-h-0 flex-1 overflow-y-auto",
         card.className,
         // A height of its own, not one the message grows: the message
@@ -270,7 +270,7 @@ export function ComposeView(props: ComposeViewProps) {
               // below. The whole card used to be the light island, which
               // on the dark theme put a white page the size of the window
               // in front of somebody who had asked for no white pages.
-              "mail-composer-card relative mx-auto flex min-h-0 flex-col rounded-xl border border-stone-200 bg-white shadow-sm",
+              "mail-composer-card relative mx-auto flex min-h-0 flex-col rounded-surface border border-stone-200 bg-white shadow-sm",
               (floating || cardH != null) && "overflow-hidden",
               // In the corner the card is the card: it takes the room it is
               // given and the message scrolls inside it, which is the same
@@ -337,7 +337,7 @@ export function ComposeView(props: ComposeViewProps) {
                   aria-label={`${t("writeWhileYouBrowse")} (${formatShortcut(
                     shortcuts.floatMessage
                   )})`}
-                  className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                  className="shrink-0 rounded-inner p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                   onClick={floatCompose}
                 >
                   <PictureInPicture2 className="h-4 w-4" />
@@ -356,7 +356,7 @@ export function ComposeView(props: ComposeViewProps) {
                     shortcuts.focusMessage
                   )})`}
                   aria-pressed={focusMode}
-                  className="shrink-0 rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                  className="shrink-0 rounded-inner p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                   onClick={onToggleFocus}
                 >
                   {focusMode ? (
@@ -555,7 +555,7 @@ export function ComposeView(props: ComposeViewProps) {
               />
               <div className="flex flex-wrap items-center gap-3">
                 {/* One control: Send, and a section that says when. */}
-                <div className="inline-flex items-stretch overflow-hidden rounded-lg">
+                <div className="inline-flex items-stretch overflow-hidden rounded-control">
                   <Button
                     type="button"
                     className="h-9 rounded-none bg-teal-600 pl-3 pr-2 text-[15px] font-semibold text-white hover:bg-teal-700"

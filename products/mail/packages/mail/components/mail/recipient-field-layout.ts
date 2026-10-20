@@ -10,14 +10,14 @@ export function fieldLayout(variant: "boxed" | "inline", emptyRow: boolean) {
       // The same height as the box with a line of chips in it. On the
       // baseline, so the small label sits on the line the address does:
       // centred, it stood about a pixel higher.
-      box: "flex items-baseline rounded-xl border border-stone-200 bg-white px-2.5 py-2 focus-within:border-stone-300",
+      box: "flex items-baseline rounded-control border border-stone-200 bg-white px-2.5 py-2 focus-within:border-stone-300",
       label: "mr-1.5 shrink-0 text-xs text-muted-foreground",
       input: "min-w-0 flex-1",
       lists: "ml-2",
     };
   }
   return {
-    box: "rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 focus-within:border-stone-300",
+    box: "rounded-control border border-stone-200 bg-white px-2.5 py-1.5 focus-within:border-stone-300",
     /* As tall as the place to type and the chips, lifted as they are, so
        the middles line up. Middle-aligned on its own, the smaller type sat
        about two pixels low. */

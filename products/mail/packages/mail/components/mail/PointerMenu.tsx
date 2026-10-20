@@ -136,7 +136,7 @@ export function PointerMenu({
         ...(backdrop ? { maxHeight: `calc(100vh - ${placed.top + 8}px)`, overscrollBehavior: "contain" } : null),
       }}
       data-theme={colorMode}
-      className={cn("mail-shell mail-popover fixed z-[70] max-h-[calc(100vh-16px)] w-max overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg", className)}
+      className={cn("mail-shell mail-popover fixed z-[70] max-h-[calc(100vh-16px)] w-max overflow-y-auto rounded-surface border border-stone-200 bg-white py-1 shadow-lg", className)}
     >
       {children}
     </div>

@@ -774,7 +774,7 @@ export function ThreadListRow({
   // beside it. In the row's own solid fill, so nothing shows through. The
   // slot is as wide as the actions (min-w-[5rem]), so they cover only the time.
   const rowActionsClass = cn(
-    "absolute right-0 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md bg-[var(--mail-person-stack-ring,transparent)] pl-1 group-hover:flex",
+    "absolute right-0 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-inner bg-[var(--mail-person-stack-ring,transparent)] pl-1 group-hover:flex",
     snoozeOpen ? "flex" : "hidden"
   );
   /** The time, and the wake badge: what hover covers with the actions. It keeps its room. */

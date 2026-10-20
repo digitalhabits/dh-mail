@@ -42,7 +42,7 @@ function Friction({ lock }) {
   return React.createElement(FrictionPanel, { words: count, lock, onChange: setCount, onBack: () => {} });
 }
 
-const rows = () => [...document.querySelectorAll("div.rounded-lg.p-2\\.5")];
+const rows = () => [...document.querySelectorAll("div.rounded-control.p-2\\.5")];
 const rowCount = () => rows().length;
 const dayIn = (row, label) => rows()[row].querySelector(`button[aria-label="${label}"]`);
 // 5 Oct 2026 is a Monday.

@@ -274,7 +274,7 @@ function ExchangeFields({
 }) {
   const t = useMailT();
   const input =
-    "mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400";
+    "mt-1 w-full rounded-control border border-stone-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400";
   return (
     <div className="flex flex-col gap-3 text-sm">
       <label>
@@ -348,7 +348,7 @@ function ServerSearchLine({
   const link = "font-medium text-stone-700 underline-offset-2 hover:underline disabled:opacity-50";
   if (ask) {
     return (
-      <div role="group" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-stone-700">
+      <div role="group" className="mt-3 rounded-control border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-stone-700">
         <p className="leading-relaxed">{t("exchangeServerAsk", { host: ask })}</p>
         <div className="mt-2 flex gap-3">
           <button type="button" className={link} disabled={busy} onClick={() => onAllow(ask)}>

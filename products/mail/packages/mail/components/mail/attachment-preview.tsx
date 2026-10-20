@@ -468,7 +468,7 @@ function AttachmentPreviewBody({
           is read at the size of the screen, not in a card in the middle of it
           — but with enough of the mail showing round it to say where you are. */}
       <div
-        className="absolute inset-10 flex flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="absolute inset-10 flex flex-col overflow-hidden rounded-surface bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-stone-200 px-4 py-2.5">
@@ -483,7 +483,7 @@ function AttachmentPreviewBody({
             <>
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                className="inline-flex items-center gap-1.5 rounded-inner px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
                 onClick={() =>
                   openAttachmentOutside({
                     path: attachmentUrl({
@@ -505,7 +505,7 @@ function AttachmentPreviewBody({
           <button
             type="button"
             aria-label={t("close")}
-            className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-inner p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
             onClick={onClose}
           >
             <X className="h-4 w-4" />

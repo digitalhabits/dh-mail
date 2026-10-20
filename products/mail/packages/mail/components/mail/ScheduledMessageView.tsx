@@ -193,7 +193,7 @@ export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: Mail
       </div>
       <div className="flex flex-col items-end gap-1.5 px-8 py-6">
         <p className="max-w-[85%] self-end truncate text-xs text-stone-500">{people.join(" · ")}</p>
-        <div className="w-full max-w-[85%] self-end rounded-2xl rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-4 py-3">
+        <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-4 py-3">
           {html ? (
             /*
               In the frame the messages are read in, re-lit in the dark as
@@ -262,7 +262,7 @@ export function EditingScheduledNote({
   if (!original) return null;
   return (
     <p
-      className="mx-auto mt-2 flex items-start gap-1.5 rounded-lg bg-teal-50/70 px-3 py-2 text-xs leading-snug text-stone-700"
+      className="mx-auto mt-2 flex items-start gap-1.5 rounded-control bg-teal-50/70 px-3 py-2 text-xs leading-snug text-stone-700"
       style={width ? { width, maxWidth: "100%" } : undefined}
     >
       <Clock className="mt-px h-3.5 w-3.5 shrink-0 text-teal-700/75" aria-hidden />

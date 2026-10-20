@@ -60,7 +60,8 @@ export const MailPopoverContent = React.forwardRef<
     <PopoverContent
       ref={setRefs}
       data-theme={colorMode}
-      className={cn("mail-shell mail-popover", className)}
+      // Mail's menus and popovers are surfaces: 16px corners (tailwind.config).
+      className={cn("mail-shell mail-popover rounded-surface", className)}
       {...props}
     >
       {children}

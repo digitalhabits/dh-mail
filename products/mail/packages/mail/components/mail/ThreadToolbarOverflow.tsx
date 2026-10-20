@@ -88,7 +88,7 @@ export function ThreadToolbarOverflow({
   const t = useMailT();
   const [open, setOpen] = React.useState(false);
   const row =
-    "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]";
+    "flex w-full items-center gap-2.5 rounded-inner px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]";
   const pick = (run: () => void) => () => {
     setOpen(false);
     run();

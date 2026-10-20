@@ -112,7 +112,7 @@ export function PresetRow({
   return (
     <button
       type="button"
-      className="mail-menu-pick flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm"
+      className="mail-menu-pick flex w-full items-center justify-between gap-3 rounded-control px-2.5 py-1.5 text-left text-sm"
       onClick={onClick}
     >
       <span className="min-w-0 font-semibold text-stone-800">{label}</span>
@@ -124,7 +124,7 @@ export function PresetRow({
 
 /** The one time box: Send later, Snooze and the hours all use it. */
 export const TIME_FIELD_CLASS =
-  "rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-sm tabular-nums text-stone-800 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
+  "rounded-control border border-stone-200 bg-white px-2.5 py-1.5 text-sm tabular-nums text-stone-800 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
 
 /** "9:5", "0930", "9.30" → "09:30"; null for what is not a time. */
 export function readClock(text: string): string | null {
@@ -297,7 +297,7 @@ function TimeColumns({
 
   const cell = (on: boolean) =>
     cn(
-      "block w-full rounded-md px-2 py-1 text-center text-sm tabular-nums",
+      "block w-full rounded-inner px-2 py-1 text-center text-sm tabular-nums",
       on ? "bg-teal-700 font-semibold text-white" : "text-stone-700 hover:bg-stone-100"
     );
   return (
@@ -307,7 +307,7 @@ function TimeColumns({
       role="listbox"
       // Pressing a time keeps the focus in the box, so typing still works.
       onMouseDown={(e) => e.preventDefault()}
-      className="z-50 flex gap-1 rounded-lg border border-stone-200 bg-white p-1 shadow-lg"
+      className="z-50 flex gap-1 rounded-surface border border-stone-200 bg-white p-1 shadow-lg"
       style={{
         position: "fixed",
         left: place?.left ?? 0,
@@ -385,7 +385,7 @@ export function CalendarTimePicker({
         <button
           type="button"
           aria-label={t("previousMonth")}
-          className="rounded-md p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+          className="rounded-inner p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
           onClick={() => step(-1)}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -396,7 +396,7 @@ export function CalendarTimePicker({
         <button
           type="button"
           aria-label={t("nextMonth")}
-          className="rounded-md p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+          className="rounded-inner p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
           onClick={() => step(1)}
         >
           <ChevronRight className="h-4 w-4" />
@@ -423,7 +423,7 @@ export function CalendarTimePicker({
               disabled={past}
               onClick={() => setDay(dayStart(date))}
               className={cn(
-                "mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-sm tabular-nums transition-colors",
+                "mx-auto flex h-8 w-8 items-center justify-center rounded-control text-sm tabular-nums transition-colors",
                 past ? "cursor-not-allowed text-stone-300" : "text-stone-800 hover:bg-stone-100",
                 isToday && !chosen && "ring-1 ring-stone-300",
                 chosen && "bg-teal-700 font-semibold text-white hover:bg-teal-700"
@@ -460,7 +460,7 @@ export function CalendarTimePicker({
             disabled={!valid}
             onClick={go}
             className={cn(
-              "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+              "shrink-0 rounded-control px-4 py-2 text-sm font-semibold transition-colors",
               valid ? "bg-teal-700 text-white hover:bg-teal-800" : "cursor-not-allowed bg-stone-100 text-stone-400"
             )}
           >
@@ -485,7 +485,7 @@ export function CalendarTimePicker({
         disabled={!valid}
         onClick={go}
         className={cn(
-          "w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+          "w-full rounded-control px-3 py-2.5 text-sm font-semibold transition-colors",
           valid ? "bg-teal-700 text-white hover:bg-teal-800" : "cursor-not-allowed bg-stone-100 text-stone-400"
         )}
       >
@@ -531,7 +531,7 @@ function ClockColumns({
   const minutes = fives.includes(minute) ? fives : [...fives, minute].sort((a, b) => a - b);
   const cell = (on: boolean) =>
     cn(
-      "block w-full rounded-lg py-1.5 text-center text-sm tabular-nums",
+      "block w-full rounded-control py-1.5 text-center text-sm tabular-nums",
       on ? "bg-teal-700 font-semibold text-white" : "text-stone-800 hover:bg-stone-200/60"
     );
   const column = (
@@ -554,7 +554,9 @@ function ClockColumns({
         <span className="w-14">{t("hourColumn")}</span>
         <span className="w-14">{t("minuteColumn")}</span>
       </div>
-      <div className="flex gap-1 rounded-xl bg-stone-100/70 p-1">
+      {/* The theme's card colour: stone-100/70 has no dark rewrite, and in
+          the dark the columns were a light grey slab (2026-10-21). */}
+      <div className="flex gap-1 rounded-surface bg-[var(--mail-hours-card)] p-1">
         {column(hoursRef, Array.from({ length: 24 }, (_, h) => h), hour, onHour)}
         {column(minutesRef, minutes, minute, onMinute)}
       </div>

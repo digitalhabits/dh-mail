@@ -119,7 +119,7 @@ export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
             done();
           }
         }}
-        className="w-full max-w-lg rounded-2xl border border-stone-200 bg-white p-6 text-stone-800 shadow-xl"
+        className="w-full max-w-lg rounded-dialog border border-stone-200 bg-white p-6 text-stone-800 shadow-xl"
       >
         {one ? (
           <>
@@ -127,7 +127,7 @@ export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
             <p className="mt-1.5 text-sm leading-relaxed text-stone-600">
               {t("missedOneBody", { when: missedWhen(one.sendAt, t), ago: agoLabel(one.sendAt) })}
             </p>
-            <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <div className="mt-4 rounded-control border border-stone-200 bg-stone-50 px-4 py-3">
               <div className="flex items-baseline justify-between gap-3 text-xs text-stone-500">
                 <span className="min-w-0 truncate">
                   {t("fieldTo")} {one.to.join(", ") || one.toName}
@@ -182,7 +182,7 @@ export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
           <>
             <h2 className="text-lg font-semibold">{t("missedManyTitle", { count: missed.length })}</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-stone-600">{t("missedManyBody")}</p>
-            <ul className="mt-4 divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200">
+            <ul className="mt-4 divide-y divide-stone-200 overflow-hidden rounded-surface border border-stone-200">
               {missed.map((held) => {
                 const key = keyOf(held);
                 const on = ticked.has(key);

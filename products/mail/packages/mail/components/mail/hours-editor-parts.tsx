@@ -135,14 +135,14 @@ export function LockedSaveBar({
       <div className="mt-2 flex justify-end gap-2">
         <button
           type="button"
-          className="rounded-md px-2.5 py-1 text-xs text-stone-600 hover:bg-stone-100"
+          className="rounded-inner px-2.5 py-1 text-xs text-stone-600 hover:bg-stone-100"
           onClick={onCancel}
         >
           {t("cancel")}
         </button>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-md bg-[var(--mail-hours-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
+          className="inline-flex items-center gap-1 rounded-inner bg-[var(--mail-hours-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
           onClick={() => setAsking(true)}
         >
           <Lock className="h-3 w-3" aria-hidden />
@@ -170,7 +170,7 @@ export function UnlockBox({
   const [typed, setTyped] = React.useState("");
   const done = typed === target;
   return (
-    <div className="mt-2 rounded-lg border border-stone-200 bg-white p-2.5">
+    <div className="mt-2 rounded-control border border-stone-200 bg-white p-2.5">
       <p className="text-xs text-stone-700">{t("pauseLockAsk")}</p>
       <ChallengeTyping
         target={target}
@@ -185,7 +185,7 @@ export function UnlockBox({
       <div className="mt-2 flex justify-end gap-2">
         <button
           type="button"
-          className="rounded-md px-2.5 py-1 text-xs text-stone-500 hover:bg-stone-100"
+          className="rounded-inner px-2.5 py-1 text-xs text-stone-500 hover:bg-stone-100"
           onClick={onCancel}
         >
           {t("cancel")}
@@ -193,7 +193,7 @@ export function UnlockBox({
         <button
           type="button"
           disabled={!done}
-          className="rounded-md bg-teal-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-50"
+          className="rounded-inner bg-teal-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-50"
           onClick={onUnlocked}
         >
           {confirm ?? t("pauseLockConfirm")}

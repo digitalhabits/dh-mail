@@ -232,7 +232,7 @@ function AttachmentTile({
         onMenu(e, { path: filePath, filename: attachment.filename, onPreview });
       }}
       title={attachment.filename}
-      className="mail-light-surface w-[184px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:border-stone-300 hover:shadow"
+      className="mail-light-surface w-[184px] overflow-hidden rounded-surface border border-stone-200 bg-white text-left shadow-sm transition hover:border-stone-300 hover:shadow"
     >
       <div className="relative flex h-[104px] items-center justify-center bg-stone-100">
         {image && src ? (
@@ -414,7 +414,7 @@ export function MessageAttachmentChips({
         <button
           type="button"
           disabled={saving}
-          className="mail-download-all-tile flex h-[152px] w-[184px] flex-col items-center justify-center gap-1.5 rounded-xl text-sm font-medium text-teal-700 transition hover:bg-teal-50/60 disabled:opacity-60"
+          className="mail-download-all-tile flex h-[152px] w-[184px] flex-col items-center justify-center gap-1.5 rounded-surface text-sm font-medium text-teal-700 transition hover:bg-teal-50/60 disabled:opacity-60"
           onClick={() => {
             setSaving(true);
             void downloadAllAttachments(
@@ -589,9 +589,9 @@ function ThreadFileRow({
     : attachmentUrl({ account, messageId, attachment, download: true });
   const picture = image ? src : pdfSrc;
   const action =
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200/60 hover:text-stone-700";
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-inner text-stone-400 hover:bg-stone-200/60 hover:text-stone-700";
   return (
-    <li ref={rowRef} className="flex items-center gap-0.5 rounded-lg pr-1 hover:bg-stone-50">
+    <li ref={rowRef} className="flex items-center gap-0.5 rounded-control pr-1 hover:bg-stone-50">
       <button
         type="button"
         {...(filePath
@@ -601,7 +601,7 @@ function ThreadFileRow({
               mimeType: attachment.mimeType,
             })
           : null)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 py-2 text-left"
         onClick={onPreview}
         onContextMenu={(e) => {
           if (!filePath) return;
@@ -614,7 +614,7 @@ function ThreadFileRow({
             alt=""
             draggable={false}
             className={cn(
-              "h-9 w-9 shrink-0 rounded-md border border-stone-200 bg-white object-cover",
+              "h-9 w-9 shrink-0 rounded-inner border border-stone-200 bg-white object-cover",
               pdf && "object-top"
             )}
           />

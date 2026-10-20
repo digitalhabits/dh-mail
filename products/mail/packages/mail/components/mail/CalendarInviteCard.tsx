@@ -274,7 +274,7 @@ function CalendarInviteCard({
   if (!invite) {
     return (
       <div
-        className="mb-1 flex items-center gap-3 rounded-xl border border-stone-200 px-3 py-2.5"
+        className="mb-1 flex items-center gap-3 rounded-control border border-stone-200 px-3 py-2.5"
         aria-hidden
       >
         <Calendar className="h-4 w-4 shrink-0 text-stone-300" />
@@ -318,7 +318,7 @@ function CalendarInviteCard({
         : t(canOpenApp ? "opensInCalendarApp" : "savesIcsFile");
 
   return (
-    <div className="mb-1 rounded-xl border border-stone-200 px-3 py-2.5">
+    <div className="mb-1 rounded-control border border-stone-200 px-3 py-2.5">
       {/*
         The button drops under the event when they cannot stand side by
         side.
@@ -370,7 +370,7 @@ function CalendarInviteCard({
           <InviteOutcome invite={invite} />
         ) : (
         <div className="ml-auto max-w-full shrink-0 text-right">
-          <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-teal-700/70">
+          <div className="inline-flex items-stretch overflow-hidden rounded-control border border-teal-700/70">
             <button
               type="button"
               disabled={opening || !icsText}
@@ -404,7 +404,7 @@ function CalendarInviteCard({
               </PopoverTrigger>
               <MailPopoverContent
                 align="end"
-                className="w-72 rounded-xl p-1.5"
+                className="w-72 rounded-surface p-1.5"
                 onClick={(e) => e.stopPropagation()}
               >
                 {CALENDAR_TARGETS.map((option) => (
@@ -414,7 +414,7 @@ function CalendarInviteCard({
                     role="menuitemradio"
                     aria-checked={target === option}
                     className={cn(
-                      "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm",
+                      "flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left text-sm",
                       target === option
                         ? "bg-teal-50 text-stone-900"
                         : "text-stone-800 hover:bg-stone-100"
@@ -438,7 +438,7 @@ function CalendarInviteCard({
                   </button>
                 ))}
                 <div className="mx-1.5 my-1 border-t border-stone-100" />
-                <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-100">
+                <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-100">
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-teal-700"
@@ -502,7 +502,7 @@ function InviteOutcome({ invite }: { invite: ParsedCalendarInvite }) {
     <div className="ml-auto max-w-full shrink-0 text-right">
       <span
         className={cn(
-          "inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-semibold",
+          "inline-flex h-8 items-center rounded-control border px-2.5 text-xs font-semibold",
           tone
         )}
       >

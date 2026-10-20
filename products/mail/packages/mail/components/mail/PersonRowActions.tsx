@@ -49,7 +49,7 @@ export function PersonRowActions({
     */
     <span
       className={cn(
-        "absolute right-[14px] top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md bg-[var(--mail-person-stack-ring,transparent)] pl-1.5 group-hover:flex",
+        "absolute right-[14px] top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-inner bg-[var(--mail-person-stack-ring,transparent)] pl-1.5 group-hover:flex",
         className
       )}
     >

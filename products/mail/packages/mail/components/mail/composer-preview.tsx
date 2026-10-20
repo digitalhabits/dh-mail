@@ -245,7 +245,7 @@ export function SentPreview({
     <div
       // `mail-light-surface`: this is the message as it will arrive, so it
       // keeps the light palette in dark mode.
-      className="mail-light-surface overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm"
+      className="mail-light-surface overflow-hidden rounded-surface border border-stone-200 bg-white shadow-sm"
       style={{ zoom }}
     >
       <div className="flex items-center justify-between gap-3 bg-slate-800 px-4 py-2.5">
@@ -363,7 +363,7 @@ export function SentPreview({
       <div className="flex flex-wrap items-center gap-3 border-t border-stone-200 bg-stone-50 px-4 py-3">
         <Button
           type="button"
-          className="h-8 rounded-lg bg-teal-600 pl-4 pr-5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="h-8 rounded-control bg-teal-600 pl-4 pr-5 text-sm font-semibold text-white hover:bg-teal-700"
           disabled={!canSend || sending}
           onClick={onSend}
         >

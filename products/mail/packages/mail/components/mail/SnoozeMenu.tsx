@@ -212,7 +212,7 @@ export function SnoozeMenu({
            from a press outside itself — see ThreadToolbarOverflow. */
         data-mail-snooze-menu
         align="start"
-        className={cn(step === "presets" ? "w-64" : "w-[280px]", "rounded-xl p-1.5")}
+        className={cn(step === "presets" ? "w-64" : "w-[280px]", "rounded-surface p-1.5")}
         onKeyDown={onListKeyDown}
         /**
          * The first time, focused, rather than the box it sits in. Radix
@@ -248,7 +248,7 @@ export function SnoozeMenu({
                 <div className="mx-1.5 my-1 border-t border-stone-100" />
                 <button
                   type="button"
-                  className="flex w-full rounded-lg px-2.5 py-1.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                  className="flex w-full rounded-control px-2.5 py-1.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
                   onClick={() => {
                     setOpen(false);
                     setStep("presets");

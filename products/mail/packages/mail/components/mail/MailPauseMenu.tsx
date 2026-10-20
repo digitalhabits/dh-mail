@@ -238,7 +238,7 @@ export function MailPauseMenu({
                 type="datetime-local"
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
-                className="h-7 w-[11.5rem] rounded-md border border-stone-300 bg-white px-1.5 text-xs text-stone-900 focus:border-teal-600 focus:outline-none"
+                className="h-7 w-[11.5rem] rounded-inner border border-stone-300 bg-white px-1.5 text-xs text-stone-900 focus:border-teal-600 focus:outline-none"
               />
             </label>
             {custom ? (

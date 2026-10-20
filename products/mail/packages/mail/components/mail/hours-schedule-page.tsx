@@ -126,7 +126,7 @@ export function HoursSchedulePage({
             <span className="text-xs text-stone-500">{changed ? t("hoursMenuNotSaved") : t("hoursMenuNoChanges")}</span>
             <button
               type="button"
-              className="rounded-lg bg-[var(--mail-hours-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
+              className="rounded-control bg-[var(--mail-hours-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
               onClick={() => {
                 if (!changed) onBack();
                 else if (loosens) setConfirming(true);

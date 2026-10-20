@@ -193,7 +193,7 @@ function SortableAccountRow({
         // the gap between rows shows the panel behind.
         "relative bg-[var(--mail-chrome)]",
         away && "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-emerald-400",
-        isDragging && "z-10 rounded-lg bg-white shadow-md"
+        isDragging && "z-10 rounded-surface bg-white shadow-md"
       )}
     >
       {/*
@@ -549,7 +549,7 @@ function OwnIdentityChipField({
     <div>
       <div
         className={cn(
-          "flex w-full flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1.5 focus-within:border-stone-400",
+          "flex w-full flex-wrap items-center gap-1.5 rounded-inner border bg-white px-2 py-1.5 focus-within:border-stone-400",
           invalid ? "border-red-400 focus-within:border-red-500" : "border-stone-200"
         )}
         onMouseDown={(event) => {
@@ -956,7 +956,7 @@ export function MailAccountsPanel({
       {/* One card for the section: the accounts, and the two ways to add
           another. Adding a mailbox belongs to this list, so the buttons sit on
           the same surface rather than floating below it. */}
-      <div className="overflow-hidden rounded-xl bg-[var(--mail-chrome)]">
+      <div className="overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
       {displayAccounts.length ? (
         <DndContext
           sensors={sensors}

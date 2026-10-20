@@ -21,7 +21,7 @@ import { openExternalUrl } from "@/lib/native-shell";
 const RELEASES_URL = "https://github.com/digitalhabits/dh-mail/releases";
 
 const RESTART =
-  "shrink-0 rounded-lg bg-[#1f5c4a] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#184a3c] disabled:opacity-60";
+  "shrink-0 rounded-control bg-[#1f5c4a] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#184a3c] disabled:opacity-60";
 
 export function UpdateBar({
   update,
@@ -77,7 +77,7 @@ function WhatsNew({ update, restart }: { update: TeamUpdate; restart: React.Reac
         align="end"
         sideOffset={10}
         collisionPadding={12}
-        className="flex max-h-[min(32rem,var(--radix-popover-content-available-height))] w-[24rem] flex-col rounded-xl p-0"
+        className="flex max-h-[min(32rem,var(--radix-popover-content-available-height))] w-[24rem] flex-col rounded-surface p-0"
       >
         <div className="min-h-0 overflow-y-auto px-4 pb-2 pt-3.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">

@@ -20,7 +20,7 @@ export function ShownTile({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--mail-shown-tile)] text-[var(--mail-shown-stroke)]", className)}
+      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-inner bg-[var(--mail-shown-tile)] text-[var(--mail-shown-stroke)]", className)}
     >
       <Eye className="h-4 w-4" />
     </span>
@@ -31,7 +31,7 @@ export function FetchTile({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--mail-fetch-tile)] text-[var(--mail-fetch-stroke)]", className)}
+      className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-inner bg-[var(--mail-fetch-tile)] text-[var(--mail-fetch-stroke)]", className)}
     >
       {/* Turned as the Sync button turns it: arrowheads at 12 and 6. */}
       <RefreshCw className="h-4 w-4 -rotate-45" />

@@ -245,7 +245,7 @@ export function ThreadPane(props: ThreadPaneProps) {
             // measures a pane that width and lays itself out to it — the
             // same rules it follows when a pane is this narrow. Full
             // screen is wide enough that it lays itself out as a pane.
-            "mail-floating-reply overflow-hidden rounded-xl border border-stone-300 shadow-2xl"
+            "mail-floating-reply overflow-hidden rounded-surface border border-stone-300 shadow-2xl"
           : "min-h-0 flex-1",
         card.className,
         /*
