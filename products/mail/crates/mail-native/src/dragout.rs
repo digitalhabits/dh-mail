@@ -85,6 +85,11 @@ fn stage_into(dir: &Path, filename: &str, bytes: &[u8]) -> Result<PathBuf, Strin
 
   let path = unique_path(dir, &name, &|p| p.exists());
   std::fs::write(&path, bytes).map_err(|e| format!("Couldn't write the file: {e}"))?;
+  // Finder keeps the mark when the reader drops the copy in a folder. Then
+  // Gatekeeper checks the file before it runs. See download_safety.rs.
+  if let Err(e) = crate::download_safety::mark_as_downloaded(&path) {
+    log::warn!("[mail-downloads] could not mark a dragged attachment as a download: {e}");
+  }
   Ok(path)
 }
 

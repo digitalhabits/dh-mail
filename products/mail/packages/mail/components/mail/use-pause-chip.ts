@@ -17,7 +17,7 @@ import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { accountChipLabels, formatAccountChipLabel } from "@/lib/mail/account-labels";
 import { useMailPause } from "@/components/mail/use-mail-pause";
 import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
-import { fetchingAccounts, mailPauseChip, mailPauseVerdictForAccount } from "@/lib/mail/quiet-hours";
+import { fetchingAccounts, mailPauseChip, mailPauseVerdictForAccount, unpauseWordsFor } from "@/lib/mail/quiet-hours";
 import { useMailT } from "@/lib/mail/i18n";
 
 export function usePauseChip({
@@ -53,11 +53,12 @@ export function usePauseChip({
   const resumeMail = React.useCallback(
     (account?: string | null) => {
       void (async () => {
-        if (!(await requestUnpauseChallenge(unpauseWords))) return;
+        // The account's own words, when it has its own (2026-10-20).
+        if (!(await requestUnpauseChallenge(unpauseWordsFor(pauseState, account ?? null)))) return;
         resumeNow(account);
       })();
     },
-    [resumeNow, unpauseWords]
+    [resumeNow, pauseState]
   );
   const pauseChip = mailPauseChip(pauseState, accountEmails, pauseNow);
   const pauseChipUntil = pauseChip.until

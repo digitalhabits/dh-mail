@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 
 import { useMailColorMode } from "@/lib/mail/theme";
 import { cn } from "@/lib/utils";
+import { MAIL_FRAME_PRESS_EVENT } from "@/lib/mail/frame-messages";
 
 /**
  * A menu at the pointer, on <body>: the account tabs' menus and a message's
@@ -20,12 +21,16 @@ import { cn } from "@/lib/utils";
  * opened by a right-click in there has the frame focused already, so no
  * blur comes either: the menu stayed up over the message.
  */
+/** The title bar's height, and a little: a shaded menu starts below it. */
+const TITLE_BAR_CLEAR = 52;
+
 export function PointerMenu({
   x,
   y,
   onDismiss,
   children,
   className,
+  backdrop = false,
 }: {
   x: number;
   y: number;
@@ -33,10 +38,22 @@ export function PointerMenu({
   children: React.ReactNode;
   /** Padding and width for the rows inside. */
   className?: string;
+  /**
+   * A dark shade over the window behind the menu, for a menu that asks for
+   * some thought (the account hours, 2026-10-20). A press on it closes the
+   * menu and reaches nothing under it.
+   */
+  backdrop?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [placed, setPlaced] = React.useState({ left: x, top: y });
 
+  /*
+    A menu with a shade keeps clear of the title bar: pushed up to fit, it
+    sat behind the window's own buttons (2026-10-20). It is then as tall as
+    the room under the bar, and scrolls inside past that.
+  */
+  const topMost = backdrop ? TITLE_BAR_CLEAR : 8;
   React.useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -45,9 +62,9 @@ export function PointerMenu({
       left: Math.min(x, window.innerWidth - box.width - 8),
       // Never above the window: a panel taller than it starts at the top
       // and scrolls inside (the class below caps its height).
-      top: Math.max(8, Math.min(y, window.innerHeight - box.height - 8)),
+      top: Math.max(topMost, Math.min(y, window.innerHeight - box.height - 8)),
     });
-  }, [x, y]);
+  }, [x, y, topMost]);
 
   React.useEffect(() => {
     const onDown = (event: MouseEvent) => {
@@ -59,8 +76,12 @@ export function PointerMenu({
     };
     window.addEventListener("mousedown", onDown, true);
     window.addEventListener("keydown", onKey);
-    // A scroll of the page closes it; a scroll inside it (a tall panel) does not.
+    // A scroll of the page closes it; a scroll inside it (a tall panel) does
+    // not. Under a shade nothing behind can be scrolled, so nothing closes
+    // it: a list in the menu that ran to its end used to carry the scroll on
+    // to the page, and the menu shut (2026-10-20).
     const onScroll = (event: Event) => {
+      if (backdrop) return;
       if (ref.current?.contains(event.target as Node)) return;
       onDismiss();
     };
@@ -76,36 +97,24 @@ export function PointerMenu({
       }, 0);
     };
     window.addEventListener("blur", onBlur);
-    // The message frames (same origin), as they are at the open.
-    const frameDocs: Document[] = [];
-    for (const frame of Array.from(document.querySelectorAll("iframe"))) {
-      try {
-        const doc = frame.contentDocument;
-        if (doc) frameDocs.push(doc);
-      } catch {
-        /* another origin: its presses blur this window instead */
-      }
-    }
-    for (const doc of frameDocs) {
-      doc.addEventListener("mousedown", onDismiss, true);
-      doc.addEventListener("scroll", onDismiss, true);
-    }
+    // A press or a scroll in a message frame. The frame has its own origin,
+    // so its script tells the page (see EmailHtmlView).
+    window.addEventListener(MAIL_FRAME_PRESS_EVENT, onDismiss);
     return () => {
-      for (const doc of frameDocs) {
-        doc.removeEventListener("mousedown", onDismiss, true);
-        doc.removeEventListener("scroll", onDismiss, true);
-      }
+      window.removeEventListener(MAIL_FRAME_PRESS_EVENT, onDismiss);
       window.removeEventListener("mousedown", onDown, true);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("blur", onBlur);
     };
-  }, [onDismiss]);
+  }, [onDismiss, backdrop]);
 
   // A portal: it carries the theme itself, as the popovers do.
   const colorMode = useMailColorMode();
 
   return createPortal(
+    <>
+    {backdrop ? <div aria-hidden className="fixed inset-0 z-[69] bg-black/45" /> : null}
     <div
       ref={ref}
       role="menu"
@@ -120,12 +129,18 @@ export function PointerMenu({
         hangs on <body> beside it rather than inside it. It was drawn, and
         it was not clickable: the presses went nowhere.
       */
-      style={{ left: placed.left, top: placed.top, pointerEvents: "auto" }}
+      style={{
+        left: placed.left,
+        top: placed.top,
+        pointerEvents: "auto",
+        ...(backdrop ? { maxHeight: `calc(100vh - ${placed.top + 8}px)`, overscrollBehavior: "contain" } : null),
+      }}
       data-theme={colorMode}
       className={cn("mail-shell mail-popover fixed z-[70] max-h-[calc(100vh-16px)] w-max overflow-y-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg", className)}
     >
       {children}
-    </div>,
+    </div>
+    </>,
     document.body
   );
 }

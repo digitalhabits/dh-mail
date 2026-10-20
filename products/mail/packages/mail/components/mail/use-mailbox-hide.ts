@@ -13,6 +13,7 @@ import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
 import { useMailT } from "@/lib/mail/i18n";
 import {
   hideAgainEndsShow,
+  hideAgainFor,
   hideAgainLabel,
   hideKey,
   hideStep,
@@ -23,6 +24,7 @@ import {
   scheduleWindowEnd,
   shownEarlyEnd,
   shownEarlyUntil,
+  showWordsFor,
   type MailboxHide,
   type MailboxHideState,
   type MailboxHideVerdict,
@@ -92,6 +94,12 @@ export type MailboxHideControls = {
   /** Shown early, hidden again after this many minutes; 0 is Never. */
   hideAgainMinutes: number;
   setHideAgainMinutes: (minutes: number) => void;
+  /** One account's words, and its "Hide again after": its own, or every account's. */
+  showWordsOf: (email: string) => number;
+  hideAgainOf: (email: string) => number;
+  /** Give one account its own; null sets every account's, and takes their own away. */
+  setShowWordsFor: (email: string | null, count: number) => void;
+  setHideAgainFor: (email: string | null, minutes: number) => void;
 };
 
 /**
@@ -101,6 +109,45 @@ export type MailboxHideControls = {
  */
 export function setMailboxHiddenHours(email: string, windows: MailQuietWindow[]): void {
   patchRow(email, (row) => ({ ...row, hours: windows.length ? windows : undefined, shownUntil: undefined }));
+}
+
+/** Words to type before a hidden mailbox can be shown early. 0 is none. */
+export function readMailboxShowWords(): number {
+  return read().showWords ?? 0;
+}
+
+/**
+ * Set those words from outside the menu: the question asked when a mailbox
+ * is connected. One number for every mailbox, as in the menu.
+ */
+export function setMailboxShowWords(count: number): void {
+  const words = normaliseUnpauseWords(count);
+  const { showWords: _old, ...rest } = read();
+  write({ ...rest, accounts: withoutOwn(rest.accounts, "showWords"), ...(words ? { showWords: words } : null) });
+}
+
+/** "Hide again after" for one account, or (null) every account's, taking their own away. */
+function setMailboxHideAgainFor(email: string | null, minutes: number): void {
+  const value = normaliseHideAgainMinutes(minutes);
+  if (email) {
+    patchRow(email, (row) => ({ ...row, hideAgainMinutes: value }));
+    return;
+  }
+  const { hideAgainMinutes: _old, ...rest } = read();
+  write({ ...rest, accounts: withoutOwn(rest.accounts, "hideAgainMinutes"), ...(value ? { hideAgainMinutes: value } : null) });
+}
+
+/** Every account's row without its own value of `field`: they take every account's again. */
+function withoutOwn(
+  accounts: MailboxHideState["accounts"],
+  field: "showWords" | "hideAgainMinutes"
+): MailboxHideState["accounts"] {
+  const out: MailboxHideState["accounts"] = {};
+  for (const [key, row] of Object.entries(accounts)) {
+    const { [field]: _own, ...rest } = row;
+    if (Object.keys(rest).length) out[key] = rest;
+  }
+  return out;
 }
 
 export function useMailboxHide({
@@ -266,20 +313,23 @@ export function useMailboxHide({
           : verdict.reason === "until"
             ? (row?.hiddenUntil ?? null)
             : null;
-      const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, hideAgainMinutes, now) : null;
+      // This account's own words and "Hide again after", or every account's.
+      const words = showWordsFor(state, email);
+      const againMinutes = hideAgainFor(state, email);
+      const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, againMinutes, now) : null;
       /*
         The question names how long, when "Hide again after" is what ends
         it: "Show … for 15 minutes?" says the mailbox goes again, which
         "again?" did not (Ulrik, 2026-10-17). When its own time or window
         ends first, that is when it goes, and the cut says nothing true.
       */
-      const cutEndsIt = hideAgainEndsShow(ownEnd, hideAgainMinutes, now);
+      const cutEndsIt = hideAgainEndsShow(ownEnd, againMinutes, now);
       void (async () => {
         // Early is only early against a time: a mailbox hidden by hand asks nothing.
-        if (verdict.hidden && showWords > 0) {
-          const ok = await requestUnpauseChallenge(showWords, {
+        if (verdict.hidden && words > 0) {
+          const ok = await requestUnpauseChallenge(words, {
             title: cutEndsIt
-              ? t("showMailboxForTitle", { email, time: hideAgainLabel(hideAgainMinutes, t) })
+              ? t("showMailboxForTitle", { email, time: hideAgainLabel(againMinutes, t) })
               : t("showMailboxTitle", { email }),
             lead: t("showMailboxLead"),
             confirm: t("showMailboxConfirm"),
@@ -288,7 +338,7 @@ export function useMailboxHide({
         }
         patchRow(email, (r) => ({
           ...r,
-          hiddenUntil: verdict.reason === "until" && hideAgainMinutes > 0 ? r.hiddenUntil : undefined,
+          hiddenUntil: verdict.reason === "until" && againMinutes > 0 ? r.hiddenUntil : undefined,
           autoHidden: undefined,
           shownUntil: verdict.hidden ? (shownEnd ?? undefined) : r.shownUntil,
         }));
@@ -300,19 +350,16 @@ export function useMailboxHide({
         }
       })();
     },
-    setShowWords: (count) => {
-      const state2 = read();
-      const words = normaliseUnpauseWords(count);
-      const { showWords: _old, ...rest } = state2;
-      write({ ...rest, ...(words ? { showWords: words } : null) });
-    },
+    setShowWords: setMailboxShowWords,
     hideAgainMinutes,
-    setHideAgainMinutes: (minutes) => {
-      const state2 = read();
-      const value = normaliseHideAgainMinutes(minutes);
-      const { hideAgainMinutes: _old, ...rest } = state2;
-      write({ ...rest, ...(value ? { hideAgainMinutes: value } : null) });
+    setHideAgainMinutes: (minutes) => setMailboxHideAgainFor(null, minutes),
+    showWordsOf: (email) => showWordsFor(state, email),
+    hideAgainOf: (email) => hideAgainFor(state, email),
+    setShowWordsFor: (email, count) => {
+      if (email) patchRow(email, (row) => ({ ...row, showWords: normaliseUnpauseWords(count) }));
+      else setMailboxShowWords(count);
     },
+    setHideAgainFor: setMailboxHideAgainFor,
   };
 }
 
@@ -321,7 +368,7 @@ export function useMailboxHide({
  * own: Settings > Accounts. Read from the same stored state the tabs use,
  * and read again when it changes or a minute passes.
  */
-export function useMailboxHideVerdict(email: string): MailboxHideVerdict {
+export function useMailboxHideVerdict(email: string): MailboxHideVerdict & { hours: MailQuietWindow[] } {
   const [state, setState] = React.useState<MailboxHideState>(read);
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -335,5 +382,6 @@ export function useMailboxHideVerdict(email: string): MailboxHideVerdict {
       window.clearInterval(tick);
     };
   }, []);
-  return mailboxHideVerdict(state.accounts[hideKey(email)], new Date(now));
+  const row = state.accounts[hideKey(email)];
+  return { ...mailboxHideVerdict(row, new Date(now)), hours: row?.hours ?? [] };
 }

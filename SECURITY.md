@@ -181,8 +181,12 @@ refused password, so that no other host gets it. See
 The app never draws a sender's HTML into its own page. It shows each message
 in an iframe of its own. That iframe carries a Content-Security-Policy that
 lets no script run, except one hash-pinned helper of ours. Before the
-message reaches the iframe, it loses its scripts, forms, embeds and event
-handlers. The iframe also keeps the sender's CSS away from the app — see
+message reaches the iframe, it goes through an allowlist: it keeps only
+known elements and attributes, and links and pictures only with the
+schemes `http`, `https`, `mailto` and `cid` (and `data:` for a raster
+picture). Scripts, forms, embeds, event handlers, SVG and MathML do not
+get through — see
+[`email-allowlist.ts`](/products/mail/packages/mail/lib/mail/email-allowlist.ts). The iframe also keeps the sender's CSS away from the app — see
 [`EmailHtmlView.tsx`](/products/mail/packages/mail/components/mail/EmailHtmlView.tsx).
 
 Three views show a message this way, because each one can hold words that
@@ -194,6 +198,13 @@ somebody else wrote:
   you write from one.
 - The printed document, which names no script source at all — see
   [`print-document.ts`](/products/mail/packages/mail/components/mail/print-document.ts).
+
+**The iframe has its own origin.** It is sandboxed without
+`allow-same-origin`, so its document has an opaque origin. A script that ran
+in a message could not read the app's page, and it could not call the
+desktop bridge. The app and the message frame talk only by `postMessage`,
+and the app reads a message only from that frame. See
+[`link-bridge.ts`](/products/mail/packages/mail/lib/mail/link-bridge.ts).
 
 **The app's own page has a policy as well.** Scripts can run only from the
 app itself, and the page can connect only to the hosts in the table above.
@@ -208,8 +219,17 @@ it was sent. To change this behaviour, turn off "Load images by default" in
 Settings. The app then blocks remote images, and you allow them per sender.
 Pictures carried inside the message are always shown, because fetching
 those tells nobody anything. A remote image is fetched by the app itself,
-with no cookies and no referrer, never by the page — see
+with no cookies and no referrer, never by the page. It refuses an address
+on your own network or computer, after each redirect too, so a message
+cannot use an image to reach your router or another device — see
 [`images.rs`](/products/mail/crates/mail-native/src/images.rs).
+
+**A saved attachment is marked as downloaded.** On a Mac it gets the same
+quarantine mark a browser gives a download, and on Windows the same
+"from the internet" mark. So the system checks it before it runs. The app
+does not open a program or a script by itself: it saves it and shows it in
+Finder or Explorer — see
+[`download_safety.rs`](/products/mail/crates/mail-native/src/download_safety.rs).
 
 ## Checking the app you install
 
@@ -253,6 +273,11 @@ everything that changed between two builds.
 
 ## Reporting something
 
-Please open an issue: <https://github.com/digitalhabits/dh-mail/issues>.
-For anything you would rather not post in public, write to
-team@digitalhabits.org.
+**A security problem:** please email team@digitalhabits.org. Do not open a
+public issue for it. Tell us what you found, how to make it happen, and
+which version you use (see **Settings**). We reply within a week. We tell
+you when a fix is released, and we name you in the release notes if you
+want us to.
+
+**Anything else:** please open an issue at
+<https://github.com/digitalhabits/dh-mail/issues>.

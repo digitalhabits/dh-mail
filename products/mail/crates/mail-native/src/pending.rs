@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use crate::lock::LockExt;
 
 fn map() -> &'static Mutex<HashMap<String, usize>> {
   static MAP: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
@@ -20,7 +21,7 @@ fn map() -> &'static Mutex<HashMap<String, usize>> {
 /// The page says how many writes it has in flight. Zero clears its entry.
 #[tauri::command]
 pub fn set_pending_mail_writes(window: tauri::Window, count: usize) {
-  let mut map = map().lock().unwrap();
+  let mut map = map().locked();
   if count == 0 {
     map.remove(window.label());
   } else {
@@ -30,15 +31,15 @@ pub fn set_pending_mail_writes(window: tauri::Window, count: usize) {
 
 /// Writes this window still owes the mailbox.
 pub fn pending_for(label: &str) -> usize {
-  map().lock().unwrap().get(label).copied().unwrap_or(0)
+  map().locked().get(label).copied().unwrap_or(0)
 }
 
 /// Writes every window together still owes the mailbox.
 pub fn pending_total() -> usize {
-  map().lock().unwrap().values().sum()
+  map().locked().values().sum()
 }
 
 /// A destroyed window can finish nothing; its count must not hold the app.
 pub fn forget_window(label: &str) {
-  map().lock().unwrap().remove(label);
+  map().locked().remove(label);
 }

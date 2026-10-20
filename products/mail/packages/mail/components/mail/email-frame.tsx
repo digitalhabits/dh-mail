@@ -1,19 +1,15 @@
 "use client";
 
 /*
- * The frame a message is drawn in: the document it is given, its height,
- * and what it passes back to the page: pinch and keys, a double click, a
- * link followed, and the right-click menu on a link.
+ * The frame a message is drawn in: the document it is given, the link it
+ * asks the page to follow, and the right-click menu on a link.
  *
- * EmailHtmlView.tsx makes the frame and calls these on it.
+ * The frame has an opaque origin, so the page cannot read it. What the page
+ * needs from it comes through the frame's own script (`lib/mail/link-bridge`)
+ * as postMessage. EmailHtmlView.tsx makes the frame and reads the messages.
  */
 
 import * as React from "react";
-import { doubleClickOnText } from "@/components/mail/use-mail-layout";
-import {
-  MAIL_PINCH_SCALE_EVENT,
-  MAIL_PINCH_WHEEL_EVENT,
-} from "@/lib/mail/pinch";
 import { createPortal } from "react-dom";
 import { Copy, Download, ExternalLink, Image as ImageIcon, Mail } from "lucide-react";
 import { copyImage, downloadImage } from "@/lib/mail/image-menu";
@@ -30,13 +26,9 @@ import {
   MAIL_LINK_BRIDGE_CSP_HASH,
   MAIL_LINK_BRIDGE_JS,
 } from "@/lib/mail/link-bridge";
+import { frameImageOrigin } from "@/lib/mail/frame-messages";
+import { repairSafeLink } from "@/lib/safe-links";
 import { MAIL_HREF_ATTR, MAIL_PLAIN_LINK_ATTR } from "@/lib/mail/soften-anchors";
-import { unwrapSafeLink } from "@/lib/safe-links";
-import { asElement } from "@/lib/mail/email-html";
-
-/** postMessage payload from the srcdoc click bridge. */
-export const MAIL_OPEN_MSG_SOURCE = "dh-mail";
-export const MAIL_OPEN_MSG_TYPE = "open-url";
 
 /**
  * Follow a link from a message.
@@ -53,44 +45,12 @@ export async function followMailLink(target: string): Promise<void> {
   }
   /*
     Here, where every click ends: the frame's own script (link-bridge.ts)
-    reads a link without linkTargetFromEl, and a safe link unwrapped only
-    there was still opened as it was — Copy link gave the real address
+    sends the link as the sender wrote it. A safe link unwrapped anywhere
+    else was still opened as it was — Copy link gave the real address
     while a click got Microsoft's "Bad Request" (2026-10-20).
   */
-  const ok = await openExternalUrl(unwrapSafeLink(target));
+  const ok = await openExternalUrl(repairSafeLink(target));
   if (!ok) toast.error(mailSay("couldNotOpenLink"));
-}
-
-/**
- * Resolve what a link points at: an http(s) URL, or a `mailto:` address.
- *
- * Works on an <a href> and on a softened mail link span alike.
- */
-function linkTargetFromEl(el: Element): string | null {
-  const raw = (
-    el.getAttribute("href") ||
-    el.getAttribute(MAIL_HREF_ATTR) ||
-    ""
-  ).trim();
-  if (!raw || raw.startsWith("#")) return null;
-  if (/^mailto:/i.test(raw)) return raw;
-  // about:srcdoc is a useless base for relative URLs — use the parent origin.
-  const base =
-    !el.baseURI || el.baseURI === "about:srcdoc"
-      ? window.location.href
-      : el.baseURI;
-  try {
-    // A Microsoft safe link opens at the address it wraps (safe-links.ts).
-    const abs = unwrapSafeLink(new URL(raw, base).href);
-    if (/^https?:/i.test(abs)) return abs;
-  } catch {
-    /* ignore invalid */
-  }
-  if (el.tagName === "A") {
-    const href = (el as HTMLAnchorElement).href;
-    return href && /^https?:/i.test(href) ? href : null;
-  }
-  return null;
 }
 
 export function buildSrcDoc(
@@ -109,8 +69,11 @@ export function buildSrcDoc(
     : sanitized;
   // allow-scripts is only for MAIL_LINK_BRIDGE_JS (hash-pinned). Email HTML is
   // sanitized and still cannot load remote scripts (default-src 'none').
+  //
+  // The frame has an opaque origin, and in some engines 'self' then matches
+  // nothing. So the page's origin is also named, for the image proxy.
   const imgSrc = allowImages
-    ? `img-src ${MAIL_IMAGE_CSP_SOURCE} data:;`
+    ? `img-src ${MAIL_IMAGE_CSP_SOURCE} ${frameImageOrigin(origin)} data:;`
     : "img-src data:;";
   const csp = `default-src 'none'; ${imgSrc} style-src 'unsafe-inline'; script-src '${MAIL_LINK_BRIDGE_CSP_HASH}'`;
   return [
@@ -204,7 +167,7 @@ export function buildSrcDoc(
     };text-decoration:underline;text-underline-offset:2px}`,
     // Reading in the dark: the body's own colour is the light one the
     // caller passes, and every colour the sender declared is re-lit by
-    // `recolorEmailForDark` once the frame has laid out — see there. That
+    // `recolorForDark` in the frame script (frame-script/dark.ts). That
     // used to be a blanket "everything inherits", which threw away a
     // heading's navy and a call-out's pink along with the black.
     /*
@@ -227,11 +190,6 @@ export function buildSrcDoc(
 }
 
 /**
- * Frame height for auto-sized email iframes.
- * `body.getBoundingClientRect().height` alone drops trailing margins on
- * marketing footers (Outlook tables), which clips the last few pixels.
- */
-/**
  * The scrolling box a frame sits in — the thread stream, usually.
  *
  * Measuring collapses the frame for a moment (see `measure`), and a
@@ -252,390 +210,6 @@ export function scrollParentOf(el: HTMLElement): HTMLElement | null {
     node = node.parentElement;
   }
   return null;
-}
-
-export function measureEmailFrameHeight(doc: Document): number {
-  const body = doc.body;
-  if (!body) return 0;
-  const win = doc.defaultView;
-  const bodyTop = body.getBoundingClientRect().top;
-  let bottom = body.getBoundingClientRect().bottom;
-
-  const include = (el: Element) => {
-    const rect = el.getBoundingClientRect();
-    const marginBottom = win
-      ? parseFloat(win.getComputedStyle(el).marginBottom) || 0
-      : 0;
-    bottom = Math.max(bottom, rect.bottom + marginBottom);
-  };
-
-  for (const child of body.children) include(child);
-
-  // Nested trailing margins (table > tbody > tr > td > …).
-  let el: Element | null = body.lastElementChild;
-  while (el) {
-    include(el);
-    el = el.lastElementChild;
-  }
-
-  /*
-    And whatever the frame says it can scroll.
-
-    The rect walk above measures boxes; `scrollHeight` measures the whole
-    of what is laid out, and it is the exact quantity that decides whether
-    a scrollbar appears. Taking the larger of the two is what keeps one
-    from appearing: the rect walk catches trailing margins that
-    scrollHeight rounds off, and scrollHeight catches everything the rect
-    walk cannot see.
-
-    The two are not read in the same units. The reader's size is a `zoom`
-    on the body, and `scrollHeight` on a zoomed element answers in that
-    element's own scale, while everything else here — the rects, the root,
-    the frame being sized — is in the frame's. Below 100% the body's
-    unscaled number is the larger of the two while being the shorter
-    distance, so it won every comparison and the frame came out as much
-    too tall as the reader had zoomed out: at 80%, a quarter of the
-    message again in empty space under the footer. At 100% the two agree,
-    which is why it only ever showed on one side of it.
-  */
-  const bodyZoom = parseFloat(body.style.zoom) || 1;
-  const scrolled = Math.max(
-    doc.documentElement?.scrollHeight ?? 0,
-    (body.scrollHeight ?? 0) * bodyZoom
-  );
-
-  const content = Math.max(bottom - bodyTop, scrolled);
-  /*
-    Nothing measured is not a short message.
-
-    A frame asked for its height before it has laid out answers zero, and
-    zero plus the slack below is six — small enough to look like a bug and
-    large enough to pass the `> 0` test that was meant to catch exactly
-    this. So the caller keeps the height it had and waits for the observer.
-  */
-  if (content <= 0) return 0;
-
-  // Slack for sub-pixels and collapsed margins so the footer never clips.
-  return Math.ceil(content + 6);
-}
-
-/**
- * Pinches over the sandboxed iframe never reach the thread pane's listeners,
- * so forward them to the parent window (as raw wheel deltas / scale ratios)
- * for the mail zoom to consume. Listeners run in the parent context — the
- * iframe itself stays script-free.
- */
-export function attachPinchForwarding(doc: Document, frame: HTMLIFrameElement) {
-  /*
-    Where the fingers are, in the parent's pixels.
-
-    The zoom holds the point under the pointer still, and the pointer is in
-    here, so the point has to travel with the gesture. The frame is sized to
-    its own content, so a y down the frame's viewport is the same fraction
-    of the frame element in the parent, whatever either one is zoomed by.
-  */
-  const parentY = (frameY: number): number | null => {
-    const box = frame.getBoundingClientRect();
-    const viewport = doc.defaultView?.innerHeight || 0;
-    if (!viewport || !box.height) return null;
-    return box.top + (frameY / viewport) * box.height;
-  };
-
-  const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
-  doc.addEventListener(
-    "wheel",
-    (e) => {
-      if (!e.ctrlKey) return; // plain scrolling, not a pinch
-      e.preventDefault();
-      window.dispatchEvent(
-        new CustomEvent(MAIL_PINCH_WHEEL_EVENT, {
-          detail: { value: e.deltaY, y: parentY(e.clientY) },
-        })
-      );
-    },
-    wheelOpts
-  );
-
-  // WebKit (Safari, the Mac app's webview) reports pinches as gesture events.
-  let lastScale = 1;
-  const gestureOpts: AddEventListenerOptions = { capture: true, passive: false };
-  doc.addEventListener(
-    "gesturestart",
-    ((e: Event) => {
-      e.preventDefault();
-      lastScale = (e as Event & { scale?: number }).scale ?? 1;
-    }) as EventListener,
-    gestureOpts
-  );
-  doc.addEventListener(
-    "gesturechange",
-    ((e: Event) => {
-      e.preventDefault();
-      const scale = (e as Event & { scale?: number }).scale ?? 1;
-      if (lastScale > 0) {
-        const at = (e as Event & { clientY?: number }).clientY;
-        window.dispatchEvent(
-          new CustomEvent(MAIL_PINCH_SCALE_EVENT, {
-            detail: {
-              value: scale / lastScale,
-              y: typeof at === "number" ? parentY(at) : null,
-            },
-          })
-        );
-      }
-      lastScale = scale;
-    }) as EventListener,
-    gestureOpts
-  );
-}
-
-/**
- * Keystrokes inside the iframe reach the app's shortcuts.
- *
- * The shortcut listeners live on the top window, and a click on the email
- * body gives the iframe's document the keyboard — after which every key
- * fires in here and the app hears nothing. WebKit is also reluctant to
- * hand focus back when the next click lands on something in the parent
- * that is not focusable, so the dead zone was bigger than the message.
- *
- * The keys are re-dispatched on the parent window as synthetic keyboard
- * events, the same bridge the pinch uses. A synthetic event cannot cancel
- * what the key does inside the iframe, and should not: copy, arrows and
- * text selection keep their meanings — the app's own guard ignores keys
- * typed into fields, and a field inside a message is left alone here too.
- */
-export function attachKeyForwarding(doc: Document) {
-  doc.addEventListener(
-    "keydown",
-    (e) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) {
-        return;
-      }
-      const consumed = !window.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: e.key,
-          code: e.code,
-          metaKey: e.metaKey,
-          ctrlKey: e.ctrlKey,
-          altKey: e.altKey,
-          shiftKey: e.shiftKey,
-          repeat: e.repeat,
-          cancelable: true,
-        })
-      );
-      // The app took the key, so its default in here must not also run —
-      // some shortcuts ride keys the webview has plans for (Cmd+R would
-      // reload the whole app on top of opening the reply). dispatchEvent
-      // runs the parent's listeners synchronously and reports whether one
-      // of them called preventDefault, so the answer is already in hand.
-      if (consumed) e.preventDefault();
-    },
-    { capture: true }
-  );
-}
-
-/**
- * Meet / RSVP / etc. in invite HTML are normal <a> tags. Tauri's WebView
- * silently drops target=_blank navigations that originate inside an iframe,
- * and the shell's document-level click hook never sees iframe clicks — so
- * open http(s) links from the parent via the opener plugin (or window.open).
- */
-export function attachExternalLinkHandling(doc: Document) {
-  // Backup when the in-frame bridge is blocked; WKWebView often skips this.
-  doc.addEventListener(
-    "click",
-    (event) => {
-      // composedPath survives nested SVG/table quirks better than closest alone.
-      const path = event.composedPath();
-      let el: Element | null = null;
-      for (const node of path) {
-        const candidate = asElement(node);
-        if (!candidate) continue;
-        if (candidate.tagName === "A" && candidate.hasAttribute("href")) {
-          el = candidate;
-          break;
-        }
-        if (candidate.hasAttribute(MAIL_HREF_ATTR)) {
-          el = candidate;
-          break;
-        }
-      }
-      if (!el) {
-        const target = asElement(event.target);
-        el = target?.closest(`a[href], [${MAIL_HREF_ATTR}]`) ?? null;
-      }
-      if (!el) return;
-      const target = linkTargetFromEl(el);
-      if (!target) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void followMailLink(target);
-    },
-    true
-  );
-}
-
-/** A right-click on a link, in the frame's own coordinates. */
-type LinkMenuRequest = {
-  /** The link's destination, or "" for a picture that is not a link. */
-  target: string;
-  /** The picture under the pointer, when there is one: its `src`. */
-  image?: string;
-  /** Pointer position in the frame's viewport, before the frame's zoom. */
-  frameX: number;
-  frameY: number;
-};
-
-/**
- * The right-click menu on a link.
- *
- * Every link in the frame is a span (see `softenAnchorsForParse`), so the
- * browser's own menu treats it as text: Look Up, Translate, Search — and no
- * Copy Link, which is the one thing a reader right-clicks a link for. So the
- * frame takes the event over on links, and only there. Right-click on plain
- * text keeps the browser's menu, which is good and which nothing here would
- * improve on.
- *
- * A link inside a selection the reader made is treated as text too: they
- * selected it, so the selection is what they mean. That is decided on
- * mousedown, because WebKit selects the word under a right-click before it
- * fires `contextmenu`, and by then every link looks selected. The same
- * snapshot puts the selection back the way it was once the menu is ours, so
- * the word does not stay highlighted under it.
- */
-export function attachLinkContextMenu(
-  doc: Document,
-  onRequest: (request: LinkMenuRequest) => void,
-  onDismiss: () => void
-) {
-  const linkFromEvent = (event: Event): Element | null => {
-    for (const node of event.composedPath()) {
-      const candidate = asElement(node);
-      if (!candidate) continue;
-      if (candidate.tagName === "A" && candidate.hasAttribute("href")) {
-        return candidate;
-      }
-      if (candidate.hasAttribute(MAIL_HREF_ATTR)) return candidate;
-    }
-    const target = asElement(event.target);
-    return target?.closest(`a[href], [${MAIL_HREF_ATTR}]`) ?? null;
-  };
-
-  let selectionBefore: Range[] = [];
-  let linkWasSelected = false;
-
-  doc.addEventListener(
-    "mousedown",
-    (event) => {
-      // Any press closes a menu that is open; a right-click on a link opens
-      // a new one a moment later, through `contextmenu`.
-      onDismiss();
-      const secondary =
-        event.button === 2 || (event.button === 0 && event.ctrlKey);
-      if (!secondary) return;
-      const sel = doc.getSelection();
-      selectionBefore = [];
-      linkWasSelected = false;
-      if (!sel || sel.isCollapsed) return;
-      for (let i = 0; i < sel.rangeCount; i += 1) {
-        selectionBefore.push(sel.getRangeAt(i).cloneRange());
-      }
-      const link = linkFromEvent(event);
-      if (link) {
-        linkWasSelected = selectionBefore.some((range) =>
-          range.intersectsNode(link)
-        );
-      }
-    },
-    true
-  );
-
-  doc.addEventListener("scroll", onDismiss, true);
-  doc.addEventListener("wheel", onDismiss, { capture: true, passive: true });
-
-  /** The picture under the pointer, for Copy image and Download image. */
-  const imageFromEvent = (event: Event): string | undefined => {
-    for (const node of event.composedPath()) {
-      const el = asElement(node);
-      if (el?.tagName === "IMG") {
-        const img = el as HTMLImageElement;
-        return img.currentSrc || img.src || undefined;
-      }
-    }
-    return undefined;
-  };
-
-  doc.addEventListener(
-    "contextmenu",
-    (event) => {
-      const link = linkFromEvent(event);
-      const image = imageFromEvent(event);
-      if ((!link && !image) || linkWasSelected) return;
-      const target = link ? linkTargetFromEl(link) ?? "" : "";
-      if (!target && !image) return;
-      event.preventDefault();
-      event.stopPropagation();
-      // The word WebKit selected under the pointer goes back to whatever was
-      // selected before, which is usually nothing.
-      const sel = doc.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        for (const range of selectionBefore) sel.addRange(range);
-      }
-      onRequest({ target, image, frameX: event.clientX, frameY: event.clientY });
-    },
-    true
-  );
-}
-
-/** A right-click on a message's own page, not on a link in it. */
-export type MessageMenuRequest = {
-  frameX: number;
-  frameY: number;
-  /** What the reader had selected before the click, or "". */
-  selectedText: string;
-};
-
-/**
- * A right-click anywhere in an HTML message that is not on a link: the
- * message's own menu (react, reply, forward, …) instead of WebKit's, which
- * offers "Open Frame in New Window". A link keeps its menu: that handler
- * runs first, in the capture phase, and marks the event as handled.
- *
- * The selection is read on mousedown, as for links: WebKit selects the word
- * under a right-click before `contextmenu`, and that word is not something
- * the reader chose. It is put back the way it was, and what was chosen is
- * passed on for the menu's Copy.
- */
-export function attachMessageContextMenu(doc: Document, onRequest: (request: MessageMenuRequest) => void) {
-  let before: Range[] = [];
-  doc.addEventListener(
-    "mousedown",
-    (event) => {
-      const secondary = event.button === 2 || (event.button === 0 && event.ctrlKey);
-      if (!secondary) return;
-      before = [];
-      const sel = doc.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      for (let i = 0; i < sel.rangeCount; i += 1) before.push(sel.getRangeAt(i).cloneRange());
-    },
-    true
-  );
-  doc.addEventListener("contextmenu", (event) => {
-    if (event.defaultPrevented) return; // a link's own menu
-    event.preventDefault();
-    const sel = doc.getSelection();
-    if (sel) {
-      sel.removeAllRanges();
-      for (const range of before) sel.addRange(range);
-    }
-    onRequest({
-      frameX: event.clientX,
-      frameY: event.clientY,
-      selectedText: before.map((range) => range.toString()).join(" ").trim(),
-    });
-  });
 }
 
 /** Put text on the clipboard, one way or another. */
@@ -742,7 +316,7 @@ export function LinkContextMenu({
         <>
       <div
         className="truncate px-3 pb-1.5 pt-1 text-xs text-stone-500"
-        title={model.target}
+        title={model.realAddress ?? model.target}
       >
         {model.shown}
       </div>
@@ -775,6 +349,23 @@ export function LinkContextMenu({
         <Copy className="h-3.5 w-3.5 shrink-0 text-stone-500" aria-hidden />
         {model.copyLabel}
       </button>
+      {model.realAddress ? (
+        <button
+          type="button"
+          role="menuitem"
+          className={item}
+          onClick={() => {
+            onDismiss();
+            void copyText(model.realAddress ?? "").then((ok) => {
+              if (ok) toast("Address copied");
+              else toast.error(mailSay("couldNotCopy"));
+            });
+          }}
+        >
+          <Copy className="h-3.5 w-3.5 shrink-0 text-stone-500" aria-hidden />
+          Copy real address
+        </button>
+      ) : null}
         </>
       ) : null}
       {image ? (
@@ -815,70 +406,4 @@ export function LinkContextMenu({
     </div>,
     document.body
   );
-}
-
-/**
- * A double-click on the sender's page, forwarded out of the frame.
- *
- * The bubble shows its details when it is double-clicked, and the body of
- * an HTML message is a frame, so a double-click on the words, which is
- * most of the bubble, never reaches the handler outside it. This carries
- * it out. Double-clicks inside the sandboxed iframe never bubble to React
- * parents, and WebKit/Tauri is also flaky with dblclick on srcdoc frames,
- * so a second click within a short window counts as well as the native
- * dblclick event.
- *
- * Not on something that does its own job: a link, a button, a field the
- * sender put there. `instanceof Element` is no use for that test, the
- * frame is a separate global, so `asElement` does the narrowing.
- */
-export function attachDoubleClickForwarding(
-  doc: Document,
-  onDoubleClick: () => void
-) {
-  const INTERACTIVE =
-    `a[href], [${MAIL_HREF_ATTR}], button, input, select, textarea, label,` +
-    ` [role='button'], [role='link'], [contenteditable='true']`;
-  let lastClickAt = 0;
-  let lastFireAt = 0;
-  const isControl = (event: Event) =>
-    Boolean(asElement(event.target)?.closest(INTERACTIVE));
-  const fire = (event: Event) => {
-    if (isControl(event)) return;
-    // A double click on a word selects the word, and does nothing else.
-    const pointer = event as Partial<MouseEvent>;
-    if (
-      typeof pointer.clientX === "number" &&
-      typeof pointer.clientY === "number" &&
-      doubleClickOnText({ clientX: pointer.clientX, clientY: pointer.clientY }, doc)
-    ) {
-      return;
-    }
-    // Beside the words: the word WebKit selected anyway is not what was meant.
-    doc.getSelection()?.removeAllRanges();
-    const now = Date.now();
-    // Click-pair detector and native dblclick often both fire — only once.
-    if (now - lastFireAt < 400) return;
-    lastFireAt = now;
-    lastClickAt = 0;
-    event.preventDefault();
-    onDoubleClick();
-  };
-  doc.addEventListener(
-    "click",
-    (event) => {
-      if (isControl(event)) {
-        lastClickAt = 0;
-        return;
-      }
-      const now = Date.now();
-      if (now - lastClickAt < 400) {
-        fire(event);
-        return;
-      }
-      lastClickAt = now;
-    },
-    true
-  );
-  doc.addEventListener("dblclick", fire, true);
 }

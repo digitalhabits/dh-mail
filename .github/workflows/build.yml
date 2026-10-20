@@ -7,6 +7,8 @@
 #
 # What a run makes:
 #
+#   test     first: the typecheck, the app's suites and the native tests, with
+#            no secrets. If one fails, nothing is built or signed.
 #   mac      one universal .dmg (Apple silicon and Intel), signed, notarized
 #            and stapled. `pnpm --dir apps/mail app:build`.
 #   windows  two NSIS installers, x64 and ARM64, signed with Azure Trusted
@@ -33,6 +35,10 @@
 # that a download was built here, from this commit:
 #
 #   gh attestation verify <file> --repo digitalhabits/dh-mail
+#
+# Secrets. Each signing secret is given to the steps that use it, not to the
+# whole job. So the packages' own install scripts, which run in Install, can
+# not read them.
 #
 # Trigger: Actions -> "Build" -> Run workflow. There is no other trigger, and
 # there must never be one. A run on a pull request would build a stranger's
@@ -90,7 +96,56 @@ permissions:
   contents: read
 
 jobs:
+  # The tests, before anything is built or signed. No environment and no
+  # secrets: a failing test stops the run before a signing key is reached.
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.14.4 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/mail/src-tauri/target
+          key: cargo-test-${{ hashFiles('apps/mail/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-test-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --dir apps/mail typecheck
+
+      - name: Test the app
+        working-directory: apps/mail
+        run: node tests/run.mjs
+
+      # Through the app's lock file: the mirror carries no lock file of the
+      # crate's own, and a test run must use the versions a release uses.
+      # The app turns Exchange on, so its tests run too.
+      - name: Test the native part
+        run: cargo test --manifest-path apps/mail/src-tauri/Cargo.toml -p mail-native --lib --locked
+
   mac:
+    needs: test
     if: inputs.platform == 'both' || inputs.platform == 'mac'
     runs-on: macos-latest
     timeout-minutes: 90
@@ -101,18 +156,6 @@ jobs:
       attestations: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-    env:
-      VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-      VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
-      VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,6 +191,18 @@ jobs:
       # An app that cannot sign in to a mailbox, or that no other Mac will
       # open, is not worth the run. Stop before the compile, not after it.
       - name: Check the secrets
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           missing=""
           for name in VITE_GOOGLE_CLIENT_ID VITE_GOOGLE_CLIENT_SECRET VITE_MICROSOFT_CLIENT_ID \
@@ -164,6 +219,18 @@ jobs:
       # `.env.local` for the signing names. Vite reads both in a production
       # build.
       - name: Write the OAuth clients
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           {
             echo "VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID"
@@ -175,8 +242,22 @@ jobs:
       # Without it the script leaves the entitlement out, because macOS kills
       # an app that claims it with no profile.
       - name: Write the provisioning profile
-        if: env.APPLE_PROVISIONING_PROFILE != ''
-        run: echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > apps/mail/src-tauri/embedded.provisionprofile
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_PROVISIONING_PROFILE" ]; then
+            echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > apps/mail/src-tauri/embedded.provisionprofile
+          fi
 
       - name: Read the version
         id: version
@@ -189,6 +270,17 @@ jobs:
         run: pnpm --dir apps/mail app:build
         # Release build: turns on the usage count (src/usage-ping.ts).
         env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_MAIL_RELEASE: mac
 
       # The build script writes the checksum with the path it built at. A
@@ -233,6 +325,7 @@ jobs:
           retention-days: 30
 
   windows:
+    needs: test
     if: inputs.platform == 'both' || inputs.platform == 'windows'
     runs-on: windows-latest
     timeout-minutes: 90
@@ -243,17 +336,6 @@ jobs:
       attestations: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-    env:
-      VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-      VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
-      VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-      AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -289,6 +371,17 @@ jobs:
       # A release must be signed. An unsigned installer shows an unknown
       # publisher, and SmartScreen can hold it back.
       - name: Check the secrets
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
           missing=""
@@ -313,6 +406,17 @@ jobs:
 
       # See the same step in the mac job.
       - name: Write the OAuth clients
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
           {
@@ -331,6 +435,16 @@ jobs:
         shell: pwsh
         # Release build: turns on the usage count (src/usage-ping.ts).
         env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_MAIL_RELEASE: windows
         run: |
           switch ('${{ inputs.windows_architecture }}') {
@@ -376,6 +490,7 @@ jobs:
   # identity is in build-win-store.ps1. It is not a secret: each package that
   # ships shows it.
   store:
+    needs: test
     if: inputs.store_package
     runs-on: windows-latest
     timeout-minutes: 90
@@ -384,10 +499,6 @@ jobs:
       contents: read
       id-token: write
       attestations: write
-    env:
-      VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-      VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
-      VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -424,6 +535,10 @@ jobs:
       # The package is not signed here, but it must be able to sign in to a
       # mailbox.
       - name: Check the secrets
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
         shell: bash
         run: |
           missing=""
@@ -437,6 +552,10 @@ jobs:
 
       # See the same step in the mac job.
       - name: Write the OAuth clients
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
         shell: bash
         run: |
           {
@@ -451,6 +570,10 @@ jobs:
         run: node -p "'version=' + require('./apps/mail/package.json').version" >> "$GITHUB_OUTPUT"
 
       - name: Package
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
+          VITE_MICROSOFT_CLIENT_ID: ${{ secrets.VITE_MICROSOFT_CLIENT_ID }}
         working-directory: apps/mail
         shell: pwsh
         run: |
@@ -488,8 +611,10 @@ jobs:
   # A draft, and only a draft. It has no public page until a person publishes
   # it. A run for the same version puts the new files over the old ones.
   release:
-    needs: [mac, windows]
-    if: ${{ !cancelled() && !failure() && inputs.draft_release }}
+    needs: [test, mac, windows]
+    # Not after failed tests: the builds were skipped then, and there is
+    # nothing to put in a release.
+    if: ${{ !cancelled() && !failure() && needs.test.result == 'success' && inputs.draft_release }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

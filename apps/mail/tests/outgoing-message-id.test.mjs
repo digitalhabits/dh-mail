@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { newRfcMessageId } from "@/lib/mail/inbox";
+import { outgoingHeaderLines } from "@/lib/mail/mime-header";
 
 import { check, suite } from "./harness.mjs";
 
@@ -45,18 +46,30 @@ suite(async () => {
     join(process.cwd(), "../../products/mail/packages/mail/lib/mail/inbox-send.ts"),
     "utf8"
   );
-  const headers = send.slice(
-    send.indexOf("  const headers = ["),
-    send.indexOf('"MIME-Version: 1.0"')
-  );
+  // The header lines are made by outgoingHeaderLines (mime-header.ts),
+  // which strips line breaks from every value. The send must hand it a
+  // fresh id, and the thread ids it answers.
   check(
     "every message we build carries one",
-    headers.includes("`Message-ID: ${newRfcMessageId(input.account)}`"),
-    headers.includes("Message-ID") ? "in the headers" : "missing"
+    send.includes("messageId: newRfcMessageId(input.account)") &&
+      send.includes("outgoingHeaderLines({"),
+    send.includes("messageId: newRfcMessageId") ? "in the headers" : "missing"
   );
+  const lines = outgoingHeaderLines({
+    from: "vera@vaerksted.example",
+    to: ["bo@vaerksted.example"],
+    subject: "Re: Boats",
+    messageId: one,
+    inReplyTo: "<a@vaerksted.example>",
+    references: "<a@vaerksted.example>",
+  });
+  const at = (name) => lines.findIndex((line) => line.startsWith(`${name}:`));
   check(
     "written before the thread it answers, not instead of it",
-    headers.indexOf("Message-ID") < headers.indexOf("In-Reply-To") &&
-      headers.includes("References: ${input.references}")
+    at("Message-ID") >= 0 &&
+      at("Message-ID") < at("In-Reply-To") &&
+      at("References") > 0 &&
+      send.includes("references: input.references"),
+    lines.join(" | ")
   );
 });

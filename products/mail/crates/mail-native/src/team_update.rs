@@ -46,6 +46,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
+use crate::lock::LockExt;
 
 /// The interface listens for this. The payload is an `UpdateInfo`.
 pub const READY_EVENT: &str = "dh-team-update-ready";
@@ -200,10 +201,9 @@ async fn check(app: &tauri::AppHandle, source: Source) -> Result<Checked, String
 
   // This version is already downloaded and waiting.
   if let Some(state) = app.try_state::<TeamUpdate>() {
-    if let Ok(guard) = state.0.lock() {
-      if guard.as_ref().map(|r| r.update.version == update.version) == Some(true) {
-        return Ok(Checked::Done);
-      }
+    let guard = state.0.locked();
+    if guard.as_ref().map(|r| r.update.version == update.version) == Some(true) {
+      return Ok(Checked::Done);
     }
   }
 
@@ -218,7 +218,7 @@ async fn check(app: &tauri::AppHandle, source: Source) -> Result<Checked, String
     notes: update.body.clone(),
   };
   if let Some(state) = app.try_state::<TeamUpdate>() {
-    *state.0.lock().map_err(|e| e.to_string())? = Some(Ready { update, bytes });
+    *state.0.locked() = Some(Ready { update, bytes });
   }
   log::info!("team update: {} ready", info.version);
   let _ = app.emit(READY_EVENT, info);
@@ -270,7 +270,7 @@ pub fn check_now(app: &tauri::AppHandle) {
 /// The version downloaded and waiting to be installed, if any.
 fn waiting_version(app: &tauri::AppHandle) -> Option<String> {
   let state = app.try_state::<TeamUpdate>()?;
-  let guard = state.0.lock().ok()?;
+  let guard = state.0.locked();
   guard.as_ref().map(|ready| ready.update.version.clone())
 }
 
@@ -311,7 +311,7 @@ fn offer_restart(app: &tauri::AppHandle, version: &str) {
 #[tauri::command]
 pub fn team_update_status(app: tauri::AppHandle) -> Option<UpdateInfo> {
   let state = app.try_state::<TeamUpdate>()?;
-  let guard = state.0.lock().ok()?;
+  let guard = state.0.locked();
   guard.as_ref().map(|r| UpdateInfo {
     version: r.update.version.clone(),
     notes: r.update.body.clone(),
@@ -356,7 +356,7 @@ fn install_waiting(app: &tauri::AppHandle) -> Result<bool, String> {
   let Some(state) = app.try_state::<TeamUpdate>() else {
     return Ok(false);
   };
-  let ready = state.0.lock().map_err(|e| e.to_string())?.take();
+  let ready = state.0.locked().take();
   let Some(ready) = ready else {
     return Ok(false);
   };

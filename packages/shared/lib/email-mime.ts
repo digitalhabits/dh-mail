@@ -31,7 +31,8 @@ function bytesToString(bytes: Uint8Array, charset: string): string {
  * Its own UTF-8, not its low byte. `charCodeAt(i) & 0xff` cut every
  * character above U+00FF to one byte, so text that was decoded already and
  * went through here again came out broken: "„" became 0x1E, "“" 0x1C, and
- * "ü" a lone 0xFC, read as the replacement mark (Mikkel, 2026-10-20).
+ * "ü" a lone 0xFC, read as the replacement mark (a forwarded message,
+ * 2026-10-20).
  */
 function pushCharBytes(out: number[], ch: string): void {
   const code = ch.charCodeAt(0);
@@ -289,8 +290,9 @@ function extractOutlookMimeBlob(text: string): string {
  * (formatEmailBody), decoded already nearly always. "=" and two hex digits
  * alone was the test, and a link has that: "&data=05%7C…" became
  * "&data\u0005%7C…" and stopped working, and the letters around it broke
- * (Mikkel, 2026-10-20). Quoted-printable is ASCII and breaks its long lines
- * with "=" at the end, so a body is taken for it only with both.
+ * (a forwarded message, 2026-10-20). Quoted-printable is ASCII and breaks
+ * its long lines with "=" at the end, so a body is taken for it only with
+ * both.
  */
 function looksLikeQuotedPrintablePlain(text: string): boolean {
   return /^[\x00-\x7f]*$/.test(text) && /=\r?\n/.test(text) && /=[0-9A-F]{2}/.test(text);

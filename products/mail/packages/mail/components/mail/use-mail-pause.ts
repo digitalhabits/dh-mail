@@ -60,7 +60,7 @@ function withAccountRow(
   const current = state.accounts?.[key] ?? {};
   const nextRow = patch(current);
   const accounts = { ...state.accounts };
-  if (!nextRow || (!nextRow.pausedUntil && nextRow.quietHours == null)) {
+  if (!nextRow || (!nextRow.pausedUntil && nextRow.quietHours == null && nextRow.unpauseWords == null)) {
     delete accounts[key];
   } else {
     accounts[key] = nextRow;
@@ -81,6 +81,43 @@ export function setAccountQuietHours(email: string, windows: MailQuietWindow[]):
   write(withAccountRow(read(), email, (row) => ({ ...row, quietHours: windows })));
 }
 
+/** Words to type before new mail can come in out of hours. 0 is none. */
+export function readMailUnpauseWords(): number {
+  return read().unpauseWords ?? 0;
+}
+
+/**
+ * Set those words from outside the pause menu: the question asked when a
+ * mailbox is connected. One number for every mailbox, as in the menu.
+ */
+export function setMailUnpauseWords(count: number): MailPauseState {
+  const { unpauseWords, ...rest } = read();
+  void unpauseWords;
+  const words = normaliseUnpauseWords(count);
+  // Every account's: their own go, as "Changes here apply to all" says.
+  const accounts = Object.fromEntries(
+    Object.entries(rest.accounts ?? {})
+      .map(([key, row]) => {
+        const { unpauseWords: _own, ...kept } = row;
+        return [key, kept] as const;
+      })
+      .filter(([, row]) => row.pausedUntil || row.quietHours != null)
+  );
+  const base: MailPauseState = { ...rest };
+  if (Object.keys(accounts).length) base.accounts = accounts;
+  else delete base.accounts;
+  const next: MailPauseState = words ? { ...base, unpauseWords: words } : base;
+  write(next);
+  return next;
+}
+
+/** One account's own words to type before new mail comes in early. */
+export function setMailUnpauseWordsFor(email: string, count: number): MailPauseState {
+  const next = withAccountRow(read(), email, (row) => ({ ...row, unpauseWords: normaliseUnpauseWords(count) }));
+  write(next);
+  return next;
+}
+
 export function useMailPause(): {
   state: MailPauseState;
   verdict: MailPauseVerdict;
@@ -94,8 +131,11 @@ export function useMailPause(): {
   setQuietHours: (windows: MailQuietWindow[], account?: string | null) => void;
   /** True: this mailbox uses All's hours again. */
   setFollowAllHours: (account: string, follow: boolean) => void;
-  /** Words to type before ending a pause early. 0 is none. */
-  setUnpauseWords: (count: number) => void;
+  /**
+   * Words to type before ending a pause early. 0 is none. With an account,
+   * that account's own; without, every account's (their own go).
+   */
+  setUnpauseWords: (count: number, account?: string | null) => void;
 } {
   const [state, setState] = React.useState<MailPauseState>(MAIL_PAUSE_DEFAULT);
   // The clock, as a minute that changes. Rendering on it is what makes a
@@ -176,14 +216,8 @@ export function useMailPause(): {
       write(next);
       setState(next);
     },
-    setUnpauseWords: (count) => {
-      const { unpauseWords, ...rest } = read();
-      void unpauseWords;
-      const words = normaliseUnpauseWords(count);
-      const next: MailPauseState = words ? { ...rest, unpauseWords: words } : rest;
-      write(next);
-      setState(next);
-    },
+    setUnpauseWords: (count, account) =>
+      setState(account ? setMailUnpauseWordsFor(account, count) : setMailUnpauseWords(count)),
     setFollowAllHours: (account, follow) => {
       const next = withAccountRow(read(), account, (row) => {
         if (follow) {

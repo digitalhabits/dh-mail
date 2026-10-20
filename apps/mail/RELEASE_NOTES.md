@@ -1,42 +1,22 @@
 ## What is new
 
-**Search**
-- **Search reaches every mailbox.** A search now also finds mail in a mailbox that is paused or hidden. To leave hidden mailboxes out, open the arrow at the start of the search box. The app keeps your choice.
-- A result from a hidden mailbox has a closed eye next to its date. While hidden mailboxes are searched, the search box shows "+ hidden". Click it to change the choice.
-- While you search, each filter tab shows how many results it holds.
+**Hiding and pausing, in one place**
+- Press an account's tab a second time, or right-click it, for one menu with two tabs: Shown in Mail and New mail arrives. Each tab has the account's schedule, the words to type to get round it, and Hide (or Pause) for a while.
+- Press All a second time for the same menu for every account, with "Same hours for all…".
+- Sync is one button now. A small dot on it tells you when something is paused.
+- Each account can have its own number of words to type, and its own "Hide again after".
+- A hidden account shows a closed eye. Before, an account hidden overnight could say that it would show again at midnight; it now gives the right time.
 
-**Send later**
-- Picking a time schedules the message at once. The date picker shows the month and the clock side by side.
-- A message scheduled from Gmail now shows its words, and you can edit it.
-- If the app was closed when a message was due, it sends the message by itself up to one hour late. After that, it asks you whether to send it now or pick a new time.
+**A new account asks two questions**
+- After you connect an account, Mail asks when you want to see it, and when new mail should come in. Pick an answer, or drag the hours on the week.
+- You can choose the account's picture there, or in Settings by clicking its logo.
 
-**Downloads**
-- You choose where Download saves: Downloads, the Desktop, a folder you used before, or Save as…. You can also tell the app to ask each time.
+**Safer**
+- Messages are shown in a frame that cannot reach the rest of the app, and their HTML is checked against a list of what is allowed.
+- A saved attachment is marked as downloaded, so your computer checks it before it runs. Mail does not open programs or scripts itself: it shows them in Finder or Explorer.
+- Pictures in mail cannot reach devices on your own network.
+- A message is not sent twice, also when the app cannot record that it was sent.
+- Links that Microsoft Safe Links wraps go through Microsoft's check again, as in Outlook. The real address shows when you point at the link, and in its menu.
 
-**Conversations**
-- **Every message of a conversation shows.** A conversation that reached two of your mailboxes now shows the messages from both. Before, a reply you sent from one mailbox could be missing when you opened the other mailbox's copy.
-- When the newest message is your own reply from another mailbox, Reply goes from that mailbox.
-- **Sent shows every mailbox.** Sent now also shows mail from a mailbox that is paused or hidden.
-- **Invites show at once.** A calendar invite in a message is drawn at once, without a wait for the file.
-- Double-click a thread in a stack, or a draft in Drafts, to open it in its own window. The drafts toast has an Open button.
-
-**Archiving**
-- The list keeps its order while you archive. Mail sent at the same second used to swap places after each archive, and the next mail to open was not the one below.
-- When an archive, delete or move fails, only that conversation comes back. Before, conversations you archived after it came back too.
-
-**Reading**
-- A link that Microsoft's Safe Links wraps now opens at its real address. Before, some of these links gave a "Bad Request" page.
-- Mail that came already decoded is no longer decoded a second time. That second decode broke letters such as "ü" and some links.
-- German and other Latin letters in older mail are read again, so "für" no longer shows a mark in place of "ü".
-- A link that only sets its font now looks like a link: in link colour and underlined.
-
-**Writing**
-- Backspace no longer deletes the conversation while you write a reply.
-- When you edit a scheduled message in dark mode, your own text is readable.
-- You can drag a person from To to Cc in the reply card.
-- The list of suggestions under a short Cc field shows whole names.
-
-**Security**
-- PDF attachments are read and shown with a newer version of the PDF reader, which fixes a known flaw.
-- The app's log no longer records the subject or the addresses of mail you send.
-- Updated security components for secure connections and Exchange.
+**Other changes**
+- Settings shows nothing for an account that works. Reconnect shows only when something is wrong.

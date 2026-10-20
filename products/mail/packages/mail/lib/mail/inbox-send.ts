@@ -50,6 +50,7 @@ import { PlanError } from "@/lib/plan/errors";
 import { utf8ToBase64 } from "@/lib/base64";
 import { discardGmailDraft, discardOutlookDraft } from "@/lib/mail/inbox-drafts";
 import { newRfcMessageId, translateGmailError } from "@/lib/mail/inbox-gmail-common";
+import { outgoingHeaderLines } from "@/lib/mail/mime-header";
 import {
   forwardedHtml,
   forwardedPlainText,
@@ -652,19 +653,19 @@ async function buildOutgoingMime(input: OutgoingMail, senderName: string): Promi
     ? `${noteWithSignature.trimEnd()}\n\n${plainAppendix}`.trimStart()
     : noteWithSignature;
 
-  const headers = [
-    `From: ${formatFromHeader(input.account, senderName)}`,
-    // Nobody in To (a message to Bcc alone): the empty group, not an empty
-    // header, which is not valid and which some servers refuse.
-    `To: ${input.to.length ? input.to.join(", ") : "undisclosed-recipients:;"}`,
-    ...(input.cc?.length ? [`Cc: ${input.cc.join(", ")}`] : []),
-    ...(input.bcc?.length ? [`Bcc: ${input.bcc.join(", ")}`] : []),
-    `Subject: ${encodeSubject(input.subject)}`,
-    `Message-ID: ${newRfcMessageId(input.account)}`,
-    ...(input.inReplyTo ? [`In-Reply-To: ${input.inReplyTo}`] : []),
-    ...(input.references ? [`References: ${input.references}`] : []),
-    "MIME-Version: 1.0",
-  ];
+  // No value can carry a line break into a header of its own: see
+  // mime-header.ts. In-Reply-To and References come from the message being
+  // answered, so another person wrote them.
+  const headers = outgoingHeaderLines({
+    from: formatFromHeader(input.account, senderName),
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    subject: encodeSubject(input.subject),
+    messageId: newRfcMessageId(input.account),
+    inReplyTo: input.inReplyTo,
+    references: input.references,
+  });
 
   // The account's default font and size (Aptos 12pt unless changed: see
   // lib/mail/text-style), which is Outlook's own, so a reply reads like the

@@ -22,6 +22,7 @@ use tauri::{AppHandle, Manager};
 use crate::db::{now_ms, MailDb};
 use crate::imap::{Client, MailboxName};
 use crate::sync::{select_logical, with_on_demand, BODY_WINDOW_MS};
+use crate::lock::LockExt;
 
 const DAY_MS: i64 = 86_400_000;
 /// The most UIDs mapped for one search. UIDs grow with time, so these are
@@ -104,14 +105,14 @@ fn tickets() -> &'static Mutex<HashMap<String, u64>> {
 }
 
 fn next_ticket(email: &str) -> u64 {
-  let mut all = tickets().lock().unwrap();
+  let mut all = tickets().locked();
   let ticket = all.entry(email.to_string()).or_insert(0);
   *ticket += 1;
   *ticket
 }
 
 fn is_newest(email: &str, ticket: u64) -> bool {
-  tickets().lock().unwrap().get(email).copied() == Some(ticket)
+  tickets().locked().get(email).copied() == Some(ticket)
 }
 
 // ---------------------------------------------------------------------------

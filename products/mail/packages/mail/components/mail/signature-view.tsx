@@ -22,17 +22,25 @@
 import * as React from "react";
 
 import { isLikelyHtml } from "@/lib/client-email-html";
+import { sanitizeHtmlForPage } from "@/lib/mail/email-allowlist";
 
 const SIGNATURE_LINK_CLASS =
   "[&_a]:text-inherit [&_a]:underline [&_a]:decoration-stone-300 [&_a]:underline-offset-2 [&_a:hover]:no-underline";
 
 /** Renders a signature: rich HTML from the editor, or legacy plain text. */
 export function SignatureContent({ signature }: { signature: string }) {
-  if (isLikelyHtml(signature)) {
+  const rich = isLikelyHtml(signature);
+  /*
+    Cleaned before it goes into the page. A signature can come from the
+    provider (a Gmail send-as signature, for example), and this is the
+    app's own document, not a sandboxed frame. See sanitizeHtmlForPage.
+  */
+  const clean = React.useMemo(() => (rich ? sanitizeHtmlForPage(signature) : ""), [rich, signature]);
+  if (rich) {
     return (
       <div
         className={`text-[14px] leading-relaxed text-[#444] ${SIGNATURE_LINK_CLASS} [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-5`}
-        dangerouslySetInnerHTML={{ __html: signature }}
+        dangerouslySetInnerHTML={{ __html: clean }}
       />
     );
   }

@@ -1,40 +1,54 @@
 /**
- * Microsoft's safe links, opened at the address they wrap.
+ * Microsoft's safe links: followed as they are, unless they are broken.
  *
  * Outlook rewrites every link in mail it receives as
  * `https://<region>.safelinks.protection.outlook.com/?url=<the real
- * address>&data=…&sdata=<a signature over the rest>`. When the mail is
- * forwarded through a client that mangles one character of that — a
- * second quoted-printable decode turned "&sdata=2B2q…" into "&sdata+2q…"
- * in a forward Mikkel sent (2026-10-20) — the signature fails, and
- * Microsoft answers "Bad Request" to everybody. The address it wraps is
- * still whole, so the link opens that: the same page the safe link sends
- * an Outlook reader to, without the round trip through Microsoft.
+ * address>&data=…&sdata=<a signature over the rest>`. A click on it goes
+ * through Microsoft Defender, which checks the address at that moment: a
+ * page can turn bad after the mail arrived. The reader's organisation chose
+ * that check, so a click keeps it, as Outlook, Apple Mail and Gmail do.
  *
- * Unwrapped where links are made (findLinksInText, the HTML cleaner) and
- * where a click ends (followMailLink): a click reaches the browser by more
- * than one way — a plain-text link is opened by the desktop shell itself,
- * without the page's click code — and each way kept the broken safe link.
+ * Two things are different:
+ *
+ * - A safe link whose signature is broken opens the address it wraps. A
+ *   client that decodes a forwarded message twice can turn "&sdata=2B2q…"
+ *   into "&sdata+2q…". Microsoft then answers "Bad Request" to everybody,
+ *   and the check is lost anyway. The signature is 32 bytes in base64: 44
+ *   characters, the last one "=". Anything else is taken as broken.
+ * - The real address is shown: as the link's hover text, and at the top of
+ *   its menu, with a way to copy it. So a reader can see where a link goes.
  *
  * No React here, so a test can read it.
  */
 
 const SAFE_LINKS_HOST = /(^|\.)safelinks\.protection\.outlook\.com$/i;
+const SIGNATURE = /^[A-Za-z0-9+/]{43}=$/;
 
-/** The address a safe link wraps, or the link as it was. */
-export function unwrapSafeLink(href: string): string {
-  let url: URL;
+function parse(href: string): URL | null {
   try {
-    url = new URL(href);
+    return new URL(href);
   } catch {
-    return href;
+    return null;
   }
-  if (!SAFE_LINKS_HOST.test(url.hostname)) return href;
+}
+
+/** The web address a safe link wraps, or null for any other link. */
+export function safeLinkTarget(href: string): string | null {
+  const url = parse(href);
+  if (!url || !SAFE_LINKS_HOST.test(url.hostname)) return null;
   const inner = url.searchParams.get("url");
-  if (!inner || !/^https?:\/\//i.test(inner)) return href;
-  try {
-    return new URL(inner).href;
-  } catch {
-    return href;
-  }
+  if (!inner || !/^https?:\/\//i.test(inner)) return null;
+  return parse(inner)?.href ?? null;
+}
+
+/** Whether a safe link's signature is missing or is not of its shape. */
+export function safeLinkIsBroken(href: string): boolean {
+  if (!safeLinkTarget(href)) return false;
+  const signature = parse(href)?.searchParams.get("sdata") ?? "";
+  return !SIGNATURE.test(signature);
+}
+
+/** The link to follow: a broken safe link's real address, else the link. */
+export function repairSafeLink(href: string): string {
+  return safeLinkIsBroken(href) ? (safeLinkTarget(href) ?? href) : href;
 }

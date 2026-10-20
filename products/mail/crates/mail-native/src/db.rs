@@ -22,6 +22,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Value};
 
 use crate::secrets::Secrets;
+use crate::lock::LockExt;
 
 #[derive(Debug)]
 pub enum DbError {
@@ -201,31 +202,31 @@ impl TokenVault for CachedVault {
     let key = vault_key(provider, email);
     // Compare what is held. A read of the keychain to decide this would put
     // the prompt back on screen, which is the thing this skip removes.
-    if let Some(Some(held)) = self.seen.lock().unwrap().get(&key) {
+    if let Some(Some(held)) = self.seen.locked().get(&key) {
       if held == token {
         return Ok(());
       }
     }
     self.inner.store(provider, email, token)?;
-    self.seen.lock().unwrap().insert(key, Some(token.to_string()));
+    self.seen.locked().insert(key, Some(token.to_string()));
     Ok(())
   }
 
   fn read(&self, provider: &str, email: &str) -> DbResult<Option<String>> {
     let key = vault_key(provider, email);
-    if let Some(held) = self.seen.lock().unwrap().get(&key) {
+    if let Some(held) = self.seen.locked().get(&key) {
       return Ok(held.clone());
     }
     let token = self.inner.read(provider, email)?;
     // A missing token is remembered too, or every read of a mailbox that has
     // none goes back to the keychain.
-    self.seen.lock().unwrap().insert(key, token.clone());
+    self.seen.locked().insert(key, token.clone());
     Ok(token)
   }
 
   fn remove(&self, provider: &str, email: &str) -> DbResult<()> {
     self.inner.remove(provider, email)?;
-    self.seen.lock().unwrap().insert(vault_key(provider, email), None);
+    self.seen.locked().insert(vault_key(provider, email), None);
     Ok(())
   }
 }
@@ -238,6 +239,9 @@ pub struct MailDb {
   siblings: Vec<PathBuf>,
   /// Removes an Exchange password. See account_exchange.rs.
   pub(crate) exchange_remover: Mutex<Option<crate::account_exchange::ExchangeRemover>>,
+  /// Outbox rows that the server took, but the store could not record.
+  /// See `outbox_record_sent`.
+  pub(crate) outbox_unrecorded: Mutex<std::collections::HashSet<i64>>,
 }
 
 impl MailDb {
@@ -248,8 +252,26 @@ impl MailDb {
     self.vault.read(provider, email)
   }
 
+  /// The one connection. Every operation takes it here.
+  ///
+  /// If a thread panicked while it held the connection, the lock is
+  /// poisoned. The store goes on: an open transaction is rolled back, and
+  /// the poison is cleared. See lock.rs.
   pub(crate) fn conn_mut(&self) -> std::sync::MutexGuard<'_, Connection> {
-    self.conn.lock().unwrap()
+    match self.conn.lock() {
+      Ok(conn) => conn,
+      Err(poisoned) => {
+        let conn = poisoned.into_inner();
+        if !conn.is_autocommit() {
+          if let Err(e) = conn.execute_batch("ROLLBACK") {
+            log::warn!("[mail-db] could not roll back after a panic: {e}");
+          }
+        }
+        self.conn.clear_poison();
+        log::warn!("[mail-db] a thread panicked while it held the store; the store goes on");
+        conn
+      }
+    }
   }
 
   pub fn open(path: &PathBuf, secrets: Secrets) -> DbResult<Self> {
@@ -288,143 +310,14 @@ impl MailDb {
       vault,
       siblings: Vec::new(),
       exchange_remover: Mutex::new(None),
+      outbox_unrecorded: Mutex::new(Default::default()),
     };
     db.migrate()?;
     Ok(db)
   }
 
   fn migrate(&self) -> DbResult<()> {
-    let conn = self.conn.lock().unwrap();
-    conn.execute_batch(
-      r#"
-      CREATE TABLE IF NOT EXISTS settings (
-        key        TEXT PRIMARY KEY,
-        value      TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
-      -- One cached provider list page per mailbox and folder.
-      CREATE TABLE IF NOT EXISTS list_sync_state (
-        owner_id         TEXT NOT NULL,
-        folder           TEXT NOT NULL,
-        account_email    TEXT NOT NULL,
-        history_id       TEXT,
-        next_page_token  TEXT,
-        rows             TEXT NOT NULL,
-        rows_fingerprint TEXT,
-        updated_at       INTEGER NOT NULL,
-        PRIMARY KEY (owner_id, folder, account_email)
-      );
-
-      CREATE TABLE IF NOT EXISTS snoozes (
-        account_email   TEXT NOT NULL,
-        thread_id       TEXT NOT NULL,
-        snoozed_until   TEXT NOT NULL,
-        tip_message_id  TEXT,
-        created_at      INTEGER NOT NULL,
-        PRIMARY KEY (account_email, thread_id)
-      );
-      CREATE INDEX IF NOT EXISTS snoozes_until_idx ON snoozes (snoozed_until);
-
-      -- Connected mailboxes. Refresh tokens are NOT here: they go to the
-      -- keychain. See the note at the top of this file.
-      CREATE TABLE IF NOT EXISTS accounts (
-        provider        TEXT NOT NULL,
-        email           TEXT NOT NULL,
-        owner_id        TEXT NOT NULL,
-        history_id      TEXT,
-        last_synced_at  TEXT,
-        last_sync_error TEXT,
-        in_mail_tab     INTEGER NOT NULL DEFAULT 1,
-        sort_order      INTEGER NOT NULL DEFAULT 0,
-        updated_at      INTEGER NOT NULL,
-        PRIMARY KEY (provider, email, owner_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS contact_source_state (
-        source     TEXT NOT NULL,
-        account    TEXT NOT NULL,
-        synced_at  TEXT,
-        item_count INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT,
-        PRIMARY KEY (source, account)
-      );
-
-      CREATE TABLE IF NOT EXISTS source_contacts (
-        source          TEXT NOT NULL,
-        account         TEXT NOT NULL,
-        email           TEXT NOT NULL,
-        name            TEXT NOT NULL DEFAULT '',
-        last_emailed_at TEXT,
-        hidden          INTEGER NOT NULL DEFAULT 0,
-        synced_at       TEXT,
-        -- The address book's own id for the card this address is on, so two
-        -- addresses on one card are one person. NULL for history rows.
-        card            TEXT,
-        PRIMARY KEY (source, account, email)
-      );
-
-      -- A conversation, its parts, and the provider threads bound to them.
-      CREATE TABLE IF NOT EXISTS chats (
-        id                      TEXT PRIMARY KEY,
-        title                   TEXT NOT NULL,
-        created_by_account      TEXT NOT NULL,
-        participant_fingerprint TEXT NOT NULL,
-        participant_emails      TEXT NOT NULL DEFAULT '[]',
-        status                  TEXT NOT NULL DEFAULT 'active',
-        rotate_at               INTEGER NOT NULL,
-        no_quote                INTEGER NOT NULL DEFAULT 0,
-        updated_at              INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS chat_parts (
-        id            TEXT PRIMARY KEY,
-        chat_id       TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-        part_index    INTEGER NOT NULL,
-        subject       TEXT NOT NULL,
-        status        TEXT NOT NULL DEFAULT 'open',
-        message_count INTEGER NOT NULL DEFAULT 0,
-        opened_at     TEXT,
-        closed_at     TEXT
-      );
-      CREATE INDEX IF NOT EXISTS chat_parts_chat_idx ON chat_parts (chat_id);
-
-      CREATE TABLE IF NOT EXISTS chat_part_bindings (
-        part_id                 TEXT NOT NULL REFERENCES chat_parts(id) ON DELETE CASCADE,
-        account_email           TEXT NOT NULL,
-        provider                TEXT NOT NULL,
-        provider_thread_id      TEXT NOT NULL,
-        provider_tip_message_id TEXT,
-        PRIMARY KEY (account_email, provider_thread_id)
-      );
-      CREATE INDEX IF NOT EXISTS chat_bindings_part_idx ON chat_part_bindings (part_id);
-
-      -- The RFC Message-IDs a bound thread holds. A thread the provider
-      -- split off references these, and the reference is how it rejoins
-      -- its conversation. See docs/mail-chat-architecture.md.
-      CREATE TABLE IF NOT EXISTS chat_message_ids (
-        account_email  TEXT NOT NULL,
-        rfc_message_id TEXT NOT NULL,
-        chat_id        TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-        part_id        TEXT NOT NULL,
-        PRIMARY KEY (account_email, rfc_message_id)
-      );
-      CREATE INDEX IF NOT EXISTS chat_message_ids_chat_idx ON chat_message_ids (chat_id);
-
-      "#,
-    )?;
-    // Books made before the card column existed. SQLite has no "add if
-    // missing", so the duplicate-column error is the one to swallow.
-    let _ = conn.execute("ALTER TABLE source_contacts ADD COLUMN card TEXT", []);
-    crate::account_exchange::migrate(&conn);
-    crate::outbox::migrate(&conn)?;
-    // The local copy of the mail lives in its own module.
-    crate::messages::migrate(&conn)?;
-    conn.execute_batch(crate::actions::SCHEMA)?;
-    conn.execute_batch(crate::outbox::SCHEMA)?;
-    conn.execute_batch(crate::scheduled_sends::SCHEMA)?;
-    crate::scheduled_sends::migrate(&conn);
-    Ok(())
+    crate::schema::migrate(&self.conn_mut())
   }
 }
 
@@ -644,7 +537,7 @@ impl MailDb {
   fn accounts_list_for_owner(&self, args: &Value) -> DbResult<Value> {
     let provider = str_arg(args, "provider")?;
     let owner_id = str_arg(args, "ownerId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT email, owner_id, history_id, last_synced_at, last_sync_error, in_mail_tab, ews_url, ews_username
          FROM accounts WHERE provider = ?1 AND owner_id = ?2
@@ -662,7 +555,7 @@ impl MailDb {
   /// sync does not restart when several owners connected the same mailbox.
   fn accounts_list_all(&self, args: &Value) -> DbResult<Value> {
     let provider = str_arg(args, "provider")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT email, owner_id, history_id, last_synced_at, last_sync_error, in_mail_tab, ews_url, ews_username
          FROM accounts WHERE provider = ?1
@@ -685,7 +578,7 @@ impl MailDb {
     if wanted.is_empty() {
       return Ok(json!([]));
     }
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt =
       conn.prepare("SELECT email FROM accounts WHERE provider = ?1 AND owner_id = ?2")?;
     let rows = stmt.query_map(params![provider, owner_id], |r| r.get::<_, String>(0))?;
@@ -702,7 +595,7 @@ impl MailDb {
   fn accounts_exists(&self, args: &Value) -> DbResult<Value> {
     let provider = str_arg(args, "provider")?;
     let email = str_arg(args, "email")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let n: i64 = conn.query_row(
       "SELECT COUNT(*) FROM accounts WHERE provider = ?1 AND email = ?2",
       params![provider, email],
@@ -719,7 +612,7 @@ impl MailDb {
       .get("inMailTab")
       .and_then(Value::as_bool)
       .ok_or_else(|| DbError::BadArgument("inMailTab".into()))?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let n = conn.execute(
       "UPDATE accounts SET in_mail_tab = ?4, updated_at = ?5
         WHERE provider = ?1 AND owner_id = ?2 AND email = ?3",
@@ -732,7 +625,7 @@ impl MailDb {
     let provider = str_arg(args, "provider")?;
     let owner_id = str_arg(args, "ownerId")?;
     let emails = str_list_arg(args, "emails")?;
-    let mut conn = self.conn.lock().unwrap();
+    let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     for (index, email) in emails.iter().enumerate() {
       tx.execute(
@@ -749,7 +642,7 @@ impl MailDb {
     let provider = str_arg(args, "provider")?;
     let owner_id = str_arg(args, "ownerId")?;
     let email = str_arg(args, "email")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let n = conn.execute(
       "DELETE FROM accounts WHERE provider = ?1 AND owner_id = ?2 AND email = ?3",
       params![provider, owner_id, email],
@@ -821,7 +714,7 @@ impl MailDb {
     } else {
       None
     };
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE accounts
           SET history_id = COALESCE(?3, history_id),
@@ -847,7 +740,7 @@ impl MailDb {
     let owner_id = str_arg(input, "ownerId")?;
     let token = str_arg(input, "refreshToken")?;
     {
-      let conn = self.conn.lock().unwrap();
+      let conn = self.conn_mut();
       conn.execute(
         "INSERT INTO accounts (provider, email, owner_id, history_id, last_sync_error, updated_at)
          VALUES (?1, ?2, ?3, NULL, NULL, ?4)
@@ -868,7 +761,7 @@ impl MailDb {
     crate::account_exchange::refuse_token_operation(&provider, "accounts.getToken")?;
     let email = str_arg(args, "email")?;
     let owner: Option<String> = {
-      let conn = self.conn.lock().unwrap();
+      let conn = self.conn_mut();
       conn
         .query_row(
           "SELECT owner_id FROM accounts WHERE provider = ?1 AND email = ?2
@@ -897,7 +790,7 @@ impl MailDb {
     let email = str_arg(args, "email")?;
     let token = str_arg(args, "refreshToken")?;
     self.vault.store(&provider, &email, &token)?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE accounts SET updated_at = ?3 WHERE provider = ?1 AND email = ?2",
       params![provider, email, now_ms()],
@@ -908,7 +801,7 @@ impl MailDb {
   // --- contact sources --------------------------------------------------
 
   fn sources_list_state(&self) -> DbResult<Value> {
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT source, account, synced_at, item_count, last_error FROM contact_source_state",
     )?;
@@ -938,7 +831,7 @@ impl MailDb {
     let error = update.get("error").and_then(Value::as_str);
     let synced = update.get("synced").and_then(Value::as_bool).unwrap_or(false);
     let synced_at = if synced { opt_str_arg(args, "now") } else { None };
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "INSERT INTO contact_source_state (source, account, synced_at, item_count, last_error)
        VALUES (?1, ?2, ?3, COALESCE(?4, 0), ?5)
@@ -954,7 +847,7 @@ impl MailDb {
   fn sources_clear_error(&self, args: &Value) -> DbResult<Value> {
     let source = str_arg(args, "source")?;
     let account = str_arg(args, "account")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE contact_source_state SET last_error = NULL WHERE source = ?1 AND account = ?2",
       params![source, account],
@@ -972,7 +865,7 @@ impl MailDb {
       .ok_or_else(|| DbError::BadArgument("contacts".into()))?
       .clone();
     let now = opt_str_arg(args, "now");
-    let mut conn = self.conn.lock().unwrap();
+    let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     tx.execute(
       "DELETE FROM source_contacts WHERE source = ?1 AND account = ?2",
@@ -1006,7 +899,7 @@ impl MailDb {
       .ok_or_else(|| DbError::BadArgument("contacts".into()))?
       .clone();
     let now = opt_str_arg(args, "now");
-    let mut conn = self.conn.lock().unwrap();
+    let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     for contact in &contacts {
       let email = contact.get("email").and_then(Value::as_str).unwrap_or("");
@@ -1036,7 +929,7 @@ impl MailDb {
 
   fn sources_count_history(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "account")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let n: i64 = conn.query_row(
       "SELECT COUNT(*) FROM source_contacts
         WHERE source = 'history' AND account = ?1 AND hidden = 0",
@@ -1052,7 +945,7 @@ impl MailDb {
     if accounts.is_empty() {
       return Ok(json!([]));
     }
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     // 'mac' sorts first: the book the reader keeps by hand, so its spelling of
     // a name wins over one a provider saved automatically.
     let mut stmt = conn.prepare(
@@ -1098,7 +991,7 @@ impl MailDb {
   /// the first name found (Mac, Google, Outlook, history, as in
   /// `sources_list_visible`) and its latest send time.
   pub fn known_contacts(&self) -> DbResult<Value> {
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT sc.email, sc.name, sc.last_emailed_at
          FROM source_contacts sc
@@ -1151,7 +1044,7 @@ impl MailDb {
 
   fn sources_hide_history(&self, args: &Value) -> DbResult<Value> {
     let email = str_arg(args, "email")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE source_contacts SET hidden = 1 WHERE source = 'history' AND email = ?1",
       params![email],
@@ -1194,7 +1087,7 @@ impl MailDb {
   fn chats_find_binding(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "account")?;
     let thread_id = str_arg(args, "threadId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let sql = format!(
       "{} WHERE b.account_email = ?1 AND b.provider_thread_id = ?2 LIMIT 1",
       Self::BINDING_SQL
@@ -1221,7 +1114,7 @@ impl MailDb {
     if wanted.is_empty() {
       return Ok(json!({}));
     }
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(Self::BINDING_SQL)?;
     let rows = stmt.query_map([], Self::binding_row)?;
     let mut out = serde_json::Map::new();
@@ -1248,7 +1141,7 @@ impl MailDb {
       .cloned()
       .unwrap_or(json!([]))
       .to_string();
-    let mut conn = self.conn.lock().unwrap();
+    let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     tx.execute(
       "INSERT INTO chats (id, title, created_by_account, participant_fingerprint,
@@ -1296,7 +1189,7 @@ impl MailDb {
       .get("noQuote")
       .and_then(Value::as_bool)
       .ok_or_else(|| DbError::BadArgument("noQuote".into()))?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE chats SET no_quote = ?2, updated_at = ?3 WHERE id = ?1",
       params![chat_id, no_quote as i64, now_ms()],
@@ -1306,7 +1199,7 @@ impl MailDb {
 
   fn chats_find_open_part(&self, args: &Value) -> DbResult<Value> {
     let chat_id = str_arg(args, "chatId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let found = conn
       .query_row(
         "SELECT id, part_index, subject, message_count FROM chat_parts
@@ -1328,7 +1221,7 @@ impl MailDb {
   fn chats_find_part_thread(&self, args: &Value) -> DbResult<Value> {
     let part_id = str_arg(args, "partId")?;
     let account = str_arg(args, "account")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let found: Option<String> = conn
       .query_row(
         "SELECT provider_thread_id FROM chat_part_bindings
@@ -1346,7 +1239,7 @@ impl MailDb {
       .get("input")
       .ok_or_else(|| DbError::BadArgument("input".into()))?;
     let now = opt_str_arg(args, "now");
-    let mut conn = self.conn.lock().unwrap();
+    let mut conn = self.conn_mut();
     let tx = conn.transaction()?;
     tx.execute(
       "UPDATE chat_parts SET status = 'closed', closed_at = ?2 WHERE id = ?1",
@@ -1373,7 +1266,7 @@ impl MailDb {
 
   fn chats_add_message(&self, args: &Value) -> DbResult<Value> {
     let part_id = str_arg(args, "partId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE chat_parts SET message_count = message_count + 1 WHERE id = ?1",
       params![part_id],
@@ -1395,7 +1288,7 @@ impl MailDb {
       .and_then(Value::as_i64)
       .ok_or_else(|| DbError::BadArgument("messageCount".into()))?
       .max(0);
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE chat_parts SET message_count = ?3
         WHERE id = (SELECT part_id FROM chat_part_bindings
@@ -1422,7 +1315,7 @@ impl MailDb {
       .filter(|v| !v.is_empty())
       .map(str::to_owned)
       .collect();
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     // The binding names the part. An unbound thread remembers nothing.
     let Some((chat_id, part_id)) = conn
       .query_row(
@@ -1459,7 +1352,7 @@ impl MailDb {
       .filter(|v| !v.is_empty())
       .map(str::to_owned)
       .collect();
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     for id in ids {
       let hit = conn
         .query_row(
@@ -1496,7 +1389,7 @@ impl MailDb {
       .get("input")
       .ok_or_else(|| DbError::BadArgument("input".into()))?;
     let tip = opt_str_arg(input, "tipMessageId");
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "INSERT INTO chat_part_bindings
          (part_id, account_email, provider, provider_thread_id, provider_tip_message_id)
@@ -1518,7 +1411,7 @@ impl MailDb {
 
   fn chats_touch(&self, args: &Value) -> DbResult<Value> {
     let chat_id = str_arg(args, "chatId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "UPDATE chats SET updated_at = ?2 WHERE id = ?1",
       params![chat_id, now_ms()],
@@ -1529,7 +1422,7 @@ impl MailDb {
   fn chats_list_parts(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "account")?;
     let chat_id = str_arg(args, "chatId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT p.part_index, p.subject, p.status, b.provider_thread_id,
               p.opened_at, p.closed_at, p.message_count
@@ -1560,7 +1453,7 @@ impl MailDb {
 
   fn settings_get(&self, args: &Value) -> DbResult<Value> {
     let key = str_arg(args, "key")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let value: Option<String> = conn
       .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| {
         r.get(0)
@@ -1572,7 +1465,7 @@ impl MailDb {
   fn settings_set(&self, args: &Value) -> DbResult<Value> {
     let key = str_arg(args, "key")?;
     let value = str_arg(args, "value")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
        ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",
@@ -1592,7 +1485,7 @@ impl MailDb {
     }
     // Gmail drops history ids after about a week, so an old page is unusable.
     let cutoff = now_ms() - 2 * 24 * 60 * 60 * 1000;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut out = serde_json::Map::new();
     let mut stmt = conn.prepare(
       "SELECT account_email, history_id, next_page_token, rows
@@ -1659,7 +1552,7 @@ impl MailDb {
       .ok_or_else(|| DbError::BadArgument("entry.rows".into()))?;
     let history_id = entry.get("historyId").and_then(Value::as_str);
     let next_page_token = entry.get("nextPageToken").and_then(Value::as_str);
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     // COALESCE keeps the stored position when this poll learned nothing new.
     conn.execute(
       "INSERT INTO list_sync_state
@@ -1685,7 +1578,7 @@ impl MailDb {
   }
 
   fn list_sync_clear(&self) -> DbResult<Value> {
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute("DELETE FROM list_sync_state", [])?;
     Ok(Value::Null)
   }
@@ -1695,7 +1588,7 @@ impl MailDb {
   fn snoozes_list_active(&self, args: &Value) -> DbResult<Value> {
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(0);
     let now = current_iso(args)?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let sql = String::from(
       "SELECT account_email, thread_id, snoozed_until, tip_message_id
          FROM snoozes WHERE snoozed_until > ?1 ORDER BY snoozed_until ASC",
@@ -1727,7 +1620,7 @@ impl MailDb {
       return Ok(json!(0));
     }
     let now = current_iso(args)?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     let mut stmt = conn.prepare(
       "SELECT account_email FROM snoozes WHERE snoozed_until > ?1",
     )?;
@@ -1749,7 +1642,7 @@ impl MailDb {
     let thread_id = str_arg(record, "threadId")?;
     let until = str_arg(record, "snoozedUntil")?;
     let tip = opt_str_arg(record, "tipMessageId");
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     // A null tip keeps the stored one.
     conn.execute(
       "INSERT INTO snoozes
@@ -1767,7 +1660,7 @@ impl MailDb {
   fn snoozes_remove(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "accountEmail")?;
     let thread_id = str_arg(args, "threadId")?;
-    let conn = self.conn.lock().unwrap();
+    let conn = self.conn_mut();
     conn.execute(
       "DELETE FROM snoozes WHERE account_email = ?1 AND thread_id = ?2",
       params![account, thread_id],
@@ -1805,7 +1698,7 @@ mod tests {
   /// The store as the first shipped build made it, on 2026-09-08: no
   /// `folder` on messages, a UID unique on the account alone, no
   /// `failed_at` or draft on the outbox. Kept here so an upgrade from it
-  /// is tried on every run, since Mikkel's Mac holds one.
+  /// is tried on every run: some users' stores still have it.
   const FIRST_SHIPPED_SCHEMA: &str = r#"
     CREATE TABLE messages (
       account_email TEXT NOT NULL, message_id TEXT NOT NULL, thread_id TEXT NOT NULL,
@@ -1947,16 +1840,15 @@ mod tests {
     fn store(&self, provider: &str, email: &str, token: &str) -> DbResult<()> {
       self
         .items
-        .lock()
-        .unwrap()
+        .locked()
         .insert(format!("{provider}:{email}"), token.to_string());
       Ok(())
     }
     fn read(&self, provider: &str, email: &str) -> DbResult<Option<String>> {
-      Ok(self.items.lock().unwrap().get(&format!("{provider}:{email}")).cloned())
+      Ok(self.items.locked().get(&format!("{provider}:{email}")).cloned())
     }
     fn remove(&self, provider: &str, email: &str) -> DbResult<()> {
-      self.items.lock().unwrap().remove(&format!("{provider}:{email}"));
+      self.items.locked().remove(&format!("{provider}:{email}"));
       Ok(())
     }
   }
@@ -2183,7 +2075,7 @@ mod tests {
   fn accounts_list_order_scope_and_removal() {
     let db = db();
     let add = |email: &str, owner: &str, order: i64| {
-      let conn = db.conn.lock().unwrap();
+      let conn = db.conn.locked();
       conn.execute(
         "INSERT INTO accounts (provider, email, owner_id, in_mail_tab, sort_order, updated_at)
          VALUES ('gmail', ?1, ?2, 1, ?3, 0)",
@@ -2273,7 +2165,7 @@ mod tests {
   fn known_contacts_come_from_connected_mailboxes_once_per_address() {
     let db = db();
     {
-      let conn = db.conn.lock().unwrap();
+      let conn = db.conn.locked();
       conn
         .execute(
           "INSERT INTO accounts (provider, email, owner_id, in_mail_tab, sort_order, updated_at)
@@ -2588,11 +2480,11 @@ mod tests {
 
   impl TokenVault for CountingVault {
     fn store(&self, p: &str, e: &str, t: &str) -> DbResult<()> {
-      *self.stores.lock().unwrap() += 1;
+      *self.stores.locked() += 1;
       self.inner.store(p, e, t)
     }
     fn read(&self, p: &str, e: &str) -> DbResult<Option<String>> {
-      *self.reads.lock().unwrap() += 1;
+      *self.reads.locked() += 1;
       self.inner.read(p, e)
     }
     fn remove(&self, p: &str, e: &str) -> DbResult<()> {
@@ -2616,13 +2508,13 @@ mod tests {
       assert_eq!(vault.read("gmail", "a@x").unwrap().as_deref(), Some("rt-1"));
     }
     // Storing seeded it, so nothing had to be read at all.
-    assert_eq!(*reads.lock().unwrap(), 0);
+    assert_eq!(*reads.locked(), 0);
 
     // A mailbox with no token must not be asked for again either.
     for _ in 0..3 {
       assert_eq!(vault.read("gmail", "nobody@x").unwrap(), None);
     }
-    assert_eq!(*reads.lock().unwrap(), 1);
+    assert_eq!(*reads.locked(), 1);
   }
 
   #[test]
@@ -2638,15 +2530,15 @@ mod tests {
 
     vault.store("gmail", "a@x", "rt-1").unwrap();
     vault.store("gmail", "a@x", "rt-1").unwrap();
-    assert_eq!(*stores.lock().unwrap(), 1, "the same token is not written twice");
+    assert_eq!(*stores.locked(), 1, "the same token is not written twice");
 
     vault.store("gmail", "a@x", "rt-2").unwrap();
-    assert_eq!(*stores.lock().unwrap(), 2, "a different token still goes through");
+    assert_eq!(*stores.locked(), 2, "a different token still goes through");
 
     vault.remove("gmail", "a@x").unwrap();
     vault.store("gmail", "a@x", "rt-2").unwrap();
     assert_eq!(
-      *stores.lock().unwrap(),
+      *stores.locked(),
       3,
       "remove clears what was held, so the next store writes"
     );
@@ -2687,7 +2579,7 @@ mod tests {
 
     // The row exists, and the token is not in any column of it.
     let stored: String = {
-      let conn = db.conn.lock().unwrap();
+      let conn = db.conn.locked();
       conn
         .query_row(
           "SELECT COALESCE(provider,'') || COALESCE(email,'') || COALESCE(owner_id,'')

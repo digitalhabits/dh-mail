@@ -34,6 +34,7 @@ use crate::db::MailDb;
 use crate::ews_ops::FolderSummary;
 use crate::ntlm;
 use crate::secrets::Secrets;
+use crate::lock::LockExt;
 
 /// The EWS schema version in the requests this app writes. Thunderbird
 /// sends the same to Exchange 2019. See `ews_ops::VERSION`.
@@ -240,7 +241,7 @@ impl EwsClient {
     if self.refused.load(Ordering::SeqCst) {
       return Err(EwsError::Refused);
     }
-    let scheme = *self.scheme.lock().unwrap();
+    let scheme = *self.scheme.locked();
     let result = match scheme {
       Some(Scheme::Basic) => self.call_basic(body).await,
       Some(Scheme::Ntlm) | None => self.call_ntlm(body, scheme.is_none()).await,
@@ -286,7 +287,7 @@ impl EwsClient {
       return Err(EwsError::Network("the server sent NTLM with no challenge".into()));
     }
     if may_fall_back && offers(&offered, "basic") {
-      *self.scheme.lock().unwrap() = Some(Scheme::Basic);
+      *self.scheme.locked() = Some(Scheme::Basic);
       return self.call_basic(body).await;
     }
     Err(EwsError::NoScheme(if offered.is_empty() {
@@ -318,7 +319,7 @@ impl EwsClient {
     if response.status().as_u16() == 401 {
       return Err(EwsError::Refused);
     }
-    *self.scheme.lock().unwrap() = Some(Scheme::Ntlm);
+    *self.scheme.locked() = Some(Scheme::Ntlm);
     finish(response).await
   }
 
@@ -542,7 +543,7 @@ impl EwsAccounts {
 
   pub fn client(&self, secrets: &Secrets, email: &str) -> EwsResult<Arc<EwsClient>> {
     let key = normalize_email(email);
-    if let Some(client) = self.0.lock().unwrap().get(&key) {
+    if let Some(client) = self.0.locked().get(&key) {
       return Ok(client.clone());
     }
     let raw = secrets
@@ -554,15 +555,15 @@ impl EwsAccounts {
     let client = Arc::new(EwsClient::new(settings)?);
     // Two first calls at once can both read the keychain. The first to
     // get here wins, so both use one client.
-    Ok(self.0.lock().unwrap().entry(key).or_insert(client).clone())
+    Ok(self.0.locked().entry(key).or_insert(client).clone())
   }
 
   fn put(&self, email: &str, client: Arc<EwsClient>) {
-    self.0.lock().unwrap().insert(normalize_email(email), client);
+    self.0.locked().insert(normalize_email(email), client);
   }
 
   fn forget(&self, email: &str) {
-    self.0.lock().unwrap().remove(&normalize_email(email));
+    self.0.locked().remove(&normalize_email(email));
   }
 
   /// Remove an account's password: the client in memory and the keychain

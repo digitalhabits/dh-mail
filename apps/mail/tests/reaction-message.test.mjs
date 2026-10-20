@@ -112,19 +112,19 @@ suite(async () => {
   // never showed at either end. That is the bug these hold shut.
 
   {
-    const { text, html } = quotedReplyMessage("Korrekt, I'll build it", {
-      fromName: "Mikkel",
-      text: "Kan du også tilføje emoji-responses?",
+    const { text, html } = quotedReplyMessage("Javel, jeg tager kagen med", {
+      fromName: "Freja",
+      text: "Kan du også tage en kage med?",
     });
     check(
       "what is being answered comes first",
-      text.startsWith("> Mikkel: \u201cKan du også tilføje emoji-responses?\u201d"),
+      text.startsWith("> Freja: \u201cKan du også tage en kage med?\u201d"),
       text.replace(/\n/g, "\\n")
     );
-    check("and the reply follows it", text.trimEnd().endsWith("Korrekt, I'll build it"));
+    check("and the reply follows it", text.trimEnd().endsWith("Javel, jeg tager kagen med"));
     check(
       "the html puts the quote above the reply",
-      html.indexOf("Kan du også") < html.indexOf("Korrekt"),
+      html.indexOf("Kan du også") < html.indexOf("Javel"),
     );
     check("the quote is in its card", html.includes("border-left:3px solid #0d9488"));
   }
@@ -205,20 +205,20 @@ suite(async () => {
 
   {
     const { html } = quotedReplyMessage("On my way", {
-      fromName: "Mikkel",
+      fromName: "Freja",
       text: "Are you coming?",
     });
     check("the name is its own line", html.includes("font-weight:600"));
     check(
       "and comes before what they said",
-      html.indexOf("Mikkel") < html.indexOf("Are you coming?")
+      html.indexOf("Freja") < html.indexOf("Are you coming?")
     );
     check("the bar is still down the left", html.includes("border-left:3px"));
     // Flattened it must still read as a quote — see the folded-row checks.
     const asText = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     check(
       "flattened it is a name, a quote, then the reply",
-      asText === "Mikkel \u201cAre you coming?\u201d On my way",
+      asText === "Freja \u201cAre you coming?\u201d On my way",
       asText
     );
   }

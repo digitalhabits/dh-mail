@@ -2,10 +2,11 @@
  * A message's HTML made safe, and a reply's quote cut off
  * (lib/mail/email-html.ts).
  *
- * The sanitizer is one of two guards: the frame's CSP is the other (see
- * EmailHtmlView.tsx). These checks hold the first one to what it promises:
- * no blocked element, no handler, no script link survives it. The mail is
- * invented.
+ * The sanitizer is one of three barriers: the frame's CSP and its sandbox
+ * are the others (see EmailHtmlView.tsx). These checks hold the first one to
+ * what it promises: no blocked element, no handler, no script link survives
+ * it. The known ways past a sanitizer are in email-allowlist.test.mjs. The
+ * mail is invented.
  */
 
 import { Window } from "happy-dom";

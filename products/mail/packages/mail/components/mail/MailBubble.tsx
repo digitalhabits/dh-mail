@@ -418,9 +418,9 @@ export function MailBubble({
    *
    * What every other client does instead is re-light the message: dark
    * words come up light, light backgrounds go down dark, and the colours
-   * that read either way are left. That is `recolorEmailForDark`, in the
-   * frame, and it means every HTML message sits on the card. There is no
-   * white sheet any more.
+   * that read either way are left. That is `recolorForDark`, in the
+   * frame script (`lib/mail/frame-script/dark.ts`), and it means every
+   * HTML message sits on the card. There is no white sheet any more.
    */
   const colorMode = useMailColorMode();
   const readInTheDark = colorMode === "dark" && showHtml;

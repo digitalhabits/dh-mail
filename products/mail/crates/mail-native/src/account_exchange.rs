@@ -20,6 +20,7 @@
 use rusqlite::{params, Connection};
 
 use crate::db::{now_ms, DbError, DbResult, MailDb};
+use crate::lock::LockExt;
 
 /// The provider name of an Exchange account.
 pub const EXCHANGE: &str = "exchange";
@@ -28,11 +29,12 @@ pub const EXCHANGE: &str = "exchange";
 /// `exchange` feature is on.
 pub type ExchangeRemover = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-/// Add the two columns to a store made before they existed. SQLite has no
-/// "add if missing", so the duplicate-column error is the one to swallow.
-pub fn migrate(conn: &Connection) {
-  let _ = conn.execute("ALTER TABLE accounts ADD COLUMN ews_url TEXT", []);
-  let _ = conn.execute("ALTER TABLE accounts ADD COLUMN ews_username TEXT", []);
+/// Add the two columns to a store made before they existed. An upgrade
+/// step in schema.rs calls this.
+pub fn add_columns(conn: &Connection) -> DbResult<()> {
+  crate::schema::add_column(conn, "accounts", "ews_url", "TEXT")?;
+  crate::schema::add_column(conn, "accounts", "ews_username", "TEXT")?;
+  Ok(())
 }
 
 /// Refuse a token operation on an Exchange account. See the module notes.
@@ -63,7 +65,7 @@ impl MailDb {
 
   /// Give the store the way to remove an Exchange password.
   pub fn set_exchange_remover(&self, remover: ExchangeRemover) {
-    *self.exchange_remover.lock().unwrap() = Some(remover);
+    *self.exchange_remover.locked() = Some(remover);
   }
 
   /// Remove the secret of a mailbox whose last row went. An Exchange
@@ -72,7 +74,7 @@ impl MailDb {
     if provider != EXCHANGE {
       return self.vault.remove(provider, email);
     }
-    match self.exchange_remover.lock().unwrap().as_ref() {
+    match self.exchange_remover.locked().as_ref() {
       Some(remove) => remove(email).map_err(DbError::Vault),
       // A build without Exchange has no password to remove.
       None => Ok(()),
@@ -83,6 +85,8 @@ impl MailDb {
 #[cfg(test)]
 mod tests {
   use std::sync::{Arc, Mutex};
+
+  use crate::lock::LockExt;
 
   use serde_json::json;
 
@@ -135,12 +139,12 @@ mod tests {
     let removed = Arc::new(Mutex::new(Vec::<String>::new()));
     let seen = removed.clone();
     db.set_exchange_remover(Box::new(move |email| {
-      seen.lock().unwrap().push(email.to_string());
+      seen.locked().push(email.to_string());
       Ok(())
     }));
     db.accounts_save_exchange("a@example.com", "local", "https://mail.example.com/EWS/Exchange.asmx", "a").unwrap();
     let args = json!({"provider": "exchange", "ownerId": "local", "email": "a@example.com"});
     assert_eq!(db.call("accounts.remove", &args).unwrap(), json!(true));
-    assert_eq!(*removed.lock().unwrap(), vec!["a@example.com".to_string()]);
+    assert_eq!(*removed.locked(), vec!["a@example.com".to_string()]);
   }
 }

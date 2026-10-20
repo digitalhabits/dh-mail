@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tiny_http::{Header, Response, Server};
+use crate::lock::LockExt;
 
 #[derive(Default)]
 pub struct OauthListener {
@@ -41,7 +42,7 @@ impl OauthListener {
       .to_ip()
       .ok_or_else(|| "loopback address has no port".to_string())?
       .port();
-    *self.server.lock().unwrap() = Some(Arc::new(server));
+    *self.server.locked() = Some(Arc::new(server));
     Ok(port)
   }
 
@@ -55,7 +56,7 @@ impl OauthListener {
   ///
   /// Does nothing when no wait is in flight, so calling it twice is safe.
   pub fn cancel(&self) {
-    if let Some(server) = self.server.lock().unwrap().take() {
+    if let Some(server) = self.server.locked().take() {
       server.unblock();
     }
   }
@@ -68,8 +69,7 @@ impl OauthListener {
     // Cloned, not taken: `cancel` needs to find it here while this waits.
     let server = self
       .server
-      .lock()
-      .unwrap()
+      .locked()
       .clone()
       .ok_or_else(|| "no listener is bound".to_string())?;
 
@@ -77,7 +77,7 @@ impl OauthListener {
     // Done with it either way — the port goes back, and a cancel arriving
     // after this finds nothing to unblock rather than the next flow's
     // listener.
-    self.server.lock().unwrap().take();
+    self.server.locked().take();
     let request = received.map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1{}", request.url());
     let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;

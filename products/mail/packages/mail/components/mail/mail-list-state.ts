@@ -636,7 +636,7 @@ export type ActiveMailFolder = MailFolder & {
  *
  * A pause does not hold these back. A pause stops new mail from coming in,
  * and sent mail is not new mail: Sent is where you check that a message
- * went, also from a paused mailbox (Mikkel, 2026-10-19).
+ * went, also from a paused mailbox (a tester, 2026-10-19).
  */
 export function listShowsSentOnly(folder: string, activeFolder: ActiveMailFolder | null): boolean {
   if (activeFolder) return activeFolder.role === "sent";

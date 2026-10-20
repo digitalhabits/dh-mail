@@ -1,50 +1,62 @@
 "use client";
 
 /**
- * "How should this account fit your week?" — asked once, right after a
- * mailbox is connected (mailbox-connected.ts).
+ * Two questions, asked once, right after a mailbox is connected
+ * (mailbox-connected.ts):
  *
- * Four named rhythms, one tap each, and hours of one's own for the rest.
- * Each sets both of a mailbox's settings at once: when it is shown in Mail
- * (its hiding schedule) and when new mail is fetched (its own quiet hours).
- * The rules and the turning of "on" into "off" are lib/mail/account-rhythm.
+ * 1. When do you want to see this account in your inbox? (its hiding
+ *    schedule, kept as the hours it is hidden)
+ * 2. When should new mail come in? (its own quiet hours, kept as the hours
+ *    nothing is fetched)
+ *
+ * Each step offers a few plain answers and Custom hours…. Any answer but
+ * Always opens the time editor the menus use (hours-rule-cards.tsx), and the
+ * week beside it can be dragged (hours-week-editor.tsx). Each step can also
+ * turn on the words to type before going round its hours (the same setting
+ * as in the menus, for every mailbox). Those switches start off.
  *
  * Nothing is saved until Done. Shut any other way, the mailbox stays as
  * every new mailbox is: shown, and fetching on All's hours.
  */
 
 import * as React from "react";
-import { Check, ChevronLeft, Plus, X } from "lucide-react";
 
-import { FetchTile, ShownTile, WEEK_FILL } from "@/components/mail/hours-icons";
-import { DayCircles, quietTimeClass, useOnHoursWords } from "@/components/mail/pause-panels";
+import { AccountMarkButton, ChoosePictureLink } from "@/components/mail/AccountMarkButton";
+import { answerFor, HoursQuestion, type HoursAnswer } from "@/components/mail/hours-question";
 import { SettingsDialog, settingsPrimaryButton } from "@/components/mail/settings-ui";
-import { setMailboxHiddenHours } from "@/components/mail/use-mailbox-hide";
-import { setAccountQuietHours } from "@/components/mail/use-mail-pause";
+import { readMailboxShowWords, setMailboxHiddenHours, setMailboxShowWords } from "@/components/mail/use-mailbox-hide";
+import { readMailUnpauseWords, setAccountQuietHours, setMailUnpauseWords } from "@/components/mail/use-mail-pause";
 import {
-  RHYTHM_PRESET_ORDER,
-  RHYTHM_PRESETS,
-  rhythmPreset,
-  rhythmSegments,
-  rhythmToSettings,
-  isAllDay,
-  isOvernight,
-  type AccountRhythm,
-  type RhythmPreset,
+  FETCH_PRESET_ORDER,
+  FETCH_PRESETS,
+  keptFromOnHours,
+  SHOWN_PRESET_ORDER,
+  SHOWN_PRESETS,
+  type FetchPreset,
+  type ShownPreset,
 } from "@/lib/mail/account-rhythm";
-import { SCHEDULE_DAY_LABELS, type MailScheduleDay } from "@/lib/mail/custom-lists";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
 import { MAILBOX_CONNECTED_EVENT, takeConnectedMailbox } from "@/lib/mail/mailbox-connected";
 import type { MailQuietWindow } from "@/lib/mail/quiet-hours";
+import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { cn } from "@/lib/utils";
 
-const PRESET_WORDS: Record<RhythmPreset, { name: MailStringKey; what: MailStringKey }> = {
-  always: { name: "rhythmAlways", what: "rhythmAlwaysWhat" },
-  quietWeekends: { name: "rhythmQuietWeekends", what: "rhythmQuietWeekendsWhat" },
-  offWeekends: { name: "rhythmOffWeekends", what: "rhythmOffWeekendsWhat" },
-  workHours: { name: "rhythmWorkHours", what: "rhythmWorkHoursWhat" },
+/** Words to type when a step's lock is turned on here and none were set. */
+const FRICTION_WORDS = 10;
+
+type Answer = { name: MailStringKey; what: MailStringKey };
+
+const SHOWN_ANSWERS: Record<ShownPreset, Answer> = {
+  always: { name: "rhythmAnswerAlways", what: "rhythmAnswerAlwaysWhat" },
+  weekdays: { name: "rhythmAnswerWeekdays", what: "rhythmAnswerWeekdaysWhat" },
+  work: { name: "rhythmAnswerWork", what: "rhythmAnswerWorkWhat" },
 };
 
+const FETCH_ANSWERS: Record<FetchPreset, Answer> = {
+  always: { name: "rhythmAnswerAlways", what: "rhythmAnswerAlwaysWhat" },
+  twice: { name: "rhythmAnswerTwice", what: "rhythmAnswerTwiceWhat" },
+  work: { name: "rhythmAnswerWork", what: "rhythmAnswerWorkWhat" },
+};
 
 /**
  * The dialog, when a mailbox has just been connected: the address waiting
@@ -63,297 +75,182 @@ export function ConnectedMailboxRhythm() {
     return () => window.removeEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
   }, []);
   if (!email) return null;
-  return <AccountRhythmDialog email={email} onClose={() => setEmail(null)} />;
+  // A key a mailbox: a second one connected while the first is asked about
+  // starts its own questions from the first step.
+  return <AccountRhythmDialog key={email} email={email} onClose={() => setEmail(null)} />;
 }
 
 export function AccountRhythmDialog({ email, onClose }: { email: string; onClose: () => void }) {
   const t = useMailT();
-  const [rhythm, setRhythm] = React.useState<AccountRhythm>(RHYTHM_PRESETS.always);
-  const [ownHours, setOwnHours] = React.useState(false);
-  const preset = ownHours ? null : rhythmPreset(rhythm);
+  const [step, setStep] = React.useState<1 | 2>(1);
+  const [shown, setShown] = React.useState<MailQuietWindow[]>(SHOWN_PRESETS.always);
+  const [fetching, setFetching] = React.useState<MailQuietWindow[]>(FETCH_PRESETS.always);
+  // Off to begin with, whatever is set for the other mailboxes (Ulrik,
+  // 2026-10-20). Left off, nothing changes; turned on, it asks for words.
+  const [showLock, setShowLock] = React.useState(false);
+  const [fetchLock, setFetchLock] = React.useState(false);
 
   const done = () => {
-    const { hiddenHours, quietHours } = rhythmToSettings(rhythm);
-    setMailboxHiddenHours(email, hiddenHours);
-    setAccountQuietHours(email, quietHours);
+    setMailboxHiddenHours(email, keptFromOnHours(shown));
+    setAccountQuietHours(email, keptFromOnHours(fetching));
+    // A switch turned on sets the words, for every mailbox, as the menus do:
+    // the number already set, or FRICTION_WORDS when none is.
+    if (showLock) setMailboxShowWords(readMailboxShowWords() || FRICTION_WORDS);
+    if (fetchLock) setMailUnpauseWords(readMailUnpauseWords() || FRICTION_WORDS);
     onClose();
   };
 
   return (
     <SettingsDialog
-      title={t("rhythmTitle")}
-      subtitle={
-        <span className="flex flex-col gap-2">
-          <span className="flex items-center gap-2 text-stone-600">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-700 text-white">
-              <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
-            </span>
-            <span>
-              <span className="font-semibold text-stone-800">{email}</span> {t("rhythmIsConnected")}
-            </span>
-          </span>
-          <span>{t("rhythmLead")}</span>
-        </span>
-      }
+      title={<DialogHeading email={email} step={step} />}
+      nav={<StepBars step={step} />}
       onClose={onClose}
       closeLabel={t("close")}
-      width="w-[560px]"
+      width="w-[880px]"
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           <span className="text-xs text-stone-500">{t("rhythmLater")}</span>
-          <button type="button" className={settingsPrimaryButton} onClick={done}>
-            {t("done")}
-          </button>
+          <span className="flex items-center gap-2">
+            {step === 2 ? (
+              <button
+                type="button"
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                onClick={() => setStep(1)}
+              >
+                {t("back")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={settingsPrimaryButton}
+              onClick={step === 1 ? () => setStep(2) : done}
+            >
+              {step === 1 ? t("rhythmNext") : t("done")}
+            </button>
+          </span>
         </div>
       }
     >
-      <div role="radiogroup" aria-label={t("rhythmTitle")} className="flex flex-col gap-2">
-        {RHYTHM_PRESET_ORDER.map((name) => {
-          const chosen = preset === name;
-          return (
-            <button
-              key={name}
-              type="button"
-              role="radio"
-              aria-checked={chosen}
-              onClick={() => {
-                setOwnHours(false);
-                setRhythm(RHYTHM_PRESETS[name]);
-              }}
-              className={cn(
-                "flex items-center gap-4 rounded-xl border px-4 py-3 text-left transition-colors",
-                chosen
-                  ? "border-teal-600/70 bg-teal-600/10"
-                  : "border-stone-200 hover:bg-stone-50"
-              )}
-            >
-              <WeekBars rhythm={RHYTHM_PRESETS[name]} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold text-stone-900">{t(PRESET_WORDS[name].name)}</span>
-                  {name === "always" ? <span className="text-xs text-teal-700">{t("rhythmDefault")}</span> : null}
-                </span>
-                <span className="block text-xs leading-relaxed text-stone-500">{t(PRESET_WORDS[name].what)}</span>
-              </span>
-              <span
-                aria-hidden
-                className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-                  chosen ? "border-teal-600" : "border-stone-300"
-                )}
-              >
-                {chosen ? <span className="h-2.5 w-2.5 rounded-full bg-teal-600" /> : null}
-              </span>
-            </button>
-          );
-        })}
-
-        {ownHours ? (
-          <OwnHours rhythm={rhythm} onChange={setRhythm} onBack={() => {
-            setOwnHours(false);
-            if (!rhythmPreset(rhythm)) setRhythm(RHYTHM_PRESETS.always);
-          }} />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setOwnHours(true)}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 px-4 py-2.5 text-sm text-teal-700 hover:bg-stone-50"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
-            {t("rhythmOwnHours")}
-          </button>
-        )}
-      </div>
+      {step === 1 ? (
+        <RhythmStep
+          key="shown"
+          question={t("rhythmShownQuestion")}
+          lead={t("rhythmShownLead")}
+          presets={SHOWN_PRESETS}
+          order={SHOWN_PRESET_ORDER}
+          answers={SHOWN_ANSWERS}
+          rows={shown}
+          onRows={setShown}
+          previewHint={t("rhythmShownPreviewHint")}
+          lock={{ on: showLock, set: setShowLock, title: t("rhythmShownFriction"), what: t("rhythmShownFrictionWhat") }}
+        />
+      ) : (
+        <RhythmStep
+          key="fetching"
+          question={t("rhythmFetchQuestion")}
+          lead={t("rhythmFetchLead")}
+          presets={FETCH_PRESETS}
+          order={FETCH_PRESET_ORDER}
+          answers={FETCH_ANSWERS}
+          rows={fetching}
+          onRows={setFetching}
+          shown={shown}
+          previewHint={t("rhythmFetchPreviewHint")}
+          lock={{ on: fetchLock, set: setFetchLock, title: t("rhythmFetchFriction"), what: t("rhythmFetchFrictionWhat") }}
+        />
+      )}
     </SettingsDialog>
   );
 }
 
-/** The week as seven small bars, Monday to Sunday, midnight at the top. */
-function WeekBars({ rhythm }: { rhythm: AccountRhythm }) {
-  const days = rhythmSegments(rhythm);
+/**
+ * The mailbox, connected, and which step of two this is. Its picture can be
+ * chosen here, as in Settings (2026-10-20): the mark with its pencil opens
+ * the picture menu, and "Choose a picture" goes straight to the file.
+ */
+function DialogHeading({ email, step }: { email: string; step: 1 | 2 }) {
+  const t = useMailT();
+  const isOutlookAccount = useIsOutlookAccount();
   return (
-    <span aria-hidden className="flex h-11 shrink-0 gap-[3px]">
-      {days.map((runs, day) => (
-        <span key={day} className="relative h-full w-2 overflow-hidden rounded-[2px]">
-          {runs.map((run) => (
-            <span
-              key={run.from}
-              className={cn("absolute inset-x-0", WEEK_FILL[run.state])}
-              style={{ top: `${(run.from / 1440) * 100}%`, height: `${((run.to - run.from) / 1440) * 100}%` }}
-            />
-          ))}
-        </span>
-      ))}
+    <span className="flex min-w-0 items-center gap-2 font-sans text-sm font-normal">
+      <AccountMarkButton
+        account={email}
+        provider={mailProviderFor(email, isOutlookAccount)}
+        title={t("changeAccountPicture")}
+        large
+        className="mr-1 h-8 w-8 rounded-lg"
+      />
+      <span className="truncate font-semibold text-stone-900">{email}</span>
+      <span className="text-stone-500">{t("rhythmConnected")}</span>
+      <span className="text-stone-400" aria-hidden>·</span>
+      <ChoosePictureLink account={email} className="shrink-0" />
+      <span className="ml-auto shrink-0 pl-3 text-stone-500">{t("rhythmStep", { step })}</span>
     </span>
   );
 }
 
-function OwnHours({
-  rhythm,
-  onChange,
-  onBack,
-}: {
-  rhythm: AccountRhythm;
-  onChange: (next: AccountRhythm) => void;
-  onBack: () => void;
-}) {
-  const t = useMailT();
+function StepBars({ step }: { step: 1 | 2 }) {
   return (
-    <div className="rounded-xl border border-teal-600/50 bg-teal-600/5 p-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1 text-sm font-semibold text-stone-900 hover:text-teal-800"
-      >
-        <ChevronLeft className="h-4 w-4" aria-hidden />
-        {t("rhythmOwnTitle")}
-      </button>
-
-      <HoursSection
-        icon={<ShownTile className="h-6 w-6" />}
-        title={t("rhythmShown")}
-        what={t("rhythmShownWhat")}
-        windows={rhythm.shown}
-        onChange={(shown) => onChange({ ...rhythm, shown })}
-      />
-      <HoursSection
-        icon={<FetchTile className="h-6 w-6" />}
-        title={t("rhythmFetching")}
-        what={t("rhythmFetchingWhat")}
-        windows={rhythm.fetching}
-        onChange={(fetching) => onChange({ ...rhythm, fetching })}
-      />
-
-      <WeekChart rhythm={rhythm} />
+    <div className="flex gap-2" aria-hidden>
+      {[1, 2].map((n) => (
+        <span
+          key={n}
+          className={cn("h-[3px] flex-1 rounded-full", n <= step ? "bg-[var(--mail-week-fetch)]" : "bg-stone-200")}
+        />
+      ))}
     </div>
   );
 }
 
-function HoursSection({
-  icon,
-  title,
-  what,
-  windows,
-  onChange,
+/** One question of the two, with its answers and its week (hours-question.tsx). */
+function RhythmStep<P extends string>({
+  question,
+  lead,
+  presets,
+  order,
+  answers,
+  rows,
+  onRows,
+  shown,
+  previewHint,
+  lock,
 }: {
-  icon: React.ReactNode;
-  title: string;
-  what: string;
-  windows: MailQuietWindow[];
-  onChange: (next: MailQuietWindow[]) => void;
+  question: string;
+  lead: string;
+  presets: Record<P, MailQuietWindow[]>;
+  order: P[];
+  answers: Record<P, Answer>;
+  rows: MailQuietWindow[];
+  onRows: (rows: MailQuietWindow[]) => void;
+  /** The hours shown, when the step is about new mail. */
+  shown?: MailQuietWindow[];
+  previewHint: string;
+  lock: { on: boolean; set: (on: boolean) => void; title: string; what: string };
 }) {
   const t = useMailT();
-  const words = useOnHoursWords();
-  const patch = (index: number, change: Partial<MailQuietWindow>) =>
-    onChange(windows.map((window, i) => (i === index ? { ...window, ...change } : window)));
-  const toggleDay = (index: number, day: MailScheduleDay) => {
-    const days = windows[index].days;
-    patch(index, {
-      days: days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort((a, b) => a - b),
-    });
-  };
+  const list: HoursAnswer[] = order.map((name, i) => ({
+    id: name,
+    name: t(answers[name].name),
+    what: t(answers[name].what),
+    rows: presets[name],
+    badge: i === 0 ? t("rhythmDefault") : null,
+  }));
+  // Custom hours… stays chosen once picked, even for hours that match an
+  // answer; an edit by hand reads the answer again from the hours.
+  const [choice, setChoice] = React.useState<string | null>(() => answerFor(list, rows));
   return (
-    <div className="mt-4">
-      <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-600">
-        {icon}
-        {title}
-      </p>
-      <p className="mt-1 text-xs text-stone-500">{what}</p>
-      <div className="mt-2 flex flex-col gap-2">
-        {windows.map((window, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 p-2">
-            <DayCircles days={window.days} onToggle={(day) => toggleDay(index, day)} />
-            <span className="ml-auto flex items-center gap-1.5">
-              <span className="text-xs text-stone-500">
-                {isAllDay(window) ? words.allDay : isOvernight(window) ? words.nextDay : ""}
-              </span>
-              <input
-                type="time"
-                aria-label={t("rhythmFrom")}
-                value={window.start}
-                onChange={(e) => patch(index, { start: e.target.value })}
-                className={quietTimeClass}
-              />
-              <span className="text-stone-400">–</span>
-              <input
-                type="time"
-                aria-label={t("rhythmTo")}
-                value={window.end}
-                onChange={(e) => patch(index, { end: e.target.value })}
-                className={quietTimeClass}
-              />
-              <button
-                type="button"
-                aria-label={t("rhythmRemoveHours")}
-                title={t("rhythmRemoveHours")}
-                className="rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
-                onClick={() => onChange(windows.filter((_, i) => i !== index))}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
-          </div>
-        ))}
-      </div>
-      <button
-        type="button"
-        className="mt-2 flex items-center gap-1 text-sm text-teal-700 hover:text-teal-800"
-        onClick={() => onChange([...windows, { start: "09:00", end: "17:00", days: [0, 1, 2, 3, 4] }])}
-      >
-        <Plus className="h-3.5 w-3.5" aria-hidden />
-        {t("rhythmAddHours")}
-      </button>
-    </div>
-  );
-}
-
-/** The week as a chart: one row a day, midnight to midnight, with a key. */
-function WeekChart({ rhythm }: { rhythm: AccountRhythm }) {
-  const t = useMailT();
-  const days = rhythmSegments(rhythm);
-  return (
-    <div className="mt-5 border-t border-stone-200 pt-4">
-      <div className="ml-10 flex justify-between text-[10px] tabular-nums text-stone-400">
-        {["00", "06", "12", "18", "24"].map((hour) => (
-          <span key={hour}>{hour}</span>
-        ))}
-      </div>
-      <div className="mt-1 flex flex-col gap-1">
-        {days.map((runs, day) => (
-          <div key={day} className="flex items-center gap-2">
-            <span className="w-8 text-xs text-stone-500">{SCHEDULE_DAY_LABELS[day].label}</span>
-            <span className="relative h-4 flex-1 overflow-hidden rounded bg-stone-400/10">
-              {runs.map((run) => (
-                <span
-                  key={run.from}
-                  className={cn("absolute inset-y-0", WEEK_FILL[run.state])}
-                  style={{ left: `${(run.from / 1440) * 100}%`, width: `${((run.to - run.from) / 1440) * 100}%` }}
-                />
-              ))}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-600">
-        {(
-          [
-            ["shown", t("rhythmLegendShown")],
-            ["fetching", t("rhythmLegendFetching")],
-            ["hidden", t("rhythmLegendHidden")],
-          ] as const
-        ).map(([state, label]) => (
-          <span key={state} className="flex items-center gap-1.5">
-            {state === "shown" ? (
-              <ShownTile className="h-5 w-5" />
-            ) : state === "fetching" ? (
-              <FetchTile className="h-5 w-5" />
-            ) : (
-              <span aria-hidden className={cn("h-5 w-5 rounded-md", WEEK_FILL.hidden)} />
-            )}
-            {label}
-          </span>
-        ))}
-      </div>
-    </div>
+    <HoursQuestion
+      question={question}
+      lead={lead}
+      answers={list}
+      customWords={{ name: t("rhythmAnswerCustom"), what: t("rhythmAnswerCustomWhat") }}
+      choice={choice}
+      onChoose={(id) => setChoice(id)}
+      rows={rows}
+      onRows={onRows}
+      shown={shown}
+      previewHint={previewHint}
+      lock={lock}
+    />
   );
 }

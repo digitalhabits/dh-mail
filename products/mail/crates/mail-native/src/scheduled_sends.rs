@@ -22,10 +22,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{now_ms, DbResult, MailDb};
 
-/// Columns added after the table first shipped to a dev build. A store that
-/// has them answers "duplicate column", which is the one error meant here.
-pub fn migrate(conn: &rusqlite::Connection) {
-  let _ = conn.execute("ALTER TABLE scheduled_sends ADD COLUMN bcc_json TEXT NOT NULL DEFAULT '[]'", []);
+/// Columns added after the table first shipped to a dev build. An upgrade
+/// step in schema.rs calls this.
+pub fn add_columns(conn: &rusqlite::Connection) -> crate::db::DbResult<()> {
+  crate::schema::add_column(conn, "scheduled_sends", "bcc_json", "TEXT NOT NULL DEFAULT '[]'")
 }
 
 pub const SCHEMA: &str = r#"

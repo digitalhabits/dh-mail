@@ -20,6 +20,8 @@ pub mod fonts;
 pub mod actions;
 pub mod account_exchange;
 pub mod db;
+#[cfg(test)]
+mod db_poison_tests;
 #[cfg(feature = "exchange")]
 pub mod ews;
 #[cfg(all(feature = "exchange", test))]
@@ -51,14 +53,19 @@ pub mod ews_srv;
 #[cfg(feature = "exchange")]
 pub mod ntlm;
 pub mod imap;
+pub mod lock;
 pub mod messages;
 pub mod mime;
 pub mod older_search;
 pub mod outbox;
 pub mod scheduled_sends;
+pub mod schema;
+#[cfg(test)]
+mod schema_tests;
 pub mod smtp;
 pub mod sync;
 pub mod downloads;
+pub mod download_safety;
 #[cfg(target_os = "macos")]
 pub mod dragout;
 pub mod drafts_inbox;
@@ -66,6 +73,7 @@ pub mod handover;
 // A message another app leaves for Mail's composer. See handoff.rs.
 pub mod handoff;
 pub mod images;
+pub mod image_guard;
 pub mod import;
 #[cfg(target_os = "macos")]
 pub mod magnify;

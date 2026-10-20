@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Find inside the open thread — what Cmd+F means everywhere else.
  *
@@ -7,35 +5,55 @@
  *
  * A thread is not one document. Plain-text messages render in this page, and
  * HTML messages render inside a sandboxed iframe with their own document. Both
- * hold text a reader can see, so both must be searched. The frames carry
- * `allow-same-origin`, so their content is reachable from here.
+ * hold text a reader can see, so both must be searched. The frames have an
+ * opaque origin (no `allow-same-origin`), so this page cannot read them. It
+ * sends the words to each frame instead, and the frame's own script finds and
+ * paints the matches (`lib/mail/frame-script/paint.ts`). The frame sends back
+ * where each match is, so all matches can go in reading order.
  *
  * Nothing may be written into an email's DOM. Wrapping matches in tags would
- * re-flow a layout the sender wrote, and the frames run a hash-pinned link
- * bridge that a mutation could disturb. The CSS custom highlight API paints
- * ranges without touching the tree, so that is what this uses. The frames'
- * CSP allows `style-src 'unsafe-inline'`, which is what lets the highlight
- * colours be put into each frame.
+ * re-flow a layout the sender wrote. The CSS custom highlight API paints
+ * ranges without touching the tree, so that is what this uses, here and in
+ * the frames.
  */
 
 import * as React from "react";
 
+import { scrollParentOf } from "@/components/mail/email-frame";
+import {
+  MAIL_FRAME_ATTR,
+  askFrame,
+  frameNumber,
+  postToFrame,
+  type FrameMessage,
+} from "@/lib/mail/frame-messages";
+
 const ALL = "mail-find";
 const ACTIVE = "mail-find-active";
 
+/** More matches than this in one frame are not counted. */
+const MAX_FRAME_HITS = 5000;
+
 /**
- * Painted into every document that gets a highlight, the page included.
+ * Painted into this page when it gets a highlight.
  *
  * Not in mail.css: Turbopack's CSS parser does not know `::highlight()` and
  * drops the rule with a warning at every launch, so the page's matches had
  * no colour. A style element put in by hand is read by the browser alone.
+ * The frames carry the same colours in their own script.
  */
 const HIGHLIGHT_CSS = `
 ::highlight(${ALL}) { background-color: #fde68a; color: #1c1917; }
 ::highlight(${ACTIVE}) { background-color: #f59e0b; color: #1c1917; }
 `;
 
-type Hit = { range: Range; doc: Document };
+/**
+ * One match. In this page it is a range. In a frame it is the frame and the
+ * match's number there. `top` is where it is in the page, for the order.
+ */
+type Hit =
+  | { kind: "page"; range: Range; top: number }
+  | { kind: "frame"; frame: HTMLIFrameElement; index: number; top: number };
 
 type HighlightWindow = Window & {
   Highlight?: new (...ranges: Range[]) => unknown;
@@ -53,20 +71,9 @@ function makeHighlight(doc: Document, ranges: Range[]): unknown | null {
   return new view.Highlight(...ranges);
 }
 
-/** Documents holding thread text: this page, plus every reachable email frame. */
-function searchRoots(root: HTMLElement): { node: Node; doc: Document }[] {
-  const out: { node: Node; doc: Document }[] = [{ node: root, doc: root.ownerDocument }];
-  for (const frame of Array.from(root.querySelectorAll("iframe"))) {
-    let doc: Document | null = null;
-    try {
-      // Cross-origin or not yet loaded — skip rather than throw.
-      doc = frame.contentDocument;
-    } catch {
-      doc = null;
-    }
-    if (doc?.body) out.push({ node: doc.body, doc });
-  }
-  return out;
+/** The message frames in the thread. */
+function mailFrames(root: HTMLElement): HTMLIFrameElement[] {
+  return Array.from(root.querySelectorAll<HTMLIFrameElement>(`iframe[${MAIL_FRAME_ATTR}]`));
 }
 
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA"]);
@@ -105,7 +112,7 @@ function textNodes(node: Node, doc: Document): Text[] {
  * The nodes are joined into one string first, so a match still counts when it
  * runs across an element boundary — `<b>Kas</b>per` is one hit, not none.
  */
-function findInRoot(node: Node, doc: Document, needle: string): Hit[] {
+function findInRoot(node: Node, doc: Document, needle: string): Range[] {
   const nodes = textNodes(node, doc);
   if (!nodes.length) return [];
 
@@ -117,7 +124,7 @@ function findInRoot(node: Node, doc: Document, needle: string): Hit[] {
   }
 
   const hay = joined.toLowerCase();
-  const hits: Hit[] = [];
+  const hits: Range[] = [];
   let at = hay.indexOf(needle);
   while (at !== -1) {
     const end = at + needle.length;
@@ -138,7 +145,7 @@ function findInRoot(node: Node, doc: Document, needle: string): Hit[] {
       const range = doc.createRange();
       range.setStart(from.node, from.offset);
       range.setEnd(to.node, to.offset + 1);
-      hits.push({ range, doc });
+      hits.push(range);
     } catch {
       /* a node changed under us — drop this hit */
     }
@@ -156,30 +163,38 @@ function ensureHighlightCss(doc: Document): void {
   doc.head?.appendChild(style);
 }
 
-function clearHighlights(docs: Document[]): void {
-  for (const doc of docs) {
-    const highlights = highlightsOf(doc);
-    highlights?.delete(ALL);
-    highlights?.delete(ACTIVE);
-  }
+/** The matches a frame found, placed in the page. */
+function frameHits(frame: HTMLIFrameElement, answer: FrameMessage | null): Hit[] {
+  if (!answer || !Array.isArray(answer.tops)) return [];
+  const box = frame.getBoundingClientRect();
+  const height = frameNumber(answer.height);
+  const scale = height > 0 ? box.height / height : 1;
+  return answer.tops.slice(0, MAX_FRAME_HITS).map((top, index) => ({
+    kind: "frame" as const,
+    frame,
+    index,
+    top: box.top + frameNumber(top) * scale,
+  }));
 }
 
-/** Bring a match into view, in its own document and then in this one. */
-function revealHit(hit: Hit, root: HTMLElement): void {
-  const target =
-    hit.range.startContainer.parentElement ??
-    (hit.range.startContainer as Element | null);
-  target?.scrollIntoView({ block: "center", inline: "nearest" });
-  if (hit.doc === root.ownerDocument) return;
-  // Inside a frame: the page still has to scroll to the frame itself.
-  const frame = Array.from(root.querySelectorAll("iframe")).find((f) => {
-    try {
-      return f.contentDocument === hit.doc;
-    } catch {
-      return false;
-    }
-  });
-  frame?.scrollIntoView({ block: "center", inline: "nearest" });
+/**
+ * Scroll the thread so that a point in a frame is in the middle.
+ *
+ * `top` and `bottom` are in the frame's pixels, and `height` is the frame's
+ * own viewport height, so the ratio to the frame's box is the scale.
+ */
+function revealInFrame(frame: HTMLIFrameElement, answer: FrameMessage | null): void {
+  const scroller = scrollParentOf(frame);
+  const height = answer ? frameNumber(answer.height) : 0;
+  if (!scroller || !answer || height <= 0) {
+    frame.scrollIntoView({ block: "center", inline: "nearest" });
+    return;
+  }
+  const box = frame.getBoundingClientRect();
+  const scale = box.height / height;
+  const middle = (frameNumber(answer.top) + frameNumber(answer.bottom)) / 2;
+  const view = scroller.getBoundingClientRect();
+  scroller.scrollTop += box.top + middle * scale - (view.top + view.height / 2);
 }
 
 export function useThreadFind({
@@ -197,45 +212,65 @@ export function useThreadFind({
   const [query, setQuery] = React.useState("");
   const [hits, setHits] = React.useState<Hit[]>([]);
   const [index, setIndex] = React.useState(0);
-  const touchedDocsRef = React.useRef<Document[]>([]);
+  /** The page document and the frames that hold paint, to clear later. */
+  const paintedRef = React.useRef<{ doc: Document | null; frames: HTMLIFrameElement[] }>({
+    doc: null,
+    frames: [],
+  });
+
+  const clearPaint = React.useCallback(() => {
+    const painted = paintedRef.current;
+    if (painted.doc) {
+      highlightsOf(painted.doc)?.delete(ALL);
+      highlightsOf(painted.doc)?.delete(ACTIVE);
+    }
+    for (const frame of painted.frames) postToFrame(frame, { type: "find-clear" });
+    paintedRef.current = { doc: null, frames: [] };
+  }, []);
 
   const needle = query.trim().toLowerCase();
 
   // Collect the matches and paint them all.
   React.useEffect(() => {
     const root = rootRef.current;
-    clearHighlights(touchedDocsRef.current);
-    touchedDocsRef.current = [];
+    clearPaint();
     if (!open || !root || needle.length < 1) {
       setHits([]);
       setIndex(0);
       return;
     }
+    let cancelled = false;
 
-    const roots = searchRoots(root);
-    const found: Hit[] = [];
-    for (const entry of roots) {
-      found.push(...findInRoot(entry.node, entry.doc, needle));
-    }
-
-    const byDoc = new Map<Document, Range[]>();
-    for (const hit of found) {
-      const list = byDoc.get(hit.doc) ?? [];
-      list.push(hit.range);
-      byDoc.set(hit.doc, list);
-    }
-    for (const [doc, ranges] of byDoc) {
-      const highlights = highlightsOf(doc);
-      const highlight = makeHighlight(doc, ranges);
-      if (!highlights || !highlight) continue; // no custom highlight support
+    const doc = root.ownerDocument;
+    const pageRanges = findInRoot(root, doc, needle);
+    const highlights = highlightsOf(doc);
+    const highlight = pageRanges.length ? makeHighlight(doc, pageRanges) : null;
+    if (highlights && highlight) {
       ensureHighlightCss(doc);
       highlights.set(ALL, highlight);
-      touchedDocsRef.current.push(doc);
     }
+    const frames = mailFrames(root);
+    paintedRef.current = { doc, frames };
 
-    setHits(found);
-    setIndex(found.length ? 1 : 0);
-  }, [open, needle, contentKey, rootRef]);
+    void Promise.all(
+      frames.map((frame) => askFrame(frame, { type: "find", needle }, "find-result"))
+    ).then((answers) => {
+      if (cancelled) return;
+      const found: Hit[] = pageRanges.map((range) => ({
+        kind: "page" as const,
+        range,
+        top: range.getBoundingClientRect().top,
+      }));
+      answers.forEach((answer, i) => found.push(...frameHits(frames[i], answer)));
+      // Reading order: the matches in the page and in the frames, top down.
+      found.sort((a, b) => a.top - b.top);
+      setHits(found);
+      setIndex(found.length ? 1 : 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, needle, contentKey, rootRef, clearPaint]);
 
   // Paint the current one on top, and scroll to it.
   React.useEffect(() => {
@@ -243,17 +278,30 @@ export function useThreadFind({
     if (!root || !hits.length || index < 1) return;
     const hit = hits[index - 1];
     if (!hit) return;
-    for (const doc of touchedDocsRef.current) highlightsOf(doc)?.delete(ACTIVE);
-    const highlights = highlightsOf(hit.doc);
-    const highlight = makeHighlight(hit.doc, [hit.range]);
-    if (highlights && highlight) highlights.set(ACTIVE, highlight);
-    revealHit(hit, root);
+    const painted = paintedRef.current;
+    if (painted.doc) highlightsOf(painted.doc)?.delete(ACTIVE);
+    for (const frame of painted.frames) {
+      if (hit.kind !== "frame" || frame !== hit.frame) {
+        postToFrame(frame, { type: "find-show", index: -1 });
+      }
+    }
+    if (hit.kind === "page") {
+      const highlights = highlightsOf(root.ownerDocument);
+      const highlight = makeHighlight(root.ownerDocument, [hit.range]);
+      if (highlights && highlight) highlights.set(ACTIVE, highlight);
+      const target =
+        hit.range.startContainer.parentElement ??
+        (hit.range.startContainer as Element | null);
+      target?.scrollIntoView({ block: "center", inline: "nearest" });
+      return;
+    }
+    void askFrame(hit.frame, { type: "find-show", index: hit.index }, "find-shown").then(
+      (answer) => revealInFrame(hit.frame, answer)
+    );
   }, [hits, index, rootRef]);
 
   // Drop the paint when the bar closes or the thread goes away.
-  React.useEffect(() => {
-    return () => clearHighlights(touchedDocsRef.current);
-  }, []);
+  React.useEffect(() => clearPaint, [clearPaint]);
 
   const step = React.useCallback(
     (by: number) => {

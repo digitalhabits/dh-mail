@@ -27,7 +27,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::actions::{flush_actions, Folders};
 use crate::smtp::{Smtp, SmtpError, SMTP_HOST, SMTP_PORT};
-use crate::db::MailDb;
+use crate::{db::MailDb, lock::LockExt};
 use crate::imap::{self, Client, Credential, Fetched, Item};
 use crate::messages::{Address, MessageRow, SyncState, DRAFT, IMPORTANT, INBOX, SENT, SPAM, STARRED, TRASH};
 
@@ -129,7 +129,7 @@ pub fn setup(app: &AppHandle) {
 #[tauri::command]
 pub fn mail_sync_configure(app: AppHandle, google: GoogleOauth) -> Result<(), String> {
   let config = app.state::<SyncConfig>();
-  *config.google.lock().unwrap() = Some(google);
+  *config.google.locked() = Some(google);
   Ok(())
 }
 
@@ -138,7 +138,7 @@ pub fn mail_sync_configure(app: AppHandle, google: GoogleOauth) -> Result<(), St
 pub fn mail_sync_start(app: AppHandle, accounts: Vec<String>) -> Result<Vec<String>, String> {
   {
     let config = app.state::<SyncConfig>();
-    if config.google.lock().unwrap().is_none() {
+    if config.google.locked().is_none() {
       return Err("the sync worker has no OAuth client yet; configure it first".into());
     }
   }
@@ -186,13 +186,13 @@ pub fn mail_sync_stop(app: AppHandle, account: String, forget: Option<bool>) -> 
   // mailbox must not stay signed in from the last file it served.
   {
     let pool = app.state::<OnDemandPool>();
-    pool.idle.lock().unwrap().remove(&account.trim().to_lowercase());
+    pool.idle.locked().remove(&account.trim().to_lowercase());
   }
   let email = account.to_lowercase();
   let forget = forget.unwrap_or(false);
   let supervisor = app.state::<SyncSupervisor>();
   // Under the lock, so this and the worker's end are one after the other.
-  let workers = supervisor.workers.lock().unwrap();
+  let workers = supervisor.workers.locked();
   if let Some(flags) = workers.get(&email) {
     if forget {
       flags.forget.store(true, Ordering::SeqCst);
@@ -212,7 +212,7 @@ pub fn mail_sync_stop(app: AppHandle, account: String, forget: Option<bool>) -> 
 #[tauri::command]
 pub fn mail_sync_wake(app: AppHandle, account: String) -> Result<(), String> {
   let supervisor = app.state::<SyncSupervisor>();
-  if let Some(flags) = supervisor.workers.lock().unwrap().get(&account.to_lowercase()) {
+  if let Some(flags) = supervisor.workers.locked().get(&account.to_lowercase()) {
     flags.wake.store(true, Ordering::SeqCst);
   }
   Ok(())
@@ -251,8 +251,7 @@ pub(crate) fn with_on_demand<T>(
   let pool = app.state::<OnDemandPool>();
   let kept = pool
     .idle
-    .lock()
-    .unwrap()
+    .locked()
     .remove(email)
     .filter(|(_, _, at)| at.elapsed() < ON_DEMAND_KEEP);
   let keep = |client: Client, boxes: Vec<imap::MailboxName>| {
@@ -260,8 +259,8 @@ pub(crate) fn with_on_demand<T>(
     // flight while the mailbox was disconnected must not leave it signed
     // in from the pool.
     let supervisor = app.state::<SyncSupervisor>();
-    if supervisor.workers.lock().unwrap().contains_key(email) {
-      pool.idle.lock().unwrap().insert(email.to_string(), (client, boxes, Instant::now()));
+    if supervisor.workers.locked().contains_key(email) {
+      pool.idle.locked().insert(email.to_string(), (client, boxes, Instant::now()));
     }
   };
   if let Some((mut client, boxes, _)) = kept {
@@ -497,7 +496,7 @@ pub fn mail_sync_action(
     .map_err(|e| e.to_string())?;
   let _ = app.emit(CHANGED_EVENT, json!({ "account": email }));
   let supervisor = app.state::<SyncSupervisor>();
-  if let Some(flags) = supervisor.workers.lock().unwrap().get(&email) {
+  if let Some(flags) = supervisor.workers.locked().get(&email) {
     flags.wake.store(true, Ordering::SeqCst);
   }
   Ok(id)
@@ -579,7 +578,7 @@ pub fn mail_sync_outbox_send_now(app: AppHandle, account: String, id: i64) -> Re
 
 fn wake(app: &AppHandle, email: &str) {
   let supervisor = app.state::<SyncSupervisor>();
-  let workers = supervisor.workers.lock().unwrap();
+  let workers = supervisor.workers.locked();
   if let Some(flags) = workers.get(email) {
     flags.wake.store(true, Ordering::SeqCst);
   }
@@ -589,14 +588,14 @@ fn wake(app: &AppHandle, email: &str) {
 #[tauri::command]
 pub fn mail_sync_running(app: AppHandle) -> Result<Vec<String>, String> {
   let supervisor = app.state::<SyncSupervisor>();
-  let mut names: Vec<String> = supervisor.workers.lock().unwrap().keys().cloned().collect();
+  let mut names: Vec<String> = supervisor.workers.locked().keys().cloned().collect();
   names.sort();
   Ok(names)
 }
 
 fn start_account(app: &AppHandle, email: String) -> bool {
   let supervisor = app.state::<SyncSupervisor>();
-  let mut workers = supervisor.workers.lock().unwrap();
+  let mut workers = supervisor.workers.locked();
   if workers.contains_key(&email) {
     return false;
   }
@@ -665,7 +664,7 @@ fn run_worker(
     }
   }
   let supervisor = app.state::<SyncSupervisor>();
-  let mut workers = supervisor.workers.lock().unwrap();
+  let mut workers = supervisor.workers.locked();
   workers.remove(&email);
   if forget.load(Ordering::SeqCst) {
     drop_copy(&app, &email);
@@ -1235,7 +1234,7 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
     }
     match smtp.send(email, &row.recipients, raw.as_bytes()) {
       Ok(_) => {
-        let _ = db.outbox_done(row.id);
+        db.outbox_record_sent(row.id).unwrap_or_else(|e| log::error!("[mail-sync] outbox message {} went out, but the store did not record it: {e}", row.id));
         sent += 1;
         // The draft it was written from goes now, not when the send was
         // queued: a message refused for good used to take its only copy
@@ -1253,7 +1252,7 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
       }
       Err(e) => {
         let permanent = e.is_permanent();
-        log::warn!("[mail-sync] {email}: send of outbox message {} failed: {e}", row.id);
+        log::warn!("[mail-sync] {email}: send of outbox message {} failed: {}", row.id, e.for_log());
         match db.outbox_failed(row.id, &e.to_string(), permanent) {
           Ok(true) => {
             let _ = app.emit(
@@ -1402,7 +1401,7 @@ fn set_paused(app: &AppHandle, email: &str, reason: &str) {
 /// rest of the hour — after the reader has already reconnected.
 fn forget_token(app: &AppHandle, email: &str) {
   let config = app.state::<SyncConfig>();
-  config.tokens.lock().unwrap().remove(email);
+  config.tokens.locked().remove(email);
 }
 
 /*
@@ -1449,7 +1448,7 @@ pub fn mail_check_gmail_app_password(email: String, password: String) -> Result<
 
 fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
   let config = app.state::<SyncConfig>();
-  if let Some((token, until)) = config.tokens.lock().unwrap().get(email) {
+  if let Some((token, until)) = config.tokens.locked().get(email) {
     if Instant::now() < *until {
       return Ok(token.clone());
     }
@@ -1457,8 +1456,7 @@ fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
   let token = fresh_access_token(app, email)?;
   config
     .tokens
-    .lock()
-    .unwrap()
+    .locked()
     .insert(email.to_string(), (token.clone(), Instant::now() + TOKEN_KEEP));
   Ok(token)
 }
@@ -1466,7 +1464,7 @@ fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
 fn fresh_access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
   let google = {
     let config = app.state::<SyncConfig>();
-    let guard = config.google.lock().unwrap();
+    let guard = config.google.locked();
     guard.clone().ok_or_else(|| SyncError::Failed("no OAuth client configured".into()))?
   };
   let db = app.state::<MailDb>();

@@ -5,6 +5,7 @@
 //! (`index.html?popout=1&…`). See `apps/mail/src/main.tsx`.
 
 use tauri::Manager;
+use crate::lock::LockExt;
 
 /*
   The chat popout is a non-activating panel on macOS.
@@ -788,8 +789,7 @@ pub fn notify_mail_compose_seed(
   *app
     .state::<PendingComposeSeed>()
     .0
-    .lock()
-    .map_err(|e| e.to_string())? = Some(seed.clone());
+    .locked() = Some(seed.clone());
   app.emit("mail-compose-seed", seed).map_err(|e| e.to_string())
 }
 
@@ -798,7 +798,7 @@ pub fn notify_mail_compose_seed(
 pub fn take_mail_compose_seed(app: tauri::AppHandle) -> Option<serde_json::Value> {
   use tauri::Manager;
   let state = app.try_state::<PendingComposeSeed>()?;
-  let mut guard = state.0.lock().ok()?;
+  let mut guard = state.0.locked();
   guard.take()
 }
 

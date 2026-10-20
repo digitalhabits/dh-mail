@@ -12,6 +12,8 @@
  * No React here: this is the part a suite reads.
  */
 
+import { safeLinkTarget } from "@/lib/safe-links";
+
 export type MailLinkMenuModel = {
   /** What the menu is about. */
   kind: "http" | "mailto";
@@ -25,6 +27,11 @@ export type MailLinkMenuModel = {
   copyLabel: string;
   /** What is put on the clipboard: the URL, or the bare address. */
   copyText: string;
+  /**
+   * The address a Microsoft safe link wraps. The menu shows it, and offers to
+   * copy it: the link itself goes through Microsoft's check (safe-links.ts).
+   */
+  realAddress?: string;
 };
 
 /** Longer than this and the row stops being readable at a glance. */
@@ -81,10 +88,12 @@ export function mailLinkMenuModel(target: string): MailLinkMenuModel | null {
     };
   }
   if (!/^https?:/i.test(target)) return null;
+  const realAddress = safeLinkTarget(target) ?? undefined;
   return {
     kind: "http",
     target,
-    shown: shortenLinkForMenu(target),
+    realAddress,
+    shown: shortenLinkForMenu(realAddress ?? target),
     openLabel: "Open link",
     copyLabel: "Copy link",
     copyText: target,

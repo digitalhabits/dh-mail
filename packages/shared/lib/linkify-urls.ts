@@ -1,6 +1,6 @@
 /** Bare URLs, or plain-text-email style `<https://…>` wrapped ones. */
 
-import { unwrapSafeLink } from "@/lib/safe-links";
+import { repairSafeLink } from "@/lib/safe-links";
 const URL_REGEX = /<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>]+)/g;
 
 /**
@@ -77,8 +77,8 @@ export function findLinksInText(text: string): LinkMatch[] {
   const urls: LinkMatch[] = findUrlsInText(text).map((match) => ({
     start: match.start,
     end: match.end,
-    // A Microsoft safe link opens at the address it wraps (safe-links.ts).
-    href: unwrapSafeLink(match.url),
+    // A broken Microsoft safe link opens at the address it wraps (safe-links.ts).
+    href: repairSafeLink(match.url),
     kind: "url" as const,
   }));
   const emails = findEmailsInText(text).filter(

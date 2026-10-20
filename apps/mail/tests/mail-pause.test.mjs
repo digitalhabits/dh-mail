@@ -14,6 +14,7 @@ import {
   parseClock,
   quietSuggestionApplied,
   readPauseState,
+  unpauseWordsFor,
   withinWindow,
   MAIL_QUIET_SUGGESTIONS,
 } from "@/lib/mail/quiet-hours";
@@ -77,8 +78,11 @@ suite(async () => {
   };
   check(
     "a calm weekday morning: asleep at nine, and it says when it wakes",
-    JSON.stringify(mailPauseVerdict(calmMorning, friday("09:00"))) ===
-      JSON.stringify({ paused: true, reason: "quiet", until: null, untilClock: "12:00" })
+    (() => {
+      const v = mailPauseVerdict(calmMorning, friday("09:00"));
+      return v.paused && v.reason === "quiet" && v.until === null && v.untilClock === "12:00" &&
+        v.endsAt?.getTime() === friday("12:00").getTime();
+    })()
   );
   check("awake at noon", mailPauseVerdict(calmMorning, friday("12:00")).paused === false);
   check(
@@ -227,4 +231,10 @@ suite(async () => {
   check("nor Sunday evening", mailPauseVerdict(off, day(23, "23:00")).paused);
   check("nor Monday before eight", mailPauseVerdict(off, day(24, "07:00")).paused);
   check("and Monday morning the week starts again", !mailPauseVerdict(off, day(24, "09:00")).paused);
+
+  // Each account can have its own words to type before new mail comes in early.
+  const words = readPauseState({ quietHours: [], unpauseWords: 20, accounts: { "a@x.example": { unpauseWords: 0 }, "b@x.example": { unpauseWords: 50 } } });
+  check("an account with only its own words keeps its row", words.accounts?.["a@x.example"]?.unpauseWords === 0);
+  check("its words are its own", unpauseWordsFor(words, "a@x.example") === 0 && unpauseWordsFor(words, "b@x.example") === 50);
+  check("an account without is every account's", unpauseWordsFor(words, "c@x.example") === 20 && unpauseWordsFor(words, null) === 20);
 });

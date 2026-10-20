@@ -26,19 +26,42 @@ export type AccountRhythm = {
   fetching: MailQuietWindow[];
 };
 
-export type RhythmPreset = "always" | "quietWeekends" | "offWeekends" | "workHours";
-
 const WEEKDAYS: MailScheduleDay[] = [0, 1, 2, 3, 4];
 const allDay = (days: MailScheduleDay[]): MailQuietWindow => ({ start: "00:00", end: "00:00", days });
 
-export const RHYTHM_PRESETS: Record<RhythmPreset, AccountRhythm> = {
-  always: { shown: [allDay(EVERY_DAY)], fetching: [allDay(EVERY_DAY)] },
-  quietWeekends: { shown: [allDay(EVERY_DAY)], fetching: [allDay(WEEKDAYS)] },
-  offWeekends: { shown: [allDay(WEEKDAYS)], fetching: [allDay(WEEKDAYS)] },
-  workHours: { shown: [allDay(EVERY_DAY)], fetching: [{ start: "08:00", end: "17:00", days: WEEKDAYS }] },
-};
+/*
+  The answers each question of the dialog offers (AccountRhythmDialog),
+  as the hours on. The first is the default: a new mailbox is shown, and
+  gets new mail, around the clock.
+*/
 
-export const RHYTHM_PRESET_ORDER: RhythmPreset[] = ["always", "quietWeekends", "offWeekends", "workHours"];
+export type ShownPreset = "always" | "weekdays" | "work";
+export const SHOWN_PRESETS: Record<ShownPreset, MailQuietWindow[]> = {
+  always: [allDay(EVERY_DAY)],
+  weekdays: [allDay(WEEKDAYS)],
+  work: [{ start: "08:00", end: "18:00", days: WEEKDAYS }],
+};
+export const SHOWN_PRESET_ORDER: ShownPreset[] = ["always", "weekdays", "work"];
+
+export type FetchPreset = "always" | "twice" | "work";
+export const FETCH_PRESETS: Record<FetchPreset, MailQuietWindow[]> = {
+  always: [allDay(EVERY_DAY)],
+  twice: [
+    { start: "09:00", end: "10:00", days: WEEKDAYS },
+    { start: "15:00", end: "16:00", days: WEEKDAYS },
+  ],
+  work: [{ start: "08:00", end: "18:00", days: WEEKDAYS }],
+};
+export const FETCH_PRESET_ORDER: FetchPreset[] = ["always", "twice", "work"];
+
+/** Which answer these hours are, or null for hours of the reader's own. */
+export function presetOf<P extends string>(
+  presets: Record<P, MailQuietWindow[]>,
+  order: P[],
+  rows: MailQuietWindow[]
+): P | null {
+  return order.find((name) => sameWeek(presets[name], rows)) ?? null;
+}
 
 /** Minutes of one day, [from, to), from 0 to 1440. */
 type Span = [number, number];
@@ -109,17 +132,6 @@ export function invertWindows(windows: MailQuietWindow[]): MailQuietWindow[] {
 /** One canonical form, so two ways of writing the same week compare equal. */
 export function sameWeek(a: MailQuietWindow[], b: MailQuietWindow[]): boolean {
   return JSON.stringify(daySpans(a)) === JSON.stringify(daySpans(b));
-}
-
-/** Which preset this is, or null for hours of the reader's own. */
-export function rhythmPreset(rhythm: AccountRhythm): RhythmPreset | null {
-  return (
-    RHYTHM_PRESET_ORDER.find(
-      (name) =>
-        sameWeek(RHYTHM_PRESETS[name].shown, rhythm.shown) &&
-        sameWeek(RHYTHM_PRESETS[name].fetching, rhythm.fetching)
-    ) ?? null
-  );
 }
 
 /** What the settings keep: hidden windows, and windows nothing is fetched. */

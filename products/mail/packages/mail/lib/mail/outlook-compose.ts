@@ -18,6 +18,7 @@ import { extractInlineImages } from "@/lib/mail/inline-images";
 import { isPendingLocalMessage } from "@/lib/mail/local-message";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import type { MailMessage } from "@/lib/mail/types";
+import { inertHtmlBody } from "@/lib/inert-html";
 
 /**
  * Recipients and subject on a mailto: URL, the body deliberately left off.
@@ -154,12 +155,13 @@ export function withoutTrailingSignature(
     the same paragraph as the last line of the message stays where it is,
     and the words on the pasteboard are right either way.
 
-    Without a document (a test, a server) the HTML is left as it is.
+    Without a DOM parser (a test, a server) the HTML is left as it is.
   */
-  if (typeof document === "undefined") return { html: body.html, text };
+  if (typeof DOMParser === "undefined") return { html: body.html, text };
   const squash = (value: string) => value.replace(/\s+/g, "");
-  const box = document.createElement("div");
-  box.innerHTML = body.html;
+  // In a document of its own, not in the page: the reply holds the quoted
+  // original, which is somebody else's HTML. See inert-html.ts.
+  const box = inertHtmlBody(body.html);
   let need = squash(signatureText);
   while (box.lastChild && need) {
     const node = squash(box.lastChild.textContent ?? "");

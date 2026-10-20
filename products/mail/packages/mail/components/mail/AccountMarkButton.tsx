@@ -13,7 +13,7 @@
 
 import * as React from "react";
 import type { MailProvider } from "@/lib/mail/types";
-import { EyeOff, Image as ImageIcon, RotateCcw } from "lucide-react";
+import { EyeOff, Image as ImageIcon, Pencil, RotateCcw } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 
 import { AccountMark } from "@/components/mail/AccountMark";
@@ -107,12 +107,58 @@ export function MarkMenu({
   );
 }
 /**
+ * Picking a picture file for a mailbox: a hidden file field, and a way to
+ * open it. The mark button and "Choose a picture" in the setup dialog use it.
+ */
+function usePictureFile(account: string) {
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      setAccountMark(account, await fileToMark(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read that picture");
+    }
+  };
+  const input = (
+    <input
+      ref={fileRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        void pick(file);
+      }}
+    />
+  );
+  return { input, choose: () => fileRef.current?.click() };
+}
+
+/** "Choose a picture": opens the file picker at once. For the setup dialog. */
+export function ChoosePictureLink({ account, className }: { account: string; className?: string }) {
+  const t = useMailT();
+  const file = usePictureFile(account);
+  return (
+    <>
+      <button type="button" className={cn("text-teal-700 hover:underline", className)} onClick={file.choose}>
+        {t("chooseAPicture")}
+      </button>
+      {file.input}
+    </>
+  );
+}
+
+/**
  * A mailbox's mark, as a button that changes it.
  *
  * Click for the menu — choose a picture, or go back to the provider's. The
- * tabs open the same menu on a right-click, because a left-click there
- * chooses the mailbox; in Settings there is nothing else the mark could
- * mean, so the plain click does it.
+ * tab's menu does not offer it (2026-10-20): the picture is set in Settings
+ * and when the mailbox is connected.
+ *
+ * `large`: a tile with a pencil on its corner, as in Settings and the setup
+ * dialog, so the mark reads as something that can be changed.
  */
 export function AccountMarkButton({
   account,
@@ -120,28 +166,19 @@ export function AccountMarkButton({
   className,
   markClassName,
   title,
+  large = false,
 }: {
   account: string;
   provider: MailProvider | "unknown";
   className?: string;
   markClassName?: string;
   title?: string;
+  large?: boolean;
 }) {
   const marks = useAccountMarks();
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
-  const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const file = usePictureFile(account);
   const key = account.trim().toLowerCase();
-
-  const pick = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      setAccountMark(account, await fileToMark(file));
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Could not read that picture"
-      );
-    }
-  };
 
   return (
     <>
@@ -150,7 +187,8 @@ export function AccountMarkButton({
         title={title}
         aria-label={title}
         className={cn(
-          "shrink-0 rounded transition-opacity hover:opacity-80",
+          "shrink-0 transition-opacity hover:opacity-80",
+          large ? "relative flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100" : "rounded",
           className
         )}
         onClick={(e) => {
@@ -165,20 +203,18 @@ export function AccountMarkButton({
         <AccountMark
           mark={marks[key]}
           provider={provider}
-          className={markClassName}
+          className={large ? (marks[key] ? "h-10 w-10 rounded-xl" : "h-6 w-6") : markClassName}
         />
+        {large ? (
+          <span
+            aria-hidden
+            className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-[var(--mail-chrome)] bg-stone-600 text-white"
+          >
+            <Pencil className="h-2.5 w-2.5" />
+          </span>
+        ) : null}
       </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          void pick(file);
-        }}
-      />
+      {file.input}
       {menu ? (
         <MarkMenu
           x={menu.x}
@@ -186,7 +222,7 @@ export function AccountMarkButton({
           hasOwnMark={Boolean(marks[key])}
           onChoose={() => {
             setMenu(null);
-            fileRef.current?.click();
+            file.choose();
           }}
           onReset={() => {
             setAccountMark(account, null);

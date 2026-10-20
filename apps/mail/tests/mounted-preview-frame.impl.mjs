@@ -3,13 +3,11 @@
  *
  * Two claims, in this order.
  *
- * First, what `sanitizeEmailHtml` lets through. It is a blocklist, and it
- * names neither `style` nor `svg` nor `math`. The reader can carry that,
- * because its frame answers to `default-src 'none'`. These checks record
- * the gap rather than close it: a sender's `style` block is part of how
- * mail looks, and the reader must go on showing it. If one of them fails
- * because the sanitizer became stricter, that is good news. Read the new
- * output and write the line again.
+ * First, what `sanitizeEmailHtml` lets through. It was a blocklist that
+ * named neither `style` nor `svg` nor `math`, and these checks recorded
+ * that gap. It is an allowlist now (2026-10): SVG and MathML go whole, and
+ * a sender's `style` block stays, because it is part of how mail looks and
+ * the reader must go on showing it.
  *
  * Second, where that output is allowed to land. The send preview showed it
  * in the app's own document. A stylesheet there is not decoration: it reads
@@ -96,8 +94,8 @@ suite(async () => {
     svg
   );
   check(
-    "but the SVG element itself comes through: the list does not name it",
-    svg.includes("<svg"),
+    "and the SVG element goes, with what is in it",
+    !svg.includes("<svg") && !svg.includes("circle") && svg.includes("Two bits of good news."),
     svg
   );
 
@@ -110,21 +108,20 @@ suite(async () => {
 
   const math = sanitizeEmailHtml(HOSTILE.math);
   check(
-    "a MathML payload comes through, style block and all",
-    math.includes("<math") && math.includes("<style"),
+    "a MathML payload goes whole, style block and all",
+    !math.includes("<math") && !math.includes("<style"),
     math
   );
 
   // Parse, serialize, parse. The sanitizer does the first two, and whoever
-  // shows the result does the third. What it hands on still holds the words
-  // of an event handler, inside an attribute, where only the parser decides
-  // whether they are text or markup. Two engines decide differently: WebKit
-  // grows a tag on the second parse, happy-dom does not. That is the whole
-  // of how a mutation attack works, and it is why the answer here is a
-  // frame rather than a cleverer string.
+  // shows the result does the third. The blocklist handed on the words of an
+  // event handler inside an attribute, where only the parser decides whether
+  // they are text or markup. WebKit grew a tag from them on the second
+  // parse. With the <math> gone, the words are gone too. The frame is still
+  // the answer if something else gets through.
   check(
-    "and the handler it carries is still there, for the next parser to read",
-    /onerror/i.test(math),
+    "and the handler it carried is gone with it",
+    !/onerror/i.test(math),
     math
   );
 

@@ -11,8 +11,11 @@ import {
   shownEarlyEnd,
   shownEarlyUntil,
   hideAgainEndsShow,
+  hideAgainFor,
+  showWordsFor,
 } from "@/lib/mail/mailbox-hide";
 
+import { keptFromOnHours } from "@/lib/mail/account-rhythm";
 import { check, suite } from "./harness.mjs";
 
 const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
@@ -84,4 +87,23 @@ suite(async () => {
   check("15 minutes, with the schedule ending in 10: the schedule ends it", !hideAgainEndsShow(inMinutes(10), 15, t0));
   check("15 minutes, with no end of its own: the cut ends it", hideAgainEndsShow(null, 15, t0));
   check("Never: nothing to name", !hideAgainEndsShow(inMinutes(120), 0, t0));
+
+  // Shown weekdays 07:00 – 18:00, kept as the hours hidden: a night is two
+  // windows, "18:00 – 00:00" and "00:00 – 07:00" the day after.
+  const workHidden = keptFromOnHours([{ start: "07:00", end: "18:00", days: [0, 1, 2, 3, 4] }]);
+  const tuesdayNight = new Date(2026, 9, 6, 23, 0); // 6 Oct 2026 is a Tuesday
+  const night = mailboxHideVerdict({ hours: workHidden }, tuesdayNight);
+  check("hidden on Tuesday night", night.hidden && night.reason === "schedule");
+  check("shown again at 07:00, not at midnight", night.untilClock === "07:00", night.untilClock);
+  check("on Wednesday morning", night.endsAt?.getDate() === 7 && night.endsAt?.getHours() === 7, String(night.endsAt));
+  const friday = mailboxHideVerdict({ hours: workHidden }, new Date(2026, 9, 9, 19, 0));
+  check("on Friday evening, shown again on Monday at 07:00", friday.endsAt?.getDate() === 12 && friday.untilClock === "07:00", String(friday.endsAt));
+  check("so showing it now lasts until then", scheduleWindowEnd(workHidden, tuesdayNight) === night.endsAt.getTime());
+
+  // Each account can have its own words and "Hide again after".
+  const own = readHideState({ showWords: 20, hideAgainMinutes: 15, accounts: { "a@x.example": { showWords: 0 }, "b@x.example": { hideAgainMinutes: 60 } } });
+  check("an account's own words are kept, 0 too", own.accounts["a@x.example"].showWords === 0);
+  check("its words are its own", showWordsFor(own, "a@x.example") === 0);
+  check("another's are every account's", showWordsFor(own, "b@x.example") === 20 && showWordsFor(own, "c@x.example") === 20);
+  check("and its own Hide again after", hideAgainFor(own, "b@x.example") === 60 && hideAgainFor(own, "a@x.example") === 15);
 });

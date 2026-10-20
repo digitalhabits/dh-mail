@@ -141,8 +141,10 @@ export function loadContacts(): Promise<{
       contacts: ContactSuggestion[];
       sources: MailContactSourceSummary[];
     }>("/api/mail/contacts")
+      // An answer without the lists counts as empty ones: a field that
+      // reads them must not fall over on a bad answer from the server.
       .then((r) => ({
-        contacts: r.contacts,
+        contacts: r.contacts ?? [],
         sources: r.sources ?? [],
       }))
       .catch(() => {
@@ -174,9 +176,10 @@ export async function refreshLists(): Promise<MailContactList[]> {
   const json = await apiJson<{ lists: MailContactList[] }>(
     "/api/mail/contact-lists"
   );
-  listsCache = json.lists;
-  for (const listener of listsListeners) listener(json.lists);
-  return json.lists;
+  const lists = json.lists ?? [];
+  listsCache = lists;
+  for (const listener of listsListeners) listener(lists);
+  return lists;
 }
 
 function loadLists(): Promise<MailContactList[]> {

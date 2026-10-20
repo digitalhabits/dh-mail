@@ -7,20 +7,19 @@
  * hiding a mailbox.
  */
 
-import { TIME_FIELD_CLASS, TimeField } from "@/components/mail/date-time-pick";
+import { TIME_FIELD_CLASS } from "@/components/mail/date-time-pick";
 import { hideAgainLabel } from "@/lib/mail/mailbox-hide";
 import * as React from "react";
-import { ChevronLeft, Lock, X } from "lucide-react";
+import { ChevronLeft, Lock } from "lucide-react";
 import { AccountMark } from "@/components/mail/AccountMark";
 import { useAccountMarks } from "@/lib/mail/account-mark";
 import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 import { LockedChip, LockedSaveBar, RuleText, UnlockBox, WeekChart } from "@/components/mail/hours-editor-parts";
+import { DayCircles, HoursRuleCards } from "@/components/mail/hours-rule-cards";
 
-import {
-  SCHEDULE_DAY_LABELS,
-  WEEKDAY_DAYS,
-  type MailScheduleDay,
-} from "@/lib/mail/custom-lists";
+export { DayCircles };
+
+import { SCHEDULE_DAY_LABELS, WEEKDAY_DAYS } from "@/lib/mail/custom-lists";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
 import {
   ALWAYS_RULE,
@@ -171,12 +170,8 @@ export function QuietHoursPanel({
       className="h-3.5 w-3.5"
     />
   );
-  /** Only the one rule that means always: nothing to take away. */
-  const alwaysOnly = rows.length === 1 && isAllDay(rows[0]) && rows[0].days.length === 7;
   const ownHours = !(followAll && account);
 
-  const patch = (index: number, part: Partial<MailQuietWindow>) =>
-    keepRows(rows.map((window, i) => (i === index ? { ...window, ...part } : window)));
   /** One rule in the panel's words: "07:00 – 18:00 · weekdays", "18:00 – 07:00 +1 day · weekdays". */
   const rulePhrase = (window: MailQuietWindow) =>
     `${isAllDay(window) ? words.allDay.toLocaleLowerCase() : `${window.start} – ${window.end}${isOvernight(window) ? ` ${t("hoursPlusDay")}` : ""}`} · ${daysPhrase(window.days, words, SCHEDULE_DAY_LABELS)}`;
@@ -257,55 +252,7 @@ export function QuietHoursPanel({
 
           <div className="mt-2 flex flex-col gap-2">
             {ownHours ? null : <p className="text-xs text-stone-500">{t("quietHoursUsesAll")}</p>}
-            {ownHours ? rows.map((window, index) => (
-              <div key={index} className="rounded-lg bg-[var(--mail-hours-card)] p-2.5">
-                <div className="flex items-center gap-2">
-                  <TimeField
-                    label={t("rhythmFrom")}
-                    value={window.start}
-                    onChange={(start) => patch(index, { start })}
-                    className={isAllDay(window) ? "opacity-40" : undefined}
-                  />
-                  <span className="text-stone-400">–</span>
-                  <TimeField
-                    label={t("rhythmTo")}
-                    value={window.end}
-                    onChange={(end) => patch(index, { end })}
-                    className={isAllDay(window) ? "opacity-40" : undefined}
-                  />
-                  <span className="min-w-0 flex-1" />
-                  {/* All day as a switch, not 00:00 – 00:00 (2026-10-18). Off
-                      again goes back to the working day. */}
-                  <SmallSwitch
-                    label={t("hoursAllDay")}
-                    on={isAllDay(window)}
-                    onChange={(on) => patch(index, on ? { start: "00:00", end: "00:00" } : { start: "08:00", end: "17:00" })}
-                  />
-                  {alwaysOnly || rows.length < 2 ? null : (
-                    <button
-                      type="button"
-                      aria-label={t("rhythmRemoveHours")}
-                      title={t("rhythmRemoveHours")}
-                      className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
-                      onClick={() => keepRows(rows.filter((_, i) => i !== index))}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <DayCircles days={window.days} onToggle={(day) => patch(index, { days: toggleDay(window.days, day) })} />
-              </div>
-            )) : null}
-
-            {ownHours ? (
-              <button
-                type="button"
-                className="self-start px-1 text-xs font-semibold text-[var(--mail-hours-accent)] hover:text-[var(--mail-hours-accent-hover)]"
-                onClick={() => keepRows(alwaysOnly ? [WORKING_DAY] : [...rows, WORKING_DAY])}
-              >
-                {t("addMoreHours")}
-              </button>
-            ) : null}
+            {ownHours ? <HoursRuleCards rows={rows} onRows={keepRows} /> : null}
           </div>
 
             {waiting && lock ? (
@@ -358,9 +305,6 @@ export function QuietHoursPanel({
     </div>
   );
 }
-
-/** The hours a new row starts with: the working day. */
-const WORKING_DAY: MailQuietWindow = { start: "08:00", end: "17:00", days: [...WEEKDAY_DAYS] };
 
 /**
  * The hours offered, as the hours on (2026-10-18). Add puts them with the
@@ -419,29 +363,6 @@ function SuggestionRow({
   );
 }
 
-/** A small on/off switch, drawn as the Stacks switch is. */
-function SmallSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      className="flex shrink-0 items-center gap-1.5 text-xs text-stone-600"
-      onClick={() => onChange(!on)}
-    >
-      {label}
-      <span className={cn("relative block h-4 w-7 rounded-full transition-colors", on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300")}>
-        <span
-          className={cn(
-            "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left]",
-            on ? "left-3.5" : "left-0.5"
-          )}
-        />
-      </span>
-    </button>
-  );
-}
-
 /** The words a rule is said in, in the reader's language. */
 export function useOnHoursWords(): OnHoursWords {
   const t = useMailT();
@@ -454,39 +375,6 @@ export function useOnHoursWords(): OnHoursWords {
       weekends: t("weekendsShort"),
     }),
     [t]
-  );
-}
-
-export function DayCircles({
-  days,
-  onToggle,
-}: {
-  days: MailScheduleDay[];
-  onToggle: (day: MailScheduleDay) => void;
-}) {
-  return (
-    <div className="mt-1.5 flex flex-wrap gap-1">
-      {SCHEDULE_DAY_LABELS.map(({ day, label }) => {
-        const on = days.includes(day);
-        return (
-          <button
-            key={day}
-            type="button"
-            aria-pressed={on}
-            aria-label={label}
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold",
-              on
-                ? "bg-[var(--mail-hours-accent)] text-white"
-                : "border border-stone-300 bg-white text-stone-500 hover:border-stone-400"
-            )}
-            onClick={() => onToggle(day)}
-          >
-            {label.slice(0, 1)}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -515,15 +403,6 @@ function storedSchedules(
   }
   // A schedule with nothing kept is Always: nothing to add.
   return out.filter((source) => source.kept.some((w) => w.days.length));
-}
-
-function toggleDay(
-  days: MailScheduleDay[],
-  day: MailScheduleDay
-): MailScheduleDay[] {
-  return days.includes(day)
-    ? days.filter((d) => d !== day)
-    : [...days, day].sort((a, b) => a - b);
 }
 
 /** The hours' time boxes: the one time field (date-time-pick). */

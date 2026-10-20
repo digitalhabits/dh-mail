@@ -25,7 +25,6 @@ import {
   formatClock,
   mailPauseVerdict,
   minutesOfDay,
-  parseClock,
   readPauseState,
   type MailQuietWindow,
 } from "@/lib/mail/quiet-hours";
@@ -42,6 +41,13 @@ export type MailboxHide = {
   shownUntil?: number;
   /** This machine hid it (by a time or the schedule), so a clock may show it again. */
   autoHidden?: boolean;
+  /**
+   * Its own words to type before it is shown early, and its own "Hide again
+   * after" (2026-10-20). Absent: the state's, which are every account's
+   * until one is given its own. 0 is kept: none, for this account.
+   */
+  showWords?: number;
+  hideAgainMinutes?: number;
 };
 
 export type MailboxHideState = {
@@ -102,6 +108,8 @@ export type MailboxHideVerdict = {
   /** When it shows again: a Date for a time, "HH:MM" for the schedule. */
   until: Date | null;
   untilClock: string | null;
+  /** The schedule's: the moment it shows again, past windows that run on. */
+  endsAt?: Date | null;
 };
 
 const NOT_HIDDEN: MailboxHideVerdict = { hidden: false, reason: null, until: null, untilClock: null };
@@ -116,7 +124,9 @@ export function mailboxHideVerdict(row: MailboxHide | undefined, now: Date): Mai
   }
   if (row.hours?.length && !shownEarly) {
     const verdict = mailPauseVerdict({ quietHours: row.hours }, now);
-    if (verdict.paused) return { hidden: true, reason: "schedule", until: null, untilClock: verdict.untilClock };
+    if (verdict.paused) {
+      return { hidden: true, reason: "schedule", until: null, untilClock: verdict.untilClock, endsAt: verdict.endsAt ?? null };
+    }
   }
   return NOT_HIDDEN;
 }
@@ -138,13 +148,8 @@ export function shownEarlyUntil(row: MailboxHide | undefined, now: Date): string
 export function scheduleWindowEnd(hours: MailQuietWindow[] | undefined, now: Date): number | null {
   if (!hours?.length) return null;
   const verdict = mailPauseVerdict({ quietHours: hours }, now);
-  if (!verdict.paused || !verdict.untilClock) return null;
-  const end = parseClock(verdict.untilClock);
-  if (end == null) return null;
-  const minutes = (end - minutesOfDay(now) + 1440) % 1440 || 1440;
-  const at = new Date(now.getTime() + minutes * 60_000);
-  at.setSeconds(0, 0);
-  return at.getTime();
+  if (!verdict.paused) return null;
+  return verdict.endsAt?.getTime() ?? null;
 }
 
 /** What the page should do to the "in Mail" flag of one mailbox now. */
@@ -175,6 +180,8 @@ export function readHideState(raw: unknown): MailboxHideState {
       if (typeof row.hiddenUntil === "number" && Number.isFinite(row.hiddenUntil)) out.hiddenUntil = row.hiddenUntil;
       if (typeof row.shownUntil === "number" && Number.isFinite(row.shownUntil)) out.shownUntil = row.shownUntil;
       if (row.autoHidden === true) out.autoHidden = true;
+      if (typeof row.showWords === "number") out.showWords = normaliseUnpauseWords(row.showWords);
+      if (typeof row.hideAgainMinutes === "number") out.hideAgainMinutes = normaliseHideAgainMinutes(row.hideAgainMinutes);
       // The windows are the pause schedule's, read by its own reader.
       const hours = readPauseState({ quietHours: row.hours }).quietHours;
       if (hours.length) out.hours = hours;
@@ -188,4 +195,14 @@ export function readHideState(raw: unknown): MailboxHideState {
     ...(showWords ? { showWords } : null),
     ...(hideAgainMinutes ? { hideAgainMinutes } : null),
   };
+}
+
+/** An account's words to type before it is shown early: its own, or every account's. */
+export function showWordsFor(state: MailboxHideState, email: string): number {
+  return state.accounts[hideKey(email)]?.showWords ?? state.showWords ?? 0;
+}
+
+/** An account's "Hide again after", in minutes: its own, or every account's. */
+export function hideAgainFor(state: MailboxHideState, email: string): number {
+  return state.accounts[hideKey(email)]?.hideAgainMinutes ?? state.hideAgainMinutes ?? 0;
 }

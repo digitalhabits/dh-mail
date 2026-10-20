@@ -343,30 +343,26 @@ async function open(t) {
   await sleep(600);
 }
 
-/** Pausing opens from Sync; all paused, Sync becomes the paused state. */
+/** Sync is one button; pausing is in the account tabs' menu now. */
 async function pauseFromSyncAndResume() {
   await mount();
   const byLabel = (text) => [...document.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || "") === text);
   const byText = (re) => [...document.querySelectorAll("button")].find((b) => re.test((b.textContent || "").trim()));
   assert(byLabel("Sync inbox") || byText(/^Sync$/), "Sync is there");
-  assert(byLabel("Pause receiving mail…"), "and a ▾ beside it for pausing");
+  assert(!byLabel("Pause receiving mail…"), "with no ▾ beside it: pausing is in the tabs' menu");
   assert(!byText(/^Pause inbox$/), "the title bar has no pause control of its own");
   localStorage.setItem("redd-plan-mail-pause", JSON.stringify({ pausedUntil: Date.now() + 3_600_000, quietHours: [] }));
   window.dispatchEvent(new Event("redd-plan-mail-pause-changed"));
   await sleep(200);
-  const paused = byText(/^All$/);
-  assert(paused && /^Inbox paused · /.test(paused.getAttribute("aria-label") || ""), "all paused, Sync becomes a short \"All\", with until when in its label");
-  assert(!byLabel("Sync inbox"), "and there is no Sync to press");
-  clickEl(paused);
+  const sync = byText(/^Sync$/);
+  assert(sync && /^Inbox paused · /.test(sync.getAttribute("aria-label") || ""), "all paused, Sync stays Sync and says the pause in its label");
+  assert(sync.querySelector(".bg-amber-500"), "with an amber dot");
+  localStorage.setItem("redd-plan-mail-pause", JSON.stringify({ quietHours: [] }));
+  window.dispatchEvent(new Event("redd-plan-mail-pause-changed"));
   await sleep(200);
-  assert(/Paused now/.test(document.body.textContent || ""), "its menu starts with what is paused");
-  const resume = byText(/^Resume$/);
-  assert(resume, "with a Resume");
-  clickEl(resume);
-  await sleep(200);
-  assert(byLabel("Pause receiving mail…"), "resumed, Sync and its ▾ are back");
-  assert(!JSON.parse(localStorage.getItem("redd-plan-mail-pause") || "{}").pausedUntil, "and the pause is gone");
-  pass("pausing opens from Sync; all paused, it says All, and its menu starts with Paused now and Resume");
+  assert(byLabel("Sync inbox"), "resumed, Sync is plain again");
+  assert(!byText(/^Sync$/).querySelector(".bg-amber-500"), "with no dot");
+  pass("Sync is one button: no ▾, and a dot and a label while paused");
 }
 
 async function archiveThenCommandZ() {

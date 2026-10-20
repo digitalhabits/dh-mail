@@ -270,6 +270,63 @@ async function sendOne(row: Row): Promise<"sent" | "gone"> {
 let running: Promise<void> | null = null;
 
 /**
+ * Rows sent in this run of the app whose "sent" the store did not take.
+ *
+ * A send that went must not go again. When the store refuses to record it,
+ * the row would come back as due on the next look: Gmail and Exchange take
+ * the draft away when it is sent, so a second try finds it gone, and the
+ * reader was told that a message they sent had failed. Where the draft was
+ * still there, it went twice. This keeps the id until the store takes it.
+ */
+const sentNotRecorded = new Set<number>();
+
+/** Pauses between tries to record a send, in ms. */
+const RECORD_PAUSES_MS = [250, 1000];
+
+type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+/** Record a send that went: a few tries, then kept in memory for later. */
+async function recordSent(invoke: Invoke, id: number): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await invoke("mail_scheduled_done", { id });
+      sentNotRecorded.delete(id);
+      return;
+    } catch (err) {
+      const pause = RECORD_PAUSES_MS[attempt];
+      if (pause === undefined) {
+        sentNotRecorded.add(id);
+        console.warn(`[mail] a scheduled message was sent, but the store did not record it (row ${id}):`, err);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pause));
+    }
+  }
+}
+
+/** Send one due row, and record what came of it. */
+async function sendAndRecord(invoke: Invoke, row: Row): Promise<void> {
+  let outcome: "sent" | "gone";
+  try {
+    outcome = await sendOne(row);
+  } catch (err) {
+    const failure = row.provider === "gmail" ? gmailFailure(err) : exchangeFailure(err);
+    const error = String((err as Error)?.message ?? err).slice(0, 500);
+    console.warn(`[mail] a scheduled send did not go (${failure}):`, error);
+    await invoke("mail_scheduled_failed", { id: row.id, failure, error }).catch(() => undefined);
+    return;
+  }
+  // Past this point the message went (or was gone already). A failure to
+  // write that down is not a failed send, and must not make one.
+  if (outcome === "gone") {
+    console.info(`[mail] a scheduled draft was no longer there; nothing was sent (${row.account})`);
+    await invoke("mail_scheduled_failed", { id: row.id, failure: "gone", error: "draft gone" }).catch(() => undefined);
+    return;
+  }
+  await recordSent(invoke, row.id);
+}
+
+/**
  * Send every scheduled draft whose time has come. One run at a time; the
  * store's claim keeps a second copy of the app off the same rows.
  */
@@ -278,22 +335,12 @@ export function runScheduledSends(): Promise<void> {
   running = (async () => {
     const invoke = tauriInvoke();
     if (!invoke) return;
+    // Sends the store has not recorded yet: try again, before anything new.
+    for (const id of [...sentNotRecorded]) await recordSent(invoke, id);
     const rows = ((await invoke("mail_scheduled_take_due", {})) as Row[] | null) ?? [];
     for (const row of rows) {
-      try {
-        const outcome = await sendOne(row);
-        if (outcome === "gone") {
-          console.info(`[mail] a scheduled draft was no longer there; nothing was sent (${row.account})`);
-          await invoke("mail_scheduled_failed", { id: row.id, failure: "gone", error: "draft gone" });
-        } else {
-          await invoke("mail_scheduled_done", { id: row.id });
-        }
-      } catch (err) {
-        const failure = row.provider === "gmail" ? gmailFailure(err) : exchangeFailure(err);
-        const error = String((err as Error)?.message ?? err).slice(0, 500);
-        console.warn(`[mail] a scheduled send did not go (${failure}):`, error);
-        await invoke("mail_scheduled_failed", { id: row.id, failure, error }).catch(() => undefined);
-      }
+      if (sentNotRecorded.has(row.id)) continue;
+      await sendAndRecord(invoke, row);
     }
   })()
     .catch((err) => console.warn("[mail] the scheduled sender failed:", err))

@@ -80,4 +80,17 @@ suite(async () => {
       mailLinkMenuModel("mailto:") === null &&
       mailLinkMenuModel("#top") === null
   );
+
+  const safe =
+    "https://eur02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnews.example%2Fspring&data=05&sdata=ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ%3D";
+  const menu = mailLinkMenuModel(safe);
+  check(
+    "a safe link's menu shows its real address and offers to copy it, and opens the safe link",
+    menu?.realAddress === "https://news.example/spring" &&
+      menu.shown === "news.example/spring" &&
+      menu.target === safe &&
+      menu.copyText === safe,
+    JSON.stringify(menu)
+  );
+  check("any other link has no real address of its own", mailLinkMenuModel("https://example.org/a")?.realAddress === undefined);
 });

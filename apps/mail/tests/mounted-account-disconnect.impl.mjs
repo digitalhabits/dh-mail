@@ -99,15 +99,15 @@ async function main() {
     await sleep(500);
     assert(listed_(LEAVE) && listed_(KEEP), "both accounts are listed");
 
-    // All well says Connected; a sign-in that stopped working says so and
+    // All well says nothing; a sign-in that stopped working says so and
     // offers Reconnect, and only there.
     const reconnectFor = (email) =>
       [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === `Reconnect ${email}`);
     assert(!reconnectFor(KEEP), "no Reconnect on an account that is fine");
     assert(reconnectFor(LEAVE), "Reconnect on the account whose sign-in stopped");
     assert(listed_("Signing in stopped working"), "and the line under it says why");
-    assert(listed_("Connected"), "the account that is fine says Connected");
-    pass("Connected while all is well; Reconnect only where signing in stopped working");
+    assert(!listed_("Connected"), "the account that is fine says nothing about it");
+    pass("nothing while all is well; Reconnect only where signing in stopped working");
 
     // Disconnect, then Undo inside the ten seconds.
     clickEl(disconnectButton(LEAVE));

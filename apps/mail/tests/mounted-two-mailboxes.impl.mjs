@@ -101,6 +101,91 @@ async function main() {
     assert(text().includes("Cakes for the choir evening"), "and Tea's");
     pass("with two mailboxes, each is asked on its own, and the rows of both are listed");
 
+    // The tabs' menu: hiding and pausing in one (account-hours-menu.tsx).
+    const buttonWith = (re) => [...document.querySelectorAll("button")].find((b) => re.test((b.textContent || "").trim()));
+    const stored = (key) => JSON.parse(window.localStorage.getItem(key) ?? "null");
+    const menuItem = (re) => [...document.querySelectorAll('[role="menuitem"]')].find((b) => re.test((b.textContent || "").trim()));
+    clickEl(buttonWith(/^All$/));
+    await sleep(200);
+    assert(text().includes("Schedule") && text().includes("Same hours for all"), `a second press on All opens its menu: ${text().slice(0, 300)}`);
+    assert([...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent).join("|") === "Shown in Mail|New mail arrives", "with the two schedules as tabs");
+    assert(!byLabel(/^Pause receiving mail/), "and no ▾ by Sync");
+    clickEl(menuItem(/^tea/));
+    await sleep(200);
+    assert(text().includes("When do you want to see this account in your inbox?"), "an account's row opens its schedule");
+    assert(/AlwaysCurrent/.test(buttonWith(/^Always/).textContent.replace(/\s+/g, "")), "with Always as Current");
+    assert(text().includes("No changes yet."), "and no changes yet");
+    clickEl(buttonWith(/^Weekdays only/));
+    await sleep(100);
+    assert(text().includes("Not saved yet."), "a pick is not saved until Done");
+    clickEl(buttonWith(/^Done$/));
+    await sleep(200);
+    assert.deepEqual(stored("redd-plan-mail-hide")?.accounts?.[TEA]?.hours, [{ start: "00:00", end: "00:00", days: [5, 6] }], `Done keeps Tea hidden at the weekend: ${JSON.stringify(stored("redd-plan-mail-hide"))}`);
+    assert(text().includes("Same hours for all"), "and goes back to the menu");
+    clickEl(buttonWith(/^Same hours for all/));
+    await sleep(200);
+    assert(text().includes("When do you want to see your accounts in your inbox?"), `All's page asks about every account: ${text().slice(0, 300)}`);
+    clickEl(byLabel(/^Back$/));
+    await sleep(200);
+
+    // To show it early: each account can have its own words.
+    clickEl(menuItem(/^To show it early/));
+    await sleep(200);
+    assert(text().includes("Each account can have its own"), `All's page lists each account: ${text().slice(0, 300)}`);
+    clickEl(menuItem(/^tea/));
+    await sleep(200);
+    const slider = document.querySelector('input[type="range"]');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(slider, "12");
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.dispatchEvent(new Event("change", { bubbles: true }));
+    await sleep(200);
+    assert.equal(stored("redd-plan-mail-hide")?.accounts?.[TEA]?.showWords, 12, `Tea has words of her own: ${JSON.stringify(stored("redd-plan-mail-hide"))}`);
+    assert(stored("redd-plan-mail-hide")?.showWords == null, "and every account's are untouched");
+    clickEl(byLabel(/^Back$/));
+    await sleep(200);
+    assert(text().includes("Type 12 words") && text().includes("Nothing to type"), "All's page shows each account's words");
+    clickEl(byLabel(/^Back$/));
+    await sleep(200);
+    assert(text().includes("Differs per account"), "and the menu says they differ");
+    pass("the words to type are each account's own, set from its row on All's page");
+    pass("the All menu lists each account, and an account's schedule is the setup question");
+
+    clickEl([...document.querySelectorAll('[role="tab"]')].find((b) => b.textContent === "New mail arrives"));
+    await sleep(100);
+    clickEl(menuItem(/^ulla/));
+    await sleep(200);
+    assert(text().includes("When should new mail come in?"), "the new-mail schedule opens");
+    assert(/SameasAllaccountsCurrent/.test(buttonWith(/^Same as All accounts/).textContent.replace(/\s+/g, "")), "following All is Current");
+    clickEl(buttonWith(/^Working hours/));
+    await sleep(100);
+    clickEl(buttonWith(/^Done$/));
+    await sleep(200);
+    const pauseRow = stored("redd-plan-mail-pause")?.accounts?.[ULLA];
+    assert(pauseRow?.quietHours?.length > 0, `Ulla has new-mail hours of her own: ${JSON.stringify(stored("redd-plan-mail-pause"))}`);
+    pass("new mail's schedule can follow All or have hours of its own");
+
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await sleep(150);
+    // The tab, not the folder rail's heading with the whole address.
+    clickEl(buttonWith(/^ulla$/));
+    await sleep(300);
+    clickEl(buttonWith(/^ulla$/));
+    await sleep(200);
+    assert(text().includes("Hide for a while") && text().includes("Schedule"), `a second press on an account opens its menu: ${text().slice(0, 300)}`);
+    assert(!text().includes("Choose a picture"), "without the picture: that is in Settings and the setup dialog now");
+    assert(text().includes("Hide for a while"), "and Hide for a while, while it is shown");
+    assert(menuItem(/^Until I show it$/), "with Until I show it among the times");
+    // The first time offered: hidden until then, kept on this machine.
+    const firstTime = [...document.querySelectorAll('[role="menuitem"]')].find((b) => b.querySelector(".tabular-nums"));
+    clickEl(firstTime);
+    await sleep(300);
+    assert(stored("redd-plan-mail-hide")?.accounts?.[ULLA]?.hiddenUntil > Date.now(), `a time hides Ulla until then: ${JSON.stringify(stored("redd-plan-mail-hide"))}`);
+    pass("an account's menu hides it for a while");
+    window.localStorage.removeItem("redd-plan-mail-hide");
+    window.dispatchEvent(new Event("redd-plan-mail-hide-changed"));
+    await sleep(300);
+
     failing.add(TEA);
     clickEl(byLabel(/^Sync/));
     await sleep(900);

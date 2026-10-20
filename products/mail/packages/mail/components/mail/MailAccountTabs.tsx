@@ -29,14 +29,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Moon } from "lucide-react";
-import { toast } from "@/lib/mail/toast";
 
 import { AccountMark } from "@/components/mail/AccountMark";
 import { AutoReplyBadge } from "@/components/mail/AutoReplyMark";
-import { fileToMark } from "@/components/mail/AccountMarkButton";
-import { MailboxMenu } from "@/components/mail/MailboxMenu";
+import { AccountHoursMenu, type PauseControls } from "@/components/mail/account-hours-menu";
+import { hiddenStatusText } from "@/components/mail/hidden-status";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
-import { setAccountMark, useAccountMarks } from "@/lib/mail/account-mark";
+import { useAccountMarks } from "@/lib/mail/account-mark";
 import type { AccountChipLabel } from "@/lib/mail/account-labels";
 import { ALL_TAB_ID, writeAccountOrder } from "@/lib/mail/account-order";
 import { useAccountOrder } from "@/lib/mail/use-account-order";
@@ -131,6 +130,7 @@ export function MailAccountTabs({
   quietUntil,
   autoReplyOn,
   hide,
+  pause,
 }: {
   accounts: string[];
   labels: Map<string, AccountChipLabel>;
@@ -153,6 +153,12 @@ export function MailAccountTabs({
    * their menu saying how they are hidden and showing them again.
    */
   hide?: MailboxHideControls;
+  /**
+   * Pausing. Given with `hide`, a tab's menu is the menu for both: when the
+   * account is shown, and when new mail comes in (account-hours-menu.tsx).
+   * A second press on All opens it for every account.
+   */
+  pause?: PauseControls;
 }) {
   const t = useMailT();
   const marks = useAccountMarks();
@@ -162,8 +168,6 @@ export function MailAccountTabs({
     x: number;
     y: number;
   } | null>(null);
-  const fileRef = React.useRef<HTMLInputElement | null>(null);
-  const forRef = React.useRef<string | null>(null);
   /** A drop synthesises a click. That one is not a press. */
   const suppressClick = React.useRef(false);
   const sensors = useSensors(
@@ -227,18 +231,6 @@ export function MailAccountTabs({
 
   const allMailboxes = selected.length === 0;
 
-  const pick = async (file: File | undefined) => {
-    const account = forRef.current;
-    forRef.current = null;
-    if (!file || !account) return;
-    try {
-      setAccountMark(account, await fileToMark(file));
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : t("couldNotReadThatPicture")
-      );
-    }
-  };
 
   /*
     A row of choices with one switched on.
@@ -288,8 +280,20 @@ export function MailAccountTabs({
           className={tab(allMailboxes)}
           pressed={allMailboxes}
           suppressClick={suppressClick}
-          onSelect={() => onSelect([])}
-          onContextMenu={(event) => event.preventDefault()}
+          onSelect={(event) => {
+            // As on an account: the first press chooses All, the second
+            // opens its menu, for every account at once.
+            if (!allMailboxes || !hide || !pause) {
+              onSelect([]);
+              return;
+            }
+            const box = event.currentTarget.getBoundingClientRect();
+            setMenu({ account: ALL_TAB_ID, x: box.left, y: box.bottom + 6 });
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            if (hide && pause) setMenu({ account: ALL_TAB_ID, x: event.clientX, y: event.clientY });
+          }}
         >
           {inner}
         </SortableAccountTab>
@@ -419,11 +423,7 @@ export function MailAccountTabs({
           {!selectOnly && hide
             ? hiddenIds.map((email) => {
                 const status = hide.statusOf(email);
-                const title = status.byHand
-                  ? t("hiddenByHand")
-                  : status.reason === "schedule"
-                    ? t("hiddenBySchedule", { time: status.untilClock ?? "" })
-                    : t("hiddenUntilTime", { time: status.untilClock ?? "" });
+                const title = hiddenStatusText(status, t);
                 const openMenu = (x: number, y: number) => setMenu({ account: email, x, y });
                 return (
                   <button
@@ -455,33 +455,16 @@ export function MailAccountTabs({
         </div>
       </div>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          void pick(file);
-        }}
-      />
-      {menu ? (
-        <MailboxMenu
-          email={menu.account}
+      {menu && hide && pause ? (
+        <AccountHoursMenu
+          account={menu.account === ALL_TAB_ID ? null : menu.account}
+          accounts={[...accounts, ...hiddenIds]}
+          labels={labels}
+          isOutlookAccount={isOutlookAccount}
           x={menu.x}
           y={menu.y}
-          hasOwnMark={Boolean(marks[menu.account.trim().toLowerCase()])}
-          onChoose={() => {
-            forRef.current = menu.account;
-            setMenu(null);
-            fileRef.current?.click();
-          }}
-          onReset={() => {
-            setAccountMark(menu.account, null);
-            setMenu(null);
-          }}
           hide={hide}
+          pause={pause}
           onDismiss={() => setMenu(null)}
         />
       ) : null}

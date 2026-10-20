@@ -35,6 +35,7 @@ import {
 import { toast } from "@/lib/mail/toast";
 
 import { AccountMark } from "@/components/mail/AccountMark";
+import { HiddenStatus, useHoursLine } from "@/components/mail/hidden-status";
 import { AccountMarkButton } from "@/components/mail/AccountMarkButton";
 import {
   autoReplyActive,
@@ -63,7 +64,6 @@ import { useMailRouter } from "@/lib/mail-router";
 import { mailboxAccountsPath } from "@/lib/mail/mailbox-visibility";
 import { cn } from "@/lib/utils";
 import { useMailboxHideVerdict } from "@/components/mail/use-mailbox-hide";
-import { formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
 import { syncStates } from "@/lib/mail/local-store";
 import { AccountAssistSwitch, GmailAppPasswordConnect } from "@/components/mail/team-layer";
 
@@ -173,11 +173,9 @@ function SortableAccountRow({
   const problem = needsSignIn || Boolean(account.lastSyncError);
   // How it is hidden, in the words its tab's menu uses.
   const hide = useMailboxHideVerdict(account.email);
-  const hiddenLine = !hide.hidden
-    ? t("hiddenByHand")
-    : hide.reason === "schedule"
-      ? t("hiddenBySchedule", { time: hide.untilClock ?? "" })
-      : t("hiddenUntilTime", { time: hide.until ? formatSnoozeDayTime(hide.until) : (hide.untilClock ?? "") });
+  // Its hours shown, as its tab's menu says them: "weekdays 07:00 – 18:00".
+  const hoursLine = useHoursLine();
+  const shownLine = t("hoursShownLine", { hours: hoursLine(hide.hours) });
 
   return (
     <li
@@ -222,7 +220,8 @@ function SortableAccountRow({
         account={account.email}
         provider={account.provider}
         title={t("changeAccountPicture")}
-        markClassName="h-4 w-4"
+        large
+        className="mr-1.5"
       />
       <div className="min-w-0 flex-1">
         {/* Not greyed when hidden: greyed read as disconnected. The line
@@ -236,14 +235,20 @@ function SortableAccountRow({
             problem ? "text-red-600" : "text-muted-foreground"
           )}
         >
-          {/* A problem first, then how it is hidden, then the provider. */}
-          {account.lastSyncError
-            ? t("errorPrefix", { message: account.lastSyncError })
-            : needsSignIn
-              ? t("accountNeedsReconnect")
-              : !account.inMailTab
-                ? hiddenLine
-                : mailProviderLabel(account.provider)}
+          {/* A problem first; otherwise, hidden or not, and its hours shown.
+              The mark says the provider (2026-10-20). */}
+          {account.lastSyncError ? (
+            t("errorPrefix", { message: account.lastSyncError })
+          ) : needsSignIn ? (
+            t("accountNeedsReconnect")
+          ) : !account.inMailTab ? (
+            <span className="flex min-w-0 items-center gap-1">
+              <HiddenStatus status={{ ...hide, byHand: !hide.hidden }} className="shrink-0" />
+              <span className="truncate">· {shownLine}</span>
+            </span>
+          ) : (
+            shownLine
+          )}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -271,16 +276,12 @@ function SortableAccountRow({
             {t("autoReplyButton")}
           </Button>
         ) : null}
-        {/* Connected, as Outlook says it, while all is well. Reconnect only
-            when the sign-in has stopped working: offered always, it read as
-            something to press. (In words, not the circling arrows, which
-            are Sync's in the toolbar.) */}
-        {!problem ? (
-          <span className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-            {t("accountConnected")}
-          </span>
-        ) : (
+        {/* Nothing while all is well (2026-10-20): "Connected" on every row
+            said nothing a row does not. Reconnect only when the sign-in has
+            stopped working, and the line under the address says why. (In
+            words, not the circling arrows, which are Sync's in the
+            toolbar.) */}
+        {!problem ? null : (
         <Button
           type="button"
           variant="ghost"

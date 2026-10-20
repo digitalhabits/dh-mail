@@ -28,8 +28,8 @@ import { useMailT } from "@/lib/mail/i18n";
  * copy-to-a-new-message path in `MailPage` — or taken back out of the
  * send-later queue in `ThreadPane`.
  *
- * `sanitizeEmailHtml` is a blocklist. It names no `style`, no `svg` and no
- * `math`, and the reader can carry that because its frame answers to
+ * `sanitizeEmailHtml` keeps a sender's `style` blocks, because they are part
+ * of how mail looks. The reader can carry that because its frame answers to
  * `default-src 'none'`. This card is in the app's own document, where a
  * sender's stylesheet is live: it reads the page with attribute selectors,
  * it fetches what it names, and it can hide the window. So the preview

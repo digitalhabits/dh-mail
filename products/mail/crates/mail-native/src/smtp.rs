@@ -26,6 +26,8 @@ pub enum SmtpError {
   /// The server answered with a code that is not what the step wanted.
   Refused { code: u16, text: String },
   Protocol(String),
+  /// A value for one line holds a line break. Nothing went to the server.
+  LineBreak(String),
 }
 
 impl std::fmt::Display for SmtpError {
@@ -39,6 +41,7 @@ impl std::fmt::Display for SmtpError {
       SmtpError::Tls(e) => write!(f, "tls: {e}"),
       SmtpError::Refused { code, text } => write!(f, "{code} {text}"),
       SmtpError::Protocol(e) => write!(f, "protocol: {e}"),
+      SmtpError::LineBreak(what) => write!(f, "{what} has a line break. The message was not sent"),
     }
   }
 }
@@ -47,7 +50,16 @@ impl SmtpError {
   /// A 5xx is the server's final word; anything else may pass next time.
   pub fn is_permanent(&self) -> bool {
     matches!(self, SmtpError::Refused { code, .. } if *code >= 500)
-      || matches!(self, SmtpError::Unconfirmed(_))
+      || matches!(self, SmtpError::Unconfirmed(_) | SmtpError::LineBreak(_))
+  }
+
+  /// The text for the log. A refusal names a recipient, so the log gets
+  /// only its code.
+  pub fn for_log(&self) -> String {
+    match self {
+      SmtpError::Refused { code, .. } => format!("the server refused with {code}"),
+      other => other.to_string(),
+    }
   }
   /// 530 and 535: the grant, not the message.
   pub fn is_auth(&self) -> bool {
@@ -59,6 +71,17 @@ impl From<std::io::Error> for SmtpError {
   fn from(e: std::io::Error) -> Self {
     SmtpError::Io(e)
   }
+}
+
+/// Refuse a value for one SMTP line or one header line if it holds CR, LF
+/// or NUL. Such a value ends the line and starts a new command or header.
+/// `what` names the value in the error, for example "a recipient". The
+/// error never holds the value itself.
+pub fn single_line<'a>(what: &str, value: &'a str) -> Result<&'a str, SmtpError> {
+  if value.contains(['\r', '\n', '\0']) {
+    return Err(SmtpError::LineBreak(what.to_string()));
+  }
+  Ok(value)
 }
 
 pub struct Smtp {
@@ -87,6 +110,7 @@ impl Smtp {
   }
 
   fn command(&mut self, line: &str, want: u16) -> Result<(u16, String), SmtpError> {
+    single_line("a command", line)?;
     let stream = self.stream.get_mut();
     stream.write_all(line.as_bytes())?;
     stream.write_all(b"\r\n")?;
@@ -177,11 +201,17 @@ impl Smtp {
 
   /// Send one message. The server's reply text names the queue id.
   pub fn send(&mut self, from: &str, recipients: &[String], raw: &[u8]) -> Result<String, SmtpError> {
+    // A message queued before the quotes were taken off at sync still
+    // carries them.
+    let recipients: Vec<String> = recipients.iter().map(|r| crate::imap::clean_address(r)).collect();
+    // Every address is checked before the first command, so that a bad
+    // one leaves nothing half done on the connection.
+    single_line("the sender address", from)?;
+    for rcpt in &recipients {
+      single_line("a recipient address", rcpt)?;
+    }
     self.command(&format!("MAIL FROM:<{from}>"), 250)?;
-    for rcpt in recipients {
-      // A message queued before the quotes were taken off at sync still
-      // carries them.
-      let rcpt = crate::imap::clean_address(rcpt);
+    for rcpt in &recipients {
       let (code, text) = {
         let stream = self.stream.get_mut();
         stream.write_all(format!("RCPT TO:<{rcpt}>\r\n").as_bytes())?;
@@ -215,8 +245,11 @@ impl Smtp {
 
 /// A line that starts with a dot gets a second one, as the DATA step
 /// requires, and line ends are CRLF.
+///
+/// A bare CR is a line end too. Some servers read "\r.\r\n" as the end of
+/// the data, and the text after it as new commands.
 fn dot_stuffed(raw: &[u8]) -> Vec<u8> {
-  let text = String::from_utf8_lossy(raw).replace("\r\n", "\n");
+  let text = String::from_utf8_lossy(raw).replace("\r\n", "\n").replace('\r', "\n");
   let mut out = Vec::with_capacity(raw.len() + 16);
   for (i, line) in text.split('\n').enumerate() {
     if i > 0 {
@@ -357,5 +390,54 @@ mod tests {
     let err = smtp.send("vera@example.com", &["nobody@x.test".into()], b"x").unwrap_err();
     assert!(err.is_permanent());
     assert!(err.to_string().contains("nobody@x.test"), "{err}");
+  }
+  #[test]
+  fn a_value_with_a_line_break_is_refused() {
+    assert_eq!(single_line("a recipient address", "ann@x.test").unwrap(), "ann@x.test");
+    for bad in ["ann@x.test\r\nRCPT TO:<eve@x.test>", "ann@x.test\n", "\rann@x.test", "ann\0@x.test"] {
+      let err = single_line("a recipient address", bad).unwrap_err();
+      assert!(matches!(err, SmtpError::LineBreak(_)), "{bad:?}");
+      // The error does not repeat the address: it goes to the log.
+      assert!(!err.to_string().contains("ann"), "{err}");
+      assert!(err.is_permanent());
+    }
+  }
+
+  #[test]
+  fn a_recipient_with_a_line_break_stops_the_send_before_any_command() {
+    let stream = fake_smtp(vec![
+      ("EHLO", "250 smtp.test\r\n"),
+      // The next line that the server reads must be QUIT, not MAIL FROM.
+      ("QUIT", "221 bye\r\n"),
+    ]);
+    let mut smtp = Smtp::connect_plain(stream).unwrap();
+    let recipients = vec!["ann@x.test".to_string(), "bo@x.test>\r\nRCPT TO:<eve@x.test".to_string()];
+    let err = smtp.send("vera@example.com", &recipients, b"Subject: hi\r\n\r\nx\r\n").unwrap_err();
+    assert!(matches!(err, SmtpError::LineBreak(_)), "{err}");
+    smtp.command("QUIT", 221).expect("nothing else went to the server");
+  }
+
+  #[test]
+  fn a_sender_or_a_command_with_a_line_break_is_refused() {
+    let stream = fake_smtp(vec![("EHLO", "250 smtp.test\r\n"), ("QUIT", "221 bye\r\n")]);
+    let mut smtp = Smtp::connect_plain(stream).unwrap();
+    let err = smtp.send("vera@example.com\r\nDATA", &["ann@x.test".into()], b"x").unwrap_err();
+    assert!(matches!(err, SmtpError::LineBreak(_)), "{err}");
+    let err = smtp.command("NOOP\r\nRSET", 250).unwrap_err();
+    assert!(matches!(err, SmtpError::LineBreak(_)), "{err}");
+    smtp.command("QUIT", 221).expect("nothing else went to the server");
+  }
+
+  #[test]
+  fn a_bare_carriage_return_cannot_end_the_data() {
+    assert_eq!(dot_stuffed(b"a\r.\r\nMAIL FROM:<x>"), b"a\r\n..\r\nMAIL FROM:<x>".to_vec());
+    assert_eq!(dot_stuffed(b"a\n.\nb"), b"a\r\n..\r\nb".to_vec());
+  }
+
+  #[test]
+  fn the_log_text_of_a_refusal_names_no_recipient() {
+    let err = SmtpError::Refused { code: 550, text: "nobody@x.test: no such user".into() };
+    assert!(err.to_string().contains("nobody@x.test"), "the reader still sees it");
+    assert_eq!(err.for_log(), "the server refused with 550");
   }
 }

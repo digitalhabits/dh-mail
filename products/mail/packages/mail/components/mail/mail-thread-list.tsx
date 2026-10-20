@@ -10,9 +10,9 @@
 
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
-import { formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
 import * as React from "react";
 import { glideToNewPlaces } from "@/lib/mail/stack-glide";
+import { HiddenStatus } from "@/components/mail/hidden-status";
 import { TRIAGE_TAB, TriageListPane } from "@/components/mail/team-layer";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
@@ -490,17 +490,11 @@ export function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: Mai
       <ul className="mt-3 space-y-3">
         {hide.hidden.map((email) => {
           const status = hide.statusOf(email);
-          const line = status.byHand
-            ? t("hiddenByHand")
-            : status.reason === "schedule"
-              ? t("hiddenBySchedule", { time: status.untilClock ?? "" })
-              : t("hiddenUntilTime", {
-                  time: status.until ? formatSnoozeDayTime(status.until) : (status.untilClock ?? ""),
-                });
+
           return (
             <li key={email} className="text-sm">
               <span className="block truncate text-[var(--mail-chrome-fg)]">{email}</span>
-              <span className="block text-[var(--mail-chrome-muted)]">{line}</span>
+              <HiddenStatus status={status} className="flex text-[var(--mail-chrome-muted)]" />
               <button
                 type="button"
                 className="mt-1 text-sm font-medium text-teal-600 underline-offset-2 hover:underline"

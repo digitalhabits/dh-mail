@@ -12,7 +12,8 @@ use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::db::{now_ms, DbResult, MailDb};
+use crate::db::{now_ms, DbError, DbResult, MailDb};
+use crate::lock::LockExt;
 
 pub const SCHEMA: &str = r#"
   CREATE TABLE IF NOT EXISTS outbox (
@@ -35,12 +36,11 @@ pub const SCHEMA: &str = r#"
 "#;
 
 /// Columns added after the table first shipped. A store from before them
-/// gets them here; a store that has them answers "duplicate column",
-/// which is the one error this is meant to meet.
-pub fn migrate(conn: &rusqlite::Connection) -> DbResult<()> {
-  let _ = conn.execute("ALTER TABLE outbox ADD COLUMN failed_at INTEGER", []);
-  let _ = conn.execute("ALTER TABLE outbox ADD COLUMN draft_message_id TEXT", []);
-  let _ = conn.execute("ALTER TABLE outbox ADD COLUMN claimed_at INTEGER", []);
+/// gets them here. An upgrade step in schema.rs calls this.
+pub fn add_columns(conn: &rusqlite::Connection) -> DbResult<()> {
+  crate::schema::add_column(conn, "outbox", "failed_at", "INTEGER")?;
+  crate::schema::add_column(conn, "outbox", "draft_message_id", "TEXT")?;
+  crate::schema::add_column(conn, "outbox", "claimed_at", "INTEGER")?;
   Ok(())
 }
 
@@ -55,6 +55,14 @@ pub const MAX_ATTEMPTS: i64 = 20;
 /// enough for a big message on a slow line to go, short enough that a
 /// crash does not leave a reply sitting there for the afternoon.
 pub const CLAIM_STALE_MS: i64 = 5 * 60 * 1000;
+
+/// The `claimed_at` value of a row that the server took, when the store
+/// could not delete the row. A claim with this value never runs out.
+pub const SENT_MARK: i64 = i64::MAX;
+
+/// How many times `outbox_record_sent` tries to write, and the first pause.
+const RECORD_TRIES: u32 = 4;
+const RECORD_PAUSE: std::time::Duration = std::time::Duration::from_millis(50);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -137,8 +145,20 @@ impl MailDb {
   }
 
   /// Rows whose time has come, oldest first, with their source.
+  ///
+  /// A row that the server took is never in the answer, also if the store
+  /// could not record the send (`outbox_record_sent`).
   pub fn outbox_due(&self, account: &str, now: i64) -> DbResult<Vec<(OutboxRow, String)>> {
+    self.outbox_retry_unrecorded();
+    let unrecorded = self.outbox_unrecorded.locked().clone();
     let conn = self.conn_mut();
+    // Rows with the sent mark went out. Remove them now if the store lets us.
+    if let Err(e) = conn.execute(
+      "DELETE FROM outbox WHERE account_email = ?1 AND claimed_at = ?2",
+      params![account, SENT_MARK],
+    ) {
+      log::warn!("[mail-outbox] could not remove sent rows: {e}");
+    }
     let mut stmt = conn.prepare(&format!(
       "{OUTBOX_SELECT}, raw FROM outbox
        WHERE account_email = ?1 AND send_at <= ?2 AND failed_at IS NULL
@@ -150,7 +170,9 @@ impl MailDb {
     let rows = stmt.query_map(params![account, now, now - CLAIM_STALE_MS, late_before], |r| {
       Ok((read_row(r)?, r.get::<_, String>(12)?))
     })?;
-    Ok(rows.collect::<Result<_, _>>()?)
+    let mut due: Vec<(OutboxRow, String)> = rows.collect::<Result<_, _>>()?;
+    due.retain(|(row, _)| !unrecorded.contains(&row.id));
+    Ok(due)
   }
 
   /// One message's source, for its words on its page (`outbox_words`).
@@ -193,6 +215,59 @@ impl MailDb {
     Ok(n > 0)
   }
 
+  /// Record that the server took this message, so that it never goes again.
+  ///
+  /// The send is done. Thus a failed write here is dangerous: the claim on
+  /// the row runs out, and another pass sends the message a second time.
+  /// This function tries these steps, in this sequence:
+  ///
+  /// 1. Delete the row. Try again some times, with a short pause.
+  /// 2. If the delete fails, set the sent mark on the row. A row with the
+  ///    sent mark is never due, and the next pass deletes it.
+  /// 3. If the store refuses all writes, keep the id in memory. This store
+  ///    then never gives the row again, and each pass tries the write again.
+  ///
+  /// The answer is an error only after step 3.
+  pub fn outbox_record_sent(&self, id: i64) -> DbResult<()> {
+    let mut last: Option<DbError> = None;
+    for attempt in 0..RECORD_TRIES {
+      if attempt > 0 {
+        std::thread::sleep(RECORD_PAUSE * attempt);
+      }
+      match self.outbox_done(id) {
+        Ok(()) => {
+          self.outbox_unrecorded.locked().remove(&id);
+          return Ok(());
+        }
+        Err(e) => last = Some(e),
+      }
+      if let Ok(true) = self.outbox_set_sent_mark(id) {
+        self.outbox_unrecorded.locked().remove(&id);
+        return Ok(());
+      }
+    }
+    self.outbox_unrecorded.locked().insert(id);
+    Err(last.unwrap_or_else(|| DbError::BadArgument("outbox id".into())))
+  }
+
+  /// Put the sent mark on a row. True if the row was there.
+  fn outbox_set_sent_mark(&self, id: i64) -> DbResult<bool> {
+    let conn = self.conn_mut();
+    let n = conn.execute("UPDATE outbox SET claimed_at = ?2 WHERE id = ?1", params![id, SENT_MARK])?;
+    Ok(n > 0)
+  }
+
+  /// Try again to record the sends that this store could not record.
+  fn outbox_retry_unrecorded(&self) {
+    let waiting: Vec<i64> = self.outbox_unrecorded.locked().iter().copied().collect();
+    for id in waiting {
+      let recorded = self.outbox_done(id).is_ok() || self.outbox_set_sent_mark(id).is_ok();
+      if recorded {
+        self.outbox_unrecorded.locked().remove(&id);
+      }
+    }
+  }
+
   pub fn outbox_done(&self, id: i64) -> DbResult<()> {
     let conn = self.conn_mut();
     conn.execute("DELETE FROM outbox WHERE id = ?1", params![id])?;
@@ -227,8 +302,8 @@ impl MailDb {
     let conn = self.conn_mut();
     let n = conn.execute(
       "UPDATE outbox SET send_at = ?3, failed_at = NULL, attempts = 0, last_error = NULL, claimed_at = NULL
-       WHERE id = ?1 AND account_email = ?2",
-      params![id, account, now_ms()],
+       WHERE id = ?1 AND account_email = ?2 AND (claimed_at IS NULL OR claimed_at <> ?4)",
+      params![id, account, now_ms(), SENT_MARK],
     )?;
     Ok(n > 0)
   }
@@ -411,5 +486,82 @@ mod tests {
     // Sent, and gone.
     db.outbox_done(id).unwrap();
     assert!(db.outbox_list("vera@example.com").unwrap().is_empty());
+  }
+  const ME: &str = "reader@example.com";
+
+  fn refuse(db: &MailDb, what: &str) {
+    db.conn_mut()
+      .execute_batch(&format!(
+        "CREATE TEMP TRIGGER refuse_{what} BEFORE {what} ON outbox BEGIN SELECT RAISE(FAIL, 'test: the disk is full'); END;"
+      ))
+      .unwrap();
+  }
+
+  fn allow(db: &MailDb, what: &str) {
+    db.conn_mut().execute_batch(&format!("DROP TRIGGER temp.refuse_{what};")).unwrap();
+  }
+
+  fn claimed_message(db: &MailDb, now: i64) -> i64 {
+    let id = db
+      .outbox_enqueue(ME, None, &["friend@example.org".into()], "raw", "Hello", &[], None, None)
+      .unwrap();
+    assert!(db.outbox_claim(id, now).unwrap());
+    id
+  }
+
+  #[test]
+  fn a_sent_message_does_not_go_again_when_the_store_refuses_the_delete() {
+    let db = MailDb::open_in_memory().unwrap();
+    let now = now_ms();
+    let id = claimed_message(&db, now);
+    refuse(&db, "DELETE");
+
+    // The delete fails, so the row gets the sent mark.
+    db.outbox_record_sent(id).unwrap();
+    let after_the_claim = now + CLAIM_STALE_MS + 1;
+    assert!(db.outbox_due(ME, after_the_claim).unwrap().is_empty());
+    assert!(!db.outbox_claim(id, after_the_claim).unwrap());
+    assert!(!db.outbox_send_now(ME, id).unwrap(), "Send now does not send it again");
+
+    // When the store lets us, the next pass removes the row.
+    allow(&db, "DELETE");
+    assert!(db.outbox_due(ME, after_the_claim).unwrap().is_empty());
+    assert!(db.outbox_list(ME).unwrap().is_empty());
+  }
+
+  #[test]
+  fn a_sent_message_does_not_go_again_when_the_store_refuses_every_write() {
+    let db = MailDb::open_in_memory().unwrap();
+    let now = now_ms();
+    let id = claimed_message(&db, now);
+    let other = db
+      .outbox_enqueue(ME, None, &["friend@example.org".into()], "raw2", "Second", &[], None, None)
+      .unwrap();
+    refuse(&db, "DELETE");
+    refuse(&db, "UPDATE");
+
+    assert!(db.outbox_record_sent(id).is_err());
+    // The claim runs out, but this store does not give the row again.
+    // Other rows still go.
+    let after_the_claim = now + CLAIM_STALE_MS + 1;
+    let due: Vec<i64> = db.outbox_due(ME, after_the_claim).unwrap().iter().map(|r| r.0.id).collect();
+    assert_eq!(due, vec![other]);
+
+    // When the store lets us write, the next pass records the send.
+    allow(&db, "DELETE");
+    allow(&db, "UPDATE");
+    let due: Vec<i64> = db.outbox_due(ME, after_the_claim).unwrap().iter().map(|r| r.0.id).collect();
+    assert_eq!(due, vec![other]);
+    assert!(db.outbox_unrecorded.locked().is_empty());
+    let left: Vec<i64> = db.outbox_list(ME).unwrap().iter().map(|r| r.id).collect();
+    assert_eq!(left, vec![other]);
+  }
+
+  #[test]
+  fn a_sent_message_is_removed_when_the_store_takes_the_write() {
+    let db = MailDb::open_in_memory().unwrap();
+    let id = claimed_message(&db, now_ms());
+    db.outbox_record_sent(id).unwrap();
+    assert!(db.outbox_list(ME).unwrap().is_empty());
   }
 }

@@ -113,6 +113,7 @@ pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
 ///
 /// `open` opens the file with whatever handles it. Otherwise the file manager
 /// is pointed at it, which says where it went without launching anything.
+/// A program or a script is never opened, only shown (download_safety.rs).
 ///
 /// Async, and the work on a blocking thread. A plain command runs on the
 /// main thread, which is the thread the windows are drawn on: decoding
@@ -199,6 +200,20 @@ fn save_attachment_now(
     unique_path(&dir, &name, &|p| p.exists())
   };
   std::fs::write(&path, &bytes).map_err(|e| format!("Couldn't save the file: {e}"))?;
+
+  // Mark the file as a download, so that Gatekeeper or SmartScreen checks
+  // it before it runs. If the mark fails, the app does not open the file.
+  // The log gives no file name: the name comes from the message.
+  let marked = match crate::download_safety::mark_as_downloaded(&path) {
+    Ok(()) => true,
+    Err(e) => {
+      log::warn!("[mail-downloads] could not mark a saved attachment as a download: {e}");
+      false
+    }
+  };
+  let saved_name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+  // A program or a script is saved, but only shown in Finder or Explorer.
+  let open = crate::download_safety::may_open(open, marked, &saved_name);
 
   // The file is written either way. Failing to show it is not a failure to
   // save it, so neither branch below stops the command.

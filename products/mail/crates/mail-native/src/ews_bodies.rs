@@ -86,6 +86,8 @@ pub mod commands {
 mod tests {
   use std::sync::Arc;
 
+  use crate::lock::LockExt;
+
   use serde_json::json;
 
   use super::*;
@@ -123,6 +125,6 @@ mod tests {
     let (_, second) = run(fetch_batch(&client, &db, "someone@example.com", 0)).unwrap();
     assert_eq!((second.kept, second.more), (0, false));
     // One request only: the second batch found nothing to ask for.
-    assert_eq!(server.requests.lock().unwrap().len(), 1);
+    assert_eq!(server.requests.locked().len(), 1);
   }
 }

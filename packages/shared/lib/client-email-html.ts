@@ -1,5 +1,6 @@
 import { decodeHtmlEntities } from "./html-entities";
 import { findLinksInText } from "./linkify-urls";
+import { inertHtmlBody } from "./inert-html";
 
 function escapeHtml(text: string): string {
   return text
@@ -162,12 +163,12 @@ function quillListToEmailLists(list: HTMLElement): string[] {
  * editor too, so what it looked like there is what it says here.
  */
 export function coalesceQuillEmailParagraphs(html: string): string {
-  if (!isLikelyHtml(html) || typeof document === "undefined") {
+  if (!isLikelyHtml(html) || typeof DOMParser === "undefined") {
     return html;
   }
 
-  const container = document.createElement("div");
-  container.innerHTML = normalizeEditorHtml(html);
+  // Built in a document of its own, not in the page. See inert-html.ts.
+  const container = inertHtmlBody(normalizeEditorHtml(html));
 
   const parts: string[] = [];
 

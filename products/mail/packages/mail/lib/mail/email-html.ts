@@ -1,48 +1,47 @@
 /*
- * A message's HTML, made safe and made small: the sanitizer (scripts,
- * handlers, unsafe links and blank edges out; bare links made links), and
- * the quoted history cut from a reply.
+ * A message's HTML, made safe and made small: the sanitizer (an allowlist of
+ * elements, attributes and URL schemes, see email-allowlist.ts; blank edges
+ * out; bare links made links), and the quoted history cut from a reply.
  *
  * Each works on a string, through a detached document. EmailHtmlView draws
- * the result in its frame; its header says why the sanitizer is one of two
- * guards, not the only one.
+ * the result in its frame. Its header says why the sanitizer is one of three
+ * barriers, not the only one.
  */
 
 import { findLinksInText } from "@/lib/linkify-urls";
 import { repairLinkControlChars } from "@/lib/email-mime";
-import { unwrapSafeLink } from "@/lib/safe-links";
+import { repairSafeLink, safeLinkTarget } from "@/lib/safe-links";
 import { MAIL_HREF_ATTR, softenAnchorsForParse } from "@/lib/mail/soften-anchors";
+import { applyEmailAllowlist } from "@/lib/mail/email-allowlist";
 
-const BLOCKED_ELEMENTS = new Set([
-  "script",
-  "iframe",
-  "frame",
-  "frameset",
-  "object",
-  "embed",
-  "applet",
-  "link",
-  "meta",
-  "base",
-  "form",
-  "input",
-  "textarea",
-  "select",
-  "button",
-  "video",
-  "audio",
-  "source",
-  "track",
-  "template",
-  "noscript",
-  "dialog",
-]);
-
-const UNSAFE_URL_RE = /^\s*(javascript|vbscript|data:text\/html)/i;
+/**
+ * Every way a message can ask for a picture from a server.
+ *
+ * This only decides whether the reader is offered "Show images". The frame's
+ * CSP refuses a remote picture until the reader allows images, so a pattern
+ * missed here hides the offer, and loads nothing.
+ */
+const REMOTE = `["']?\\s*(?:https?:)?//`;
+const REMOTE_IMAGE_PATTERNS = [
+  // <img src> (and <image src>, which a parser reads as <img>),
+  // <input type=image src>, <video poster>
+  new RegExp(`<(?:img|image|input|video)\\b[^>]*\\s(?:src|poster)\\s*=\\s*${REMOTE}`, "i"),
+  // srcset on <img> or <source>: a remote address anywhere in the list
+  new RegExp(`\\ssrcset\\s*=\\s*["']?[^"'>]*?(?:https?:)?//`, "i"),
+  // <table background>, <td background>, <body background>
+  new RegExp(`<[a-z][^>]*\\sbackground\\s*=\\s*${REMOTE}`, "i"),
+  // SVG <image href> and <image xlink:href>, <feImage href>. The sanitizer
+  // takes SVG away, but the sender asked for the fetch, so it counts.
+  new RegExp(`<(?:image|feimage)\\b[^>]*\\s(?:xlink:)?href\\s*=\\s*${REMOTE}`, "i"),
+  // CSS: url(https://…), in a style attribute or a style block
+  /url\(\s*["']?\s*(?:https?:)?\/\//i,
+  // CSS: image-set("https://…") and @import "https://…"
+  /(?:image-set\(|@import)\s*["']\s*(?:https?:)?\/\//i,
+];
 
 /** True when the HTML references remote images (worth offering a toggle). */
 export function htmlHasRemoteImages(html: string): boolean {
-  return /<img[^>]+src\s*=\s*["']?https?:/i.test(html) || /url\(\s*["']?https?:/i.test(html);
+  return REMOTE_IMAGE_PATTERNS.some((pattern) => pattern.test(html));
 }
 
 /**
@@ -191,7 +190,7 @@ function wrapOrphanListItems(doc: Document): void {
   }
 }
 
-/** Strip anything executable/interactive from untrusted email HTML. */
+/** Keep only what is safe and useful from untrusted email HTML. */
 export function sanitizeEmailHtml(
   html: string,
   inlineImages?: Record<string, string>
@@ -200,36 +199,21 @@ export function sanitizeEmailHtml(
     softenAnchorsForParse(html),
     "text/html"
   );
+  const body = doc.body;
+  if (!body) return "";
 
-  const all = doc.querySelectorAll("*");
-  for (const el of all) {
-    if (BLOCKED_ELEMENTS.has(el.tagName.toLowerCase())) {
-      el.remove();
-      continue;
-    }
-    for (const attr of [...el.attributes]) {
-      const name = attr.name.toLowerCase();
-      if (name.startsWith("on")) {
-        el.removeAttribute(attr.name);
-      } else if (
-        (name === "href" ||
-          name === MAIL_HREF_ATTR ||
-          name === "src" ||
-          name === "srcset" ||
-          name === "xlink:href") &&
-        UNSAFE_URL_RE.test(attr.value)
-      ) {
-        el.removeAttribute(attr.name);
-      } else if (name === "href" || name === MAIL_HREF_ATTR) {
-        // A link broken by a second decode, mended (repairLinkControlChars),
-        // and a Microsoft safe link opened at the address it wraps.
-        const mended = unwrapSafeLink(repairLinkControlChars(attr.value, true));
-        if (mended !== attr.value) el.setAttribute(attr.name, mended);
-      }
-    }
-  }
+  /*
+    The allowlist: see email-allowlist.ts. A link is mended before its
+    address is checked: a link broken by a second decode
+    (repairLinkControlChars), and a Microsoft safe link whose signature is
+    broken (repairSafeLink). A whole safe link is kept: see safe-links.ts.
+  */
+  applyEmailAllowlist(body, (value) =>
+    repairSafeLink(repairLinkControlChars(value, true))
+  );
+
   // And the same links where they are written out as words.
-  const words = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const words = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
   for (let node = words.nextNode(); node; node = words.nextNode()) {
     const text = node.nodeValue ?? "";
     const mended = repairLinkControlChars(text);
@@ -237,6 +221,8 @@ export function sanitizeEmailHtml(
   }
 
   wrapOrphanListItems(doc);
+
+  showSafeLinkTargets(doc);
 
   // Legacy demote left href on <span>; normalize to data-dh-href.
   for (const el of doc.querySelectorAll("[href]")) {
@@ -298,7 +284,7 @@ export function sanitizeEmailHtml(
 
   // Outlook (and most clients) turn bare https://… text into links; do the
   // same so HTML parts that never wrapped the URL in <a> stay clickable.
-  if (doc.body) linkifyBareLinksInRoot(doc.body, doc);
+  linkifyBareLinksInRoot(body, doc);
 
   for (const a of doc.querySelectorAll("a")) {
     a.setAttribute("target", "_blank");
@@ -307,18 +293,16 @@ export function sanitizeEmailHtml(
 
   // Last, so that a picture dropped above for having no attachment behind it
   // leaves a row that goes with it.
-  if (doc.body) {
-    trimLeadingBlanks(doc.body);
-    trimTrailingBlanks(doc.body);
-    if (doc.body.firstElementChild) {
-      collapseEdgeSpacing(doc.body.firstElementChild, "margin-top");
-    }
-    if (doc.body.lastElementChild) {
-      collapseEdgeSpacing(doc.body.lastElementChild, "margin-bottom");
-    }
+  trimLeadingBlanks(body);
+  trimTrailingBlanks(body);
+  if (body.firstElementChild) {
+    collapseEdgeSpacing(body.firstElementChild, "margin-top");
+  }
+  if (body.lastElementChild) {
+    collapseEdgeSpacing(body.lastElementChild, "margin-bottom");
   }
 
-  return doc.body?.innerHTML ?? "";
+  return body.innerHTML;
 }
 
 /**
@@ -588,4 +572,17 @@ export function stripQuotedHtml(
     return { html, hadQuote: false };
   }
   return { html: remaining, hadQuote: true };
+}
+
+/**
+ * A Microsoft safe link says where it really goes when the pointer is on it,
+ * as Outlook does. The link itself is not changed (safe-links.ts).
+ */
+function showSafeLinkTargets(doc: Document): void {
+  for (const el of doc.querySelectorAll(`a[href], [${MAIL_HREF_ATTR}]`)) {
+    if (el.getAttribute("title")) continue;
+    const href = el.getAttribute(MAIL_HREF_ATTR) ?? el.getAttribute("href") ?? "";
+    const target = safeLinkTarget(href);
+    if (target) el.setAttribute("title", target);
+  }
 }

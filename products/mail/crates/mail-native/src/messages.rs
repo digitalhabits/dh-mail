@@ -117,13 +117,13 @@ pub const SCHEMA: &str = r#"
   );
 "#;
 
+/// UIDs are per folder, so the index carries the folder (step 1 in schema.rs).
+pub fn add_columns(conn: &Connection) -> DbResult<()> {
+  crate::schema::add_column(conn, "messages", "folder", "TEXT NOT NULL DEFAULT ''")
+}
+
 pub fn migrate(conn: &Connection) -> DbResult<()> {
   conn.execute_batch(SCHEMA)?;
-  // UIDs are per folder. The copy began with All Mail alone and one UID
-  // index; Trash and Junk have UIDs of their own, so the index carries
-  // the folder now. SQLite has no "add if missing": the duplicate-column
-  // error is the one to swallow.
-  let _ = conn.execute("ALTER TABLE messages ADD COLUMN folder TEXT NOT NULL DEFAULT ''", []);
   conn.execute_batch(
     "DROP INDEX IF EXISTS messages_uid_idx;
      CREATE UNIQUE INDEX IF NOT EXISTS messages_folder_uid_idx ON messages (account_email, folder, uid);",

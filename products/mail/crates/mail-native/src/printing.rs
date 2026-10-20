@@ -34,6 +34,7 @@ use objc2_app_kit::{NSApplication, NSPrintInfo, NSPrintOperation, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use crate::lock::LockExt;
 
 /// `dhprint://localhost/<id>` — the document waiting under that id.
 pub const SCHEME: &str = "dhprint";
@@ -55,14 +56,12 @@ pub fn document_for_path(path: &str) -> Option<String> {
   if id.is_empty() {
     return None;
   }
-  pending().lock().ok()?.get(id).cloned()
+  pending().locked().get(id).cloned()
 }
 
 /// Drop the stored HTML and close the off-screen print window.
 fn drop_print(window: &WebviewWindow, id: &str) {
-  if let Ok(mut waiting) = pending().lock() {
-    waiting.remove(id);
-  }
+  pending().locked().remove(id);
   let _ = window.close();
 }
 
@@ -111,8 +110,7 @@ pub async fn print_document(app: AppHandle, html: String) -> Result<(), String> 
   let label = format!("print-{id}");
 
   pending()
-    .lock()
-    .map_err(|_| "print queue unavailable".to_string())?
+    .locked()
     .insert(id.clone(), html);
 
   let url = format!("{SCHEME}://localhost/{id}")
@@ -144,9 +142,7 @@ pub async fn print_document(app: AppHandle, html: String) -> Result<(), String> 
     .build();
 
   if let Err(err) = build {
-    if let Ok(mut waiting) = pending().lock() {
-      waiting.remove(&id);
-    }
+    pending().locked().remove(&id);
     return Err(err.to_string());
   }
   Ok(())

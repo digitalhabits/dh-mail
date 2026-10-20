@@ -63,6 +63,11 @@ export type MailPauseState = {
 export type MailAccountPause = {
   pausedUntil?: number;
   quietHours?: MailQuietWindow[];
+  /**
+   * Its own words to type before new mail comes in early (2026-10-20).
+   * Absent: the state's, every account's. 0 is kept: none, for this one.
+   */
+  unpauseWords?: number;
 };
 
 export const MAIL_PAUSE_DEFAULT: MailPauseState = { quietHours: [] };
@@ -70,6 +75,12 @@ export const MAIL_PAUSE_DEFAULT: MailPauseState = { quietHours: [] };
 /** The key a mailbox is stored under. */
 export function pauseAccountKey(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/** An account's words to type before new mail comes in early; null is every account's. */
+export function unpauseWordsFor(state: MailPauseState, email: string | null): number {
+  if (!email) return state.unpauseWords ?? 0;
+  return accountPauseRow(state, email)?.unpauseWords ?? state.unpauseWords ?? 0;
 }
 
 /** The row for one mailbox, if it has one. */
@@ -145,6 +156,12 @@ export type MailPauseVerdict = {
   /** When mail starts arriving again. A Date for a pause, "HH:MM" for hours. */
   until: Date | null;
   untilClock: string | null;
+  /**
+   * When the hours let go, as a moment: past every window that runs on
+   * into the next (a night kept to midnight, then the morning after it).
+   * Null for a pause, whose `until` says it; and for hours that never end.
+   */
+  endsAt?: Date | null;
 };
 
 /**
@@ -167,13 +184,36 @@ export function mailPauseVerdict(
       untilClock: formatClock(minutesOfDay(until)),
     };
   }
+  const first = quietEnd(state.quietHours, now);
+  if (first == null) {
+    return { paused: false, reason: null, until: null, untilClock: null };
+  }
   /*
-    Inside any of them is quiet, and the one ending last says when it ends:
-    two that overlap — the night, and a morning kept clear — are one quiet,
-    and starting up at the end of the first would be starting up in the
-    middle of the second.
+    Then on through every window that starts where the last one ended. The
+    hours are kept a day at a time, so a night is "18:00 – 00:00" and
+    "00:00 – 07:00" the day after: stopping at the first would say the mail
+    comes back at midnight. A week of steps at most: hours that cover the
+    whole week never end.
   */
-  const ends = state.quietHours
+  let at = stepTo(now, first);
+  for (let step = 0; step < 14; step++) {
+    const next = quietEnd(state.quietHours, at);
+    if (next == null) {
+      return { paused: true, reason: "quiet", until: null, untilClock: formatClock(minutesOfDay(at)), endsAt: at };
+    }
+    at = stepTo(at, next);
+  }
+  return { paused: true, reason: "quiet", until: null, untilClock: formatClock(first), endsAt: null };
+}
+
+/**
+ * Inside any of the windows now, the minute of the day the one ending last
+ * ends, or null outside them all. Two that overlap — the night, and a
+ * morning kept clear — are one quiet: starting up at the end of the first
+ * would be starting up in the middle of the second.
+ */
+function quietEnd(windows: MailQuietWindow[], now: Date): number | null {
+  const ends = windows
     .filter((window) =>
       isScheduleActiveNow(
         { enabled: true, from: window.start, to: window.end, days: window.days },
@@ -182,21 +222,21 @@ export function mailPauseVerdict(
     )
     .map((window) => parseClock(window.end))
     .filter((end): end is number => end != null);
-  if (!ends.length) {
-    return { paused: false, reason: null, until: null, untilClock: null };
-  }
+  if (!ends.length) return null;
   const nowMinutes = minutesOfDay(now);
-  const latest = ends.reduce((furthest, end) => {
+  return ends.reduce((furthest, end) => {
     const until = (end - nowMinutes + 1440) % 1440;
     const best = (furthest - nowMinutes + 1440) % 1440;
     return until > best ? end : furthest;
   }, ends[0]);
-  return {
-    paused: true,
-    reason: "quiet",
-    until: null,
-    untilClock: formatClock(latest),
-  };
+}
+
+/** The next moment the clock reads `minute`, after `from` (a whole day on, if it reads it now). */
+function stepTo(from: Date, minute: number): Date {
+  const minutes = (minute - minutesOfDay(from) + 1440) % 1440 || 1440;
+  const at = new Date(from.getTime() + minutes * 60_000);
+  at.setSeconds(0, 0);
+  return at;
 }
 
 /**
@@ -426,6 +466,7 @@ function readAccountPauses(
     const value = row as {
       pausedUntil?: unknown;
       quietHours?: unknown;
+      unpauseWords?: unknown;
     };
     const parsedHours = Array.isArray(value.quietHours)
       ? readQuietHourRows(value.quietHours)
@@ -435,10 +476,12 @@ function readAccountPauses(
       Number.isFinite(value.pausedUntil)
         ? value.pausedUntil
         : undefined;
-    if (until == null && parsedHours == null) continue;
+    const words = typeof value.unpauseWords === "number" ? normaliseUnpauseWords(value.unpauseWords) : undefined;
+    if (until == null && parsedHours == null && words == null) continue;
     out[pauseAccountKey(email)] = {
       ...(until != null ? { pausedUntil: until } : null),
       ...(parsedHours ? { quietHours: parsedHours } : null),
+      ...(words != null ? { unpauseWords: words } : null),
     };
   }
   return Object.keys(out).length ? out : undefined;

@@ -545,7 +545,10 @@ export function SettingsDialog({
       )}
     >
       <div
-        className={cn("absolute inset-0 bg-black/20", seeThrough && "pointer-events-none")}
+        // Dark enough that the mail behind does not pull the eye from the
+        // question (Ulrik, 2026-10-20). A see-through card keeps a light
+        // shade: what it covers is meant to be read.
+        className={cn("absolute inset-0", seeThrough ? "pointer-events-none bg-black/20" : "bg-black/45")}
         onClick={seeThrough ? undefined : onClose}
         aria-hidden
       />
@@ -589,7 +592,7 @@ export function SettingsDialog({
           )}
           onPointerDown={startDrag}
         >
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {onBack ? (
               <button
                 type="button"
@@ -603,7 +606,7 @@ export function SettingsDialog({
             ) : null}
             <h2
               id={titleId}
-              className="font-serif text-xl font-bold text-stone-900"
+              className="min-w-0 flex-1 font-serif text-xl font-bold text-stone-900"
             >
               {title}
             </h2>

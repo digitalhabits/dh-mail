@@ -32,6 +32,7 @@ import { MailCustomListEditor } from "@/components/mail/MailCustomListEditor";
 import { createCustomList, customListTabId, deleteCustomList, parseCustomListTabId, updateCustomList } from "@/lib/mail/custom-lists";
 import type { MailFolder } from "@/lib/mail/folder-types";
 import { mailSay } from "@/lib/mail/i18n";
+import type { PauseControls } from "@/components/mail/account-hours-menu";
 import { MailAccountTabs, MailRowButton } from "@/components/mail/MailAccountTabs";
 import { setTabSchedule } from "@/lib/mail/tab-schedules";
 import { setTabIcon, useTabIcons } from "@/lib/mail/tab-icons";
@@ -723,6 +724,16 @@ export function AccountTabs({
     setAccountEmails,
     setMailboxScopeEmails,
   } = m;
+  // Pausing, for the tab's menu: hiding and pausing are one menu now.
+  const pause: PauseControls = {
+    state: m.pauseState,
+    now: m.pauseNow,
+    pauseUntil: m.pauseMailUntil,
+    resume: m.resumeMail,
+    setQuietHours: m.setMailQuietHours,
+    setFollowAllHours: m.setFollowAllHours,
+    setUnpauseWords: m.setUnpauseWords,
+  };
   return (
           <MailAccountTabs
             accounts={accountEmails}
@@ -740,6 +751,7 @@ export function AccountTabs({
             quietUntil={quietUntilByAccount}
             autoReplyOn={autoReplyByAccount}
             hide={hide}
+            pause={pause}
           />
   );
 }
