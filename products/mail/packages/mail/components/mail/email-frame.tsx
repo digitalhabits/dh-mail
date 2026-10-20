@@ -31,6 +31,7 @@ import {
   MAIL_LINK_BRIDGE_JS,
 } from "@/lib/mail/link-bridge";
 import { MAIL_HREF_ATTR, MAIL_PLAIN_LINK_ATTR } from "@/lib/mail/soften-anchors";
+import { unwrapSafeLink } from "@/lib/safe-links";
 import { asElement } from "@/lib/mail/email-html";
 
 /** postMessage payload from the srcdoc click bridge. */
@@ -50,7 +51,13 @@ export async function followMailLink(target: string): Promise<void> {
     requestMailComposeTo(decodeURIComponent(address));
     return;
   }
-  const ok = await openExternalUrl(target);
+  /*
+    Here, where every click ends: the frame's own script (link-bridge.ts)
+    reads a link without linkTargetFromEl, and a safe link unwrapped only
+    there was still opened as it was — Copy link gave the real address
+    while a click got Microsoft's "Bad Request" (2026-10-20).
+  */
+  const ok = await openExternalUrl(unwrapSafeLink(target));
   if (!ok) toast.error(mailSay("couldNotOpenLink"));
 }
 
@@ -73,7 +80,8 @@ function linkTargetFromEl(el: Element): string | null {
       ? window.location.href
       : el.baseURI;
   try {
-    const abs = new URL(raw, base).href;
+    // A Microsoft safe link opens at the address it wraps (safe-links.ts).
+    const abs = unwrapSafeLink(new URL(raw, base).href);
     if (/^https?:/i.test(abs)) return abs;
   } catch {
     /* ignore invalid */

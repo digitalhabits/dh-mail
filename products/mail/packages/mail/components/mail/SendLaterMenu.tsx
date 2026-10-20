@@ -16,8 +16,8 @@
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { useSendLaterHolder } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
-import { CalendarTimePicker, MenuHeading, PresetRow, pickedLabel } from "@/components/mail/date-time-pick";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarTimePicker, MenuHeading, PresetRow } from "@/components/mail/date-time-pick";
 
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
@@ -57,6 +57,7 @@ export function SendLaterMenu({
   trigger,
   schedule = false,
   extras,
+  contentClassName,
 }: {
   /** The mailbox it goes from: it decides who keeps it until the time. */
   account?: string;
@@ -82,6 +83,8 @@ export function SendLaterMenu({
    */
   schedule?: boolean;
   extras?: SendMenuExtra[];
+  /** For a menu opened over a dialog: a layer above it. */
+  contentClassName?: string;
 }) {
   const t = useMailT();
   const holder = useSendLaterHolder(account);
@@ -95,31 +98,78 @@ export function SendLaterMenu({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const options = React.useMemo(() => snoozeOptions(), [open]);
 
-  // With `onArm`, every time goes on the Send button first ("Send at …"),
-  // and nothing is sent until it is pressed. Without (Change time), at once.
+  /*
+    A time picked is a time scheduled, at once, as Change time always was.
+    It went on the Send button first ("Send at …") and waited for Send,
+    and with the menu open it was not plain what Send would do: it sent
+    at once, and the time picked was lost (Ulrik, 2026-10-20). The toast
+    that follows has Undo. `onArm` stays for a time the composer already
+    holds (Edit on a scheduled message), which the menu can take off.
+  */
+  const setMenuOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setPicking(false);
+  };
+  /*
+    Send pauses while the menu is open (mail.css, [data-send-main]): dimmed,
+    and a press on it only closes the menu. With the menu open it was not
+    plain whether Send would use the time being picked; it did not.
+  */
+  React.useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement;
+    root.setAttribute("data-send-later-open", "");
+    return () => root.removeAttribute("data-send-later-open");
+  }, [open]);
   const choose = (iso: string) => {
-    setOpen(false);
-    setPicking(false);
-    if (onArm) onArm(iso);
-    else onPick?.(iso);
+    setMenuOpen(false);
+    onPick?.(iso);
   };
   /** The calendar opens on today, an hour from now: the first time offered. */
   const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000);
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setPicking(false);
-      }}
-    >
+    <Popover open={open} onOpenChange={setMenuOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <MailPopoverContent
         align="start"
-        className="max-h-[var(--radix-popover-content-available-height)] w-72 overflow-y-auto rounded-xl p-1.5"
+        className={cn(
+          "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-xl p-1.5",
+          // Wide while the date and time are being picked: the month and
+          // the clock side by side, so Schedule stays in sight.
+          picking ? "w-[34rem]" : "w-72",
+          contentClassName
+        )}
       >
-        {schedule && onPick ? (
+        {schedule && onPick && picking ? (
+          /*
+            The picker in place of everything else: the presets, the hint
+            and the other ways to send. Under them, it ran past the window
+            and Schedule was out of sight (Ulrik, 2026-10-20). A back row
+            returns to them.
+          */
+          <>
+            <div className="mb-2 flex items-center gap-3 border-b border-stone-100 px-1.5 pb-2 pt-1">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+                onClick={() => setPicking(false)}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+                {t("sendLater")}
+              </button>
+              <span className="text-sm font-semibold text-stone-900">{t("pickDateAndTimeTitle")}</span>
+            </div>
+            <CalendarTimePicker
+              wide
+              initial={inAnHour()}
+              // The time stands beside the button, which says only what it does.
+              action={() => t(onArm ? "schedule" : "changeTime")}
+              onPick={(at) => choose(at.toISOString())}
+            />
+          </>
+        ) : null}
+        {schedule && onPick && !picking ? (
           <>
             <MenuHeading>{t("sendLater")}</MenuHeading>
             {armed && onArm ? (
@@ -127,7 +177,7 @@ export function SendLaterMenu({
                 type="button"
                 className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
                 onClick={() => {
-                  setOpen(false);
+                  setMenuOpen(false);
                   onArm(null);
                 }}
               >
@@ -139,25 +189,9 @@ export function SendLaterMenu({
             ))}
             <PresetRow
               label={t("pickDateAndTime")}
-              onClick={() => setPicking((v) => !v)}
-              trailing={
-                <ChevronDown
-                  className={cn("h-4 w-4 shrink-0 text-stone-400 transition-transform", picking && "rotate-180")}
-                  aria-hidden
-                />
-              }
+              onClick={() => setPicking(true)}
+              trailing={<ChevronRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />}
             />
-            {picking ? (
-              <div className="pt-1">
-                <CalendarTimePicker
-                  initial={inAnHour()}
-                  action={(at) =>
-                    t(onArm ? "useWhen" : "changeToWhen", { when: pickedLabel(at, t("todayLower")) })
-                  }
-                  onPick={(at) => choose(at.toISOString())}
-                />
-              </div>
-            ) : null}
             {/* The one thing a reader has to be able to trust about this.
                 Said in the same words as the toast that follows, and not
                 "this Mac": the standalone app runs on Windows too. */}
@@ -166,10 +200,10 @@ export function SendLaterMenu({
             </p>
           </>
         ) : null}
-        {schedule && onPick && extraItems.length ? (
+        {schedule && onPick && extraItems.length && !picking ? (
           <div className="mx-1.5 my-1 border-t border-stone-100" />
         ) : null}
-        {extraItems.map((item) => (
+        {(picking ? [] : extraItems).map((item) => (
           <button
             key={item.id}
             type="button"
@@ -177,7 +211,7 @@ export function SendLaterMenu({
             disabled={item.disabled}
             className={EXTRA_BUTTON}
             onClick={() => {
-              setOpen(false);
+              setMenuOpen(false);
               item.onSelect();
             }}
           >

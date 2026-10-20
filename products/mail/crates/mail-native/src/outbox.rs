@@ -8,7 +8,7 @@
 //! and the live sync brings it into the copy. See docs/mail-local-store.md,
 //! section 7.
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -95,7 +95,7 @@ impl OutboxRow {
     }
   }
 
-  /// A message sent later, more than 30 minutes past its time: not sent
+  /// A message sent later, more than an hour past its time: not sent
   /// without a question (docs/mail-send-later.md, 4.5). Only a message
   /// that was given a time: an ordinary send waiting for the network has
   /// its time on the moment it was written, and goes when it can.
@@ -151,6 +151,20 @@ impl MailDb {
       Ok((read_row(r)?, r.get::<_, String>(12)?))
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
+  }
+
+  /// One message's source, for its words on its page (`outbox_words`).
+  pub fn outbox_source(&self, account: &str, id: i64) -> DbResult<Option<String>> {
+    let conn = self.conn_mut();
+    Ok(
+      conn
+        .query_row(
+          "SELECT raw FROM outbox WHERE account_email = ?1 AND id = ?2",
+          params![account, id],
+          |r| r.get::<_, String>(0),
+        )
+        .optional()?,
+    )
   }
 
   /// Every row of a mailbox, without the source, for the list of what is held.
@@ -263,6 +277,24 @@ fn read_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxRow> {
   })
 }
 
+/// What a held message says: its words and its Cc, read from its source.
+///
+/// A new message sent later from a Gmail mailbox with a local copy waits
+/// here, and its page showed an empty bubble and no Edit, because the list
+/// carries no source (Ulrik, 2026-10-20). The words carry the signature,
+/// which was put on when the message was written.
+pub fn outbox_words(raw: &str) -> Value {
+  let parsed = crate::mime::parse_message(raw.as_bytes());
+  let cc: Vec<String> = crate::imap::header(&parsed.headers, "cc")
+    .map(crate::imap::parse_address_list)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|m| m.email)
+    .filter(|e| !e.is_empty())
+    .collect();
+  json!({ "text": parsed.text.unwrap_or_default(), "html": parsed.html, "cc": cc })
+}
+
 pub fn row_json(row: &OutboxRow) -> Value {
   let mut value = serde_json::to_value(row).unwrap_or(json!({}));
   if let Some(map) = value.as_object_mut() {
@@ -274,6 +306,19 @@ pub fn row_json(row: &OutboxRow) -> Value {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_held_message_says_its_words_and_cc() {
+    let raw = "From: Vera <vera@example.com>\r\nTo: ann@x.test\r\nCc: Bo <bo@x.test>\r\nSubject: Later\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\nContent-Transfer-Encoding: base64\r\n\r\nSGVqIGFsbGU=\r\n--b\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n<p>Hej alle</p>\r\n--b--\r\n";
+    let words = outbox_words(raw);
+    assert_eq!(words["text"], "Hej alle");
+    assert!(words["html"].as_str().unwrap_or("").contains("<p>Hej alle</p>"));
+    assert_eq!(words["cc"], json!(["bo@x.test"]));
+    let db = MailDb::open_in_memory().unwrap();
+    let id = db.outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], raw, "Later", &["ann@x.test".into()], Some(now_ms() + 60_000), None).unwrap();
+    assert_eq!(db.outbox_source("vera@example.com", id).unwrap().as_deref(), Some(raw));
+    assert_eq!(db.outbox_source("other@example.com", id).unwrap(), None);
+  }
 
   #[test]
   fn a_held_message_waits_for_its_time_and_a_sent_one_goes() {
@@ -312,7 +357,7 @@ mod tests {
   }
 
   #[test]
-  fn a_scheduled_message_forty_minutes_late_waits_and_an_ordinary_send_goes() {
+  fn a_scheduled_message_seventy_minutes_late_waits_and_an_ordinary_send_goes() {
     let db = MailDb::open_in_memory().unwrap();
     let now = now_ms();
     let ordinary = db
@@ -321,14 +366,14 @@ mod tests {
     let scheduled = db
       .outbox_enqueue("vera@example.com", None, &["bo@x.test".into()], "raw2", "Later", &["bo@x.test".into()], Some(now + 1_000), None)
       .unwrap();
-    // Forty-one minutes on: the computer was asleep.
-    let then = now + 41 * 60_000;
+    // Seventy-one minutes on: the computer was asleep.
+    let then = now + 71 * 60_000;
     let due: Vec<i64> = db.outbox_due("vera@example.com", then).unwrap().iter().map(|r| r.0.id).collect();
     assert_eq!(due, vec![ordinary]);
     let rows = db.outbox_list("vera@example.com").unwrap();
     assert_eq!(rows.iter().find(|r| r.id == scheduled).unwrap().status(then), "late");
-    // Twenty minutes late still goes.
-    let soon = now + 21 * 60_000;
+    // Fifty minutes late still goes.
+    let soon = now + 51 * 60_000;
     assert_eq!(db.outbox_due("vera@example.com", soon).unwrap().len(), 2);
     // Send now makes the late one due.
     assert!(db.outbox_send_now("vera@example.com", scheduled).unwrap());

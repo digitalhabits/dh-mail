@@ -6,7 +6,8 @@
  * tab was greyed (2026-10-14). All means the mailboxes that are shown.
  */
 
-import { accountPassesMailboxScope } from "@/components/mail/mail-list-state";
+import { accountPassesMailboxScope, mailSearchPlaceholder } from "@/components/mail/mail-list-state";
+import { makeMailT } from "@/lib/mail/i18n-strings";
 import { listIncludesHiddenMailboxes } from "@/lib/mail/account-scope";
 import { check, suite } from "./harness.mjs";
 
@@ -36,4 +37,11 @@ suite(async () => {
   check("a search that reaches all mail does not", !listIncludesHiddenMailboxes({ folder: "sent", q: "x" }));
   check("nor does the inbox", !listIncludesHiddenMailboxes({ folder: "inbox" }));
   check("nor a folder named by label", !listIncludesHiddenMailboxes({ folder: "sent", label: "Receipts" }));
+
+  // The search box does not promise all mail when hidden accounts are left
+  // out of a search (2026-10-20).
+  const t = makeMailT("en");
+  const box = (exceptHidden) => mailSearchPlaceholder({ folderName: null, customListName: null, tab: "all", t, exceptHidden });
+  check("the box says all mail by default", box(false) === "Search all mail");
+  check("and says which mail it leaves out", box(true) === "Search all mail (except hidden accounts)");
 });

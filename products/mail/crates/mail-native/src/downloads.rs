@@ -118,27 +118,51 @@ pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
 /// main thread, which is the thread the windows are drawn on: decoding
 /// thirty megabytes of base64 and writing them there stopped the whole app
 /// for as long as it took.
+///
+/// `folder` is where the reader keeps their downloads, chosen in the
+/// Download button's menu; Downloads when it is not given or is gone.
+/// `ask` shows the Mac's Save dialog there first (Save as…, or Always ask).
+/// The answer is "" when the dialog was cancelled.
 #[tauri::command]
 pub async fn save_attachment(
   app: tauri::AppHandle,
   filename: String,
   content_base64: String,
   open: bool,
+  folder: Option<String>,
+  ask: Option<bool>,
 ) -> Result<String, String> {
-  tauri::async_runtime::spawn_blocking(move || save_attachment_now(&app, &filename, &content_base64, open))
-    .await
-    .map_err(|e| e.to_string())?
+  tauri::async_runtime::spawn_blocking(move || {
+    save_attachment_now(&app, &filename, &content_base64, open, folder.as_deref(), ask.unwrap_or(false))
+  })
+  .await
+  .map_err(|e| e.to_string())?
 }
 
-fn save_attachment_now(
-  app: &tauri::AppHandle,
-  filename: &str,
-  content_base64: &str,
-  open: bool,
-) -> Result<String, String> {
+/// The folders the Download menu offers by name, and home, to write the
+/// others short ("~/Projects").
+#[tauri::command]
+pub fn download_places(app: tauri::AppHandle) -> serde_json::Value {
   use tauri::Manager;
+  let path = app.path();
+  let text = |p: Result<PathBuf, tauri::Error>| p.ok().map(|p| p.to_string_lossy().to_string());
+  serde_json::json!({
+    "downloads": text(path.download_dir()),
+    "desktop": text(path.desktop_dir()),
+    "home": text(path.home_dir()),
+  })
+}
 
-  let bytes = decode_base64(content_base64)?;
+/// The folder to save in: the reader's, while it is there, else Downloads.
+fn save_folder(app: &tauri::AppHandle, folder: Option<&str>) -> Result<PathBuf, String> {
+  use tauri::Manager;
+  if let Some(chosen) = folder.map(str::trim).filter(|f| !f.is_empty()) {
+    let chosen = PathBuf::from(chosen);
+    // A folder that was moved or deleted is not made again: Downloads.
+    if chosen.is_absolute() && chosen.is_dir() {
+      return Ok(chosen);
+    }
+  }
   // A phone has no downloads folder the app may write to as a desktop
   // does — iOS answers with an error, and Android's is not this app's — so
   // the file goes under the app's own data directory there, where the
@@ -148,10 +172,32 @@ fn save_attachment_now(
     .download_dir()
     .or_else(|_| app.path().app_data_dir().map(|d| d.join("Downloads")))
     .map_err(|e| format!("Couldn't find the downloads folder: {e}"))?;
-  std::fs::create_dir_all(&dir)
-    .map_err(|e| format!("Couldn't open the downloads folder: {e}"))?;
+  std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't open the downloads folder: {e}"))?;
+  Ok(dir)
+}
 
-  let path = unique_path(&dir, &safe_file_name(filename), &|p| p.exists());
+fn save_attachment_now(
+  app: &tauri::AppHandle,
+  filename: &str,
+  content_base64: &str,
+  open: bool,
+  folder: Option<&str>,
+  ask: bool,
+) -> Result<String, String> {
+  let bytes = decode_base64(content_base64)?;
+  let dir = save_folder(app, folder)?;
+  let name = safe_file_name(filename);
+
+  let path = if ask {
+    use tauri_plugin_dialog::DialogExt;
+    // The Mac's own dialog, which asks before it replaces a file.
+    match app.dialog().file().set_directory(&dir).set_file_name(&name).blocking_save_file() {
+      Some(chosen) => chosen.into_path().map_err(|e| format!("Couldn't use that place: {e}"))?,
+      None => return Ok(String::new()),
+    }
+  } else {
+    unique_path(&dir, &name, &|p| p.exists())
+  };
   std::fs::write(&path, &bytes).map_err(|e| format!("Couldn't save the file: {e}"))?;
 
   // The file is written either way. Failing to show it is not a failure to

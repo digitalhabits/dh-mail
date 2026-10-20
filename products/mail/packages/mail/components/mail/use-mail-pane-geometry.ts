@@ -223,7 +223,14 @@ export function useMailPaneGeometry(input: {
    * answers this measurement, so it follows the window and the rail.
    */
   const threadListRef = React.useRef<HTMLDivElement | null>(null);
-  const [threadListWidth, setThreadListWidth] = React.useState(0);
+  /*
+    Whether the list is wide enough for the wide rows, as measured; null
+    before it is. The answer, not the width: kept as a width, every pixel
+    of a drag — the folders' edge, the list's own — set it, and the whole
+    page drew itself twice a pixel, which made the folders' resize
+    sluggish (Ulrik, 2026-10-20). A yes that stays yes draws nothing.
+  */
+  const [listWideMeasured, setListWideMeasured] = React.useState<boolean | null>(null);
   /**
    * And where it begins, in window pixels.
    *
@@ -349,14 +356,13 @@ export function useMailPaneGeometry(input: {
         ? Math.max(0, paneWidth - controlsWidth)
         : shownListWidth;
   const listRowWide =
-    !listNarrow &&
-    (threadListWidth || estimatedThreadListWidth) >= wideListRowMinPx();
+    !listNarrow && (listWideMeasured ?? estimatedThreadListWidth >= wideListRowMinPx());
   React.useLayoutEffect(() => {
     const el = threadListRef.current;
     if (!el) return;
     const measureList = () => {
       const box = threadListRef.current?.getBoundingClientRect();
-      if (box) setThreadListWidth(box.width);
+      if (box) setListWideMeasured(box.width >= wideListRowMinPx());
     };
     const observer = new ResizeObserver(() => {
       if (afterMailPaneSlide(measureList)) return;
@@ -497,7 +503,6 @@ export function useMailPaneGeometry(input: {
     paneRowRef,
     threadListRef,
     paneWidth,
-    threadListWidth,
     hideList,
     railShowing,
     railHidden,

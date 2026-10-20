@@ -139,11 +139,12 @@ export function useListRows({
   const triageOrder = useTriageOrder();
   screenThreadOrderRef.current =
     tab === TRIAGE_TAB && triageOrder
-      ? triageOrder.map(
-          (entry) =>
-            threads.find((t) => threadKey(t) === entry.key) ??
-            ({ ...entry } as unknown as MailThreadSummary)
-        )
+      ? triageOrder.flatMap((entry) => {
+          const loaded = threads.find((t) => threadKey(t) === entry.key);
+          // While searching, only the triage rows among the hits are shown.
+          if (!loaded && debouncedSearch) return [];
+          return [loaded ?? ({ ...entry } as unknown as MailThreadSummary)];
+        })
       : screenThreadOrder;
   // Warm top-of-list bodies so open / post-delete successor paints from cache.
   // Wait until the list is idle so prefetch does not compete with mailbox refresh.

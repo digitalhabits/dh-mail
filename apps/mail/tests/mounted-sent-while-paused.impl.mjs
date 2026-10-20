@@ -29,14 +29,19 @@ setMailApiTransport(async (path) => {
     });
   }
   if (url.pathname === "/api/mail/threads") {
-    asked.push({ folder: url.searchParams.get("folder") ?? "inbox", account: url.searchParams.get("account") });
+    asked.push({
+      folder: url.searchParams.get("folder") ?? "inbox",
+      account: url.searchParams.get("account"),
+      q: url.searchParams.get("q"),
+      includeHidden: url.searchParams.get("includeHidden") === "1",
+    });
   }
   return new Response(JSON.stringify({ success: true, threads: [], nextCursor: null }), {
     headers: { "Content-Type": "application/json" },
   });
 });
 
-function List({ folder, accounts, pauseState, noneFetching }) {
+function List({ folder, accounts, pauseState, noneFetching, search = "" }) {
   useThreadListData({
     viewerId: "viewer",
     pageSnapKey: `snap-${folder}`,
@@ -46,7 +51,7 @@ function List({ folder, accounts, pauseState, noneFetching }) {
     mailboxScopeEmails: [],
     folder,
     activeFolder: null,
-    debouncedSearch: "",
+    debouncedSearch: search,
     searchScopeKey: "",
     pauseState,
     noneFetching,
@@ -111,6 +116,29 @@ async function walk() {
     assert.ok(sent.some((r) => r.account === HIDDEN), "Sent asks the hidden mailbox");
     assert.ok(sent.some((r) => r.account === LIVE), "and the shown one");
     pass("Sent asks a hidden mailbox, the inbox does not");
+  }
+
+  // A search reaches a paused mailbox: the reader is asking for mail they
+  // know is there (2026-10-20).
+  {
+    const list = await mount({ folder: "inbox", accounts: [LIVE, PAUSED], pauseState: onePaused, noneFetching: false, search: "invoice" });
+    assert.ok(list.some((r) => r.q === "invoice" && r.account === PAUSED), "a search asks the paused mailbox");
+    const all = await mount({ folder: "inbox", accounts: [PAUSED], pauseState: allPaused, noneFetching: true, search: "invoice" });
+    assert.ok(all.some((r) => r.q === "invoice"), "a search asks while all mail is paused");
+    pass("a search reaches a paused mailbox");
+  }
+
+  // A search reaches a hidden mailbox, unless the reader turned that off.
+  {
+    localStorage.removeItem("mail-search-hidden-mailboxes");
+    const on = await mount({ folder: "inbox", accounts: [LIVE], pauseState: { quietHours: [] }, noneFetching: false, search: "invoice" });
+    assert.ok(on.some((r) => r.q === "invoice" && r.account === HIDDEN), "by default a search asks the hidden mailbox");
+    localStorage.setItem("mail-search-hidden-mailboxes", "0");
+    const off = await mount({ folder: "inbox", accounts: [LIVE], pauseState: { quietHours: [] }, noneFetching: false, search: "invoice" });
+    assert.ok(!off.some((r) => r.account === HIDDEN), "turned off, it does not");
+    assert.ok(!off.some((r) => r.includeHidden), "and does not ask the server for hidden mailboxes");
+    localStorage.removeItem("mail-search-hidden-mailboxes");
+    pass("a search reaches a hidden mailbox unless turned off");
   }
 }
 

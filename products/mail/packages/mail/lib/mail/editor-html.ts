@@ -55,3 +55,24 @@ export function dropRemoteImagesForEditing(html: string): string {
     REMOTE_IMAGE_SRC.test(tag) ? "" : tag
   );
 }
+
+/**
+ * Our own message's ink, taken off for editing.
+ *
+ * A message is sent wrapped in the writer's font with dark grey words
+ * (#222, text-style.ts) and a lighter signature (#444, signature-html.ts),
+ * so other mail programs show it as it was written. Put back in the
+ * composer, those fixed colours stayed dark on the dark composer and could
+ * not be read (2026-10-20). The composer has its own ink; only these two
+ * colours are taken off, so a colour the writer chose stays.
+ */
+export function dropOwnInkForEditing(html: string): string {
+  if (!html) return html;
+  return html.replace(/\bstyle="([^"]*)"/gi, (whole, style: string) => {
+    const kept = style
+      .split(";")
+      .filter((rule) => !/^\s*color\s*:\s*#(?:222|444)\s*$/i.test(rule))
+      .join(";");
+    return kept === style ? whole : `style="${kept}"`;
+  });
+}

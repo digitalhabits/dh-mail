@@ -564,6 +564,7 @@ export function ComposeView(props: ComposeViewProps) {
                        a way to do it without reaching for the button. */
                     title={`Send (${formatShortcut(shortcuts.send)})`}
                     disabled={!canSend}
+                    data-send-main=""
                     onClick={() => void send()}
                   >
                     {/* Before the word, pointing the way out. Under the

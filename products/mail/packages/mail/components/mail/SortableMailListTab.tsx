@@ -34,6 +34,7 @@ export function SortableMailListTab({
   onSelect,
   onEdit,
   suppressClick,
+  hits,
 }: {
   id: MailListTab;
   label: string;
@@ -44,6 +45,8 @@ export function SortableMailListTab({
   /** Right-click (custom lists) opens the editor. */
   onEdit?: () => void;
   suppressClick: React.MutableRefObject<boolean>;
+  /** While a search runs: how many of its hits are on this tab. */
+  hits?: number | null;
 }) {
   const t = useMailT();
   const {
@@ -97,8 +100,18 @@ export function SortableMailListTab({
     >
       {icon ? <TabIcon id={icon} size={14} className="shrink-0 opacity-80" /> : null}
       {label}
+      <TabHits hits={hits} />
     </button>
   );
+}
+
+/**
+ * A search's hits on a tab, small and quiet after its name: the reader sees
+ * which tab their result is on before clicking through (Ulrik, 2026-10-20).
+ */
+export function TabHits({ hits }: { hits?: number | null }) {
+  if (hits == null) return null;
+  return <span className="text-[12px] tabular-nums text-[var(--mail-chrome-muted)] opacity-80">{hits}</span>;
 }
 
 /** Sync client read for the list key matching the persisted tab (SSR → null). */

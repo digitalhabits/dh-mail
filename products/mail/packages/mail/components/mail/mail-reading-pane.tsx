@@ -21,6 +21,7 @@ import { MailRestPanel } from "@/components/mail/MailRestPanel";
 import { findCachedThread } from "@/lib/mail/list-cache";
 import { isMailPersonPinned, personOfOpenThread } from "@/lib/mail/person-pins";
 import { PersonPane } from "@/components/mail/PersonPane";
+import type { PersonRow } from "@/lib/mail/person-participants";
 import { patchCachedThreads, isMailboxScopeOne } from "@/components/mail/mail-list-state";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 import {
@@ -41,6 +42,20 @@ import { rowAfterSelection, selectedInOrder } from "@/lib/mail/multi-select";
 import type { MailDraftRow } from "@/lib/mail/types";
 
 /** What the reading pane holds: a composer, a thread, a person, or the rest picture. */
+
+/**
+ * The person's page, in Stacks — unless a scheduled message was opened
+ * over it. With Stacks on a person is nearly always picked, and their page
+ * stood in front of the scheduled message: a click on its row in the
+ * Scheduled group opened it out of sight (Ulrik, 2026-10-20).
+ */
+function showsPerson(
+  viewMode: string,
+  person: PersonRow | null | undefined,
+  openHeld: unknown
+): person is PersonRow {
+  return viewMode === "people" && Boolean(person) && !openHeld;
+}
 
 export function ReadingPaneContent({
   m,
@@ -125,7 +140,7 @@ export function ReadingPaneContent({
     zoom,
   } = m;
   // A scheduled message opened from the list, while no thread is open.
-  const openHeld = useOpenHeldMessage(m.heldMessages, Boolean(selected));
+  const openHeld = useOpenHeldMessage(m.heldMessages, Boolean(selected), selectedPerson?.key);
   const draftSelection = useDraftSelection();
   // For the Drafts view: a discarded draft opens the next one.
   const draftRows = draftsInView(drafts, draftsAccount, debouncedSearch).filter(
@@ -492,7 +507,7 @@ export function ReadingPaneContent({
               onRecordsChanged={() => markThreadInPeople(selected)}
             />
           </>
-        ) : viewMode === "people" && selectedPerson ? (
+        ) : showsPerson(viewMode, selectedPerson, openHeld) ? (
           <PersonPane
             row={selectedPerson}
             onOpenThread={openThread}

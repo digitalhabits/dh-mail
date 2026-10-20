@@ -227,6 +227,11 @@ export type MailScheduledMessage = {
   /** Kept by this computer's own schedule, for Edit. */
   bcc?: string[];
   /**
+   * The words carry the signature already: a message the outbox holds was
+   * written out whole. Edit then does not put a second one on.
+   */
+  signed?: boolean;
+  /**
    * Its time can be changed where it is: a draft this computer sends, or
    * one Outlook holds in Drafts. Not one held in an Exchange Outbox, which
    * the server will not let go of (docs/mail-exchange-ews.md, 17.1).
@@ -238,6 +243,12 @@ export type MailScheduledMessage = {
    */
   status?: "waiting" | "sending" | "failed";
   error?: string;
+  /**
+   * Not sent because Mail was not open within an hour of its time: it
+   * waits for the person, who is asked once (MissedScheduledDialog). A
+   * "failed" message that is not missed was refused by the server.
+   */
+  missed?: boolean;
   /**
    * False when the provider has it and the app cannot take it back
    * (Exchange 2019 keeps it in Sent Items): no Cancel, Send now, or Edit,

@@ -27,7 +27,7 @@ import {
 import { sanitizeEmailHtml, stripQuotedHtml } from "@/lib/mail/email-html";
 import { plainTextToEditorHtml } from "@/lib/client-email-html";
 import { restoreAnchorsForEditing } from "@/lib/mail/soften-anchors";
-import { dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
+import { dropOwnInkForEditing, dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
 import { formatEmailBody, stripQuotedReplies } from "@/lib/email-mime";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import type { useMailT } from "@/lib/mail/i18n";
@@ -131,8 +131,8 @@ export function useEditAsNew({
                 // bridge. An editor knows nothing of that bridge and would
                 // keep the words while dropping the address, so the links
                 // are put back before the copy is written.
-                return dropRemoteImagesForEditing(
-                  restoreAnchorsForEditing(kept)
+                return dropOwnInkForEditing(
+                  dropRemoteImagesForEditing(restoreAnchorsForEditing(kept))
                 );
               })()
             : plainTextToEditorHtml(

@@ -554,6 +554,14 @@ pub fn mail_sync_outbox(app: AppHandle, account: String) -> Result<Vec<serde_jso
   Ok(rows.iter().map(crate::outbox::row_json).collect())
 }
 
+/// A held message's words and Cc, for its page and for Edit.
+#[tauri::command(async)]
+pub fn mail_sync_outbox_words(app: AppHandle, account: String, id: i64) -> Result<serde_json::Value, String> {
+  let db = app.state::<MailDb>();
+  let raw = db.outbox_source(&account.trim().to_lowercase(), id).map_err(|e| e.to_string())?;
+  Ok(raw.map(|raw| crate::outbox::outbox_words(&raw)).unwrap_or(serde_json::Value::Null))
+}
+
 #[tauri::command(async)]
 pub fn mail_sync_outbox_cancel(app: AppHandle, account: String, id: i64) -> Result<bool, String> {
   let db = app.state::<MailDb>();

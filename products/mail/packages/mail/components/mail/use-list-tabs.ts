@@ -17,6 +17,18 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 import { useTabSchedules } from "@/lib/mail/tab-schedules";
 import { MAIL_LIST_TABS, MAIL_OFF_TAB_VIEWS, useMailCustomLists, useMailListTabOrder, useMailListTab } from "@/components/mail/mail-list-state";
 
+/** Whether a conversation is on one tab: a built-in pile, or a list of one's own. */
+export function threadOnTab(
+  thread: MailThreadSummary,
+  id: string,
+  customListById: ReadonlyMap<string, MailCustomList>
+): boolean {
+  const listId = parseCustomListTabId(id);
+  if (!listId) return thread.tab === id;
+  const list = customListById.get(listId);
+  return list ? threadMatchesCustomList(thread, list) : false;
+}
+
 export function useListTabs() {
   const customLists = useMailCustomLists();
   const customListById = React.useMemo(() => {
@@ -65,12 +77,7 @@ export function useListTabs() {
   const passesFilters = React.useCallback(
     (thread: MailThreadSummary) => {
       if (!activeFilters.length) return true;
-      return activeFilters.some((id) => {
-        const listId = parseCustomListTabId(id);
-        if (!listId) return thread.tab === id;
-        const list = customListById.get(listId);
-        return list ? threadMatchesCustomList(thread, list) : false;
-      });
+      return activeFilters.some((id) => threadOnTab(thread, id, customListById));
     },
     [activeFilters, customListById]
   );

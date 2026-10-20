@@ -19,6 +19,9 @@ import { actionForEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
 
 import type { MailShortcut, MailShortcutAction } from "@/lib/mail/shortcuts";
 
+/** The band of a reply being written (thread-pane-composer.tsx). */
+const REPLY_OPEN = "[data-mail-reply-open]";
+
 export function useThreadKeys({
   account,
   floating,
@@ -159,6 +162,15 @@ export function useThreadKeys({
             requestDiscard();
             break;
           }
+          /*
+            Not while a reply is being written. The focus leaves the words
+            more often than it seems: a click on the card's edge, on Bold
+            or on "Show quoted text", or the editor drawn again under the
+            caret. Backspace then reached this, and the conversation went
+            to Trash in the middle of a sentence (Ulrik, 2026-10-20). The
+            card's own bin is there for the draft.
+          */
+          if (target?.closest(REPLY_OPEN) || document.querySelector(REPLY_OPEN)) break;
           onTrash({ account, threadId });
           break;
         case "toggleUnread":

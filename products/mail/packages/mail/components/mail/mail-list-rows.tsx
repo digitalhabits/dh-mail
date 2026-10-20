@@ -10,7 +10,9 @@
 
 import { isMailboxScopeAll } from "@/components/mail/mail-list-state";
 import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
-import { openScheduledMessage } from "@/components/mail/ScheduledMessageView";
+import { openScheduledMessage, useOpenScheduledMessage } from "@/components/mail/ScheduledMessageView";
+import { missedWhen } from "@/components/mail/MissedScheduledDialog";
+import { HiddenAccountMark } from "@/components/mail/hidden-account-mark";
 import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
 import * as React from "react";
 
@@ -72,7 +74,7 @@ export function ThreadRows({
     pinKeySet,
     pinnedThreads,
     rowMenuActions,
-    selected,
+    selected: selectedThread,
     showPinnedBand,
     snooze,
     t,
@@ -81,6 +83,13 @@ export function ThreadRows({
     trash,
     unsnooze,
   } = m;
+  /*
+    A scheduled message open in the reader is what is selected: its row in
+    the Scheduled group is lit, and the thread or person behind it is not
+    (Ulrik, 2026-10-20).
+  */
+  const scheduledOpen = Boolean(useOpenScheduledMessage());
+  const selected = scheduledOpen ? null : selectedThread;
   const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
   return (
     <>
@@ -290,7 +299,7 @@ export function PeopleRows({
     purgeFrom,
     rowMenuActions,
     search,
-    selected,
+    selected: selectedThread,
     setPersonMenuAt,
     setPersonSnooze,
     setSelectedPersonKey,
@@ -302,6 +311,9 @@ export function PeopleRows({
     trashPerson,
     unsnooze,
   } = m;
+  // A scheduled message open in the reader is what is selected (ThreadRows).
+  const scheduledOpen = Boolean(useOpenScheduledMessage());
+  const selected = scheduledOpen ? null : selectedThread;
   const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
   /*
     The stacks open in the list (person-stack.tsx). A click on a closed
@@ -424,7 +436,8 @@ export function PeopleRows({
             ]
               .filter(Boolean)
               .join(" — ");
-            const { open: stackOpen, painted } = stackState(row);
+            const { open: stackOpen, painted: paintedNow } = stackState(row);
+            const painted = paintedNow && !scheduledOpen;
             return (
               <React.Fragment key={row.key}>
               <div
@@ -470,8 +483,9 @@ export function PeopleRows({
                     : listDensity !== "compact"
                       ? "items-start pl-5 pr-[18px] py-2.5"
                       : "items-center pl-5 pr-[18px] py-1.5",
-                  // Open, a quiet fill: its open thread is marked below.
-                  stackOpen && "bg-[var(--mail-chrome-hover)]",
+                  /* No fill for a stack only because it is open. It read as
+                     selected beside the row that was (Ulrik, 2026-10-20);
+                     the open threads under it say it is open. */
                   !listExpanded && (painted || multiKeys.has(row.key))
                     ? // The open person, marked as an open thread is: fill and bar.
                       "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
@@ -518,7 +532,12 @@ export function PeopleRows({
                   hasFile={personHasFile}
                   highlight={highlightTerms}
                   onNavy={chromeDark}
-                  time={rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
+                  time={
+                    <>
+                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                      {rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
+                    </>
+                  }
                 />
                 ) : (
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -551,7 +570,8 @@ export function PeopleRows({
                         nothing in the row moves when they show. The
                         count goes with the time. */}
                     <PersonCount threads={row.threads} open={stackOpen} />
-                    <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
+                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
+                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       {rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
                       })}
@@ -589,6 +609,7 @@ export function PeopleRows({
                         long with Stacks on as off (2026-10-17). */}
                     <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
                       <span className="text-xs text-[var(--mail-chrome-faint)]">
+                        <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                         {rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),
                         })}
@@ -1040,6 +1061,7 @@ export function ListNotices({
  * rail while it holds anything; it was a group at the top of the list.
  */
 export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: boolean }) {
+  const openHeld = useOpenScheduledMessage();
   const { listNarrow, listExpanded, t, actOnHeld, setSelected, chromeDark, accountEmails, mailboxScopeEmails } = m;
   // Above the list, on one mailbox's tab: that mailbox's. On All: every
   // one, a hidden mailbox's too — hiding a mailbox holds its incoming mail,
@@ -1082,8 +1104,13 @@ export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: bo
                   key={`${held.account}|${held.id}`}
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 py-2 pl-5 pr-[18px] text-left",
-                    chromeDark ? "hover:bg-white/5" : "hover:bg-[#f4f1ec]"
+                    "relative flex w-full items-center gap-3 py-2 pl-5 pr-[18px] text-left",
+                    // Open in the reader: marked as an open thread is, fill and bar.
+                    openHeld?.id === held.id && openHeld.account === held.account
+                      ? "bg-[var(--mail-row-selected)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                      : chromeDark
+                        ? "hover:bg-white/5"
+                        : "hover:bg-[#f4f1ec]"
                   )}
                   title={held.status === "failed" ? held.error : undefined}
                   onClick={() => open(held)}
@@ -1093,7 +1120,10 @@ export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: bo
                     setMenu({ held, x: event.clientX, y: event.clientY });
                   }}
                 >
-                  {held.status === "failed" ? (
+                  {held.missed ? (
+                    // Missed, not broken: the clock, as a waiting one has.
+                    <Clock className="h-3.5 w-3.5 shrink-0 text-amber-600/80" aria-hidden />
+                  ) : held.status === "failed" ? (
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
                   ) : held.status === "sending" ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-teal-700/75" aria-hidden />
@@ -1114,12 +1144,28 @@ export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: bo
                       chromeDark ? "text-white/45" : "text-[#908985]"
                     )}
                   >
-                    {held.subject || "(no subject)"}
+                    {/* A missed one says so in words, where its subject was:
+                        the dialog asked once, and this is what is left. */}
+                    {held.missed
+                      ? t("missedRow", { when: missedWhen(held.sendAt, t) })
+                      : held.subject || "(no subject)"}
                   </span>
                   {/* The time, in the list's own grey, as a thread row's
                       date: the teal clock already says it is waiting. A
                       failed one shows its two ways out instead. */}
-                  {held.status === "failed" ? (
+                  {held.missed ? (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold">
+                      <RowAction tone="teal" onAct={() => void actOnHeld(held, "sendNow")}>
+                        {t("sendNow")}
+                      </RowAction>
+                      {/* Its page has Change time; a menu cannot open inside the row. */}
+                      {held.reschedulable ? (
+                        <RowAction tone="grey" onAct={() => open(held)}>
+                          {t("reschedule")}
+                        </RowAction>
+                      ) : null}
+                    </span>
+                  ) : held.status === "failed" ? (
                     <span className="flex shrink-0 items-center gap-2 text-xs font-semibold">
                       <span className="text-amber-700">{t("notSent")}</span>
                       <span
@@ -1221,5 +1267,40 @@ function PinnedHeading({
       <Pin className="h-3 w-3" aria-hidden />
       {label}
     </p>
+  );
+}
+
+/** An action on a Scheduled row: a span, because the row itself is a button. */
+function RowAction({
+  tone,
+  onAct,
+  children,
+}: {
+  tone: "teal" | "grey";
+  onAct: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={cn(
+        "rounded px-1.5 py-0.5",
+        tone === "teal" ? "text-teal-700 hover:bg-teal-50" : "text-stone-500 hover:bg-stone-100 hover:text-stone-700"
+      )}
+      onClick={(e) => {
+        e.stopPropagation();
+        onAct();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onAct();
+        }
+      }}
+    >
+      {children}
+    </span>
   );
 }

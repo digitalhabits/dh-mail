@@ -106,9 +106,11 @@ suite(async () => {
   const safe =
     "https://eur02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fjournal.example.org%2Freview%3Fid%3D7&data=05%7C02%7Cx&sdata=abc%3D&reserved=0";
   check("a Safe Links address is labelled with its real host", linkLabel(safe) === "journal.example.org/…", linkLabel(safe));
+  // Since 2026-10-20 the link goes to that address too: a safe link whose
+  // signature a forward had broken answered "Bad Request" (safe-links.ts).
   check(
-    "and its link still goes through Safe Links",
-    hrefs(`see ${safe} now`).join("|") === safe,
+    "and its link goes to the address it wraps",
+    hrefs(`see ${safe} now`).join("|") === "https://journal.example.org/review?id=7",
     hrefs(`see ${safe} now`).join("|")
   );
   check("any other address keeps its own host", linkLabel("https://www.example.org/a") === "example.org/…", linkLabel("https://www.example.org/a"));

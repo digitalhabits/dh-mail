@@ -53,8 +53,8 @@ pub const SCHEMA: &str = r#"
 "#;
 
 /// Past its time by more than this, a message waits for the person
-/// (Ulrik, 2026-10-17: 30 minutes).
-pub const LATE_AFTER_MS: i64 = 30 * 60 * 1000;
+/// (Ulrik, 2026-10-17: 30 minutes; 2026-10-20: an hour).
+pub const LATE_AFTER_MS: i64 = 60 * 60 * 1000;
 
 /// How long a claim is believed. As the outbox's: a worker that died
 /// mid-send lets go of nothing, so a claim also grows old.
@@ -552,11 +552,11 @@ mod tests {
   }
 
   #[test]
-  fn twenty_minutes_late_goes_forty_minutes_late_waits_for_the_person() {
+  fn fifty_minutes_late_goes_seventy_minutes_late_waits_for_the_person() {
     let db = MailDb::open_in_memory().unwrap();
     let now = now_ms();
-    let on_time = add(&db, "r-20", now - 20 * 60_000);
-    let late = add(&db, "r-40", now - 40 * 60_000);
+    let on_time = add(&db, "r-50", now - 50 * 60_000);
+    let late = add(&db, "r-70", now - 70 * 60_000);
     let taken = db.scheduled_take_due(now).unwrap();
     assert_eq!(taken.iter().map(|r| r.id).collect::<Vec<_>>(), vec![on_time]);
     let rows = db.scheduled_list(None).unwrap();
@@ -608,7 +608,7 @@ mod tests {
   fn a_new_time_moves_it_and_a_late_one_is_given_its_chance_again() {
     let db = MailDb::open_in_memory().unwrap();
     let now = now_ms();
-    let id = add(&db, "r-1", now - 40 * 60_000);
+    let id = add(&db, "r-1", now - 70 * 60_000);
     assert_eq!(db.scheduled_list(None).unwrap()[0].status(now), "late");
     assert!(db.scheduled_reschedule(A, id, now + 60_000).unwrap());
     let row = &db.scheduled_list(None).unwrap()[0];

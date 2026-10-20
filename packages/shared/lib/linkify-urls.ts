@@ -1,4 +1,6 @@
 /** Bare URLs, or plain-text-email style `<https://…>` wrapped ones. */
+
+import { unwrapSafeLink } from "@/lib/safe-links";
 const URL_REGEX = /<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>]+)/g;
 
 /**
@@ -75,7 +77,8 @@ export function findLinksInText(text: string): LinkMatch[] {
   const urls: LinkMatch[] = findUrlsInText(text).map((match) => ({
     start: match.start,
     end: match.end,
-    href: match.url,
+    // A Microsoft safe link opens at the address it wraps (safe-links.ts).
+    href: unwrapSafeLink(match.url),
     kind: "url" as const,
   }));
   const emails = findEmailsInText(text).filter(
@@ -87,8 +90,9 @@ export function findLinksInText(text: string): LinkMatch[] {
 /**
  * Microsoft Safe Links: an Exchange that checks links rewrites each one
  * as `https://eur02.safelinks.protection.outlook.com/?url=<the real
- * address>&data=…`. The click must still go through it, but its host says
- * nothing about where the link goes.
+ * address>&data=…`. Its host says nothing about where the link goes, so
+ * the label names the address it wraps; the click goes there too
+ * (safe-links.ts).
  */
 const SAFE_LINKS_HOST_RE = /(^|\.)safelinks\.protection\./i;
 

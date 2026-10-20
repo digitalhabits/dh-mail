@@ -221,6 +221,7 @@ macro_rules! mail_commands {
       mail_native::sync::mail_sync_action,
       mail_native::sync::mail_sync_send,
       mail_native::sync::mail_sync_outbox,
+      mail_native::sync::mail_sync_outbox_words,
       mail_native::sync::mail_sync_outbox_cancel,
       mail_native::sync::mail_sync_outbox_send_now,
       // Send later from a server draft (docs/mail-send-later.md).
@@ -295,6 +296,7 @@ macro_rules! mail_commands {
       mail_native::ews_autodiscover::commands::mail_ews_autodiscover,
       open_external_url,
       downloads::save_attachment,
+      downloads::download_places,
       mail_native::handover::activate_outlook,
       mail_native::handover::open_outlook_compose,
       mail_native::handover::arrange_outlook_handover,

@@ -25,6 +25,20 @@ function bytesToString(bytes: Uint8Array, charset: string): string {
   }
 }
 
+/**
+ * The bytes of a character that a decoder keeps as it is.
+ *
+ * Its own UTF-8, not its low byte. `charCodeAt(i) & 0xff` cut every
+ * character above U+00FF to one byte, so text that was decoded already and
+ * went through here again came out broken: "„" became 0x1E, "“" 0x1C, and
+ * "ü" a lone 0xFC, read as the replacement mark (Mikkel, 2026-10-20).
+ */
+function pushCharBytes(out: number[], ch: string): void {
+  const code = ch.charCodeAt(0);
+  if (code < 0x80) out.push(code);
+  else for (const b of new TextEncoder().encode(ch)) out.push(b);
+}
+
 /** Decode a single RFC 2047 encoded-word payload to a JS string. */
 function decodeRfc2047Payload(charset: string, encoding: string, data: string): string {
   let bytes: Uint8Array;
@@ -38,7 +52,7 @@ function decodeRfc2047Payload(charset: string, encoding: string, data: string): 
         out.push(Number.parseInt(soft.slice(i + 1, i + 3), 16));
         i += 2;
       } else {
-        out.push(soft.charCodeAt(i) & 0xff);
+        pushCharBytes(out, soft[i]);
       }
     }
     bytes = new Uint8Array(out);
@@ -72,7 +86,7 @@ function decodeQuotedPrintable(input: string): string {
       out.push(Number.parseInt(soft.slice(i + 1, i + 3), 16));
       i += 2;
     } else {
-      out.push(soft.charCodeAt(i) & 0xff);
+      pushCharBytes(out, soft[i]);
     }
   }
   return bytesToString(new Uint8Array(out), "utf-8");
@@ -119,7 +133,14 @@ function decodeBody(raw: string, transferEncoding: string, charsetHint: string):
     text = raw;
   }
   const charsetMatch = charsetHint.match(/charset="?([^";\s]+)"?/i);
-  if (charsetMatch && !encoding.includes("quoted-printable") && !encoding.includes("base64")) {
+  // A string with a character above U+00FF is text already, not one byte a
+  // character, and has nothing to reinterpret.
+  if (
+    charsetMatch &&
+    !encoding.includes("quoted-printable") &&
+    !encoding.includes("base64") &&
+    !/[^\u0000-\u00ff]/.test(text)
+  ) {
     // 8-bit body with an explicit charset — reinterpret when possible.
     const bytes = new Uint8Array(text.length);
     for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
@@ -261,9 +282,18 @@ function extractOutlookMimeBlob(text: string): string {
   return decodeBody(split.body, partTe, partCt).trim();
 }
 
-/** Heuristic: body still has quoted-printable soft breaks / =XX bytes. */
+/**
+ * Heuristic: a body still in quoted-printable.
+ *
+ * Every plain body passes here on its way to the screen and into a reply
+ * (formatEmailBody), decoded already nearly always. "=" and two hex digits
+ * alone was the test, and a link has that: "&data=05%7C…" became
+ * "&data\u0005%7C…" and stopped working, and the letters around it broke
+ * (Mikkel, 2026-10-20). Quoted-printable is ASCII and breaks its long lines
+ * with "=" at the end, so a body is taken for it only with both.
+ */
 function looksLikeQuotedPrintablePlain(text: string): boolean {
-  return /=\r?\n/.test(text) || /=[0-9A-Fa-f]{2}/.test(text);
+  return /^[\x00-\x7f]*$/.test(text) && /=\r?\n/.test(text) && /=[0-9A-F]{2}/.test(text);
 }
 
 /**
@@ -313,7 +343,30 @@ export function formatEmailSubject(subject: string): string {
 }
 
 export function formatEmailBody(text: string): string {
-  return coerceEmailPlainText(text);
+  return repairLinkControlChars(coerceEmailPlainText(text));
+}
+
+/** A control character no text uses: not tab, line feed or carriage return. */
+const CONTROL_CHAR = /[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+
+/**
+ * A link that went through a second quoted-printable decode, put back.
+ *
+ * A web address never holds a control character. One there is "=" and
+ * two hex digits that a decoder took for an encoded byte: "&data=05%7C…"
+ * came through a forward as "&data\u0005%7C…", and Outlook's link checker
+ * answered "Bad Request" (2026-10-20). The sender's copy is gone, but
+ * the byte says which digits it was, so "=05" goes back where it stood.
+ *
+ * `whole`: the text is one address (an href), not words with links in.
+ */
+export function repairLinkControlChars(text: string, whole = false): string {
+  if (!text || !CONTROL_CHAR.test(text)) return text;
+  CONTROL_CHAR.lastIndex = 0;
+  const repair = (url: string) =>
+    url.replace(CONTROL_CHAR, (ch) => `=${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+  if (whole) return repair(text);
+  return text.replace(/\bhttps?:\/\/[^\s<>"]+/gi, repair);
 }
 
 /** Markers where the quoted history of earlier messages begins. */

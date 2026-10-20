@@ -71,4 +71,7 @@ suite(async () => {
     "a refused one is Not sent, with the server's words",
     refused.status === "failed" && refused.error === "ews:fault ErrorInvalidRecipients"
   );
+  // Missed is asked about (MissedScheduledDialog); refused is not.
+  check("a late one is marked missed", late.missed === true);
+  check("a refused one is not", !refused.missed);
 });

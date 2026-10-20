@@ -278,6 +278,8 @@ export async function listUnifiedInbox(options: {
   clerkUserId: string;
   /** Let a search reach Trash and Junk as well. Ignored while browsing. */
   includeDeleted?: boolean;
+  /** Let a search reach the hidden mailboxes as well. Ignored while browsing. */
+  includeHidden?: boolean;
   /**
    * Continue a previous list page. Opaque cursor from `nextCursor`; when set,
    * only accounts with remaining pages are fetched (no full re-list).
@@ -302,12 +304,14 @@ export async function listUnifiedInbox(options: {
     await listConnectedMailAccounts(options.clerkUserId),
     hasSearchQuery ? "all" : scope,
     {
-      withHidden: listIncludesHiddenMailboxes({
-        folder: options.folder ?? "inbox",
-        label: options.label,
-        q: options.q,
-        folderScoped: options.folderScoped,
-      }),
+      withHidden:
+        listIncludesHiddenMailboxes({
+          folder: options.folder ?? "inbox",
+          label: options.label,
+          q: options.q,
+          folderScoped: options.folderScoped,
+        }) ||
+        (hasSearchQuery && Boolean(options.includeHidden)),
     }
   );
   const accountEmails = allAccounts

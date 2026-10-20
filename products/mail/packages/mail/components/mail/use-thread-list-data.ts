@@ -66,6 +66,17 @@ function plainFailure(failure: { email: string; reason: string }): {
   return { email: failure.email, reason: plain.slice(0, 160) };
 }
 
+/** Whether a search reaches the hidden mailboxes: "0" when the reader turned it off. */
+const SEARCH_HIDDEN_KEY = "mail-search-hidden-mailboxes";
+
+function readSearchHidden(): boolean {
+  try {
+    return localStorage.getItem(SEARCH_HIDDEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export function useThreadListData(input: {
   viewerId: string;
   pageSnapKey: string;
@@ -201,19 +212,44 @@ export function useThreadListData(input: {
 
   // Sent is fetched while the mail is paused: see listShowsSentOnly.
   const sentOnly = listShowsSentOnly(folder, activeFolder);
-  const pausedRef = React.useRef(noneFetching && !sentOnly);
-  pausedRef.current = noneFetching && !sentOnly;
+  /*
+    A search reaches a paused mailbox too. A pause holds back the mail
+    that comes in; a search is the reader asking for mail they know is
+    there, and finding nothing in a paused mailbox read as the mail being
+    gone (Ulrik, 2026-10-20).
+  */
+  const searching = Boolean(debouncedSearch);
+  const pastPause = sentOnly || searching;
+  const pausedRef = React.useRef(noneFetching && !pastPause);
+  pausedRef.current = noneFetching && !pastPause;
+
+  /**
+   * Whether a search also looks in the hidden mailboxes. On unless the
+   * reader turned it off, and kept: hiding a mailbox takes the mail that
+   * comes in off the screen, not out of reach (Ulrik, 2026-10-20). The
+   * search menu offers it while a mailbox is hidden.
+   */
+  const [searchHidden, setSearchHiddenState] = React.useState(readSearchHidden);
+  const setSearchHidden = React.useCallback((next: boolean) => {
+    setSearchHiddenState(next);
+    try {
+      localStorage.setItem(SEARCH_HIDDEN_KEY, next ? "1" : "0");
+    } catch {
+      /* kept for this window only */
+    }
+  }, []);
+  const reachHidden = sentOnly || (searching && searchHidden);
 
   /*
     Sent asks the hidden mailboxes too: hiding one takes the mail that
     comes in off the screen, but Sent is where you check that a message
-    went (2026-10-19). Read when Sent opens, and again when a mailbox is
-    hidden or shown.
+    went (2026-10-19). So does a search, unless the reader said not to.
+    Read when the list opens, and again when a mailbox is hidden or shown;
+    the search menu needs it too, to offer the choice.
   */
   const [hiddenMailboxes, setHiddenMailboxes] = React.useState<string[]>([]);
   const shownKey = accountEmails.map((email) => email.toLowerCase()).sort().join(",");
   React.useEffect(() => {
-    if (!sentOnly) return;
     let alive = true;
     void listHiddenMailboxes()
       .then((list) => {
@@ -223,13 +259,17 @@ export function useThreadListData(input: {
     return () => {
       alive = false;
     };
-  }, [sentOnly, shownKey]);
-  /** The hidden mailboxes this list shows: in Sent, and only those not shown. */
-  const sentHiddenEmails = React.useMemo(() => {
-    if (!sentOnly) return [];
+  }, [shownKey]);
+  /** Every hidden mailbox, whether this list shows them or not. */
+  const hiddenOnlyEmails = React.useMemo(() => {
     const shown = new Set(shownKey.split(","));
     return hiddenMailboxes.filter((email) => !shown.has(email.toLowerCase()));
-  }, [sentOnly, hiddenMailboxes, shownKey]);
+  }, [hiddenMailboxes, shownKey]);
+  /** The hidden mailboxes this list shows: in Sent, or in a search that reaches them. */
+  const sentHiddenEmails = React.useMemo(
+    () => (reachHidden ? hiddenOnlyEmails : []),
+    [reachHidden, hiddenOnlyEmails]
+  );
   /** Every mailbox the list asks. */
   const listEmails = React.useMemo(
     () => (sentHiddenEmails.length ? [...accountEmails, ...sentHiddenEmails] : accountEmails),
@@ -360,6 +400,7 @@ export function useThreadListData(input: {
       }
       params.set("q", debouncedSearch);
       if (searchDeleted) params.set("includeDeleted", "1");
+      if (searchHidden && hiddenOnlyEmails.length) params.set("includeHidden", "1");
       /**
        * The view narrows the search, the way the tabs beside it already do.
        *
@@ -399,6 +440,8 @@ export function useThreadListData(input: {
       folder,
       mailboxScopeEmails,
       searchDeleted,
+      searchHidden,
+      hiddenOnlyEmails,
     ]
   );
 
@@ -451,7 +494,7 @@ export function useThreadListData(input: {
       }
       const liveEmails = listEmails.filter(
         (email) =>
-          sentOnly ||
+          pastPause ||
           !mailPauseVerdictForAccount(
             pauseStateRef.current,
             email,
@@ -509,7 +552,7 @@ export function useThreadListData(input: {
         const scopedAccount = params.get("account");
         return Boolean(
           scopedAccount &&
-            !sentOnly &&
+            !pastPause &&
             mailPauseVerdictForAccount(
               pauseStateRef.current,
               scopedAccount,
@@ -1259,6 +1302,15 @@ export function useThreadListData(input: {
     snoozedCount,
     setSnoozedCount,
     searchDeleted,
+    /** For the search menu: how many mailboxes are hidden, and whether a search reaches them. */
+    hiddenSearch: {
+      emails: hiddenOnlyEmails,
+      count: hiddenOnlyEmails.length,
+      on: searchHidden,
+      set: setSearchHidden,
+      /** Accounts are hidden and a search leaves them out: the box must not say "all mail". */
+      leftOut: hiddenOnlyEmails.length > 0 && !searchHidden,
+    },
     setSearchDeleted,
     loadThreads,
     refreshSentForAccount,

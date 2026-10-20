@@ -16,6 +16,12 @@ import { mailApiFetch } from "@/lib/mail/api";
 import type { AttachmentSource } from "@/lib/mail/host/contracts";
 import { bytesToBase64 } from "@/lib/base64";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
+import {
+  alwaysAskWhereToSave,
+  downloadFolder,
+  folderOfPath,
+  rememberDownloadFolder,
+} from "@/lib/mail/download-folder";
 
 /** Nothing is available until the bytes are read, so the caller has to wait. */
 export function attachmentSourceNow(_path: string): string | null {
@@ -50,6 +56,10 @@ export async function saveAttachment(input: {
   path: string;
   filename: string;
   open?: boolean;
+  /** Where to save: the folder picked in the Download menu, or null for Downloads. */
+  folder?: string | null;
+  /** Show the Save dialog (Save as…). Left out: as "Always ask" says. */
+  ask?: boolean;
 }): Promise<void> {
   const invoke = tauriInvoke();
   if (!invoke) throw new Error("Saving a file needs the desktop app");
@@ -82,6 +92,8 @@ export async function saveAttachment(input: {
       // which Gmail will not exceed, so this stays a copy and not a problem.
       contentBase64: bytesToBase64(bytes),
       open: input.open,
+      folder: input.folder,
+      ask: input.ask,
       toastId: id,
     });
   })()
@@ -99,16 +111,33 @@ export async function saveAttachmentBytes(input: {
   filename: string;
   contentBase64: string;
   open?: boolean;
+  /** See saveAttachment. */
+  folder?: string | null;
+  ask?: boolean;
   /** A toast already up for this file, to be finished rather than joined. */
   toastId?: string | number;
 }): Promise<void> {
   const invoke = tauriInvoke();
   if (!invoke) throw new Error("Saving a file needs the desktop app");
+  // Opening a file is not saving one where the reader keeps files: it goes
+  // to Downloads, as it always did, and asks nothing.
+  const opening = input.open === true;
+  const ask = opening ? false : (input.ask ?? alwaysAskWhereToSave());
   const saved = (await invoke("save_attachment", {
     filename: input.filename,
     contentBase64: input.contentBase64,
-    open: input.open === true,
+    open: opening,
+    folder: opening ? null : input.folder !== undefined ? input.folder : downloadFolder(),
+    ask,
   })) as string;
+
+  // The Save dialog was cancelled: nothing was written, and nothing to say.
+  if (!saved) {
+    if (input.toastId != null) toast.dismiss(input.toastId);
+    return;
+  }
+  // A folder chosen in the Save dialog is offered in the menu next time.
+  if (ask) rememberDownloadFolder(folderOfPath(saved));
 
   // Opening the file says where it went by itself. Saving does not, and Rust
   // may have renamed it to avoid replacing something, so name what it wrote.

@@ -9,6 +9,8 @@
  */
 
 import { findLinksInText } from "@/lib/linkify-urls";
+import { repairLinkControlChars } from "@/lib/email-mime";
+import { unwrapSafeLink } from "@/lib/safe-links";
 import { MAIL_HREF_ATTR, softenAnchorsForParse } from "@/lib/mail/soften-anchors";
 
 const BLOCKED_ELEMENTS = new Set([
@@ -218,8 +220,20 @@ export function sanitizeEmailHtml(
         UNSAFE_URL_RE.test(attr.value)
       ) {
         el.removeAttribute(attr.name);
+      } else if (name === "href" || name === MAIL_HREF_ATTR) {
+        // A link broken by a second decode, mended (repairLinkControlChars),
+        // and a Microsoft safe link opened at the address it wraps.
+        const mended = unwrapSafeLink(repairLinkControlChars(attr.value, true));
+        if (mended !== attr.value) el.setAttribute(attr.name, mended);
       }
     }
+  }
+  // And the same links where they are written out as words.
+  const words = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  for (let node = words.nextNode(); node; node = words.nextNode()) {
+    const text = node.nodeValue ?? "";
+    const mended = repairLinkControlChars(text);
+    if (mended !== text) node.nodeValue = mended;
   }
 
   wrapOrphanListItems(doc);

@@ -206,7 +206,8 @@ export function PersonWideBody({
   hasFile: boolean;
   highlight: string[] | undefined;
   onNavy: boolean;
-  time: string;
+  /** The date, with the hidden-account eye before it when there is one. */
+  time: React.ReactNode;
 }) {
   const newest = threads[0];
   const stack = threads.length > 1;

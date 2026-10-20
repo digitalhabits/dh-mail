@@ -16,6 +16,7 @@ import { SyncControl } from "@/components/mail/SyncControl";
 import { StacksSwitch } from "@/components/mail/stack-threads-setting";
 import { threadKey } from "@/lib/mail/thread-copies";
 import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
+import { HiddenSearchChip, hiddenSearchChipShown } from "@/components/mail/hidden-account-mark";
 import { mailSearchPlaceholder } from "@/components/mail/mail-list-state";
 import { TriageButton } from "@/components/mail/team-layer";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
@@ -40,6 +41,7 @@ export function MailTitleBar({
     chromeDark,
     search,
     searchDeleted,
+    hiddenSearch,
     searchFocused,
     searchInputRef,
     setSearch,
@@ -52,6 +54,10 @@ export function MailTitleBar({
     titlebarToggleLeft,
     peekTitlebarLeft,
   } = m;
+  // Hidden accounts' hits are in the list: the field says so.
+  const chipShown = hiddenSearchChipShown(search, hiddenSearch);
+  // The search menu, opened by its chevron or by the hidden chip.
+  const [optionsOpen, setOptionsOpen] = React.useState(false);
   return (
     <>
       {/* Overlay title bar — same height as the Mac traffic-light strip
@@ -127,6 +133,11 @@ export function MailTitleBar({
             <SearchOptionsMenu
               includeDeleted={searchDeleted}
               onIncludeDeletedChange={setSearchDeleted}
+              hiddenCount={hiddenSearch.count}
+              open={optionsOpen}
+              onOpenChange={setOptionsOpen}
+              includeHidden={hiddenSearch.on}
+              onIncludeHiddenChange={hiddenSearch.set}
             />
             <Search
               className="pointer-events-none h-3.5 w-3.5 shrink-0 text-stone-400"
@@ -155,10 +166,21 @@ export function MailTitleBar({
                       customListName: activeCustomList?.name ?? null,
                       tab,
                       t,
+                      exceptHidden: hiddenSearch.leftOut,
                     })
               }
-              className="h-full min-w-0 flex-1 border-0 bg-transparent py-1 pl-2 pr-8 text-[13px] text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-placeholder)] shadow-none [&::-webkit-search-cancel-button]:hidden"
+              className={cn(
+                "h-full min-w-0 flex-1 border-0 bg-transparent py-1 pl-2 text-[13px] text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-placeholder)] shadow-none [&::-webkit-search-cancel-button]:hidden",
+                // Room for the clear button, and for the hidden chip beside it.
+                chipShown ? "pr-36" : "pr-8"
+              )}
             />
+            {chipShown ? (
+              <HiddenSearchChip
+                count={hiddenSearch.count}
+                onOpenOptions={() => setOptionsOpen(true)}
+              />
+            ) : null}
             {search ? (
               <button
                 type="button"
@@ -166,7 +188,13 @@ export function MailTitleBar({
                 aria-label={t("clearSearch")}
                 className="absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                 onPointerDown={beginNativeWindowDragOnMove}
-                onClick={() => setSearch("")}
+                // Clearing takes this button away mid-click, and the
+                // <label> round it then passed the click on to its first
+                // control, the chevron, which opened the search menu.
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSearch("");
+                }}
               >
                 <X className="h-3.5 w-3.5" />
               </button>

@@ -345,12 +345,22 @@ export function CalendarTimePicker({
   pickDay = false,
   action,
   onPick,
+  wide = false,
 }: {
   initial: Date;
   pickDay?: boolean;
-  /** The button's words for a time: "Snooze until {when}". */
+  /**
+   * The button's words for a time: "Snooze until {when}". Wide, the time
+   * stands beside the button, and these are the button's own words.
+   */
   action: (at: Date) => string;
   onPick: (at: Date) => void;
+  /**
+   * The month beside an hour column and a minute column, and the chosen
+   * time beside the button (Send later). Under each other, the button ran
+   * past the bottom of the menu and was not seen (Ulrik, 2026-10-20).
+   */
+  wide?: boolean;
 }) {
   const t = useMailT();
   const today = dayStart(new Date());
@@ -369,8 +379,8 @@ export function CalendarTimePicker({
       return dayStart(next);
     });
 
-  return (
-    <div className="space-y-3 px-1 pb-1">
+  const monthView = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -424,6 +434,46 @@ export function CalendarTimePicker({
           );
         })}
       </div>
+    </>
+  );
+
+  if (wide) {
+    const [hh, mm] = hm.split(":").map(Number);
+    return (
+      <div className="px-1 pb-1">
+        <div className="flex gap-5">
+          <div className="min-w-0 flex-1 space-y-3">{monthView}</div>
+          <ClockColumns
+            hour={hh}
+            minute={mm}
+            onHour={(h) => setHm(`${pad2(h)}:${pad2(mm)}`)}
+            onMinute={(m) => setHm(`${pad2(hh)}:${pad2(m)}`)}
+          />
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-stone-100 pt-3">
+          <span className="min-w-0 truncate text-sm text-stone-600">
+            {at ? whenLong(at) : t("pickADate")}
+            {at && !valid ? ` · ${t("pickFutureTime")}` : ""}
+          </span>
+          <button
+            type="button"
+            disabled={!valid}
+            onClick={go}
+            className={cn(
+              "shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+              valid ? "bg-teal-700 text-white hover:bg-teal-800" : "cursor-not-allowed bg-stone-100 text-stone-400"
+            )}
+          >
+            {at ? action(at) : t("pickADate")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 px-1 pb-1">
+      {monthView}
 
       <div className="flex items-center gap-2 border-t border-stone-100 pt-3">
         <span className="text-sm text-stone-400">{t("atTime")}</span>
@@ -441,6 +491,73 @@ export function CalendarTimePicker({
       >
         {valid && at ? action(at) : day ? t("pickFutureTime") : t("pickADate")}
       </button>
+    </div>
+  );
+}
+
+/** "Wed 21 Oct, 15:00". */
+function whenLong(at: Date): string {
+  const locale = currentMailLocale();
+  const day = at.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+  return `${day}, ${clockOf(at)}`;
+}
+
+/**
+ * An hour column and a minute column, side by side in the picker. The
+ * chosen ones are scrolled into view as they open.
+ */
+function ClockColumns({
+  hour,
+  minute,
+  onHour,
+  onMinute,
+}: {
+  hour: number;
+  minute: number;
+  onHour: (h: number) => void;
+  onMinute: (m: number) => void;
+}) {
+  const t = useMailT();
+  const hoursRef = React.useRef<HTMLDivElement | null>(null);
+  const minutesRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    for (const list of [hoursRef.current, minutesRef.current]) {
+      const chosen = list?.querySelector<HTMLElement>("[aria-selected='true']");
+      if (list && chosen) list.scrollTop = chosen.offsetTop - list.clientHeight / 2 + chosen.offsetHeight / 2;
+    }
+  }, []);
+  // Every five minutes, and the minute it has if that is between them.
+  const fives = Array.from({ length: 12 }, (_, i) => i * 5);
+  const minutes = fives.includes(minute) ? fives : [...fives, minute].sort((a, b) => a - b);
+  const cell = (on: boolean) =>
+    cn(
+      "block w-full rounded-lg py-1.5 text-center text-sm tabular-nums",
+      on ? "bg-teal-700 font-semibold text-white" : "text-stone-800 hover:bg-stone-200/60"
+    );
+  const column = (
+    ref: React.RefObject<HTMLDivElement | null>,
+    values: number[],
+    chosen: number,
+    pick: (v: number) => void
+  ) => (
+    <div ref={ref} role="listbox" className="h-[15rem] w-14 overflow-y-auto">
+      {values.map((v) => (
+        <button key={v} type="button" role="option" aria-selected={v === chosen} className={cell(v === chosen)} onClick={() => pick(v)}>
+          {pad2(v)}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div className="shrink-0">
+      <div className="mb-1.5 flex gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+        <span className="w-14">{t("hourColumn")}</span>
+        <span className="w-14">{t("minuteColumn")}</span>
+      </div>
+      <div className="flex gap-1 rounded-xl bg-stone-100/70 p-1">
+        {column(hoursRef, Array.from({ length: 24 }, (_, h) => h), hour, onHour)}
+        {column(minutesRef, minutes, minute, onMinute)}
+      </div>
     </div>
   );
 }

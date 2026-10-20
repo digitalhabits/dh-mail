@@ -176,6 +176,7 @@ export function toScheduledMessage(row: Row): MailScheduledMessage {
     ...(row.bcc?.length ? { bcc: row.bcc } : null),
     status,
     reschedulable: true,
+    ...(row.status === "late" ? { missed: true } : null),
     ...(error ? { error } : null),
   };
 }

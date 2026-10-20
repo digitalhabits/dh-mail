@@ -44,9 +44,9 @@ ews = { version = "0.1.2", optional = true }
 # team_update.rs. Only with `public-updater` (or `team-updater`): a store
 # build must not carry an updater at all.
 tauri-plugin-updater = { version = "2", optional = true }
-# The answer to Check for Updates… (team_update::check_now). With the
-# updater only.
-tauri-plugin-dialog = { version = "2", optional = true }
+# The answer to Check for Updates… (team_update::check_now), and Save as…
+# for an attachment (downloads.rs).
+tauri-plugin-dialog = "2"
 
 [features]
 # Exchange Server on-prem over EWS (ews.rs, ntlm.rs). The standalone Mail
@@ -56,11 +56,11 @@ exchange = ["dep:md4", "dep:md-5", "dep:hmac", "dep:getrandom", "dep:ews"]
 # without it.
 team = []
 # Self-update for a team build, through that session.
-team-updater = ["dep:tauri-plugin-updater", "dep:tauri-plugin-dialog", "team"]
+team-updater = ["dep:tauri-plugin-updater", "team"]
 # Self-update for the public Mail app's direct downloads (the .dmg and the
 # Windows .exe), from its GitHub releases. Never in a store package: the
 # stores update those.
-public-updater = ["dep:tauri-plugin-updater", "dep:tauri-plugin-dialog"]
+public-updater = ["dep:tauri-plugin-updater"]
 
 # Secrets live in the OS keychain, never in the SQLite file. See secrets.rs:
 # on macOS the data-protection keychain through `SecItem*` directly, with

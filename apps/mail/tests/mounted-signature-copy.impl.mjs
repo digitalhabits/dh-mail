@@ -318,6 +318,26 @@ async function main() {
     assert(bodyEditor(), "the reply is still open");
     pass("Backspace in the signature does not run the Delete shortcut");
 
+    // Nor with the focus out of the words while the reply is open: on a
+    // button of the card, or on nothing at all (2026-10-20: the thread went
+    // to Trash in the middle of a reply).
+    const cardButton = document.querySelector("[data-mail-reply-open] button");
+    assert(cardButton, "the open reply has a button to stand on");
+    for (const target of [cardButton, document.body]) {
+      if (target !== document.body) target.focus?.();
+      else document.activeElement?.blur?.();
+      target.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true })
+      );
+      await sleep(300);
+    }
+    assert(
+      !writes.some((p) => /trash|delete|archive/i.test(p)),
+      `no delete went out: ${writes.join(", ")}`
+    );
+    assert(bodyEditor(), "the reply is still open");
+    pass("Backspace outside the words of an open reply does not delete the conversation");
+
     writeIn(bodyEditor(), "<p>I have the second key.</p>");
     await sleep(300);
     const plain = await sendNow();

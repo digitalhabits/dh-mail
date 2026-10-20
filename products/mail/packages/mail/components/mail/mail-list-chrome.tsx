@@ -38,7 +38,8 @@ import { setTabIcon, useTabIcons } from "@/lib/mail/tab-icons";
 import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { MailLayoutMenu } from "@/components/mail/MailListControls";
-import { SortableMailListTab, viewTabClass } from "@/components/mail/SortableMailListTab";
+import { SortableMailListTab, TabHits, viewTabClass } from "@/components/mail/SortableMailListTab";
+import { threadOnTab } from "@/components/mail/use-list-tabs";
 import { isMailboxScopeAll, MailListTab, MAIL_OFF_TAB_VIEWS, mailBuiltinTabLabels } from "@/components/mail/mail-list-state";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 
@@ -469,6 +470,7 @@ export function FilterChips({
 }) {
   const {
     customListById,
+    searchHits,
     listEditor,
     setActiveFolder,
     setListEditor,
@@ -521,6 +523,7 @@ export function FilterChips({
                 className={viewTabClass(tab === "all")}
               >
                 {t("tabAll")}
+                <TabHits hits={searchHits?.length} />
               </button>
               {tabOrder.filter((id) => id !== "all").map((id) => {
                 const listId = parseCustomListTabId(id);
@@ -538,6 +541,7 @@ export function FilterChips({
                     icon={tabIcons[id]}
                     active={filterIsOnFor(tab, id, MAIL_OFF_TAB_VIEWS)}
                     suppressClick={tabReorderSuppressClick}
+                    hits={searchHits?.filter((thread) => threadOnTab(thread, id, customListById)).length}
                     onSelect={() => {
                       // The folder stays. A tab narrows what is on
                       // screen; leaving the folder is what Back is for.

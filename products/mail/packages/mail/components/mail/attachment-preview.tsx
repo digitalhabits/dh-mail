@@ -6,7 +6,7 @@
  */
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Download, ExternalLink, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import { MAIL_PINCH_SCALE_EVENT, readMailPinch } from "@/lib/mail/pinch";
 import { canRenderPdf, mountPdfViewer } from "@/lib/mail/attachment-text";
 import type { PdfViewerHandle } from "@/lib/mail/pdf-viewer-types";
@@ -14,10 +14,10 @@ import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import type { MailAttachment } from "@/lib/mail/types";
+import { DownloadSplitButton } from "@/components/mail/download-split-button";
 import {
   type DraftAttachment,
   TypeBadge,
-  attachmentDownloadProps,
   formatFileSize,
   isImageMime,
   isPdfMime,
@@ -259,10 +259,8 @@ function AttachmentPreviewBody({
   );
   const src = localSrc ?? sourceState.url;
   const error = localSrc ? null : sourceState.error;
-  const download = attachmentDownloadProps({
-    path: attachmentUrl({ account, messageId, attachment, download: true }),
-    filename: attachment.filename,
-  });
+  // Download asks where to save in its own menu (download-split-button).
+  const downloadPath = attachmentUrl({ account, messageId, attachment, download: true });
   const image = isImageMime(attachment.mimeType, attachment.filename);
   const pdf = isPdfMime(attachment.mimeType, attachment.filename);
 
@@ -501,13 +499,7 @@ function AttachmentPreviewBody({
                 <ExternalLink className="h-3.5 w-3.5" />
                 {t("open")}
               </button>
-              <a
-                {...download}
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {t("download")}
-              </a>
+              <DownloadSplitButton path={downloadPath} filename={attachment.filename} />
             </>
           )}
           <button
@@ -584,13 +576,7 @@ function AttachmentPreviewBody({
                   {error ?? "preview not available"}
                 </p>
               </div>
-              <a
-                {...download}
-                className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-              >
-                <Download className="h-4 w-4" />
-                  {t("download")}
-                </a>
+              <DownloadSplitButton path={downloadPath} filename={attachment.filename} look="solid" />
             </div>
           )}
         </div>

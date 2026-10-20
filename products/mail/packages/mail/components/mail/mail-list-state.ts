@@ -183,6 +183,8 @@ export function mailSearchPlaceholder(input: {
   customListName: string | null;
   tab: string;
   t: MailT;
+  /** Some accounts are hidden and the search leaves them out: "all mail" would not be true. */
+  exceptHidden?: boolean;
 }): string {
   const { t } = input;
   if (input.folderName) return t("searchIn", { name: input.folderName });
@@ -212,7 +214,7 @@ export function mailSearchPlaceholder(input: {
     case "snoozed":
       return t("searchSnoozed");
     default:
-      return t("searchAll");
+      return t(input.exceptHidden ? "searchAllExceptHidden" : "searchAll");
   }
 }
 

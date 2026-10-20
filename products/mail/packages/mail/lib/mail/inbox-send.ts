@@ -161,6 +161,29 @@ export async function listScheduledMailMessages(input: {
   return listScheduledOutlookMessages(input.account, input.threadId);
 }
 
+/**
+ * What a held message says, read from its source in the outbox.
+ *
+ * Its page showed an empty bubble and no Edit without it: the outbox list
+ * carries no source (2026-10-20). Null from a shell without the command.
+ */
+async function outboxWords(
+  account: string,
+  id: number
+): Promise<{ text: string; html: string | null; cc: string[] } | null> {
+  const invoke = tauriInvoke();
+  if (!invoke) return null;
+  try {
+    return ((await invoke("mail_sync_outbox_words", { account, id })) ?? null) as {
+      text: string;
+      html: string | null;
+      cc: string[];
+    } | null;
+  } catch {
+    return null;
+  }
+}
+
 /** Gmail messages the outbox holds for a time, as scheduled rows. */
 async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
   const invoke = tauriInvoke();
@@ -173,7 +196,7 @@ async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
         subject: string;
         to: string[];
         sendAt: number;
-        status?: "waiting" | "sending" | "failed";
+        status?: "waiting" | "sending" | "failed" | "late";
         lastError?: string | null;
       }[]
     | null;
@@ -182,19 +205,28 @@ async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
   // Every row, whatever its state: a message on its way and one given
   // up are both the reader's to see, in the Outbox at the top of the
   // list, until they have gone.
-  return rows.map((row) => ({
-    id: String(row.id),
-    sendAt: new Date(row.sendAt).toISOString(),
-    account,
-    threadId: row.threadId ?? "",
-    toName: row.to[0] ?? "",
-    subject: row.subject,
-    bodyText: "",
-    to: row.to,
-    cc: [],
-    status: row.status ?? "waiting",
-    ...(row.lastError ? { error: row.lastError } : null),
-  }));
+  return Promise.all(
+    rows.map(async (row) => {
+      const words = await outboxWords(account, row.id);
+      return {
+        id: String(row.id),
+        sendAt: new Date(row.sendAt).toISOString(),
+        account,
+        threadId: row.threadId ?? "",
+        toName: row.to[0] ?? "",
+        subject: row.subject,
+        bodyText: words?.text ?? "",
+        ...(words?.html ? { bodyHtml: words.html } : null),
+        to: row.to,
+        cc: words?.cc ?? [],
+        signed: true,
+        // Late: past its hour, waiting for the person, as a scheduled draft's.
+        status: row.status === "late" ? ("failed" as const) : (row.status ?? "waiting"),
+        ...(row.status === "late" ? { missed: true } : null),
+        ...(row.lastError ? { error: row.lastError } : null),
+      };
+    })
+  );
 }
 
 /**

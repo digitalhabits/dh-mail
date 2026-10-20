@@ -13,6 +13,7 @@ import { useMailboxHide } from "@/components/mail/use-mailbox-hide";
 import { useListPeek } from "@/components/mail/use-list-peek";
 import { railBoxStyle } from "@/components/mail/list-box-style";
 import { useMailPage, type MailPageProps } from "@/components/mail/use-mail-page";
+import { MissedScheduledDialog } from "@/components/mail/MissedScheduledDialog";
 import { ReadingPaneFrame, ListResizeHandle, ListPaneFrame, ListHideButton } from "@/components/mail/mail-pane-frames";
 import { MailTitleBar } from "@/components/mail/mail-title-bar";
 import { FloatingCards } from "@/components/mail/mail-floating-cards";
@@ -253,6 +254,7 @@ export function MailPage(props: MailPageProps) {
           customListName: activeCustomList?.name ?? null,
           tab,
           t,
+          exceptHidden: m.hiddenSearch.leftOut,
         })}
         onSearchChange={setSearch}
         liveMenu={
@@ -348,6 +350,8 @@ export function MailPage(props: MailPageProps) {
       }
     >
       <MailTitleBar m={m} layoutMenu={layoutMenu} listOut={listOut} listToggle={<ListHideButton m={m} peek={listPeek} />} />
+      {/* Scheduled mail that missed its hour: asked about once. */}
+      <MissedScheduledDialog m={m} />
 
       {/* The rail stands outside the pane row rather than inside it: the
           pane may be laid out top-to-bottom (list over reader), and the

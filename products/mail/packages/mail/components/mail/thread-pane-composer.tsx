@@ -186,6 +186,7 @@ export function ThreadComposerBand({
         >
         <div
           ref={replyBandRef}
+          data-mail-reply-open=""
           onWheel={bandFills ? undefined : scrollComposerFromBand}
           className={cn(
             "mail-composer-region relative flex min-h-0 flex-col pb-4 pt-3",
@@ -818,6 +819,7 @@ function ComposerSendBar({
               !attachmentsReady ||
               (!forwarding && !replyText.trim() && !attachItems.length)
             }
+            data-send-main=""
             onClick={() => void (forwarding ? sendForward() : send())}
           >
             {/* Before the word, pointing the way out. A forward is

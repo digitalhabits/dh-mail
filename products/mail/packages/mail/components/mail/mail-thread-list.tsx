@@ -43,6 +43,7 @@ import { OlderMailRows } from "@/components/mail/mail-older-rows";
 import { useOlderMail } from "@/components/mail/use-older-mail";
 import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/mail/mail-list-rows";
+import { HiddenAccountsContext } from "@/components/mail/hidden-account-mark";
 
 /** The scheduled group above the list, in the views it belongs in. */
 function ScheduledOnTop({ m }: { m: MailPageModel }) {
@@ -95,7 +96,13 @@ export function ThreadListColumn({
   React.useLayoutEffect(() => {
     glideToNewPlaces(listScrollRef.current);
   }, [viewMode, listScrollRef]);
+  // The rows mark a hidden account's mail (hidden-account-mark).
+  const hiddenSet = React.useMemo(
+    () => new Set(m.hiddenSearch.emails.map((email) => email.toLowerCase())),
+    [m.hiddenSearch.emails]
+  );
   return (
+    <HiddenAccountsContext.Provider value={hiddenSet}>
         <div
           ref={threadListRef}
           className={cn(
@@ -230,6 +237,7 @@ export function ThreadListColumn({
         />
         </div>
         </div>
+    </HiddenAccountsContext.Provider>
   );
 }
 

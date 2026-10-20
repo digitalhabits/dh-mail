@@ -1604,3 +1604,11 @@ html[data-mail-list-snap="go"] .mail-reading-pane > :not(.mail-list-snap-hint) {
 html[data-mail-list-snap="go"] .mail-list-snap-hint {
   display: flex;
 }
+
+/* Send pauses while the Send later menu is open: a time there is
+   scheduled by the menu's own buttons, and a press on Send only closes it
+   (SendLaterMenu). */
+:root[data-send-later-open] [data-send-main] {
+  opacity: 0.45;
+  pointer-events: none;
+}

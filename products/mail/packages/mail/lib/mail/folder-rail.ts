@@ -179,12 +179,27 @@ export function useFolderRailWidth(): {
     const dragSign = options?.invertDrag ? -1 : 1;
     setResizing(true);
 
+    /*
+      One width a frame. A trackpad sends moves faster than the screen
+      draws, and each width draws the whole page: the last move of a frame
+      is the one that counts.
+    */
+    let pending: number | null = null;
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      if (pending == null) return;
+      widthRef.current = pending;
+      setWidth(pending);
+      pending = null;
+    };
     const onMove = (e: PointerEvent) => {
-      setWidth(
-        clampFolderRailWidth(startWidth + dragSign * (e.clientX - startX))
-      );
+      pending = clampFolderRailWidth(startWidth + dragSign * (e.clientX - startX));
+      if (!frame) frame = requestAnimationFrame(apply);
     };
     const onUp = () => {
+      if (frame) cancelAnimationFrame(frame);
+      apply();
       setResizing(false);
       // Written at the end rather than on every frame: a drag is one
       // decision, not sixty.

@@ -24,6 +24,7 @@ import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
 import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, subscribeMailPopouts } from "@/lib/mail/popout";
 import { cn } from "@/lib/utils";
+import { HiddenAccountMark } from "@/components/mail/hidden-account-mark";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
@@ -1000,6 +1001,7 @@ export function ThreadListRow({
                   onNavy ? "text-white/40" : "text-stone-400"
                 )}
               >
+                <HiddenAccountMark account={t.account} />
                 {rowTime(t.lastAt, { withYear })}
               </p>
             )}
@@ -1136,6 +1138,7 @@ function StackedRowBody({
                 onNavy ? "text-white/40" : "text-stone-400"
               )}
             >
+              <HiddenAccountMark account={t.account} />
               {rowTime(t.lastAt, { withYear })}
             </p>
           )}
@@ -1267,11 +1270,14 @@ function WideRowBody({
         <p
           className={cn(
             atRestClass,
-            "w-[4.5rem] text-right text-xs tabular-nums",
-            withYear && "w-[6rem]",
+            // At least this wide, so the dates line up; wider, on one line,
+            // for the hidden-account eye before one.
+            "min-w-[4.5rem] whitespace-nowrap text-right text-xs tabular-nums",
+            withYear && "min-w-[6rem]",
             onNavy ? "text-white/40" : "text-stone-400"
           )}
         >
+          <HiddenAccountMark account={t.account} />
           {rowTime(t.lastAt, { withYear })}
         </p>
       )}

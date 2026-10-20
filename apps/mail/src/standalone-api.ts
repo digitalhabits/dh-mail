@@ -203,6 +203,7 @@ async function threads({ q }: RouteContext): Promise<Response> {
     label: q.get("label") ?? undefined,
     q: q.get("q") ?? undefined,
     includeDeleted: q.get("includeDeleted") === "1",
+    includeHidden: q.get("includeHidden") === "1",
     cursor: q.get("cursor") ?? undefined,
     fresh: q.get("fresh") === "1",
     incremental: q.get("incremental") === "1",
