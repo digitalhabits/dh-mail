@@ -53,7 +53,7 @@ read it:
 </p>
 
 <p align="center">
-  <img src="apps/mail/docs/screenshots/pause.png" alt="The pause menu beside Sync: pause for an hour, until tomorrow, until a time, or on a schedule">
+  <img src="apps/mail/docs/screenshots/pause.png" alt="An account's menu, opened from its tab, on New mail arrives: pause for an hour, until tomorrow, until a time, or on a schedule">
   <br>
   <em>Pause fetching new emails for a while or on a schedule, so that, for example, you never get work email after 8 p.m.</em>
 </p>

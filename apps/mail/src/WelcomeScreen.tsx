@@ -97,9 +97,9 @@ const COPY: Record<MailLang, Record<string, string>> = {
     aroundPictureAlt:
       "The left of the Mail window: the button that hides the list beside New email, the folders, and the mail list with its folders button and its tabs All, In Contacts and Other",
     pausePictureAlt:
-      "The menu next to Sync: pause new mail for an hour, until tomorrow, or until a time, the hours when new mail arrives, and friction to restart early",
+      "An account's menu, opened from its tab, on New mail arrives: pause new mail for an hour, until tomorrow, or until a time, the words to type to get new mail early, and the hours when new mail arrives",
     showPictureAlt:
-      "A mailbox's menu, opened from its tab: hide it for an hour, until tomorrow, or until you show it, and the hours when it is shown in Mail",
+      "An account's menu, opened from its tab, on Shown in Mail: hide it for an hour, until tomorrow, or until you show it, the words to type to show it early, and the hours when it is shown",
   },
   da: {
     title: "Velkommen til Digital Habits: Mail",
@@ -153,9 +153,9 @@ const COPY: Record<MailLang, Record<string, string>> = {
     aroundPictureAlt:
       "Venstre side af Mail-vinduet: knappen der skjuler listen ved siden af Ny e-mail, mapperne, og postlisten med dens knap til mapper og dens faner Alle, I Kontakter og Andre",
     pausePictureAlt:
-      "Menuen ved siden af Synkroniser: sæt ny post på pause i en time, til i morgen eller til et tidspunkt, tiderne hvor ny post kommer, og modstand mod at starte igen før tid",
+      "En kontos menu, åbnet fra dens fane, under Ny post kommer: sæt ny post på pause i en time, til i morgen eller til et tidspunkt, ordene du skal skrive for at hente ny post før tid, og tiderne hvor ny post kommer",
     showPictureAlt:
-      "En postkasses menu, åbnet fra dens fane: skjul den i en time, til i morgen eller til du viser den, og tiderne hvor den vises i Mail",
+      "En kontos menu, åbnet fra dens fane, under Vises i Mail: skjul den i en time, til i morgen eller til du viser den, ordene du skal skrive for at vise den før tid, og tiderne hvor den vises",
   },
 };
 
