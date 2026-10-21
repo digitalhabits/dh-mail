@@ -9,8 +9,7 @@
  *
  * Reads the list on mount, every minute, when the window gets focus, when a
  * thread says one changed, and when the worker says one went or failed.
- * That is its one effect. The page calls this hook where that effect always
- * stood. The rows themselves are drawn by the page.
+ * That is its one effect. The rows themselves are drawn by the page.
  */
 
 import * as React from "react";

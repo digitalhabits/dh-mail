@@ -4,10 +4,10 @@
  * Opening a thread tells the store it is read a few seconds later (see
  * use-row-opening): the thread opens on its first new message, and it can
  * only see which that is while the copy still says unread. In those
- * seconds a list could come back from the store, still saying unread, and
- * put the bold back on the row. The wait then took that bold for the
- * reader's own "Mark as unread" and never told the store at all, so the
- * thread stayed unread for good.
+ * seconds a list can come back from the store, still saying unread, and
+ * put the bold back on the row. The wait then takes that bold for the
+ * reader's own "Mark as unread" and does not tell the store at all. The
+ * thread then stays unread for good.
  *
  * So the row's key is held here until the store has been told. A list
  * that comes back meanwhile shows the row read (`withHeldReads`), and only

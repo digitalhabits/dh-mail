@@ -28,10 +28,10 @@ export function threadKey(t: ThreadRef): string {
  * The list's order: newest first, and conversations of the same second in
  * a fixed order, by mailbox and thread.
  *
- * Mail sent in a batch shares a second, and the list had no order for it:
- * each refresh put those rows in the order the mailboxes happened to
- * answer, so after every archive the rows below swapped places, and the
- * next one to open was not the one below (2026-10-19).
+ * Mail sent in a batch shares a second. Without a fixed order, each refresh
+ * puts those rows in the order that the mailboxes answer. Then after every
+ * archive the rows below swap places, and the next one to open is not the
+ * one below.
  */
 export function newestFirst(a: ThreadRef & { lastAt: string }, b: ThreadRef & { lastAt: string }): number {
   const byTime = Date.parse(b.lastAt) - Date.parse(a.lastAt);
@@ -137,8 +137,8 @@ export function dedupeMessagesByRfcId<
  * between two polls while the row looks exactly the same. Anything that
  * matches the open thread against the list by key alone — the highlight,
  * the arrow keys, the copies an action gathers — quietly loses the row
- * when that happens, and every one of those losses has been a way to act
- * on a conversation the reader never chose. The row stands for its own
+ * when that happens. Each of those losses is a way to act on a
+ * conversation that the reader never chose. The row stands for its own
  * key and for every copy folded into it, and this is the question to ask.
  */
 export function rowStandsFor(
@@ -215,9 +215,9 @@ export function everyCopyOfEach(
  * The list after a failed or undone action: the rows it changed or took
  * out, back as they were, and nothing else changed.
  *
- * It put back the whole list as it was when the action began. Archive a
- * few quickly, and one that failed brought back every row archived after
- * it, too: they had left and came back (2026-10-19). `keys` are the rows
+ * It does not put back the whole list as it was when the action began. If
+ * it did, and the reader archives a few quickly, one that fails brings back
+ * every row archived after it, too. `keys` are the rows
  * the action was on, by their own key or a copy folded into them.
  */
 export function withRowsBack(

@@ -11,7 +11,8 @@
 
 import { USAGE_PING_URL, writeUsagePingEnabled } from "@/lib/mail/usage-ping";
 
-import { acceptEula, EULA_KEY } from "../src/eula";
+import { acceptEula } from "../src/eula";
+import { EULA_KEY } from "@/lib/mail/storage-keys";
 import { resetUsagePingForTests, startUsagePing } from "../src/usage-ping";
 
 import { check, suite } from "./harness.mjs";

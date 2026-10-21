@@ -7,6 +7,7 @@
  * and what the tabs' menus do. The rules are lib/mail/mailbox-hide.
  */
 
+import { MAILBOX_HIDE_KEY as KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
@@ -35,8 +36,6 @@ import { toast } from "@/lib/mail/toast";
 import { normaliseUnpauseWords } from "@/lib/mail/unpause-friction";
 import { useMailRouter } from "@/lib/mail-router";
 
-const KEY = "redd-plan-mail-hide";
-export const MAILBOX_HIDE_KEY = KEY;
 const EVENT = "redd-plan-mail-hide-changed";
 
 function read(): MailboxHideState {
@@ -319,8 +318,8 @@ export function useMailboxHide({
       const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, againMinutes, now) : null;
       /*
         The question names how long, when "Hide again after" is what ends
-        it: "Show … for 15 minutes?" says the mailbox goes again, which
-        "again?" did not (Ulrik, 2026-10-17). When its own time or window
+        it: "Show … for 15 minutes?" says that the mailbox goes again. A
+        plain "again?" does not say that. When its own time or window
         ends first, that is when it goes, and the cut says nothing true.
       */
       const cutEndsIt = hideAgainEndsShow(ownEnd, againMinutes, now);

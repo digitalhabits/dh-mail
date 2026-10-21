@@ -24,6 +24,7 @@ import { TeamLayerHost } from "@/components/mail/team-layer";
 import { useMailFolders } from "@/components/mail/MailFolders";
 import { ThreadPane } from "@/components/mail/ThreadPane";
 import { useMailZoom } from "@/components/mail/use-mail-layout";
+import { useZoomKeys } from "@/components/mail/use-zoom-keys";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { unpinMailThread } from "@/lib/mail/pins";
@@ -81,6 +82,7 @@ export function ThreadReaderWindow({
   const t = useMailT();
   const colorMode = useMailColorMode();
   const [zoom, adjustZoom] = useMailZoom();
+  useZoomKeys(zoom, adjustZoom);
   const { folders } = useMailFolders("all", { deferMs: 400 });
 
   // Rotate/jump-to-part can move the pane to another provider thread of the

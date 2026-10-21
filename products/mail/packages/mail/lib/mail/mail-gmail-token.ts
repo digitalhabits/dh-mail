@@ -103,7 +103,7 @@ export async function accessTokenFor(accountEmail: string): Promise<string> {
  *
  * Asked before a Calendar or Docs call, so the answer is "reconnect" in
  * plain words rather than a 403 that could mean three things. Empty when
- * Google did not say what it granted, and the call finds out the old way.
+ * Google did not say what it granted, and the call finds out by trying.
  */
 export async function missingGoogleFeaturesFor(
   accountEmail: string

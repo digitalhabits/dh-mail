@@ -30,15 +30,14 @@ export type PaneSweep = {
  * The list leaving the reader, the list expanding over it, the reply box
  * growing over the thread: each is the same movement — paint the starting
  * position, ask for the far one so the transition carries it there, stand
- * down a grace after the tempo runs out — and each used to carry its own
- * copy of the machinery, which is three places for the next timing bug to
- * be fixed in one of.
+ * down a grace after the tempo runs out. Three copies of the machinery are
+ * three places for the next timing bug to be fixed in only one of.
  *
  * `target` is where the pane belongs: true for in its place, false for
  * away. The first run never sweeps — the states are born agreeing with
  * the target, and a page arriving at rest has nothing to animate.
  *
- * The two-frame wait, kept from the originals: the starting position has
+ * The two-frame wait: the starting position has
  * to be painted before the far one is asked for, or the browser computes
  * a single position and there is nothing to move between. A single
  * `requestAnimationFrame` runs *before* the paint it was scheduled
@@ -47,9 +46,9 @@ export type PaneSweep = {
  * short by the time they took.
  *
  * A sweep asked for when the pane already stands at its target — a toggle
- * and back within the first two frames — skips the dance instead of
- * painting the pane at the far end first, which is the flash every copy
- * of this machine used to have.
+ * and back within the first two frames — skips the dance. It does not
+ * paint the pane at the far end first, because that paint shows as a
+ * flash.
  *
  * `flag`: raise the mail-wide "a pane is sliding" flag (pane-slide) as the
  * sweep begins — here, inside the effect, a commit before anything moves,
@@ -79,8 +78,8 @@ export function usePaneSweep(
   optsRef.current = opts;
   /*
     A snap is settled before the frame is painted. In the effect below it
-    came a frame late: the list pinned from a peek had stopped peeking and
-    was not yet in place, so for one frame it was gone.
+    comes a frame late: the list pinned from a peek stops peeking and is
+    not yet in place, so for one frame it is gone.
   */
   const snapped = React.useRef<boolean | null>(null);
   React.useLayoutEffect(() => {

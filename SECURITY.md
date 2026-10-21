@@ -136,11 +136,18 @@ deleted, which removes everything.
 **Settings stay on the machine** — in `localStorage` for the interface, and
 in the SQLite file for accounts. `localStorage` also holds a cache of the
 thread list (senders, subjects, snippets) so the list draws before the
-database answers ([`list-cache.ts`](/products/mail/packages/mail/lib/mail/list-cache.ts)).
+database answers ([`list-cache.ts`](/products/mail/packages/mail/lib/mail/list-cache.ts)),
+and pinned threads keep their sender and subject. When you disconnect an
+account, its rows leave this cache and its pins are removed
+(`forgetAccountEverywhere`, `unpinAccount` in
+[`standalone-api.ts`](/apps/mail/src/standalone-api.ts)).
 
 **A log file** in the operating system's log folder records what the sync
-worker did. It names the account, and for mail you send, the subject and
-the recipients. It never contains a message body.
+worker did. It names the account. For mail you send, it records how many
+recipients there are, not who they are, and never the subject or the body.
+When a mail server refuses something, its error is written as the server
+gave it, and that error can name an address. The file is small (at most
+40 KB; when it is full, it starts again) and stays on the machine.
 
 ## How sign-in works
 

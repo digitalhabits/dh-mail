@@ -27,6 +27,7 @@ import { MAILBOX_CONNECTED_EVENT } from "@/lib/mail/mailbox-connected";
 import { MAIL_APP_VERSION } from "@/lib/mail/app-version";
 import { cn } from "@/lib/utils";
 
+
 export type MailViewMode = "threads" | "people";
 
 /** Spacious multi-line rows vs dense one-line rows in the mail list. */
@@ -166,19 +167,8 @@ export function ListDensityToggle({
   );
 }
 
-/** Pane position, display prefs, and connected mailboxes. */
-export function MailLayoutMenu({
-  onNavy = false,
-  align = "start",
-  knownEmails,
-  onVisibilityChange,
-  onAccountsChanged,
-  autoReplies,
-  onSetUpAutoReply,
-  onEndAutoReply,
-  ownIdentity,
-  onOwnIdentityChange,
-}: {
+/** What the Settings menu takes. */
+export type MailLayoutMenuProps = {
   /** Trigger sits on the navy list chrome. */
   onNavy?: boolean;
   /** Popover alignment — use `end` when the trigger is on the right of the title bar. */
@@ -194,148 +184,22 @@ export function MailLayoutMenu({
     addresses: string[];
     domains: string[];
   }) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  /**
-   * The page the rail has open. It is kept when Settings closes: the rail
-   * shows which page it is, so opening on the last one is not a surprise, and
-   * it is where somebody who just closed Settings wants to be again.
-   */
-  const [category, setCategory] = React.useState<MailSettingsCategory>("accounts");
-  const [query, setQuery] = React.useState("");
-  const placement = useMailListPlacement();
-  const [loadImagesByDefault, setLoadImagesByDefault] =
-    useLoadImagesByDefault();
-  const [theme, setTheme] = useMailTheme();
-  const [usagePing, setUsagePing] = React.useState(readUsagePingEnabled);
-  const showFolderCounts = useShowFolderCounts();
-  const hasDesktopShell =
-    typeof window !== "undefined" && Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  const t = useMailT();
+};
 
-  /*
-    The Exchange connect form is a page of Settings, not a dialog over it.
-    Settings is a modal popover that keeps the keyboard inside itself, so a
-    form laid over it got no typing. A request opens Settings on Accounts,
-    and the Accounts page shows the form until it is answered.
-  */
-  const exchange = useExchangeConnectRequest(() => {
-    setQuery("");
-    setCategory("accounts");
-    setOpen(true);
-  });
-  const cancelExchange = exchange.cancel;
-  // Settings shut with the form open: the answer is "no".
-  React.useEffect(() => {
-    if (!open) cancelExchange();
-  }, [open, cancelExchange]);
-
-  // Opened from the mailbox filter next to search, the app menu, or a dialog
-  // that goes back to one page. One menu is mounted, so this cannot open two
-  // at once.
-  React.useEffect(() => {
-    const onOpen = (event: Event) => {
-      const wanted =
-        event instanceof CustomEvent
-          ? (event.detail as { category?: unknown } | null)?.category
-          : undefined;
-      if (isMailSettingsCategory(wanted)) setCategory(wanted);
-      setOpen(true);
-    };
-    window.addEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
-  }, []);
-
-  /*
-    A new mailbox asks how it should fit the week (AccountRhythmDialog), and
-    Settings, where it was connected, goes out of its way. The menu is modal:
-    while it is open nothing outside it takes a click, so the question drew
-    on top of it and could not be answered (2026-10-15).
-  */
-  React.useEffect(() => {
-    const onConnected = () => setOpen(false);
-    window.addEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
-    return () => window.removeEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
-  }, []);
-
-  // A search is for this visit. Settings opens again with the whole rail.
-  React.useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
-
-  const close = () => setOpen(false);
-
-  /**
-   * The rail. Each category lists the words of the settings on its page, so
-   * a search for "theme" finds General, where the theme is.
-   */
-  const categories: {
-    id: MailSettingsCategory;
-    label: string;
-    Icon: LucideIcon;
-    count?: number;
-    words: string[];
-  }[] = [
-    {
-      id: "accounts",
-      label: t("accounts"),
-      Icon: Mail,
-      count: knownEmails.length || undefined,
-      words: [t("yourOtherAddresses"), t("colleagueDomains"), t("autoReply"), "Gmail", "Outlook"],
-    },
-    {
-      id: "general",
-      label: t("general"),
-      Icon: Settings2,
-      words: [t("language"), t("theme"), t("themeDark"), t("themeLight"), t("textSize")],
-    },
-    {
-      id: "reading",
-      label: t("settingsReading"),
-      Icon: BookOpen,
-      words: [t("stackThreads"), t("readingPane"), t("loadImages"), t("readerLines")],
-    },
-    {
-      id: "snooze",
-      label: t("settingsSnoozeSchedule"),
-      Icon: Moon,
-      words: [t("snooze"), t("snoozeOptions"), t("sendLater"), t("pauseFetching"), t("pauseSection")],
-    },
-    {
-      id: "contacts",
-      label: t("settingsContacts"),
-      Icon: Users,
-      words: [t("contactSources"), t("sourceMailHistory"), t("sourceMacContacts")],
-    },
-    {
-      id: "shortcuts",
-      label: t("keyboardShortcuts"),
-      Icon: Command,
-      words: [],
-    },
-    // Only in the desktop app: the drafts folder is a folder on this Mac.
-    ...(hasDesktopShell
-      ? [
-          {
-            id: "advanced" as const,
-            label: t("settingsAdvanced"),
-            Icon: Wrench,
-            words: [t("draftsFolder")],
-          },
-        ]
-      : []),
-  ];
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = needle
-    ? categories.filter((c) =>
-        [c.label, ...c.words].some((word) => word.toLocaleLowerCase().includes(needle))
-      )
-    : categories;
-  // The page follows the search: when the open page is filtered out, the
-  // first page that matches is shown instead.
-  const shown = matches.some((c) => c.id === category)
-    ? category
-    : (matches[0]?.id ?? category);
+/** Pane position, display prefs, and connected mailboxes. */
+export function MailLayoutMenu({
+  onNavy = false,
+  align = "start",
+  knownEmails,
+  onVisibilityChange,
+  onAccountsChanged,
+  autoReplies,
+  onSetUpAutoReply,
+  onEndAutoReply,
+  ownIdentity,
+  onOwnIdentityChange,
+}: MailLayoutMenuProps) {
+  const { close, exchange, loadImagesByDefault, matches, open, placement, query, setCategory, setLoadImagesByDefault, setOpen, setQuery, setTheme, setUsagePing, showFolderCounts, shown, t, theme, usagePing } = useSettingsMenuState({ knownEmails });
 
   let pane: React.ReactNode;
   switch (shown) {
@@ -530,7 +394,7 @@ export function MailLayoutMenu({
         >
           {/* A cog: the sign for settings that people already know. A
               step larger than the row's 14px marks: at the end of the row
-              it is the one control drawn with no word (2026-10-17). */}
+              it is the one control drawn with no word. */}
           <Settings className="h-[18px] w-[18px]" aria-hidden />
         </button>
       </PopoverTrigger>
@@ -656,3 +520,144 @@ export function MailLayoutMenu({
   );
 }
 
+/** The Settings menu's state: open, the page shown, the search, the settings it reads, and connecting Exchange. */
+export function useSettingsMenuState({
+  knownEmails,
+}: { knownEmails: MailLayoutMenuProps["knownEmails"] }) {
+  const [open, setOpen] = React.useState(false);
+  /**
+   * The page the rail has open. It is kept when Settings closes: the rail
+   * shows which page it is, so opening on the last one is not a surprise, and
+   * it is where somebody who just closed Settings wants to be again.
+   */
+  const [category, setCategory] = React.useState<MailSettingsCategory>("accounts");
+  const [query, setQuery] = React.useState("");
+  const placement = useMailListPlacement();
+  const [loadImagesByDefault, setLoadImagesByDefault] =
+    useLoadImagesByDefault();
+  const [theme, setTheme] = useMailTheme();
+  const [usagePing, setUsagePing] = React.useState(readUsagePingEnabled);
+  const showFolderCounts = useShowFolderCounts();
+  const hasDesktopShell =
+    typeof window !== "undefined" && Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
+  const t = useMailT();
+  /*
+    The Exchange connect form is a page of Settings, not a dialog over it.
+    Settings is a modal popover that keeps the keyboard inside itself, so a
+    form laid over it got no typing. A request opens Settings on Accounts,
+    and the Accounts page shows the form until it is answered.
+  */
+  const exchange = useExchangeConnectRequest(() => {
+    setQuery("");
+    setCategory("accounts");
+    setOpen(true);
+  });
+  const cancelExchange = exchange.cancel;
+  // Settings shut with the form open: the answer is "no".
+  React.useEffect(() => {
+    if (!open) cancelExchange();
+  }, [open, cancelExchange]);
+  // Opened from the mailbox filter next to search, the app menu, or a dialog
+  // that goes back to one page. One menu is mounted, so this cannot open two
+  // at once.
+  React.useEffect(() => {
+    const onOpen = (event: Event) => {
+      const wanted =
+        event instanceof CustomEvent
+          ? (event.detail as { category?: unknown } | null)?.category
+          : undefined;
+      if (isMailSettingsCategory(wanted)) setCategory(wanted);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
+  }, []);
+  /*
+    A new mailbox asks how it should fit the week (AccountRhythmDialog), and
+    Settings, where it was connected, goes out of its way. The menu is modal:
+    while it is open nothing outside it takes a click, so a question drawn
+    on top of it cannot be answered.
+  */
+  React.useEffect(() => {
+    const onConnected = () => setOpen(false);
+    window.addEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
+    return () => window.removeEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
+  }, []);
+  // A search is for this visit. Settings opens again with the whole rail.
+  React.useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+  const close = () => setOpen(false);
+  /**
+   * The rail. Each category lists the words of the settings on its page, so
+   * a search for "theme" finds General, where the theme is.
+   */
+  const categories: {
+    id: MailSettingsCategory;
+    label: string;
+    Icon: LucideIcon;
+    count?: number;
+    words: string[];
+  }[] = [
+    {
+      id: "accounts",
+      label: t("accounts"),
+      Icon: Mail,
+      count: knownEmails.length || undefined,
+      words: [t("yourOtherAddresses"), t("colleagueDomains"), t("autoReply"), "Gmail", "Outlook"],
+    },
+    {
+      id: "general",
+      label: t("general"),
+      Icon: Settings2,
+      words: [t("language"), t("theme"), t("themeDark"), t("themeLight"), t("textSize")],
+    },
+    {
+      id: "reading",
+      label: t("settingsReading"),
+      Icon: BookOpen,
+      words: [t("stackThreads"), t("readingPane"), t("loadImages"), t("readerLines")],
+    },
+    {
+      id: "snooze",
+      label: t("settingsSnoozeSchedule"),
+      Icon: Moon,
+      words: [t("snooze"), t("snoozeOptions"), t("sendLater"), t("pauseFetching"), t("pauseSection")],
+    },
+    {
+      id: "contacts",
+      label: t("settingsContacts"),
+      Icon: Users,
+      words: [t("contactSources"), t("sourceMailHistory"), t("sourceMacContacts")],
+    },
+    {
+      id: "shortcuts",
+      label: t("keyboardShortcuts"),
+      Icon: Command,
+      words: [],
+    },
+    // Only in the desktop app: the drafts folder is a folder on this Mac.
+    ...(hasDesktopShell
+      ? [
+          {
+            id: "advanced" as const,
+            label: t("settingsAdvanced"),
+            Icon: Wrench,
+            words: [t("draftsFolder")],
+          },
+        ]
+      : []),
+  ];
+  const needle = query.trim().toLocaleLowerCase();
+  const matches = needle
+    ? categories.filter((c) =>
+        [c.label, ...c.words].some((word) => word.toLocaleLowerCase().includes(needle))
+      )
+    : categories;
+  // The page follows the search: when the open page is filtered out, the
+  // first page that matches is shown instead.
+  const shown = matches.some((c) => c.id === category)
+    ? category
+    : (matches[0]?.id ?? category);
+  return { close, exchange, loadImagesByDefault, matches, open, placement, query, setCategory, setLoadImagesByDefault, setOpen, setQuery, setTheme, setUsagePing, showFolderCounts, shown, t, theme, usagePing };
+}

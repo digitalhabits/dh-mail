@@ -136,8 +136,8 @@ export function MailPauseMenu({
 
   /*
     While a pause runs, with words set, a looser schedule or fewer words
-    asks for the words first: otherwise the words guard nothing (a tester,
-    2026-10-05). The schedule panel is locked while the tab it edits is
+    asks for the words first: otherwise the words guard nothing. The
+    schedule panel is locked while the tab it edits is
     paused; the words while anything is.
   */
   const lockWhen = (paused: boolean): PauseLock | undefined =>
@@ -159,8 +159,8 @@ export function MailPauseMenu({
       {/* From the start of its button, which sits at the left of the list,
           and never flush against the window's edge. */}
       {/* As tall as the window allows, and scrolled inside past that: with
-          suggestions and hours kept elsewhere the hours panel ran off the
-          bottom, out of reach (2026-10-18). */}
+          suggestions and hours kept elsewhere, the hours panel can run off
+          the bottom, out of reach. */}
       <MailPopoverContent
         align="start"
         collisionPadding={12}

@@ -17,13 +17,13 @@
  * month, so two months of one install cannot be joined. Nothing about mail,
  * mailboxes, contacts or accounts is sent. SECURITY.md lists it.
  */
+import { USAGE_PING_STATE_KEY as PING_STATE_KEY } from "@/lib/mail/storage-keys";
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 import { readUsagePingEnabled, USAGE_PING_URL } from "@/lib/mail/usage-ping";
 
 import { EULA_ACCEPTED_EVENT, eulaAccepted } from "./eula";
 
 // The same key as before, so an install keeps its key for this month.
-const PING_STATE_KEY = "mail_usage_ping";
 const PING_RETRY_MS = 60 * 60_000;
 
 type Release = "mac" | "windows";

@@ -446,10 +446,10 @@ async function tipMessageIdForThread(
 }
 
 /*
-  Snooze and unsnooze of one thread, in turn. An Undo pressed at once ran
-  while the snooze was still looking up the thread: it removed a record the
-  snooze had not written yet, and the snooze then wrote it, so the thread
-  stayed snoozed (KU, 2026-09-27). Any provider could meet this.
+  Snooze and unsnooze of one thread, in turn. Without turns, an Undo pressed
+  at once runs while the snooze still looks up the thread. It removes a
+  record that the snooze did not write yet. The snooze then writes it, and
+  the thread stays snoozed. Any provider can meet this.
 */
 const snoozeTurns = new Map<string, Promise<unknown>>();
 function inSnoozeTurn<T>(account: string, threadId: string, work: () => Promise<T>): Promise<T> {

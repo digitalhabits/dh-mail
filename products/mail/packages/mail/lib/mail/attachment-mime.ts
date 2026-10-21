@@ -58,9 +58,9 @@ export const OPAQUE_MIME_TYPE = "application/octet-stream";
  *
  * Pass the bytes when they are at hand. A sender who labels a PDF as
  * `application/octet-stream` (ticket systems and some Outlook senders do) is
- * not attacking anyone, but an opaque blob in a frame shows as nothing: the
- * preview decided it was a PDF from the name, and the frame got a type the
- * viewer will not open. The bytes say what the file is, so a file that starts
+ * not attacking anyone, but an opaque blob in a frame shows as nothing. The
+ * preview decides from the name that it is a PDF, but the frame gets a type
+ * that the viewer will not open. The bytes say what the file is, so a file that starts
  * as a PDF starts is served as one. That is a PDF viewer, not HTML on this
  * origin, so the reason for the list above does not apply.
  */
@@ -129,10 +129,10 @@ function encodedFilename(filename: string): string {
 /**
  * `Content-Disposition`, with a filename that cannot break the header.
  *
- * A header value is bytes, not text. Dropping a filename straight into one
- * worked until somebody was sent a PDF whose name carried Danish letters:
- * WebKit refused the whole response with a bare `TypeError`, so the file
- * never arrived and the preview window waited for ever.
+ * A header value is bytes, not text. If a filename goes straight into one
+ * and the name carries letters such as Danish ones, WebKit refuses the whole
+ * response with a bare `TypeError`. Then the file never arrives and the
+ * preview window waits for ever.
  *
  * Both parts are sent, as RFC 6266 says to: `filename` for anything that only
  * understands the old form, and `filename*` for the name as it was written.

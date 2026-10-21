@@ -229,9 +229,8 @@ export function useThreadComposer(
   // Local draft: skip saves until hydrate finishes.
   const draftReadyRef = React.useRef(false);
   /*
-    Two reasons why this pane must not save the stored draft. They were one
-    ref with two meanings, and they are apart now so that code can clear one
-    and leave the other. The hydrate does that: a draft that it puts in the
+    Two reasons why this pane must not save the stored draft. They are two
+    refs so that code can clear one and leave the other. The hydrate does that: a draft that it puts in the
     composer is not a discarded one, and it says nothing about the card.
 
     `draftDiscardedRef`: the composer here was closed, after a send, a
@@ -242,8 +241,8 @@ export function useThreadComposer(
     here would put a second composer on the same words. A save would write
     over the card's edits.
 
-    `open` and `restore` clear both, as the one ref did: a message that a
-    press or an Undo puts in this composer is this pane's to save.
+    `open` and `restore` clear both. A message that a press or an Undo puts
+    in this composer is this pane's to save.
   */
   const draftDiscardedRef = React.useRef(false);
   const cardOwnsDraftRef = React.useRef(false);
@@ -258,9 +257,9 @@ export function useThreadComposer(
     A new reply is a new draft to discard.
 
     The guard stops one discard from running twice, when the bin and a key
-    answer the same question. It was cleared only by Undo, so a reply written
-    after a discard on the same thread could not be discarded: Discard closed
-    the question and left the draft where it was. Opening the composer again
+    answer the same question. If only Undo clears it, a reply written after
+    a discard on the same thread cannot be discarded. Discard closes the
+    question and leaves the draft where it is. So opening the composer again
     clears the guard.
   */
   React.useEffect(() => {
@@ -407,9 +406,9 @@ export function useThreadComposer(
         /*
           This draft is in the composer now, so it is not a discarded one.
           A slow store can answer after the reader opened and closed the
-          composer, and the close said "discarded" about that empty box.
-          Left set, it stopped every save of the draft that then opened, and
-          the words typed into it were gone at the next change of thread.
+          composer, and the close says "discarded" about that empty box.
+          Left set, it stops every save of the draft that then opens, and
+          the words typed into it are gone at the next change of thread.
 
           Not `restore`, which also clears `cardOwnsDraftRef`. A store that
           answers after the reply went to the card says nothing about who

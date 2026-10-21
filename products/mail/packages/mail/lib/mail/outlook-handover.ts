@@ -1,3 +1,5 @@
+import { OUTLOOK_DRAFT_ACCOUNT_KEY } from "@/lib/mail/storage-keys";
+
 "use client";
 
 /**
@@ -14,8 +16,6 @@
  * mailbox that holds the conversation is a real reply and keeps its place
  * in the thread. Everything else is the reader's standing choice.
  */
-
-const OUTLOOK_DRAFT_ACCOUNT_KEY = "redd-plan-mail-outlook-draft-account";
 
 export function readOutlookDraftAccount(): string | null {
   try {

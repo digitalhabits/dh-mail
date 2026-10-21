@@ -279,8 +279,8 @@ export function FolderRow({
       className={cn(
         "group relative flex items-center rounded-inner transition-shadow duration-200",
         // select-none, or the gesture is read as a text selection and the
-        // drag never starts: pulling a folder highlighted its name and the
-        // name of whatever it was pulled across. A name in a tree is
+        // drag never starts: pulling a folder highlights its name and the
+        // name of whatever it is pulled across. A name in a tree is
         // something to point at rather than something to copy, so nothing
         // is lost in making it unselectable — and a pull is left with only
         // one thing it can mean.
@@ -292,8 +292,8 @@ export function FolderRow({
         //
         // Drawn inside the row, not around it. A row is the full width of a
         // column that scrolls, and a scrolling box clips on both axes — so
-        // a ring sitting outside the row's edge had its left and right
-        // sides cut off against the very container it was drawn in.
+        // a ring sitting outside the row's edge has its left and right
+        // sides cut off against the very container it is drawn in.
         revealed && "ring-2 ring-inset ring-[var(--mail-chrome-pinned)]",
         // Only while the row is not already saying something else. A folder
         // that is open, or that a conversation is being held over, has an
@@ -438,9 +438,9 @@ export function FolderRow({
         </>
       ) : (
       // A div wearing a button, not a button. A mousedown on a real
-      // <button> never starts its ancestor's drag — which is why the thread
-      // rows are built this way too, and why a folder would not move
-      // however hard it was pulled.
+      // <button> never starts its ancestor's drag. The thread rows are
+      // built this way for the same reason. On a real button, a folder does
+      // not move however hard it is pulled.
       <div
         role="button"
         draggable={canMoveThisFolder}
@@ -542,8 +542,8 @@ const menuIconClass = "h-3.5 w-3.5 shrink-0 text-stone-400";
  * It is a menu rather than buttons on the row because the row is already
  * carrying a triangle, a star and a count, and the things you do to a folder
  * — as against the things you do with it — are rare enough to be worth a
- * second click. The mailbox heading is the same case: a plus that appeared
- * under the pointer was a control on a row that is otherwise only a name.
+ * second click. The mailbox heading is the same case: a plus that appears
+ * under the pointer is a control on a row that is otherwise only a name.
  *
  * Every action is optional, and only the ones given are drawn. A mailbox can
  * be given one folder to make, where a folder is given all four. Given a
@@ -1049,9 +1049,9 @@ function FolderRowTrail({
     <>
       {accountTag ? (
         // The address, cut off where it runs out of room — "sam@dig…".
-        // It used to be the domain's first word, which named the mailbox
-        // only until two addresses shared a domain, and then said the same
-        // thing about both. The beginning of an address is the part that
+        // Not the domain's first word: that names the mailbox only until
+        // two addresses share a domain, and then says the same thing about
+        // both. The beginning of an address is the part that
         // tells them apart; the whole of it is on the title.
         <span
           title={accountTag}
@@ -1127,17 +1127,17 @@ function FavouriteHeart({
         "group/heart shrink-0 rounded p-1",
         // Under the FAVOURITES heading every row is a favourite, so a
         // filled heart on each of them says only what the heading
-        // already said — and sat between the mailbox and the count as
-        // though it were a third thing about the folder. Kept, but out
+        // already says. It also sits between the mailbox and the count as
+        // though it is a third thing about the folder. Kept, but out
         // of sight until the pointer is on the row, because it is still
         // the way back off the list.
         favourite && !inFavourites
           ? ""
           : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
         // The same grey as the heart in the FAVOURITES heading above.
-        // Navy was the colour of a folder being open, and a heart in it
-        // read as loudly as that — on every favourite at once, for a
-        // mark that says "one of a handful" rather than "this one".
+        // Navy is the colour of a folder being open. A navy heart reads as
+        // loudly as that, on every favourite at once, for a mark that says
+        // "one of a handful" rather than "this one".
         // Filled and always shown is enough to tell it from the outline
         // that appears under the pointer.
         //

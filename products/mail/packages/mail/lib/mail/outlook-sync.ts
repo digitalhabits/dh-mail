@@ -15,6 +15,7 @@
  * a pass writes Graph's view, and Graph has not heard of those yet.
  */
 
+import { OUTLOOK_REREAD_KEY as REPAIR_KEY } from "@/lib/mail/storage-keys";
 import { removalsToApplyNow, settledOutlookMoves } from "@/lib/mail/outlook-moves";
 import { flushOutlookActions, replayOutlookActions } from "@/lib/mail/outlook-queue";
 import "server-only";
@@ -197,17 +198,14 @@ async function pass(email: string): Promise<void> {
  * A repair that runs once for each mailbox: Deleted Items and Junk Email are
  * read again from the start.
  *
- * Until 2026-09-19 a "left the inbox" report deleted the row whatever folder
- * the copy had it in, so a mail the reader sent to Trash could be lost from
- * the copy for good: it was on the server, in Deleted Items, and in no row
- * here. Nobody saw it while Trash was listed from Graph. The rule is mended
- * (`removeMessages` with `leftFolder`), and the mail already lost comes back
- * only when its folder is read again. These two folders are small, and are
+ * An earlier rule let a "left the inbox" report delete the row whatever folder
+ * the copy had it in. So a mail that the reader sent to Trash can be missing
+ * from the copy: it is on the server, in Deleted Items, and in no row here.
+ * `removeMessages` with `leftFolder` prevents this now. The mail that is
+ * missing comes back only when its folder is read again. These two folders are small, and are
  * where mail goes by the reader's own hand. The mark is kept in the page's
  * storage, for each mailbox and folder, so it runs once and not at each start.
  */
-const REPAIR_KEY = "dh-mail-outlook-reread-1";
-
 function repairMarks(): Record<string, true> {
   try {
     return JSON.parse(window.localStorage?.getItem(REPAIR_KEY) ?? "{}") as Record<string, true>;
@@ -277,10 +275,10 @@ async function readPageEntries(
     const text = html ? "" : (m.body?.content ?? m.bodyPreview ?? "");
     /*
       The attachments of a page's messages are asked for side by side.
-      They were asked for one after another: a page of a hundred messages
-      with thirty attachments was thirty requests in a row, each waiting
-      on the one before, and that was most of the hours a big mailbox
-      took. The Graph client lets three requests for a mailbox run at
+      If they are asked for one after another, a page of a hundred messages
+      with thirty attachments is thirty requests in a row. Each waits on
+      the one before, and that is most of the hours a big mailbox takes.
+      The Graph client lets three requests for a mailbox run at
       once and queues the rest, so this cannot ask faster than it may.
     */
     pending.push(
@@ -332,8 +330,8 @@ async function completeEntries(
 }
 
 /*
-  Once for each mailbox: the rows a partial entry wrote before 2026-10-03
-  are read again whole. They have no subject and no sender, and the
+  Once for each mailbox: the rows that a partial entry wrote before
+  completeEntries existed are read again whole. They have no subject and no sender, and the
   message's own id stands for the conversation, so the thread cannot be
   opened. Found by those three together; each is asked for by its id.
 */
@@ -431,11 +429,11 @@ async function syncFolders(email: string, scope: "all" | "inbox", worker: Worker
   const overall = states.find((s) => s.account === email && s.folder === "");
   /*
     The first read is the first pass over every folder that gets to the
-    end. It used to be judged by the row's phase, which went wrong two
-    ways: an error partway put the row at "paused", which read as "not a
-    first time", so the walk that resumed said nothing while it read the
-    other forty thousand; and an inbox-only pass in the middle, being the
-    first pass to finish, ended the read with a count of the inbox alone.
+    end. The row's phase cannot tell this, for two reasons. An error
+    partway puts the row at "paused", which reads as "not a first time".
+    Then the walk that resumes says nothing while it reads the other forty
+    thousand. Also, an inbox-only pass in the middle is the first pass to
+    finish, and it ends the read with a count of the inbox alone.
     A pause after a completed read still announces nothing: the delta
     links stand, and only what changed is read.
   */

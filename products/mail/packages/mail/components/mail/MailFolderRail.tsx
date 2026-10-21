@@ -71,307 +71,11 @@ import {
 import { useFolderRail } from "@/components/mail/use-folder-rail";
 import { useShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 
+
 /** ── the rail ──────────────────────────────────────────────────────────── */
 
 export function MailFolderRail(props: FolderRailProps) {
-  // Counts are opt-in (Settings > General); the Outbox keeps its own.
-  const showCounts = useShowFolderCounts();
-  const {
-    accountDrag,
-    accountDropBefore,
-    accountFolders,
-    accountMenu,
-    accountSpringRef,
-    busyFolder,
-    collapsed,
-    collapsedAccounts,
-    confirmDelete,
-    creatingFor,
-    creatingIn,
-    creatingUnder,
-    deleting,
-    draftCount,
-    dragOver,
-    dragging,
-    dropFolderAtTop,
-    dropFolderInto,
-    dropPlaceAt,
-    dropStateFor,
-    favouriteKeys,
-    favouriteRows,
-    filtered,
-    fixedMenu,
-    folderDrag,
-    isOutlookAccount,
-    loading,
-    menu,
-    movingFolder,
-    newName,
-    onDropInbox,
-    onDropJunk,
-    onDropThread,
-    onDropTrash,
-    onOpenArchived,
-    onOpenDrafts,
-    onOpenFolder,
-    onOpenInbox,
-    onOpenJunk,
-    onOpenSent,
-    onOpenTrash,
-    onRenameFolder,
-    onReorderAccount,
-    openAccount,
-    openCollapsed,
-    openFixedMenu,
-    openFolder,
-    query,
-    railAccounts,
-    railRef,
-    renamingKey,
-    revealFolder,
-    revealed,
-    runDelete,
-    saving,
-    sectionRefs,
-    setAccountDrag,
-    setAccountDropBefore,
-    setAccountMenu,
-    setConfirmDelete,
-    setCreatingFor,
-    setCreatingUnder,
-    setDragOver,
-    setFixedMenu,
-    setFolderDrag,
-    setMenu,
-    setMovingFolder,
-    setNewName,
-    setQuery,
-    setRenamingKey,
-    side,
-    submitNewFolder,
-    submitRename,
-    submitSubfolder,
-    systemTwoUp,
-    systemView,
-    t,
-    toggleAccount,
-    toggleCollapsed,
-    whileBusy,
-  } = useFolderRail(props);
-
-  const renderNodes = (nodes: FolderTreeNode[], account: string, depth = 0) =>
-    nodes.map((node) => {
-      const key = collapsedFolderKey(account, node.name);
-      // A filter opens what it found: a match hidden inside a folded parent
-      // is a match the reader cannot see or drop onto.
-      const isCollapsed = query.trim() ? false : collapsed.has(key);
-      const hasChildren = node.children.length > 0;
-      return (
-        <React.Fragment key={node.name}>
-          <FolderRow
-            node={node}
-            depth={depth}
-            collapsed={isCollapsed}
-            hasChildren={hasChildren}
-            active={
-              openFolder?.name.toLowerCase() === node.name.toLowerCase() &&
-              (openFolder.account ?? "").toLowerCase() ===
-                account.toLowerCase()
-            }
-            favourite={favouriteKeys.has(
-              folderFavouriteKey(account, node.name)
-            )}
-            drop={dropStateFor(account)}
-            dragOver={dragOver}
-            setDragOver={setDragOver}
-            folderDrag={folderDrag}
-            onFolderDragStart={setFolderDrag}
-            onFolderDragEnd={() => setFolderDrag(null)}
-            onFolderDrop={(target) => void dropFolderInto(target)}
-            renaming={
-              renamingKey === folderFavouriteKey(account, node.name)
-            }
-            revealed={revealed === folderFavouriteKey(account, node.name)}
-            busy={busyFolder === folderFavouriteKey(account, node.name)}
-            onContextMenu={(event) => {
-              // A parent standing in for one nobody made: there is nothing
-              // at the provider to rename, and nothing to file into it.
-              if (node.implied) return;
-              event.preventDefault();
-              setAccountMenu(null);
-              setFixedMenu(null);
-              // Inbox is the row a reader reaches for when they want a
-              // folder to put mail in, and it was the one row that handed
-              // them the browser's menu instead of ours.
-              setMenu({
-                node,
-                x: event.clientX,
-                y: event.clientY,
-                fixed: Boolean(node.virtual || node.role),
-              });
-            }}
-            onRenameSubmit={(next) => void submitRename(node, next)}
-            onRenameCancel={() => setRenamingKey(null)}
-            onOpen={() => onOpenFolder(account, node.name)}
-            onToggleCollapse={() => toggleCollapsed(account, node.name)}
-            onToggleFavourite={() =>
-              toggleFolderFavourite(account, node.name)
-            }
-            onDropThread={() => void onDropThread(account, node.name)}
-            onSpringOpen={() => openCollapsed(account, node.name)}
-          />
-          {creatingUnder?.account === account &&
-          creatingUnder.parent === node.name ? (
-            <input
-              autoFocus
-              value={newName}
-              disabled={saving}
-              placeholder={t("newFolderName")}
-              aria-label={t("newFolderInside", { name: node.label })}
-              className="mb-1 mt-0.5 w-full rounded-inner border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
-              // Where the folder will be: one step in from its parent, in
-              // the place the row itself will take once it exists.
-              style={{ marginLeft: (depth + 1) * 14 }}
-              onChange={(e) => setNewName(e.target.value)}
-              onBlur={() => setCreatingUnder(null)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void submitSubfolder();
-                } else if (e.key === "Escape") {
-                  e.stopPropagation();
-                  setCreatingUnder(null);
-                }
-              }}
-            />
-          ) : null}
-          {hasChildren && !isCollapsed
-            ? renderNodes(node.children, account, depth + 1)
-            : null}
-        </React.Fragment>
-      );
-    });
-  const sentRow = (
-    <SystemRow
-      icon={Send}
-      label={t("viewSent")}
-      active={systemView === "sent"}
-      // You never file into Sent or Drafts. Dimmed mid-drag so the rule
-      // is visible before the drop rather than after it.
-      drop={dragging ? "dim" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenSent}
-      onContextMenu={openFixedMenu}
-    />
-  );
-  const draftsRow = (
-    <SystemRow
-      icon={FilePen}
-      label={t("viewDrafts")}
-      count={showCounts ? draftCount : null}
-      active={systemView === "drafts"}
-      drop={dragging ? "dim" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenDrafts}
-      onContextMenu={openFixedMenu}
-    />
-  );
-  const trashRow = (
-    <SystemRow
-      icon={Trash2}
-      label={t("viewTrash")}
-      active={systemView === "trash"}
-      drop={dragging ? "live" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenTrash}
-      onContextMenu={openFixedMenu}
-      onDropThread={() => void onDropTrash()}
-    />
-  );
-  const inboxRow = (
-    <SystemRow
-      icon={Inbox}
-      label={t("viewInbox")}
-      active={systemView === "inbox"}
-      /* A drop target like the rest.
-         It was dimmed on the argument that the inbox is where a conversation
-         already was — true of one dragged out of the inbox, and not of one
-         dragged out of the archive, the bin or a folder, which is the case a
-         reader actually has in hand when they drag onto Inbox. It goes back
-         to the mailbox it belongs to; nothing here can move mail between
-         accounts. */
-      drop={dragging && onDropInbox ? "live" : dragging ? "dim" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenInbox}
-      onContextMenu={openFixedMenu}
-      onDropThread={onDropInbox ? () => void onDropInbox() : undefined}
-    />
-  );
-  /*
-    Snoozed and Outbox: places, next to the inbox, while they hold
-    anything (2026-09-29). They were a filter chip and a group at the top
-    of the list. Nothing is dropped on them.
-  */
-  const snoozedRow =
-    props.snoozedCount && props.onOpenSnoozed ? (
-      <SystemRow
-        icon={RotateCwFadingClock}
-        label={t("viewSnoozed")}
-        count={showCounts ? props.snoozedCount : null}
-        active={systemView === "snoozed"}
-        drop={dragging ? "dim" : "rest"}
-        dragOver={dragOver}
-        setDragOver={setDragOver}
-        onClick={props.onOpenSnoozed}
-      />
-    ) : null;
-  const outboxRow =
-    props.outboxCount && props.onOpenOutbox ? (
-      <SystemRow
-        icon={Clock}
-        label={t("outbox")}
-        count={props.outboxCount}
-        active={systemView === "outbox"}
-        drop={dragging ? "dim" : "rest"}
-        dragOver={dragOver}
-        setDragOver={setDragOver}
-        onClick={props.onOpenOutbox}
-      />
-    ) : null;
-  const junkRow = (
-    <SystemRow
-      icon={ShieldAlert}
-      label={t("viewJunk")}
-      active={systemView === "junk"}
-      // Filing something as junk is a real thing to want, and the move
-      // menu is not the only place to want it.
-      drop={dragging ? "live" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenJunk}
-      onContextMenu={openFixedMenu}
-      onDropThread={() => void onDropJunk?.()}
-    />
-  );
-  const archivedRow = (
-    <SystemRow
-      icon={Archive}
-      label={t("viewArchived")}
-      active={systemView === "archived"}
-      /* Nothing is filed into Archived. On Gmail it is not a folder at all
-         — it is everything the inbox label has been taken off — and the
-         archive action is what puts mail there. */
-      drop={dragging ? "dim" : "rest"}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onClick={onOpenArchived}
-      onContextMenu={openFixedMenu}
-    />
-  );
+  const { accountDrag, accountDropBefore, accountFolders, accountMenu, accountSpringRef, archivedRow, collapsedAccounts, confirmDelete, creatingFor, creatingIn, deleting, draftsRow, dragOver, dragging, dropFolderAtTop, dropFolderInto, dropPlaceAt, dropStateFor, favouriteRows, filtered, fixedMenu, folderDrag, inboxRow, isOutlookAccount, junkRow, loading, menu, movingFolder, newName, onDropThread, onOpenFolder, onRenameFolder, onReorderAccount, openAccount, openCollapsed, openFolder, outboxRow, query, railAccounts, railRef, renderNodes, revealFolder, runDelete, saving, sectionRefs, sentRow, setAccountDrag, setAccountDropBefore, setAccountMenu, setConfirmDelete, setCreatingFor, setCreatingUnder, setDragOver, setFixedMenu, setFolderDrag, setMenu, setMovingFolder, setNewName, setQuery, setRenamingKey, side, snoozedRow, submitNewFolder, systemTwoUp, t, toggleAccount, trashRow, whileBusy } = useFolderRailView({ props });
   return (
     <aside
       ref={railRef}
@@ -543,9 +247,9 @@ export function MailFolderRail(props: FolderRailProps) {
       <div
         /* Room at the top for the line that says "in front of the first
            one". It is drawn just above the section it points at, and the
-           first section starts at the very top of the scroll — so without
-           this the one line the reader needed most was the one line the
-           rail cut off. */
+           first section starts at the very top of the scroll. Without
+           this, the rail cuts off the one line that the reader needs
+           most. */
         // A clear gap between one mailbox's folders and the next mailbox,
         // more than between a heading and its own first folder.
         className="mt-2 min-h-0 flex-1 space-y-4 overflow-y-auto pt-1.5 pb-2"
@@ -555,8 +259,8 @@ export function MailFolderRail(props: FolderRailProps) {
           Every place a mailbox can go is a space between two others, and
           the rail is read as a whole to find which space the pointer is in
           — including the two that are not between anything: above
-          everything, and below everything. Both used to be hard to reach or
-          impossible. See `dropPlaceAt`.
+          everything, and below everything. Both must be easy to reach. See
+          `dropPlaceAt`.
         */
         onDragOver={(e) => {
           if (!accountDrag) return;
@@ -583,7 +287,193 @@ export function MailFolderRail(props: FolderRailProps) {
             {t("loadingFolders")}
           </p>
         ) : null}
-        {filtered.map(({ account, nodes }) => {
+        <RailMailboxSections accountDrag={accountDrag} accountDropBefore={accountDropBefore} accountSpringRef={accountSpringRef} collapsedAccounts={collapsedAccounts} creatingFor={creatingFor} creatingIn={creatingIn} dragging={dragging} dropFolderAtTop={dropFolderAtTop} dropStateFor={dropStateFor} filtered={filtered} folderDrag={folderDrag} loading={loading} newName={newName} onReorderAccount={onReorderAccount} openAccount={openAccount} query={query} railAccounts={railAccounts} renderNodes={renderNodes} saving={saving} sectionRefs={sectionRefs} setAccountDrag={setAccountDrag} setAccountDropBefore={setAccountDropBefore} setAccountMenu={setAccountMenu} setCreatingFor={setCreatingFor} setFixedMenu={setFixedMenu} setMenu={setMenu} setNewName={setNewName} submitNewFolder={submitNewFolder} t={t} toggleAccount={toggleAccount} />
+      </div>
+      {menu ? (
+        <FolderContextMenu
+          x={menu.x}
+          y={menu.y}
+          onDismiss={() => setMenu(null)}
+          note={menu.fixed ? t("systemFolderFixed") : undefined}
+          onRename={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setRenamingKey(
+                    folderFavouriteKey(menu.node.account, menu.node.name)
+                  );
+                  setMenu(null);
+                }
+          }
+          onNewSubfolder={() => {
+            // Open the parent, or the box would be typed into behind a
+            // triangle and the folder would appear somewhere unseen.
+            openCollapsed(menu.node.account, menu.node.name);
+            setCreatingFor(null);
+            setCreatingUnder({
+              account: menu.node.account,
+              parent: menu.node.name,
+            });
+            setNewName("");
+            setMenu(null);
+          }}
+          onMove={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setMovingFolder({ node: menu.node, x: menu.x, y: menu.y });
+                  setMenu(null);
+                }
+          }
+          onDelete={
+            menu.fixed
+              ? undefined
+              : () => {
+                  setConfirmDelete({ node: menu.node, x: menu.x, y: menu.y });
+                  setMenu(null);
+                }
+          }
+        />
+      ) : null}
+      {fixedMenu ? (
+        <FolderContextMenu
+          x={fixedMenu.x}
+          y={fixedMenu.y}
+          note={t("systemFolderFixed")}
+          onDismiss={() => setFixedMenu(null)}
+        />
+      ) : null}
+      {accountMenu ? (
+        <FolderContextMenu
+          x={accountMenu.x}
+          y={accountMenu.y}
+          onDismiss={() => setAccountMenu(null)}
+          onNewFolder={() => {
+            // Somewhere to put it, and somewhere to see it made.
+            openAccount(accountMenu.account);
+            setCreatingUnder(null);
+            setCreatingFor(accountMenu.account);
+            setNewName("");
+            setAccountMenu(null);
+          }}
+        />
+      ) : null}
+      {movingFolder ? (
+        <FolderMovePicker
+          moving={movingFolder.node}
+          rows={accountFolders.filter(
+            (f) =>
+              f.account.toLowerCase() ===
+              movingFolder.node.account.toLowerCase()
+          )}
+          x={movingFolder.x}
+          y={movingFolder.y}
+          onDismiss={() => setMovingFolder(null)}
+          onMove={(target) => {
+            const node = movingFolder.node;
+            setMovingFolder(null);
+            // The same rename the drag uses: a folder's name is where it
+            // is, so moving it is giving it the name of where it is going.
+            void whileBusy(node.account, node.name, async () => {
+              try {
+                await onRenameFolder(
+                  node.account,
+                  node.name,
+                  target ? `${target}/${node.label}` : node.label
+                );
+              } catch (err) {
+                toast.error(
+                  err instanceof Error
+                    ? err.message
+                    : t("couldNotMoveFolder")
+                );
+              }
+            });
+          }}
+        />
+      ) : null}
+      {confirmDelete ? (
+        <FolderDeleteConfirm
+          x={confirmDelete.x}
+          y={confirmDelete.y}
+          label={confirmDelete.node.label}
+          // Exchange as Outlook: the folder and its mail go to Deleted Items.
+          onOutlook={mailProviderFor(confirmDelete.node.account, isOutlookAccount) !== "gmail"}
+          busy={deleting}
+          onConfirm={() => void runDelete()}
+          onDismiss={() => setConfirmDelete(null)}
+        />
+      ) : null}
+    </aside>
+  );
+}
+
+/** One section per mailbox: its heading, and its folders as a tree. */
+function RailMailboxSections({
+  accountDrag,
+  accountDropBefore,
+  accountSpringRef,
+  collapsedAccounts,
+  creatingFor,
+  creatingIn,
+  dragging,
+  dropFolderAtTop,
+  dropStateFor,
+  filtered,
+  folderDrag,
+  loading,
+  newName,
+  onReorderAccount,
+  openAccount,
+  query,
+  railAccounts,
+  renderNodes,
+  saving,
+  sectionRefs,
+  setAccountDrag,
+  setAccountDropBefore,
+  setAccountMenu,
+  setCreatingFor,
+  setFixedMenu,
+  setMenu,
+  setNewName,
+  submitNewFolder,
+  t,
+  toggleAccount,
+}: {
+  accountDrag: ReturnType<typeof useFolderRailView>["accountDrag"];
+  accountDropBefore: ReturnType<typeof useFolderRailView>["accountDropBefore"];
+  accountSpringRef: ReturnType<typeof useFolderRailView>["accountSpringRef"];
+  collapsedAccounts: ReturnType<typeof useFolderRailView>["collapsedAccounts"];
+  creatingFor: ReturnType<typeof useFolderRailView>["creatingFor"];
+  creatingIn: ReturnType<typeof useFolderRailView>["creatingIn"];
+  dragging: ReturnType<typeof useFolderRailView>["dragging"];
+  dropFolderAtTop: ReturnType<typeof useFolderRailView>["dropFolderAtTop"];
+  dropStateFor: ReturnType<typeof useFolderRailView>["dropStateFor"];
+  filtered: ReturnType<typeof useFolderRailView>["filtered"];
+  folderDrag: ReturnType<typeof useFolderRailView>["folderDrag"];
+  loading: ReturnType<typeof useFolderRailView>["loading"];
+  newName: ReturnType<typeof useFolderRailView>["newName"];
+  onReorderAccount: ReturnType<typeof useFolderRailView>["onReorderAccount"];
+  openAccount: ReturnType<typeof useFolderRailView>["openAccount"];
+  query: ReturnType<typeof useFolderRailView>["query"];
+  railAccounts: ReturnType<typeof useFolderRailView>["railAccounts"];
+  renderNodes: ReturnType<typeof useFolderRailView>["renderNodes"];
+  saving: ReturnType<typeof useFolderRailView>["saving"];
+  sectionRefs: ReturnType<typeof useFolderRailView>["sectionRefs"];
+  setAccountDrag: ReturnType<typeof useFolderRailView>["setAccountDrag"];
+  setAccountDropBefore: ReturnType<typeof useFolderRailView>["setAccountDropBefore"];
+  setAccountMenu: ReturnType<typeof useFolderRailView>["setAccountMenu"];
+  setCreatingFor: ReturnType<typeof useFolderRailView>["setCreatingFor"];
+  setFixedMenu: ReturnType<typeof useFolderRailView>["setFixedMenu"];
+  setMenu: ReturnType<typeof useFolderRailView>["setMenu"];
+  setNewName: ReturnType<typeof useFolderRailView>["setNewName"];
+  submitNewFolder: ReturnType<typeof useFolderRailView>["submitNewFolder"];
+  t: ReturnType<typeof useFolderRailView>["t"];
+  toggleAccount: ReturnType<typeof useFolderRailView>["toggleAccount"];
+}) {
+  return (
+    <>{filtered.map(({ account, nodes }) => {
           const state = dropStateFor(account);
           /**
            * While a conversation is in the air, only its own mailbox is
@@ -807,11 +697,11 @@ export function MailFolderRail(props: FolderRailProps) {
                   <span
                     className={cn(
                       "min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide",
-                      // Dark enough to read. It was the same faint grey as a
-                      // folder's count, which is a number you glance at — but
-                      // this names the mailbox everything under it belongs to,
-                      // and at 11px, uppercase and tracked out, faint grey is
-                      // the hardest thing on the rail to read.
+                      // Dark enough to read. Not the faint grey of a folder's
+                      // count, which is a number you glance at. This names the
+                      // mailbox that everything under it belongs to. At 11px,
+                      // uppercase and tracked out, faint grey is the hardest
+                      // thing on the rail to read.
                       //
                       // The muted chrome colour rather than a stone: the rail
                       // sits on chrome, which is cream in one mode and navy in
@@ -882,124 +772,309 @@ export function MailFolderRail(props: FolderRailProps) {
               )}
             </div>
           );
-        })}
-      </div>
-      {menu ? (
-        <FolderContextMenu
-          x={menu.x}
-          y={menu.y}
-          onDismiss={() => setMenu(null)}
-          note={menu.fixed ? t("systemFolderFixed") : undefined}
-          onRename={
-            menu.fixed
-              ? undefined
-              : () => {
-                  setRenamingKey(
-                    folderFavouriteKey(menu.node.account, menu.node.name)
-                  );
-                  setMenu(null);
-                }
-          }
-          onNewSubfolder={() => {
-            // Open the parent, or the box would be typed into behind a
-            // triangle and the folder would appear somewhere unseen.
-            openCollapsed(menu.node.account, menu.node.name);
-            setCreatingFor(null);
-            setCreatingUnder({
-              account: menu.node.account,
-              parent: menu.node.name,
-            });
-            setNewName("");
-            setMenu(null);
-          }}
-          onMove={
-            menu.fixed
-              ? undefined
-              : () => {
-                  setMovingFolder({ node: menu.node, x: menu.x, y: menu.y });
-                  setMenu(null);
-                }
-          }
-          onDelete={
-            menu.fixed
-              ? undefined
-              : () => {
-                  setConfirmDelete({ node: menu.node, x: menu.x, y: menu.y });
-                  setMenu(null);
-                }
-          }
-        />
-      ) : null}
-      {fixedMenu ? (
-        <FolderContextMenu
-          x={fixedMenu.x}
-          y={fixedMenu.y}
-          note={t("systemFolderFixed")}
-          onDismiss={() => setFixedMenu(null)}
-        />
-      ) : null}
-      {accountMenu ? (
-        <FolderContextMenu
-          x={accountMenu.x}
-          y={accountMenu.y}
-          onDismiss={() => setAccountMenu(null)}
-          onNewFolder={() => {
-            // Somewhere to put it, and somewhere to see it made.
-            openAccount(accountMenu.account);
-            setCreatingUnder(null);
-            setCreatingFor(accountMenu.account);
-            setNewName("");
-            setAccountMenu(null);
-          }}
-        />
-      ) : null}
-      {movingFolder ? (
-        <FolderMovePicker
-          moving={movingFolder.node}
-          rows={accountFolders.filter(
-            (f) =>
-              f.account.toLowerCase() ===
-              movingFolder.node.account.toLowerCase()
-          )}
-          x={movingFolder.x}
-          y={movingFolder.y}
-          onDismiss={() => setMovingFolder(null)}
-          onMove={(target) => {
-            const node = movingFolder.node;
-            setMovingFolder(null);
-            // The same rename the drag uses: a folder's name is where it
-            // is, so moving it is giving it the name of where it is going.
-            void whileBusy(node.account, node.name, async () => {
-              try {
-                await onRenameFolder(
-                  node.account,
-                  node.name,
-                  target ? `${target}/${node.label}` : node.label
-                );
-              } catch (err) {
-                toast.error(
-                  err instanceof Error
-                    ? err.message
-                    : t("couldNotMoveFolder")
-                );
-              }
-            });
-          }}
-        />
-      ) : null}
-      {confirmDelete ? (
-        <FolderDeleteConfirm
-          x={confirmDelete.x}
-          y={confirmDelete.y}
-          label={confirmDelete.node.label}
-          // Exchange as Outlook: the folder and its mail go to Deleted Items.
-          onOutlook={mailProviderFor(confirmDelete.node.account, isOutlookAccount) !== "gmail"}
-          busy={deleting}
-          onConfirm={() => void runDelete()}
-          onDismiss={() => setConfirmDelete(null)}
-        />
-      ) : null}
-    </aside>
+        })}</>
   );
 }
 
+
+/** The rail's state (useFolderRail), the folder rows as a tree, and the rows of the places every mailbox has. */
+export function useFolderRailView({
+  props,
+}: { props: FolderRailProps }) {
+  // Counts are opt-in (Settings > General); the Outbox keeps its own.
+  const showCounts = useShowFolderCounts();
+  const {
+    accountDrag,
+    accountDropBefore,
+    accountFolders,
+    accountMenu,
+    accountSpringRef,
+    busyFolder,
+    collapsed,
+    collapsedAccounts,
+    confirmDelete,
+    creatingFor,
+    creatingIn,
+    creatingUnder,
+    deleting,
+    draftCount,
+    dragOver,
+    dragging,
+    dropFolderAtTop,
+    dropFolderInto,
+    dropPlaceAt,
+    dropStateFor,
+    favouriteKeys,
+    favouriteRows,
+    filtered,
+    fixedMenu,
+    folderDrag,
+    isOutlookAccount,
+    loading,
+    menu,
+    movingFolder,
+    newName,
+    onDropInbox,
+    onDropJunk,
+    onDropThread,
+    onDropTrash,
+    onOpenArchived,
+    onOpenDrafts,
+    onOpenFolder,
+    onOpenInbox,
+    onOpenJunk,
+    onOpenSent,
+    onOpenTrash,
+    onRenameFolder,
+    onReorderAccount,
+    openAccount,
+    openCollapsed,
+    openFixedMenu,
+    openFolder,
+    query,
+    railAccounts,
+    railRef,
+    renamingKey,
+    revealFolder,
+    revealed,
+    runDelete,
+    saving,
+    sectionRefs,
+    setAccountDrag,
+    setAccountDropBefore,
+    setAccountMenu,
+    setConfirmDelete,
+    setCreatingFor,
+    setCreatingUnder,
+    setDragOver,
+    setFixedMenu,
+    setFolderDrag,
+    setMenu,
+    setMovingFolder,
+    setNewName,
+    setQuery,
+    setRenamingKey,
+    side,
+    submitNewFolder,
+    submitRename,
+    submitSubfolder,
+    systemTwoUp,
+    systemView,
+    t,
+    toggleAccount,
+    toggleCollapsed,
+    whileBusy,
+  } = useFolderRail(props);
+  const renderNodes = (nodes: FolderTreeNode[], account: string, depth = 0) =>
+    nodes.map((node) => {
+      const key = collapsedFolderKey(account, node.name);
+      // A filter opens what it found: a match hidden inside a folded parent
+      // is a match the reader cannot see or drop onto.
+      const isCollapsed = query.trim() ? false : collapsed.has(key);
+      const hasChildren = node.children.length > 0;
+      return (
+        <React.Fragment key={node.name}>
+          <FolderRow
+            node={node}
+            depth={depth}
+            collapsed={isCollapsed}
+            hasChildren={hasChildren}
+            active={
+              openFolder?.name.toLowerCase() === node.name.toLowerCase() &&
+              (openFolder.account ?? "").toLowerCase() ===
+                account.toLowerCase()
+            }
+            favourite={favouriteKeys.has(
+              folderFavouriteKey(account, node.name)
+            )}
+            drop={dropStateFor(account)}
+            dragOver={dragOver}
+            setDragOver={setDragOver}
+            folderDrag={folderDrag}
+            onFolderDragStart={setFolderDrag}
+            onFolderDragEnd={() => setFolderDrag(null)}
+            onFolderDrop={(target) => void dropFolderInto(target)}
+            renaming={
+              renamingKey === folderFavouriteKey(account, node.name)
+            }
+            revealed={revealed === folderFavouriteKey(account, node.name)}
+            busy={busyFolder === folderFavouriteKey(account, node.name)}
+            onContextMenu={(event) => {
+              // A parent standing in for one nobody made: there is nothing
+              // at the provider to rename, and nothing to file into it.
+              if (node.implied) return;
+              event.preventDefault();
+              setAccountMenu(null);
+              setFixedMenu(null);
+              // Inbox is the row a reader reaches for when they want a
+              // folder to put mail in, so it gets our menu and not the
+              // browser's menu.
+              setMenu({
+                node,
+                x: event.clientX,
+                y: event.clientY,
+                fixed: Boolean(node.virtual || node.role),
+              });
+            }}
+            onRenameSubmit={(next) => void submitRename(node, next)}
+            onRenameCancel={() => setRenamingKey(null)}
+            onOpen={() => onOpenFolder(account, node.name)}
+            onToggleCollapse={() => toggleCollapsed(account, node.name)}
+            onToggleFavourite={() =>
+              toggleFolderFavourite(account, node.name)
+            }
+            onDropThread={() => void onDropThread(account, node.name)}
+            onSpringOpen={() => openCollapsed(account, node.name)}
+          />
+          {creatingUnder?.account === account &&
+          creatingUnder.parent === node.name ? (
+            <input
+              autoFocus
+              value={newName}
+              disabled={saving}
+              placeholder={t("newFolderName")}
+              aria-label={t("newFolderInside", { name: node.label })}
+              className="mb-1 mt-0.5 w-full rounded-inner border border-teal-500 bg-white px-2 py-1 text-sm outline-none"
+              // Where the folder will be: one step in from its parent, in
+              // the place the row itself will take once it exists.
+              style={{ marginLeft: (depth + 1) * 14 }}
+              onChange={(e) => setNewName(e.target.value)}
+              onBlur={() => setCreatingUnder(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void submitSubfolder();
+                } else if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setCreatingUnder(null);
+                }
+              }}
+            />
+          ) : null}
+          {hasChildren && !isCollapsed
+            ? renderNodes(node.children, account, depth + 1)
+            : null}
+        </React.Fragment>
+      );
+    });
+  const sentRow = (
+    <SystemRow
+      icon={Send}
+      label={t("viewSent")}
+      active={systemView === "sent"}
+      // You never file into Sent or Drafts. Dimmed mid-drag so the rule
+      // is visible before the drop rather than after it.
+      drop={dragging ? "dim" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenSent}
+      onContextMenu={openFixedMenu}
+    />
+  );
+  const draftsRow = (
+    <SystemRow
+      icon={FilePen}
+      label={t("viewDrafts")}
+      count={showCounts ? draftCount : null}
+      active={systemView === "drafts"}
+      drop={dragging ? "dim" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenDrafts}
+      onContextMenu={openFixedMenu}
+    />
+  );
+  const trashRow = (
+    <SystemRow
+      icon={Trash2}
+      label={t("viewTrash")}
+      active={systemView === "trash"}
+      drop={dragging ? "live" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenTrash}
+      onContextMenu={openFixedMenu}
+      onDropThread={() => void onDropTrash()}
+    />
+  );
+  const inboxRow = (
+    <SystemRow
+      icon={Inbox}
+      label={t("viewInbox")}
+      active={systemView === "inbox"}
+      /* A drop target like the rest.
+         It is not dimmed. For a conversation dragged out of the inbox, the
+         inbox is where it already is. That is not true of one dragged out of
+         the archive, the bin or a folder, and that is the case that a reader
+         has in hand when they drag onto Inbox. It goes back to the mailbox
+         that it belongs to. Nothing here can move mail between accounts. */
+      drop={dragging && onDropInbox ? "live" : dragging ? "dim" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenInbox}
+      onContextMenu={openFixedMenu}
+      onDropThread={onDropInbox ? () => void onDropInbox() : undefined}
+    />
+  );
+  /*
+    Snoozed and Outbox: places, next to the inbox, while they hold
+    anything. Nothing is dropped on them.
+  */
+  const snoozedRow =
+    props.snoozedCount && props.onOpenSnoozed ? (
+      <SystemRow
+        icon={RotateCwFadingClock}
+        label={t("viewSnoozed")}
+        count={showCounts ? props.snoozedCount : null}
+        active={systemView === "snoozed"}
+        drop={dragging ? "dim" : "rest"}
+        dragOver={dragOver}
+        setDragOver={setDragOver}
+        onClick={props.onOpenSnoozed}
+      />
+    ) : null;
+  const outboxRow =
+    props.outboxCount && props.onOpenOutbox ? (
+      <SystemRow
+        icon={Clock}
+        label={t("outbox")}
+        count={props.outboxCount}
+        active={systemView === "outbox"}
+        drop={dragging ? "dim" : "rest"}
+        dragOver={dragOver}
+        setDragOver={setDragOver}
+        onClick={props.onOpenOutbox}
+      />
+    ) : null;
+  const junkRow = (
+    <SystemRow
+      icon={ShieldAlert}
+      label={t("viewJunk")}
+      active={systemView === "junk"}
+      // Filing something as junk is a real thing to want, and the move
+      // menu is not the only place to want it.
+      drop={dragging ? "live" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenJunk}
+      onContextMenu={openFixedMenu}
+      onDropThread={() => void onDropJunk?.()}
+    />
+  );
+  const archivedRow = (
+    <SystemRow
+      icon={Archive}
+      label={t("viewArchived")}
+      active={systemView === "archived"}
+      /* Nothing is filed into Archived. On Gmail it is not a folder at all
+         — it is everything the inbox label has been taken off — and the
+         archive action is what puts mail there. */
+      drop={dragging ? "dim" : "rest"}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onClick={onOpenArchived}
+      onContextMenu={openFixedMenu}
+    />
+  );
+  return { accountDrag, accountDropBefore, accountFolders, accountMenu, accountSpringRef, archivedRow, collapsedAccounts, confirmDelete, creatingFor, creatingIn, deleting, draftsRow, dragOver, dragging, dropFolderAtTop, dropFolderInto, dropPlaceAt, dropStateFor, favouriteRows, filtered, fixedMenu, folderDrag, inboxRow, isOutlookAccount, junkRow, loading, menu, movingFolder, newName, onDropThread, onOpenFolder, onRenameFolder, onReorderAccount, openAccount, openCollapsed, openFolder, outboxRow, query, railAccounts, railRef, renderNodes, revealFolder, runDelete, saving, sectionRefs, sentRow, setAccountDrag, setAccountDropBefore, setAccountMenu, setConfirmDelete, setCreatingFor, setCreatingUnder, setDragOver, setFixedMenu, setFolderDrag, setMenu, setMovingFolder, setNewName, setQuery, setRenamingKey, side, snoozedRow, submitNewFolder, systemTwoUp, t, toggleAccount, trashRow, whileBusy };
+}

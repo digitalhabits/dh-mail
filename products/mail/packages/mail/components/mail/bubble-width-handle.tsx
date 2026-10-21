@@ -40,8 +40,8 @@ export function BubbleWidthHandle({
       from the edge the reader holds: the message narrows as the pointer
       moves. Outward, from the widest a message may be now: every message
       with room grows at once. Measured from the limit alone, a message
-      narrower than its limit did nothing until the pointer had crossed the
-      gap between its edge and the limit (Ulrik, 2026-10-11). A message laid
+      narrower than its limit does nothing until the pointer crosses the
+      gap between its edge and the limit. A message laid
       out at a width of its own does not grow; the others do.
       In the box's own pixels: the stream is zoomed, the pointer is not.
     */
@@ -92,7 +92,7 @@ export function BubbleWidthHandle({
       )}
     >
       {/* Shown only with the pointer on the edge itself. A band on the
-          whole message was in the way of reading it (Ulrik, 2026-10-10). */}
+          whole message is in the way of reading it. */}
       <span
         aria-hidden
         className="h-full w-[3px] rounded-full bg-stone-400/80 opacity-0 transition-opacity group-hover/edge:opacity-100"

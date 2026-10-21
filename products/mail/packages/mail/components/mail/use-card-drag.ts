@@ -1,5 +1,6 @@
 "use client";
 
+import { FLOATING_CARD_CENTRED_SUFFIX } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import { startPointerDrag } from "@/lib/pointer-drag";
@@ -99,7 +100,7 @@ export function useCardDrag(
   }>({ corner: {}, centre: {} });
   const size = centred ? sizes.centre : sizes.corner;
   /** The dialog's own key, beside the corner card's. */
-  const centreKey = sizeKey ? `${sizeKey}:centred` : undefined;
+  const centreKey = sizeKey ? `${sizeKey}${FLOATING_CARD_CENTRED_SUFFIX}` : undefined;
 
   React.useEffect(() => {
     if (!enabled || !sizeKey || !centreKey) return;

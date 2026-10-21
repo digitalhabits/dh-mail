@@ -33,26 +33,25 @@
  *
  * Carried inline rather than as a duration utility with the number in
  * square brackets. Tailwind builds its classes by reading the source, so
- * an arbitrary one assembled from a constant is never generated — the
- * first go at this asked for 340ms and got Tailwind's own 150ms default,
- * which is faster than what it replaced. The property stays a class, so
+ * an arbitrary one assembled from a constant is never generated. Such a
+ * class asks for 340ms and gets Tailwind's own 150ms default. The property stays a class, so
  * `motion-reduce:transition-none` still turns the whole thing off for a
  * reader who has asked for that.
  *
  * Nor is that class written out here as an example. Tailwind reads
- * comments too — it has no idea this is prose — so naming it warned that
- * it was ambiguous on every dev start and every build, for a class
- * nothing uses.
+ * comments too — it has no idea this is prose. If the class is named
+ * here, Tailwind warns that it is ambiguous on every dev start and every
+ * build, for a class nothing uses.
  */
 export const PANE_SLIDE_MS = 340;
 /**
  * Eased at both ends, so the distance is spread over the time.
  *
- * The first curve here was the one sheets use — very fast away, very long
- * to settle. Measured, it put the list 90% of the way across in the first
- * 50ms and spent the remaining 290ms moving the last two pixels: a slide
- * long on paper that read as a snap, because what the eye gets is the
- * distance, not the duration. This one starts gently and arrives gently,
+ * Not the curve that sheets use, which is very fast away and very long to
+ * settle. Measured, that curve puts the list 90% of the way across in the
+ * first 50ms. It spends the remaining 290ms moving the last two pixels. A
+ * slide long on paper then reads as a snap, because what the eye gets is
+ * the distance, not the duration. This one starts gently and arrives gently,
  * and the middle of the movement is where most of the travel is.
  */
 export const PANE_SLIDE_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";

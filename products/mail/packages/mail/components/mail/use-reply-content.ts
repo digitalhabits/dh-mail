@@ -58,8 +58,8 @@ export function useReplyContent({
   /**
    * What a reply is called when nobody has said otherwise.
    *
-   * The thread's subject, with the Re: a reply carries — the same string
-   * the send used to build inline in three places.
+   * The thread's subject, with the Re: a reply carries. It is built once,
+   * here, for every part that needs it.
    */
   const replySubject = thread
     ? thread.subject.startsWith("Re:")
@@ -76,8 +76,8 @@ export function useReplyContent({
    *
    * The writer's, when they set one; otherwise what the thread implies.
    * The send, the Outlook hand-over and the preview all read this, so a
-   * changed subject cannot reach one of them and not the others — which is
-   * how the hand-over used to go out saying "Re:" over a forward.
+   * changed subject cannot reach one of them and not the others. If it
+   * does, the hand-over can go out saying "Re:" over a forward.
    */
   const outgoingSubject =
     subjectDraft.trim() || (forwarding ? forwardSubject : replySubject);

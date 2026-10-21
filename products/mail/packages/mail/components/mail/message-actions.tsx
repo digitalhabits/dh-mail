@@ -100,9 +100,9 @@ export function MessageHoverActions({
     /*
       A track the height of the bubble, with the rail sticky inside it.
 
-      The rail used to sit at the bubble's middle, and on a message three
+      The rail does not sit at the bubble's middle. On a message three
       screens tall the middle is off the screen: nothing to react with,
-      reply to or open until the reader had scrolled to it. The track runs
+      reply to or open until the reader scrolls to it. The track runs
       the bubble's full height in the gutter; the rail is centred in it on
       a short bubble, and on a tall one sticks within the part of the
       bubble that is on screen, a hand's breadth from either edge.
@@ -112,8 +112,8 @@ export function MessageHoverActions({
       /*
         Beside the bubble when there is room, over its edge when there is
         not. The pane clips what crosses its edge, and no z-index paints
-        past a clip — so on a message that fills the pane, the rail used to
-        lose its outer side. The row measures the room between the bubble
+        past a clip. So on a message that fills the pane, a rail beside the
+        bubble loses its outer side. The row measures the room between the bubble
         and the pane's edge as the pointer arrives (see the row's
         onPointerEnter) and the rail comes in by the shortfall, sitting on
         the bubble with its z-index rather than under the pane's edge.
@@ -183,13 +183,13 @@ export function MessageHoverActions({
             side={own ? "left" : "right"}
             align="center"
             // Sized to the longest line rather than to a set width: "Download
-            // attachments" is wider than the menu used to be, and a wrapped
+            // attachments" is wider than a narrow set width, and a wrapped
             // menu item reads as two.
             className="w-auto min-w-[11rem] p-1"
-            // Opened with a click, the menu used to hand focus to its first
-            // item, which drew the keyboard ring round "Forward" as if it
-            // had been chosen. Focus goes to the menu itself instead: no
-            // item is marked, and Tab still walks the items from the top.
+            // If a click opens the menu, it hands focus to its first item by
+            // default. That draws the keyboard ring round "Forward" as if it
+            // was chosen. So focus goes to the menu itself: no item is
+            // marked, and Tab still walks the items from the top.
             onOpenAutoFocus={(e) => {
               e.preventDefault();
               (e.currentTarget as HTMLElement | null)?.focus();

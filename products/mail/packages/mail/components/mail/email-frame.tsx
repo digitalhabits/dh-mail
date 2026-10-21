@@ -45,9 +45,9 @@ export async function followMailLink(target: string): Promise<void> {
   }
   /*
     Here, where every click ends: the frame's own script (link-bridge.ts)
-    sends the link as the sender wrote it. A safe link unwrapped anywhere
-    else was still opened as it was — Copy link gave the real address
-    while a click got Microsoft's "Bad Request" (2026-10-20).
+    sends the link as the sender wrote it. If a safe link is unwrapped
+    anywhere else, a click still opens it as it is. Copy link then gives
+    the real address while a click gets Microsoft's "Bad Request".
   */
   const ok = await openExternalUrl(repairSafeLink(target));
   if (!ok) toast.error(mailSay("couldNotOpenLink"));
@@ -89,10 +89,10 @@ export function buildSrcDoc(
     // fallback if measurement still undershoots a marketing footer.
     /*
       No scrollbars in here. The frame is sized to its content and the
-      thread does the scrolling; a bar inside a message is a bar drawn
-      across the foot and up the right of every card, which is what it was
-      — two pale rules that no colour of ours could reach, because a
-      scrollbar is painted by the platform.
+      thread does the scrolling. A bar inside a message is a bar drawn
+      across the foot and up the right of every card. These are two pale
+      rules that no colour of ours can reach, because the platform paints
+      a scrollbar.
 
       `overflow-x:auto` stays for a table wider than the pane, but its bar
       is hidden too: it can be dragged sideways with a trackpad, and a
@@ -123,12 +123,12 @@ export function buildSrcDoc(
 
       `break-word` above breaks a long string when it is drawn but does not
       count the break when the box is measured, so a message with a
-      tracking link three hundred characters long measured as three
-      hundred characters wide. The bubble was given that width, the pane
-      could not, and the whole message was scaled down to fit the link —
-      a body of tiny text that no zoom could enlarge, because the zoom was
-      being cancelled to fit the same link. `anywhere` counts the break,
-      so the link no longer sets the message's width. Only on links: the
+      tracking link three hundred characters long measures as three
+      hundred characters wide. The bubble gets that width and the pane
+      cannot, so the whole message is scaled down to fit the link. The
+      result is a body of tiny text that no zoom can enlarge, because the
+      zoom is cancelled to fit the same link. `anywhere` counts the break,
+      so the link does not set the message's width. Only on links: the
       table-column reason above still holds for everything else, and a
       string that long in ordinary text is rare.
 
@@ -167,9 +167,9 @@ export function buildSrcDoc(
     };text-decoration:underline;text-underline-offset:2px}`,
     // Reading in the dark: the body's own colour is the light one the
     // caller passes, and every colour the sender declared is re-lit by
-    // `recolorForDark` in the frame script (frame-script/dark.ts). That
-    // used to be a blanket "everything inherits", which threw away a
-    // heading's navy and a call-out's pink along with the black.
+    // `recolorForDark` in the frame script (frame-script/dark.ts). A
+    // blanket "everything inherits" throws away a heading's navy and a
+    // call-out's pink along with the black.
     /*
       And last, whatever the caller draws this frame into.
 

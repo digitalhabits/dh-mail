@@ -1,11 +1,11 @@
 /**
  * The name we put on mail from an account.
  *
- * Read from the provider, and only from the provider. Mail used to offer a
- * name of its own here. It was removed: a name set in Mail would ride on the
- * messages Mail sent and on no others, so the same person would appear under
- * two names depending on which client they happened to use. Nobody wants
- * that, and the provider already owns the answer.
+ * Read from the provider, and only from the provider. Mail does not offer a
+ * name of its own here. A name set in Mail rides on the messages that Mail
+ * sends and on no others. Then the same person shows under two names, by the
+ * client that they use. Nobody wants that, and the provider already owns the
+ * answer.
  *
  * See `@/lib/mail/sender-name` for the formatting rules.
  *

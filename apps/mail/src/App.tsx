@@ -60,7 +60,7 @@ import { onMailRefresh } from "./seams/mail-router";
 const OWNER_ID = "local";
 
 /*
-  Exchange (EWS) is in both builds since 2026-09-28.
+  Exchange (EWS) is in both builds.
 */
 const PROVIDERS: MailStoreProvider[] = ["gmail", "outlook", "exchange"];
 

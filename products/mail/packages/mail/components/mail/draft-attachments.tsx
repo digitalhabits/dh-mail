@@ -349,9 +349,9 @@ export function DraftAttachmentChips({
   className?: string;
   /**
    * Small pills for the composer's pinned foot, in a strip right above
-   * Send and beside the paperclip that added them. The cards used to sit
-   * at the end of the body, where a long reply scrolled them out of view
-   * and a file was attached twice for want of seeing it once.
+   * Send and beside the paperclip that added them. If the cards sit at the
+   * end of the body, a long reply scrolls them out of view. Then a file is
+   * attached twice, because the writer did not see it once.
    */
   docked?: boolean;
 }) {
@@ -715,7 +715,7 @@ export function ComposerDropOverlay({ visible }: { visible: boolean }) {
  * about it — is the thing every other mail app gets right.
  *
  * `onImage` is optional: a composer with no editor to insert into (or one
- * that has not mounted yet) keeps the old behaviour, which is a file.
+ * that has not mounted yet) attaches the picture as a file.
  */
 export function useComposerPaste(
   onFiles: (files: File[]) => void,
@@ -741,8 +741,8 @@ export function useComposerPaste(
       const reader = new FileReader();
       reader.onload = () => {
         const url = typeof reader.result === "string" ? reader.result : "";
-        // Refused — too big to write into a message, say — so it goes the
-        // way it always went rather than nowhere at all.
+        // Refused — too big to write into a message, say — so it is
+        // attached as a file rather than lost.
         if (url && onImage(url) === false) onFiles([image]);
       };
       reader.onerror = () => onFiles([image]);
@@ -789,8 +789,8 @@ function readDataUrl(file: File): Promise<string> {
  * Every file that is not a picture is an attachment, wherever it lands. A
  * PDF has nothing to show inside a sentence.
  *
- * `intoBody` is optional. A composer that gives none keeps the old
- * behaviour, which is to attach whatever is dropped anywhere on it.
+ * `intoBody` is optional. A composer that gives none attaches whatever is
+ * dropped anywhere on it.
  */
 export function useComposerFileDrop(
   onFiles: (files: FileList | File[]) => void,
@@ -855,8 +855,8 @@ export function useComposerFileDrop(
     void (async () => {
       for (const file of files) {
         const url = await readDataUrl(file);
-        // Refused — too big to write into a message, say — so it goes the
-        // way it always went rather than nowhere at all.
+        // Refused — too big to write into a message, say — so it is
+        // attached as a file rather than lost.
         if (!url || intoBody.insert(url) === false) onFiles([file]);
       }
     })();

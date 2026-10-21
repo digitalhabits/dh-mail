@@ -53,10 +53,10 @@ export function softenAnchorsForParse(html: string): string {
       );
       /*
         A link with no address goes nowhere, so it is the words it holds,
-        as the sender's other words are. Painted as a link, it promised a
-        click that did nothing, and its right-click menu had no link to
-        open or copy: Vercel's yearly domain notice sends "Vercel account"
-        with href="" (2026-10-17).
+        as the sender's other words are. Painted as a link, it promises a
+        click that does nothing, and its right-click menu has no link to
+        open or copy. Vercel's yearly domain notice sends "Vercel account"
+        with href="".
       */
       const target = href.trim();
       if (!target || target === "#") {
@@ -79,14 +79,13 @@ export function softenAnchorsForParse(html: string): string {
         whether the sender said anything; `style` on the anchor, or a
         class one of the sender's own `<style>` blocks has a rule for, is
         the nearest honest answer to that question. A class nothing
-        styles is a name and not a dress: Ryanair's links carry one, and
-        counting it left "see shops here" as ordinary words.
+        styles is a name and not a dress. Ryanair's links carry one, and
+        if it counts, "see shops here" shows as ordinary words.
 
         An inline style dresses a link only when it gives the link a
         colour. Every mail client draws `<a style="font-size:14px">` blue
         and underlined, because the style left the colour to the client.
-        Counting any style drew such a link as ordinary words, the likely
-        cause of a tester's consent link with no mark (2026-10-19). Its
+        If any style counts, such a link shows as ordinary words. Its
         other inline rules still hold: an
         inline style beats the frame's link rule, so `text-decoration:none`
         keeps the underline off.

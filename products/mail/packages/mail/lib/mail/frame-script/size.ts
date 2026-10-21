@@ -16,9 +16,8 @@
  * The height is measured with the root and the body set to `height:auto`
  * for the length of the read. A mail with `height:100%` on a wrapper is as
  * tall as the frame it gets. Measured as it is, the answer is the frame, and
- * the frame grows each time. The page used to collapse the frame to 0 for
- * the read. It cannot do that through a message without a visible flash, so
- * the frame takes the percentages away instead.
+ * the frame grows each time. If the page collapses the frame to 0 for the
+ * read, there is a visible flash. So the frame takes the percentages away.
  *
  * A wrapper in `vh` units still follows the frame. So a measurement that
  * grows by no more than the slack keeps the old height. The slack already

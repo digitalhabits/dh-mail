@@ -12,14 +12,14 @@
  * this deliberately mirrors rather than shares.
  */
 
+import { MAIL_PERSON_PINS_KEY as STORAGE_KEY } from "@/lib/mail/storage-keys";
+
 export type MailPersonPin = {
   /** The PersonRow key: `person:<email>` or `group:<addresses>`. */
   key: string;
   /** ms since epoch — most recently pinned sorts first. */
   pinnedAt: number;
 };
-
-const STORAGE_KEY = "redd-plan-mail-person-pins-v1";
 
 const listeners = new Set<() => void>();
 

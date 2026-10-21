@@ -24,6 +24,7 @@
  * `@/lib/mail/i18n-team`. A build without the team layer adds none.
  */
 
+import { MAIL_LANG_KEY } from "@/lib/mail/storage-keys";
 import { en as appEn } from "@/lib/mail/i18n-en";
 import { da as appDa } from "@/lib/mail/i18n-da";
 import { teamDa, teamEn } from "@/lib/mail/i18n-team";
@@ -33,7 +34,6 @@ const da = { ...appDa, ...teamDa };
 
 export type MailLang = "en" | "da";
 
-export const MAIL_LANG_KEY = "redd-plan-mail-lang";
 export const MAIL_LANG_EVENT = "redd-plan-mail-lang-changed";
 
 export const MAIL_LANGS: MailLang[] = ["en", "da"];

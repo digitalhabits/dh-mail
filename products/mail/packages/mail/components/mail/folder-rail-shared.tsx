@@ -88,10 +88,10 @@ export const REVEAL_MS = 2400;
 /**
  * Where the views go two abreast.
  *
- * Two 6.5rem columns and the half-rem gap between them come to 216, which
- * is what this was. It waited too long: the rail has room for two columns
- * before it has room for two comfortable ones, and a rail dragged narrow is
- * one asking for the list to get shorter. Thirty less, so the second column
+ * Two 6.5rem columns and the half-rem gap between them come to 216. That
+ * waits too long. The rail has room for two columns before it has room for
+ * two comfortable ones, and a rail dragged narrow asks for the list to get
+ * shorter. Thirty less, so the second column
  * arrives while the rail is still wide enough to read.
  */
 export const SYSTEM_TWO_UP_WIDTH = 186;
@@ -249,7 +249,7 @@ export type FolderRailProps = {
  * not only the one the handler sits on — so moving from a row's name to its
  * star fires a leave and then an enter, and a highlight driven straight off
  * those blinks off and on as the pointer travels along a row it is already
- * resting on. That is what made the folders look as though they were lit at
+ * resting on. That makes the folders look as though they are lit at
  * the wrong moment, or somewhere slightly other than the pointer.
  *
  * So the arrivals are counted rather than watched, and the row under the

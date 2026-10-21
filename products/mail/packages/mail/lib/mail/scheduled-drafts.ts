@@ -272,11 +272,11 @@ let running: Promise<void> | null = null;
 /**
  * Rows sent in this run of the app whose "sent" the store did not take.
  *
- * A send that went must not go again. When the store refuses to record it,
- * the row would come back as due on the next look: Gmail and Exchange take
- * the draft away when it is sent, so a second try finds it gone, and the
- * reader was told that a message they sent had failed. Where the draft was
- * still there, it went twice. This keeps the id until the store takes it.
+ * A send that went must not go again. If the store refuses to record it,
+ * the row comes back as due on the next look. Gmail and Exchange take the
+ * draft away when it is sent. So a second try finds it gone, and tells the
+ * reader that a message they sent failed. If the draft is still there, it
+ * goes twice. This keeps the id until the store takes it.
  */
 const sentNotRecorded = new Set<number>();
 

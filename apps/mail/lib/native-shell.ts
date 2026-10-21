@@ -463,3 +463,12 @@ export async function openContactsPrivacySettings(): Promise<void> {
     console.warn("[mail] open_contacts_privacy_settings failed:", err);
   }
 }
+
+/*
+ * This file is the standalone app's half of a seam. The typecheck checks
+ * that it has every call that the Mail interface makes. See
+ * `lib/mail/native-shell-contract.ts`.
+ */
+import type { ImplementsMailNativeShell } from "@/lib/mail/native-shell-contract";
+import type * as Self from "./native-shell";
+export type NativeShellImplementsMail = ImplementsMailNativeShell<typeof Self>;

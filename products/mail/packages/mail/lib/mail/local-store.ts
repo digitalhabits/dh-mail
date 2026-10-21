@@ -163,10 +163,10 @@ export async function localStoreServesFolder(account: string, folder: "trash" | 
     under its Graph id, so no state is ever named "trash". The copy holds
     both folders once the first read of the whole mailbox is done.
 
-    Without this, Trash and Junk of an Outlook mailbox were listed from
-    Graph. A mail the reader had just sent there was missing when the list
-    was opened before the move had finished on the server, and the list did
-    not ask again for a while. The copy is changed the moment the reader
+    Without this, Trash and Junk of an Outlook mailbox are listed from
+    Graph. A mail that the reader just sent there is missing if the list
+    opens before the move finishes on the server. The list then does not
+    ask again for a while. The copy is changed the moment the reader
     acts, as it is for every other view.
   */
   const provider = await resolveMailProvider(account).catch(() => null);

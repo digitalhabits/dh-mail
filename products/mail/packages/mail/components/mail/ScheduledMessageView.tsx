@@ -4,13 +4,14 @@
  * A scheduled message, open in the reader.
  *
  * A reply sent later stands in its thread, as a dashed bubble with its
- * time. A new message has no thread to stand in until it goes, so clicking
- * its row in the Scheduled group opened nothing: the reader could see that
- * it was there, but not what it said, and could not change it. This is its
+ * time. A new message has no thread to stand in until it goes. Without this
+ * page, its row in the Scheduled group opens nothing. The reader sees that
+ * the message is there, but not what it says, and cannot change it. This is its
  * page — the words, who it goes to, when — with the four things to do with
  * it: Send now, Change time, Edit, Cancel (docs/mail-send-later.md, 4.7).
  */
 
+import { usePageActions, usePageCompose, type MailComposeSlice } from "@/components/mail/mail-page-slices";
 import * as React from "react";
 import { Clock } from "lucide-react";
 
@@ -18,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { plainTextToEditorHtml } from "@/lib/client-email-html";
 import { dropOwnInkForEditing, dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
 import { sanitizeEmailHtml } from "@/lib/mail/email-html";
@@ -120,7 +120,10 @@ export function ChangeTimeMenu({
  * original stays scheduled until the edited one is sent; discard the
  * composer and it goes as it was (lib/mail/scheduled-replace).
  */
-async function editInComposer(m: MailPageModel, held: MailScheduledMessage): Promise<void> {
+async function editInComposer(
+  startCompose: MailComposeSlice["startCompose"],
+  held: MailScheduledMessage
+): Promise<void> {
   const key = newComposeDraftKey();
   const asRecipients = (list: string[]) => list.map((email) => ({ kind: "email" as const, email }));
   await saveComposeDraft({
@@ -143,7 +146,7 @@ async function editInComposer(m: MailPageModel, held: MailScheduledMessage): Pro
     replacesScheduled: { account: held.account, id: held.id, sendAt: held.sendAt },
   });
   openScheduledMessage(null);
-  m.startCompose({ to: [], subject: "", continuedFromLabel: "", draftKey: key });
+  startCompose({ to: [], subject: "", continuedFromLabel: "", draftKey: key });
 }
 
 function Action({ onClick, children, danger = false }: { onClick: () => void; children: React.ReactNode; danger?: boolean }) {
@@ -165,7 +168,9 @@ const Dot = () => <span aria-hidden className="text-stone-300">·</span>;
  * message in the dashed bubble a scheduled reply has in its thread, with
  * its time and what can be done with it under it.
  */
-export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: MailScheduledMessage }) {
+export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
+  const pageActions = usePageActions();
+  const { startCompose } = usePageCompose();
   const t = useMailT();
   const late = held.status === "failed";
   const hasWords = Boolean(held.bodyHtml || held.bodyText);
@@ -173,7 +178,7 @@ export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: Mail
   const dark = useMailColorMode() === "dark";
   const act = (action: "sendNow" | "cancel") => {
     openScheduledMessage(null);
-    void m.actOnHeld(held, action);
+    void pageActions.actOnHeld(held, action);
   };
   const people = [
     `${t("fieldTo")} ${held.to.join(", ")}`,
@@ -197,8 +202,8 @@ export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: Mail
           {html ? (
             /*
               In the frame the messages are read in, re-lit in the dark as
-              they are. Put in as it was, the message kept the colours it
-              was written with — dark grey on the dark page (2026-10-20).
+              they are. If it is put in unchanged, the message keeps the
+              colours that it was written with. That is dark grey on the dark page.
             */
             <EmailHtmlView
               html={html}
@@ -218,7 +223,7 @@ export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: Mail
           {held.reschedulable ? (
             <>
               <Dot />
-              <ChangeTimeMenu account={held.account} onPick={(iso) => void m.actOnHeld(held, "reschedule", iso)} />
+              <ChangeTimeMenu account={held.account} onPick={(iso) => void pageActions.actOnHeld(held, "reschedule", iso)} />
             </>
           ) : null}
           {held.cancellable === false ? null : (
@@ -226,7 +231,7 @@ export function ScheduledMessageView({ m, held }: { m: MailPageModel; held: Mail
               {hasWords ? (
                 <>
                   <Dot />
-                  <Action onClick={() => void editInComposer(m, held)}>{t("edit")}</Action>
+                  <Action onClick={() => void editInComposer(startCompose, held)}>{t("edit")}</Action>
                 </>
               ) : null}
               <Dot />

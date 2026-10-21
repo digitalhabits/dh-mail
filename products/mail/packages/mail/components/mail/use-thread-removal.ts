@@ -97,11 +97,10 @@ export function useThreadRemoval({
       const painted = screenThreadOrderRef.current;
       /*
         Removed means the row that stands for any of the going copies —
-        by its own key, or by a copy folded into it. Matching the one key
-        alone missed the row whenever it was standing on its other copy,
-        and the row then survived its own deletion: still on screen,
-        inviting the second press that lands on a conversation the reader
-        never chose.
+        by its own key, or by a copy folded into it. The one key alone
+        misses the row when it stands on its other copy. The row then
+        survives its own deletion. It stays on screen and invites a second
+        press that lands on a conversation the reader did not choose.
       */
       const gone = new Set([key, ...alsoKeys]);
       // Said aloud, for a list kept apart from this one that names the
@@ -182,8 +181,8 @@ export function useThreadRemoval({
 
   const hideRemovedRows = React.useCallback((keys: string[]) => {
     const until = Date.now() + REMOVED_ROW_HIDE_MS;
-    // In this view only: the row is shown in the view it went to. It was
-    // hidden in every view, and a mail sent to Trash was not in Trash.
+    // In this view only: the row is shown in the view it went to. If it is
+    // hidden in every view, a mail sent to Trash is not in Trash.
     for (const rowKey of keys) {
       hideRow(hiddenRowsRef.current, rowKey, listViewIdRef.current, until);
     }

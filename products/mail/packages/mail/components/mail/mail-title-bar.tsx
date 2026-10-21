@@ -3,11 +3,13 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { usePageCompose, usePageLayout, usePageList, usePageReader } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import * as React from "react";
 import { Search, SquarePen, X } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
@@ -19,41 +21,24 @@ import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
 import { HiddenSearchChip, hiddenSearchChipShown } from "@/components/mail/hidden-account-mark";
 import { mailSearchPlaceholder } from "@/components/mail/mail-list-state";
 import { TriageButton } from "@/components/mail/team-layer";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 
 /** The row the window is dragged by: search, sync, pause and the view controls. */
 export function MailTitleBar({
-  m,
   layoutMenu,
   listToggle,
   listOut = false,
 }: {
-  m: MailPageModel;
   /** The list put away is out on hover: the row moves over with it. */
   listOut?: boolean;
   layoutMenu: React.ReactNode;
   /** The button that hides and shows the list (ListHideButton). */
   listToggle: React.ReactNode;
 }) {
-  const {
-    activeCustomList,
-    activeFolder,
-    chromeDark,
-    search,
-    searchDeleted,
-    hiddenSearch,
-    searchFocused,
-    searchInputRef,
-    setSearch,
-    setSearchDeleted,
-    setSearchFocused,
-    startCompose,
-    t,
-    tab,
-    titlebarLeft,
-    titlebarToggleLeft,
-    peekTitlebarLeft,
-  } = m;
+  const t = useMailT();
+  const pageReader = usePageReader();
+  const { activeCustomList, activeFolder, search, searchDeleted, hiddenSearch, searchFocused, searchInputRef, setSearch, setSearchDeleted, setSearchFocused, tab } = usePageList();
+  const { chromeDark, titlebarLeft, titlebarToggleLeft, peekTitlebarLeft } = usePageLayout();
+  const { startCompose } = usePageCompose();
   // Hidden accounts' hits are in the list: the field says so.
   const chipShown = hiddenSearchChipShown(search, hiddenSearch);
   // The search menu, opened by its chevron or by the hidden chip.
@@ -114,7 +99,7 @@ export function MailTitleBar({
             <SquarePen className="h-3.5 w-3.5" aria-hidden />
             {t("newEmail")}
           </button>
-          <SyncControl m={m} />
+          <SyncControl />
           <label
             className={cn(
               "mail-titlebar-search",
@@ -202,12 +187,12 @@ export function MailTitleBar({
           </label>
           {/* The organization's build ranks the inbox from here: it reads
               the whole mailbox shown, as the search beside it does. */}
-          <TriageButton m={m} />
+          <TriageButton />
           {/* Right of the search: the list's switch, then the settings
               button at the end of the row (Ulrik, 2026-10-17). Stacks
               change the list more than anything in Settings, so the switch
               is out here. */}
-          <StacksSwitch onDark={chromeDark} openKey={m.selected ? threadKey(m.selected) : null} />
+          <StacksSwitch onDark={chromeDark} openKey={pageReader.selected ? threadKey(pageReader.selected) : null} />
           {layoutMenu}
           {/* Beside the search field, because it is about this mailbox as a
               whole rather than about any list in it — and because a mailbox

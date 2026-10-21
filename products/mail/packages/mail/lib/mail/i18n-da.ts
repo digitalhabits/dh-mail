@@ -1185,7 +1185,8 @@ export const da: Record<keyof typeof en, string> = {
     "Outlook kan ikke tage filer denne vej — {count} ligger i Overførsler, klar til at trække ind",
   outlookFilesLeftBehind:
     "Outlook kan ikke tage filer denne vej — {count} kom ikke med",
-  outlookReplyIsOpen: "Svaret er åbent i Outlook, i sin samtale",
+  outlookReplyDraftMade: "Svaret ligger i Outlook under Kladder, i sin samtale",
+  outlookDraftMade: "Beskeden ligger i Outlook under Kladder",
   outlookIsOpen: "Outlook er åben på denne besked",
   discardTheCopyHere: "Kassér kopien her",
   couldNotOpenOutlook: "Kunne ikke åbne en ny Outlook-besked",

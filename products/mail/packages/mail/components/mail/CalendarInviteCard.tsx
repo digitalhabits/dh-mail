@@ -196,7 +196,7 @@ function CalendarInviteCard({
     void (async () => {
       try {
         // The text the local copy kept with the body, when it did: no wait
-        // for the file to come from the server (2026-10-19).
+        // for the file to come from the server.
         let text = attachment.text ?? null;
         if (text === null) {
           const res = await mailApiFetch(inlineHref);

@@ -7,8 +7,8 @@ export type MailTab = "people" | "other";
 /**
  * The providers a mailbox can come from.
  *
- * One name, here, for every file that names them. There used to be a copy
- * per file, and a third provider meant finding each one by hand.
+ * One name, here, for every file that names them. If each file has its own
+ * copy, a third provider means finding each one by hand.
  */
 export type MailProvider = "gmail" | "outlook" | "exchange";
 
@@ -161,7 +161,7 @@ export type MailMessage = {
 /**
  * A row in the Drafts view: an unsent message, wherever it is kept.
  *
- * Ours live in this app and never reach the provider — that was a deliberate
+ * Ours live in this app and never reach the provider — that is a deliberate
  * choice, and the badge is what stops it being a surprise.
  */
 export type MailDraftRow = {

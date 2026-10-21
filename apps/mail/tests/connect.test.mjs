@@ -104,8 +104,9 @@ suite(async () => {
     (auth.searchParams.get("scope") ?? "").includes("offline_access"));
   check("outlook: asks for Contacts.Read, or the address book stays empty",
     (auth.searchParams.get("scope") ?? "").includes("Contacts.Read"));
-  check("outlook: sends one prompt value — 'select_account consent' is AADSTS90023",
-    auth.searchParams.get("prompt") === "consent");
+  check("outlook: picks an account and forces no consent, so an admin's approval is enough",
+    auth.searchParams.get("prompt") === "select_account",
+    auth.searchParams.get("prompt"));
   check("outlook: sends NO client secret; Entra refuses one from a public client",
     !seen.exchange.body.has("client_secret") &&
       !JSON.stringify(seen.exchange.body.get("scope")).includes("secret"),

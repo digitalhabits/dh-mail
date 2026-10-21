@@ -68,8 +68,9 @@ function ParticipantName({
                 Only a mailbox connected here has a tab to look like. An
                 address of yours that only sent mail (an alias, an old
                 college address) has no provider we know, and its short
-                name can be a tab's name: dana.fisher@college read as the
-                Gmail tab "dana.fisher", with Gmail's mark (2026-10-16).
+                name can be a tab's name. Without this check,
+                dana.fisher@college reads as the Gmail tab "dana.fisher",
+                with Gmail's mark.
               */}
               {chunk.mailboxes?.includes(email.trim().toLowerCase()) ?? true ? (
                 <MailboxName email={email} />

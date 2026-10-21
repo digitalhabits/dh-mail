@@ -142,7 +142,7 @@ export function useComposeAssistant(_input: unknown): typeof COMPOSE_ASSISTANT {
   return COMPOSE_ASSISTANT;
 }
 
-export async function notifyTeamDataChanged(): Promise<boolean> {
+export async function notifyTeamDataChanged(_source?: string): Promise<boolean> {
   return false;
 }
 
@@ -165,12 +165,12 @@ export function useAccountAssist(_account: string | null | undefined): boolean {
 export const TRIAGE_TAB = "triage";
 
 /** Beside the search box. Nothing here. */
-export function TriageButton(_props: { m: unknown }): null {
+export function TriageButton(): null {
   return null;
 }
 
 /** A tab right of Other. None here. */
-export function TriageTab(_props: { m: unknown; tabClass: (active: boolean) => string }): null {
+export function TriageTab(_props: { tabClass: (active: boolean) => string }): null {
   return null;
 }
 
@@ -180,7 +180,7 @@ export function useTriageOrder(): readonly { key: string; account: string; threa
   return null;
 }
 
-export function TriageListPane(_props: { m: unknown }): null {
+export function TriageListPane(): null {
   return null;
 }
 

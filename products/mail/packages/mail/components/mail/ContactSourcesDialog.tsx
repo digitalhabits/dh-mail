@@ -389,8 +389,9 @@ function ContactSourcesSyncButton({
 /**
  * One word for where a source stands, for the row's right-hand side.
  *
- * The rows used to say everything at once, five times over. Now each says
- * its name and one word, and the rest waits behind the chevron.
+ * Each row says its name and one word, and the rest waits behind the
+ * chevron. If every row says everything at once, the list says it five
+ * times over.
  */
 function sourceStatus(
   source: SourceStatus,

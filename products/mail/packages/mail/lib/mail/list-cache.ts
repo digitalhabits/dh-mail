@@ -9,13 +9,19 @@
  * the session map still works.
  */
 
+import {
+  MAIL_THREADS_CACHE_PREFIX,
+  OLD_PAGE_CACHE_V2_KEY,
+  OLD_THREADS_CACHE_V7_KEY,
+  OLD_THREADS_CACHE_V6_KEY,
+  OLD_THREADS_CACHE_V5_KEY,
+} from "@/lib/mail/storage-keys";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
 // v8: while Junk and Trash were asking the server for nothing, the inbox was
 // cached under their keys. Those entries would paint the wrong mail on the
 // next open, before the corrected fetch replaced it.
 // v9: rows gained hasAttachments, and a stored row never grows a field.
-const MAIL_THREADS_CACHE_PREFIX = "redd-plan-mail-threads-cache-v9";
 
 export type MailListCacheEntry = {
   threads: MailThreadSummary[];
@@ -49,12 +55,12 @@ export function memoryListKey(viewerId: string, key: string): string {
 export function scrubLegacySharedMailCaches(): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem("redd-plan-page-mail-v2");
-    localStorage.removeItem("redd-plan-mail-threads-cache-v7");
-    localStorage.removeItem("redd-plan-mail-threads-cache-v6");
-    localStorage.removeItem("redd-plan-mail-threads-cache-v5");
-    sessionStorage.removeItem("redd-plan-mail-threads-cache-v5");
-    sessionStorage.removeItem("redd-plan-mail-threads-cache-v6");
+    localStorage.removeItem(OLD_PAGE_CACHE_V2_KEY);
+    localStorage.removeItem(OLD_THREADS_CACHE_V7_KEY);
+    localStorage.removeItem(OLD_THREADS_CACHE_V6_KEY);
+    localStorage.removeItem(OLD_THREADS_CACHE_V5_KEY);
+    sessionStorage.removeItem(OLD_THREADS_CACHE_V5_KEY);
+    sessionStorage.removeItem(OLD_THREADS_CACHE_V6_KEY);
   } catch {
     /* private mode */
   }
@@ -109,9 +115,9 @@ export function readCachedList(
  *
  * The reader can pin what the list is holding. A thread opened from a
  * search hit, from a deep link, or simply older than the page the list has
- * loaded is not in it — so the pin had nothing to pin the thread as, and
- * said so. Unpin such a thread and it could not be pinned again: the pin's
- * own summary went with the pin.
+ * loaded is not in it. So the pin has nothing to pin the thread as. If
+ * such a thread is unpinned, it cannot be pinned again, because the pin's
+ * own summary goes with the pin.
  *
  * Every list this viewer has read is cached, summaries and all, and a
  * thread they are looking at has almost always been in one of them. So it
@@ -183,6 +189,31 @@ export function forgetThreadEverywhere(
   } catch {
     /* quota / private mode — memory is still correct this session */
   }
+}
+
+/**
+ * Take every row of one mailbox out of the cached lists, for every viewer.
+ *
+ * When a mailbox is removed, its local copy goes. These lists hold its
+ * senders, subjects and snippets too, so they go with it.
+ */
+export function forgetAccountEverywhere(account: string): void {
+  const email = account.trim().toLowerCase();
+  const isOfAccount = (thread: MailThreadSummary) => thread.account?.trim().toLowerCase() === email;
+  const viewers = new Set<string>();
+  for (const memKey of mailThreadsMemory.keys()) viewers.add(memKey.split("\0")[0]);
+  if (typeof window !== "undefined") {
+    try {
+      const prefix = `${MAIL_THREADS_CACHE_PREFIX}:`;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(prefix)) viewers.add(key.slice(prefix.length));
+      }
+    } catch {
+      /* private mode: the memory above is all there is */
+    }
+  }
+  for (const viewerId of viewers) forgetThreadEverywhere(viewerId, isOfAccount);
 }
 
 export function writeCachedList(

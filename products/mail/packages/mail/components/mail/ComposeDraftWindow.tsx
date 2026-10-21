@@ -18,6 +18,7 @@ import * as React from "react";
 
 import { ComposeView } from "@/components/mail/ComposeView";
 import { useMailZoom } from "@/components/mail/use-mail-layout";
+import { useZoomKeys } from "@/components/mail/use-zoom-keys";
 import { useMailT } from "@/lib/mail/i18n";
 import { signalPopoutSend } from "@/lib/mail/popout";
 import { useMailColorMode } from "@/lib/mail/theme";
@@ -44,6 +45,7 @@ export function ComposeDraftWindow({
   const t = useMailT();
   const colorMode = useMailColorMode();
   const [zoom, adjustZoom] = useMailZoom();
+  useZoomKeys(zoom, adjustZoom);
   // Set by Send just before the composer closes, so that close is a wait.
   const sendingRef = React.useRef(false);
   const [sending, setSending] = React.useState(false);

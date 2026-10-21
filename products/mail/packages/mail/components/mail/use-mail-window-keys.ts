@@ -263,9 +263,9 @@ export function useMailWindowKeys({
       /**
        * Down and Up move the selection to the next message.
        *
-       * They were scrolling the list and leaving the selection where it was,
-       * which is not what a list with a selection in it does — the reader
-       * loses sight of the row they are on and nothing follows the keys.
+       * They do not scroll the list and leave the selection where it is. A
+       * list with a selection in it does not do that. The reader loses sight
+       * of the row they are on, and nothing follows the keys.
        */
       if (
         !typing &&
@@ -317,8 +317,8 @@ export function useMailWindowKeys({
 
       if (sizeKey(e)) return;
 
-      // Option+Cmd+L expands the list. The next line used to drop every
-      // Option chord, so this has to be read first.
+      // Option+Cmd+L expands the list. The check below drops every Option
+      // chord, so this must be read first.
       if (shortcutMatchesEvent(e, shortcuts.expandList)) {
         if (typing || e.repeat) return;
         e.preventDefault();

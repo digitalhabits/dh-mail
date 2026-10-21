@@ -64,7 +64,7 @@ export type MailAccountPause = {
   pausedUntil?: number;
   quietHours?: MailQuietWindow[];
   /**
-   * Its own words to type before new mail comes in early (2026-10-20).
+   * Its own words to type before new mail comes in early.
    * Absent: the state's, every account's. 0 is kept: none, for this one.
    */
   unpauseWords?: number;

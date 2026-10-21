@@ -27,9 +27,9 @@ export function PersonAvatar({
       : row.people.slice(0, 1);
   /*
     The logo goes on the face it belongs to: the thread's sender, as on a
-    thread row. A group row has no address of its own, so no face in its
-    pile took the logo, and an institution's logo vanished when the list
-    was stacked (Ulrik, 2026-10-17).
+    thread row. A group row has no address of its own. If the logo goes by
+    the row, no face in its pile takes the logo, and an institution's logo
+    vanishes when the list is stacked.
   */
   const withLogo = row.threads.find((t) => t.crmLogoUrl);
   return (

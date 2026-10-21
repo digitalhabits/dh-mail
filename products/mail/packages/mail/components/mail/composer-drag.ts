@@ -11,30 +11,30 @@
  * on its edge puts it back.
  *
  * The place is not kept. It lasts while the thread is open, and the next
- * thread opens the card in its usual place. Kept for every thread, a card
- * moved once by a stray drag opened over the middle of every thread after
- * it, and read as a bug (Ulrik, 2026-10-17).
+ * thread opens the card in its usual place. If the place is kept for every
+ * thread, a card moved once by a stray drag opens over the middle of every
+ * thread after it, and that reads as a bug.
  *
  * The shift is drawn on the band that holds the card, not on the card:
  * the band cuts off what stands outside it, and a card moved up out of it
- * lost its top. The band is zoomed with the pane, so a shift on screen is
+ * loses its top. The band is zoomed with the pane, so a shift on screen is
  * divided by the zoom before it is drawn.
  *
  * The pointer is captured for the drag, and the press on the card's
- * ground starts no text selection or native drag. Either of those kept the
- * release from arriving, and the card went on following the pointer.
+ * ground starts no text selection or native drag. Either of those keeps the
+ * release from arriving, and the card goes on following the pointer.
  */
 
+import { OLD_COMPOSER_PLACE_KEY as OLD_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-/** Where a place was kept before it was not. Cleared once, so an old one goes. */
-const OLD_KEY = "dh-mail-composer-place";
+/** OLD_KEY holds a place that an earlier build kept. Cleared once, so an old one goes. */
 const DRAG_SLOP = 4;
 const EDGE = 8;
 /*
   A recipient field is not the card's ground either: its chips are carried
-  to another field (recipient-carry). A press on a chip started both, and
-  the card took the pointer, so the chip never landed (2026-10-19).
+  to another field (recipient-carry). If a press on a chip starts both, the
+  card takes the pointer, and the chip never lands.
 */
 export const NOT_A_HANDLE =
   'input, textarea, select, button, a, label, [contenteditable="true"], [contenteditable=""], .ql-editor, [role="separator"], [role="button"], [role="combobox"], [role="listbox"], [data-recipient-drop]';

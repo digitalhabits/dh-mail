@@ -8,8 +8,9 @@
  * belongs to this install, like the count's own key.
  */
 
+import { USAGE_PING_ENABLED_KEY } from "@/lib/mail/storage-keys";
+
 export const USAGE_PING_URL = "https://plan.digitalhabits.org/api/ping";
-export const USAGE_PING_ENABLED_KEY = "mail_usage_ping_enabled";
 
 /** On unless the user turned it off. */
 export function readUsagePingEnabled(): boolean {

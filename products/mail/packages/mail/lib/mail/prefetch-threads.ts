@@ -82,19 +82,18 @@ export async function prefetchMailThreadBodies(
   /*
    * A cancelled sweep finishes what it has started, and keeps it.
    *
-   * Cancelling stops the *next* fetch from beginning; it does not abort the
-   * one in flight, and it does not throw the answer away. Both used to
-   * happen, and neither did what it looked like it did. The abort never
-   * reached the provider — the route takes no signal, so Gmail did every
-   * bit of the work and its quota was spent either way. And the answer,
-   * arriving a moment after the cancel, was dropped rather than cached, so
-   * the next sweep asked Gmail the same question again.
+   * Cancelling stops the *next* fetch from beginning. It does not abort the
+   * one in flight, and it does not throw the answer away. An abort does not
+   * reach the provider. The route takes no signal, so Gmail does every bit
+   * of the work and its quota is spent either way. If the answer arrives a
+   * moment after the cancel and is dropped, the next sweep asks Gmail the
+   * same question again.
    *
    * The sweep runs on every change to the top of the list, and archiving
-   * changes the top of the list. Archive faster than a fetch takes and it
-   * cancelled itself on every keystroke: three fetches burned, three
-   * answers dropped, no thread ever cached, and the same three fetched
-   * again a second later. That is what ran a mailbox into Gmail's
+   * changes the top of the list. If the reader archives faster than a fetch
+   * takes, the sweep cancels itself on every keystroke. If a cancel drops
+   * the answers, three fetches burn, no thread is cached, and the same three
+   * are fetched again a second later. That runs a mailbox into Gmail's
    * per-minute limit during an afternoon of clearing the inbox.
    */
   const worker = async () => {

@@ -300,7 +300,7 @@ macro_rules! mail_commands {
       mail_native::handover::activate_outlook,
       mail_native::handover::open_outlook_compose,
       mail_native::handover::arrange_outlook_handover,
-      mail_native::handover::outlook_reply,
+      mail_native::handover::outlook_draft,
       oauth::oauth_token_request,
       #[cfg(any(feature = "team-updater", feature = "public-updater"))]
       mail_native::team_update::team_update_status,

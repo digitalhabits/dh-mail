@@ -83,14 +83,12 @@ export function ComposerPreview({
           signatureCopy={m.composer.signatureHtml}
           zoom={zoom}
           /* The preview is the mail as it will land, so a reply that
-             quotes nothing previews with nothing quoted. This used to
-             be handled by the preview not being reachable at all with
-             the history left out. */
+             quotes nothing previews with nothing quoted. */
           /* The preview is the mail as it will land. A forwarded
              conversation and a rebuilt tail carry their attributions
-             inside themselves, so those pass no intro line; the one
-             remaining single-message case is a reply to a picked
-             message, which still introduces itself the old way. */
+             inside themselves, so those pass no intro line. A reply to
+             a picked message is the one single-message case left, and
+             it keeps its intro line. */
           quote={
             forwarding
               ? forwarded

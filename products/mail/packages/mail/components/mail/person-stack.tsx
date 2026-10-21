@@ -7,8 +7,7 @@
  * "4 threads" and a chevron by the name. One click unfolds the stack under it, every thread a row of
  * its own, and opens the newest in the reader; that row is marked, so it
  * is plain which is open. A click on another opens it; a click on the
- * person's row again folds the stack. The person's threads used to open in
- * the reader as a list of their own.
+ * person's row again folds the stack.
  */
 
 import { ChevronDown, ChevronRight, Paperclip } from "lucide-react";

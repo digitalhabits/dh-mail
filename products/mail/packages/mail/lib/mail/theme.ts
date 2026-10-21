@@ -12,9 +12,9 @@
  * reads back. Only the new `system` value is added.
  */
 
+import { MAIL_COLOR_MODE_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-export const MAIL_COLOR_MODE_KEY = "redd-plan-mail-color-mode";
 export const MAIL_COLOR_MODE_EVENT = "redd-plan-mail-color-mode-changed";
 const MAIL_DARK_QUERY = "(prefers-color-scheme: dark)";
 

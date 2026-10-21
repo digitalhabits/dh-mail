@@ -23,8 +23,8 @@ const NARROW_LINE_CHARS = 45;
 /**
  * How many lines a message may fill and still be shown whole.
  *
- * Four, not two. Two was the old answer, and it came from the size of the
- * folded preview: fold nothing that the preview would show anyway. That is a
+ * Four, not two. Two comes from the size of the folded preview: fold nothing
+ * that the preview shows anyway. That is a
  * lower bar than the one that matters, which is whether a reader wants the
  * control at all. A four-line note is read at a glance, and asking for a
  * click before the last line of it is the noise this rule exists to remove.

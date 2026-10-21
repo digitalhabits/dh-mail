@@ -2,7 +2,7 @@
 
 /**
  * One menu for hiding and pausing, opened from the account tabs: a second
- * press on the chosen tab, or a right-click (Ulrik's design, 2026-10-20).
+ * press on the chosen tab, or a right-click.
  *
  * Two tabs at the top name the two schedules, Shown in Mail and New mail
  * arrives. Each has:
@@ -14,8 +14,8 @@
  * - For a while: hide or pause for a time when it is shown or fetching;
  *   show it or get new mail now when it is not.
  *
- * The pause menu that hung off Sync is gone: this is where pausing is now.
- * The words to type are still one setting for every account (hence "The
+ * Pausing is here, not in a menu on Sync.
+ * The words to type are one setting for every account (hence "The
  * same for all accounts" under them); a setting per account comes next.
  */
 
@@ -345,7 +345,7 @@ function MenuRow({
  * An account's schedule: its name (or, on its own menu, its answer) and its
  * hours, with a closed eye (or a pause) in front while it is hidden (or
  * paused) now. Not "Shown now" or "Shown again at …": the eye says it, and
- * the hours say the rest (Ulrik, 2026-10-20).
+ * the hours say the rest.
  */
 function ScheduleRow({
   tab,
@@ -581,8 +581,8 @@ function ShowEarly({ email, hide, onDone }: { email: string; hide: MailboxHideCo
 
 /**
  * Until a time…: Mail's own picker, the month and the clock side by side, as
- * in Send later and Snooze. Not the system's date field, which looked like
- * nothing else in Mail (Ulrik, 2026-10-21).
+ * in Send later and Snooze. Not the system's date field, which looks like
+ * nothing else in Mail.
  */
 function UntilTimePage({ tab, onBack, onPick }: { tab: HoursTab; onBack: () => void; onPick: (until: number) => void }) {
   const t = useMailT();

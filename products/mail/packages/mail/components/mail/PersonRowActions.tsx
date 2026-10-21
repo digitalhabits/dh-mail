@@ -127,8 +127,8 @@ export function PersonRowActions({
 /**
  * Faces for a person-view row, in one avatar's square.
  *
- * A horizontal stack made a group row wider than a one-person row, so the
- * names no longer lined up. One box keeps the column still. The faces
+ * A horizontal stack makes a group row wider than a one-person row, so the
+ * names do not line up. One box keeps the column still. The faces
  * come from `row.people` as the title already named them. A second
  * filter here leaves a name with no face.
  */

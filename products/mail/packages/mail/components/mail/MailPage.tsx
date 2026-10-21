@@ -9,10 +9,11 @@ import { FOLDER_RAIL_MAX_WIDTH, FOLDER_RAIL_MIN_WIDTH } from "@/lib/mail/folder-
 import { CONTACTS_CHANGED_EVENT, ContactSourcesDialogHost } from "@/components/mail/ContactSourcesDialog";
 import { MacContactsAskCard } from "@/components/mail/MacContactsAskCard";
 import { UnpauseChallengeHost } from "@/components/mail/UnpauseChallenge";
-import { useMailboxHide } from "@/components/mail/use-mailbox-hide";
 import { useListPeek } from "@/components/mail/use-list-peek";
 import { railBoxStyle } from "@/components/mail/list-box-style";
 import { useMailPage, type MailPageProps } from "@/components/mail/use-mail-page";
+import { MailPageSlices } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import { MissedScheduledDialog } from "@/components/mail/MissedScheduledDialog";
 import { ReadingPaneFrame, ListResizeHandle, ListPaneFrame, ListHideButton } from "@/components/mail/mail-pane-frames";
 import { MailTitleBar } from "@/components/mail/mail-title-bar";
@@ -52,7 +53,7 @@ function placeFolders(
   accountTabsShowing: boolean
 ): { tabRow: React.ReactNode; filterRow: React.ReactNode } {
   // Before the mailbox tabs, the expanded list too: its own row above
-  // them held nothing else once New email went to the title bar.
+  // them holds nothing else, because New email is in the title bar.
   if (accountTabsShowing) return { tabRow: button, filterRow: null };
   return { tabRow: null, filterRow: button };
 }
@@ -75,37 +76,58 @@ export function MailPage(props: MailPageProps) {
   const {
     accountEmails,
     accountLabels,
-    activeCustomList,
-    activeFolder,
-    archive,
-    autoReplyAccount,
-    autoReplyOpen,
-    clearMultiSelection,
-    closeAutoReply,
-    backFromAutoReply,
-    closeCompose,
-    colorMode,
-    composeSeed,
-    composing,
-    filterIsOn,
-    hideList,
     isOutlookAccount,
-    listMounted,
-    listSlideOverlay,
-    listSliding,
-    listVertical,
-    macAskTrigger,
-    mailSurfaceRef,
-    markThreadInPeople,
-    multiSelectedCount,
-    paneRowRef,
     pauseChip,
     pauseMailUntil,
     pauseNow,
     pauseState,
     pausedLabel,
-    phone,
+    resumeMail,
+    setFollowAllHours,
+    setUnpauseWords,
+    setMailQuietHours,
+  } = m.accounts;
+  const {
+    activeCustomList,
+    activeFolder,
+    clearMultiSelection,
+    filterIsOn,
+    multiSelectedCount,
+    railSystemView,
+    searchInputRef,
+    setActiveFolder,
+    setSearch,
+    tab,
+    viewMode,
+  } = m.list;
+  const {
+    archive,
+    markThreadInPeople,
+  } = m.actions;
+  const {
+    autoReplyAccount,
+    autoReplyOpen,
+    closeAutoReply,
+    backFromAutoReply,
+    closeCompose,
+    composeSeed,
+    composing,
+    macAskTrigger,
     phoneDockedDraft,
+    setPhoneDockedDraft,
+    startCompose,
+    storeAutoReply,
+  } = m.compose;
+  const {
+    colorMode,
+    hideList,
+    listMounted,
+    listSlideOverlay,
+    listSliding,
+    listVertical,
+    mailSurfaceRef,
+    paneRowRef,
+    phone,
     railHidden,
     railInset,
     railOnRight,
@@ -113,33 +135,22 @@ export function MailPage(props: MailPageProps) {
     railShowing,
     railSlideDuration,
     railSlideTransform,
-    railSystemView,
     railWidth,
-    resumeMail,
-    searchInputRef,
+    shownRailWidth,
+    startRailResize,
+  } = m.layout;
+  const {
     selected,
     selectedPerson,
-    setActiveFolder,
-    setFollowAllHours,
-    setUnpauseWords,
-    setMailQuietHours,
-    setPhoneDockedDraft,
-    setSearch,
     setSelected,
     setSelectedPersonKey,
-    shownRailWidth,
-    startCompose,
-    startRailResize,
-    storeAutoReply,
-    t,
-    tab,
-    viewMode,
-  } = m;
+  } = m.reader;
+  const t = useMailT();
 
   const foldersMenu = (iconOnly: boolean) => (
-    <FoldersMenu m={m} iconOnly={iconOnly} />
+    <FoldersMenu iconOnly={iconOnly} />
   );
-  const folderRail = <FolderRail m={m} />;
+  const folderRail = <FolderRail />;
   /**
    * The way to the folders.
    *
@@ -152,43 +163,40 @@ export function MailPage(props: MailPageProps) {
    * the only way out, and a control that vanished once it had worked
    * would leave a gap in the row and the rail with no way to close it.
    */
-  const foldersButton = <FoldersButton m={m} />;
+  const foldersButton = <FoldersButton />;
   /** The filter chips: the built-in lists, the reader's own, and New list. */
-  const filterChips = <FilterChips m={m} />;
+  const filterChips = <FilterChips />;
   /** The mailbox row: All, then one tab per mailbox. */
-  // Hiding mailboxes for a while: its clock runs as long as the page does.
-  const mailboxHide = useMailboxHide({
-    visible: m.accountEmails,
-    onVisibilityChange: m.onMailboxVisibilityChange,
-  });
-  const accountTabs = <AccountTabs m={m} hide={mailboxHide} />;
+  // Hiding mailboxes for a while (use-mailbox-hide, called in useMailPage).
+  const mailboxHide = m.accounts.hide;
+  const accountTabs = <AccountTabs />;
   /*
     The mailbox row shows when more than one mailbox is connected, the
-    hidden ones counted. It went by the shown ones alone, so hiding all but
-    one took the row away, and with it the tab that shows the others again.
+    hidden ones counted. If it goes by the shown ones alone, hiding all but
+    one takes the row away, and with it the tab that shows the others again.
   */
   const connectedMailboxes = new Set(
-    [...m.accountEmails, ...mailboxHide.hidden].map((email) => email.toLowerCase())
+    [...m.accounts.accountEmails, ...mailboxHide.hidden].map((email) => email.toLowerCase())
   );
-  const accountTabsShowing = connectedMailboxes.size > 1 && !m.activeFolder;
+  const accountTabsShowing = connectedMailboxes.size > 1 && !m.list.activeFolder;
   const folders = placeFolders(foldersButton, accountTabsShowing);
-  const filterRow = <FilterRow m={m} filterChips={filterChips} foldersButton={folders.filterRow} />;
+  const filterRow = <FilterRow filterChips={filterChips} foldersButton={folders.filterRow} />;
   // The list put away comes out over the reader from its edge, side by side only.
-  const listPeek = useListPeek(m.hideList && !m.listVertical && !m.listExpanded);
+  const listPeek = useListPeek(m.layout.hideList && !m.layout.listVertical && !m.layout.listExpanded);
   // The folders come out with it when they are shown.
-  const railPeeking = listPeek.on && !m.listSliding && m.railShowing;
-  const { listOut, controlsLeft } = titlebarFollowsList(listPeek, m);
+  const railPeeking = listPeek.on && !m.layout.listSliding && m.layout.railShowing;
+  const { listOut, controlsLeft } = titlebarFollowsList(listPeek, m.layout);
   const listTabsOrFolder = (
-    <ListTabsOrFolder m={m} accountTabs={accountTabs} filterRow={filterRow} foldersButton={folders.tabRow} accountTabsShowing={accountTabsShowing} />
+    <ListTabsOrFolder accountTabs={accountTabs} filterRow={filterRow} foldersButton={folders.tabRow} accountTabsShowing={accountTabsShowing} />
   );
   /** Display & accounts, with Settings, shortcuts and contact sources in it. */
-  const layoutMenu = <LayoutMenu m={m} />;
+  const layoutMenu = <LayoutMenu />;
   /** The rows, with the banners over them and the load-more under them. */
-  const threadListColumn = <ThreadListColumn m={m} listTabsOrFolder={listTabsOrFolder} hide={mailboxHide} />;
+  const threadListColumn = <ThreadListColumn listTabsOrFolder={listTabsOrFolder} hide={mailboxHide} />;
   /** What the reading pane holds: a composer, a thread, a person, or the rest picture. */
   // From offers every mailbox: hiding one takes its mail away, not its address.
-  const sendFrom = sendFromAccounts(m.accountEmails, mailboxHide.hidden);
-  const readingPaneContent = <ReadingPaneContent m={m} hide={mailboxHide} sendFrom={sendFrom} />;
+  const sendFrom = sendFromAccounts(m.accounts.accountEmails, mailboxHide.hidden);
+  const readingPaneContent = <ReadingPaneContent hide={mailboxHide} sendFrom={sendFrom} />;
   /* The team layer's host, for whichever pane asked. Here and not in the
      pane: the pane is made again for every thread. The public app's host
      draws nothing. */
@@ -239,6 +247,7 @@ export function MailPage(props: MailPageProps) {
             ? { kind: "person", node: readingPaneContent }
             : null;
     return (
+      <MailPageSlices slices={m}>
       <MailPhoneShell
         surfaceRef={mailSurfaceRef}
         colorMode={colorMode}
@@ -254,7 +263,7 @@ export function MailPage(props: MailPageProps) {
           customListName: activeCustomList?.name ?? null,
           tab,
           t,
-          exceptHidden: m.hiddenSearch.leftOut,
+          exceptHidden: m.list.hiddenSearch.leftOut,
         })}
         onSearchChange={setSearch}
         liveMenu={
@@ -330,14 +339,16 @@ export function MailPage(props: MailPageProps) {
         {contactDialogs}
         <ConnectedMailboxRhythm />
       </MailPhoneShell>
+      </MailPageSlices>
     );
   }
   return (
+    <MailPageSlices slices={m}>
     <div
       ref={mailSurfaceRef}
       // The window's height in the app's own pixels — see use-ui-scale.
-      // `h-dvh` is not scaled by zoom, so at any size but 100% it was
-      // taller than the window it sat in.
+      // `h-dvh` is not scaled by zoom, so at any size but 100% it is
+      // taller than the window it sits in.
       className="mail-shell flex h-[var(--mail-viewport-h,100dvh)] min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mail-chrome)]"
       data-theme={colorMode}
       style={
@@ -349,9 +360,9 @@ export function MailPage(props: MailPageProps) {
         } as React.CSSProperties
       }
     >
-      <MailTitleBar m={m} layoutMenu={layoutMenu} listOut={listOut} listToggle={<ListHideButton m={m} peek={listPeek} />} />
+      <MailTitleBar layoutMenu={layoutMenu} listOut={listOut} listToggle={<ListHideButton peek={listPeek} />} />
       {/* Scheduled mail that missed its hour: asked about once. */}
-      <MissedScheduledDialog m={m} />
+      <MissedScheduledDialog />
 
       {/* The rail stands outside the pane row rather than inside it: the
           pane may be laid out top-to-bottom (list over reader), and the
@@ -419,14 +430,14 @@ export function MailPage(props: MailPageProps) {
             travels left with it and is cut off against the pane's own left
             edge, the way a drawer goes back into a cabinet.
 
-            One property moving, and not two. This used to also translate
-            the rail left as the box narrowed, so the content left the
-            screen at twice the rate the gap closed — gone halfway through,
-            with an empty gap still shutting after it. That is what made
-            hiding feel abrupt when showing did not.
+            One property moving, and not two. If the rail also moves left
+            as the box narrows, the content leaves the screen at twice the
+            rate that the gap closes. It is gone halfway through, with an
+            empty gap still shutting after it, and hiding feels abrupt when
+            showing does not.
 
             Held to the other edge when the rail is on the right, for the
-            same reason: the cabinet is on that side now, so the drawer has
+            same reason: the cabinet is on that side, so the drawer has
             to go back into it that way.
           */}
           <div
@@ -481,12 +492,11 @@ export function MailPage(props: MailPageProps) {
             be what is on both sides of it — the chrome, which is what the
             list is painted in and what the reader's own frame is.
             
-            It has been wrong twice in the same way: white while the reader
-            was white, then the reading surface once that stepped away from
-            the chrome, which on the dark theme is lighter than either
-            neighbour and read as a lit strip down the join. The list's own
-            border-r is what separates the two; this is only the colour
-            behind a 4px gap.
+            Not white, and not the reading surface. Neither is always the
+            chrome. On the dark theme the reading surface is lighter than
+            either neighbour and reads as a lit strip down the join. The
+            list's own border-r is what separates the two. This is only the
+            colour behind a 4px gap.
           */
           // `relative`: the sliding list anchors to this box — the same
           // geometry as the pane row while a slide runs, since the rail is
@@ -498,20 +508,21 @@ export function MailPage(props: MailPageProps) {
         // Before the rail when the rail is on the right; after it otherwise.
         style={{ order: railOnRight ? 1 : 3 }}
       >
-      <ListPaneFrame m={m} peek={listPeek} foldersButton={foldersButton} foldersMenu={foldersMenu} listTabsOrFolder={listTabsOrFolder} threadListColumn={threadListColumn} />
+      <ListPaneFrame peek={listPeek} foldersButton={foldersButton} foldersMenu={foldersMenu} listTabsOrFolder={listTabsOrFolder} threadListColumn={threadListColumn} />
 
-      <ListResizeHandle m={m} />
+      <ListResizeHandle />
 
-      <ReadingPaneFrame m={m} peek={listPeek} readingPaneContent={readingPaneContent} />
+      <ReadingPaneFrame peek={listPeek} readingPaneContent={readingPaneContent} />
       </div>
       </div>
 
       {autoReplyDialog}
       {teamLayerHostNode}
-      <FloatingCards m={m} sendFrom={sendFrom} />
+      <FloatingCards sendFrom={sendFrom} />
       {contactDialogs}
       <ConnectedMailboxRhythm />
     </div>
+    </MailPageSlices>
   );
 }
 

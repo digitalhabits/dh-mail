@@ -484,12 +484,12 @@ export function SettingsDialog({
    *
    * For a dialog whose answer is in what it covers: a proposal is read
    * against the thread that earned it, and a reader checking a
-   * quoted line had no way to see it. Off by default — a settings panel
+   * quoted line must be able to see it. Off by default — a settings panel
    * covers nothing anybody needs, and a card that slides under the hand is
    * worse than one that stays where it was put.
    *
    * It also leaves what it covers alive — the thread scrolls under the card
-   * and can be clicked into, and the backdrop no longer shuts the dialog.
+   * and can be clicked into, and the backdrop does not shut the dialog.
    * See `seeThrough` below.
    */
   draggable?: boolean;
@@ -529,10 +529,9 @@ export function SettingsDialog({
   const colorMode = useMailColorMode();
 
   /*
-    Drawn at the top of the page, not where it was opened. Opened from the
-    reader, it sat inside the reader's stacking order, and the list's
-    resize edge beside the reader showed through the card (a KU tester,
-    2026-10-09, in the Signature dialog).
+    Drawn at the top of the page, not where it was opened. If it is drawn
+    inside the reader, it sits in the reader's stacking order. Then the
+    list's resize edge beside the reader shows through the card.
   */
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -546,7 +545,7 @@ export function SettingsDialog({
     >
       <div
         // Dark enough that the mail behind does not pull the eye from the
-        // question (Ulrik, 2026-10-20). A see-through card keeps a light
+        // question. A see-through card keeps a light
         // shade: what it covers is meant to be read.
         className={cn("absolute inset-0", seeThrough ? "pointer-events-none bg-black/20" : "bg-black/45")}
         onClick={seeThrough ? undefined : onClose}

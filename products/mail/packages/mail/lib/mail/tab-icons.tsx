@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * An icon for each list tab, as To-Do's tabs have (2026-10-11).
+ * An icon for each list tab, as To-Do's tabs have.
  *
  * Any Lucide icon, stored by its kebab-case name, keyed by the tab's id:
  * "people", "other", or "list:<id>" for a list of one's own. In this
@@ -9,6 +9,7 @@
  * icon shows its name alone.
  */
 
+import { MAIL_TAB_ICON_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 import {
   Briefcase,
@@ -33,7 +34,6 @@ import {
 } from "lucide-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 
-export const MAIL_TAB_ICON_KEY = "redd-plan-mail-tab-icons";
 const MAIL_TAB_ICON_EVENT = "redd-plan-mail-tab-icons-changed";
 
 /** The swatches offered first in the list editor. */

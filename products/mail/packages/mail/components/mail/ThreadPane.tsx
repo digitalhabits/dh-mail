@@ -149,7 +149,7 @@ export function ThreadPane(props: ThreadPaneProps) {
 
       Straight to the discard, not the "Discard draft?" question: that
       question lives in the thread's own dialogs, which this view does not
-      draw, so asking it here showed nothing and deleted nothing. This page
+      draw, so asking it here shows nothing and deletes nothing. This page
       already says what is going; the toast still offers Undo.
     */
     const problem = fromDrafts ? draftThreadProblem(error) : null;

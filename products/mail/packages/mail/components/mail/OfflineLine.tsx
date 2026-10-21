@@ -6,10 +6,10 @@ import type { OfflineKind } from "@/lib/mail/use-offline";
  * One line above the list while Mail is offline: what is wrong, that what
  * the reader does is kept, and how much waits to be sent.
  *
- * It stands in for the line each mailbox gave when its sync stopped on the
- * network. Those came one per mailbox, only after a sync had failed, and
- * did not say that an archive or a read made meanwhile was kept. A tester
- * offline took a missing answer for a lost action (2026-10-15).
+ * One line, and not a line for each mailbox when its sync stops on the
+ * network. Those come only after a sync fails, and do not say that an
+ * archive or a read made meanwhile is kept. Then a reader who is offline
+ * takes a missing answer for a lost action.
  */
 export function OfflineLine({ offline, waiting, t }: { offline: OfflineKind; waiting: number; t: MailT }) {
   if (!offline) return null;

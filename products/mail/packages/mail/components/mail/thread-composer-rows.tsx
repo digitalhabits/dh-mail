@@ -6,8 +6,8 @@
  * subject when there is one. Each row is a label and its field, with what
  * belongs to the row at its right end.
  *
- * They were boxes of their own above the card, four of them and a line of
- * "Add Cc", and took more room than the message did. Now:
+ * Boxes of their own above the card, four of them and a line of "Add Cc",
+ * take more room than the message does. So:
  *
  * - On a forward, Cc and Bcc are buttons at the end of the To row until
  *   asked for. A reply shows its Cc row at once (most replies keep somebody
@@ -83,7 +83,6 @@ export function ComposerFieldRows({ m }: { m: ThreadPaneModel }) {
   /*
     Cc and Bcc were clicked to add somebody, so the new box takes the
     cursor. It is drawn on the next frame, so it is focused after that.
-    Before, the field appeared and the cursor stayed where it was.
   */
   const bccInputRef = React.useRef<HTMLInputElement>(null);
   const focusSoon = (ref: React.RefObject<HTMLInputElement | null>) =>

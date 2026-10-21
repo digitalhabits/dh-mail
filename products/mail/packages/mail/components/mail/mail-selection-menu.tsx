@@ -5,9 +5,8 @@
  *
  * A right-click on a row that is one of two or more selected acts on all of
  * them, as every list does: mark them read or unread, snooze them, pin
- * them, pop them out, archive or delete them. It acted on the one row under
- * the pointer before, which read as the menu ignoring the selection (Ulrik,
- * 2026-10-10).
+ * them, pop them out, archive or delete them. If it acts on the one row
+ * under the pointer, the menu reads as ignoring the selection.
  *
  * The same menu as a person with several conversations (`PersonRowMenu`):
  * what is offered for a pile is what is offered for a selection. In the
@@ -15,11 +14,12 @@
  * people, and pinning pins the people, as the hover pin does there.
  */
 
+import { usePageActions, usePageList } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import * as React from "react";
 
 import { PersonRowMenu } from "@/components/mail/ThreadListRow";
 import { SnoozeMenu } from "@/components/mail/SnoozeMenu";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { isMailPersonPinned } from "@/lib/mail/person-pins";
 import { threadKey } from "@/lib/mail/thread-copies";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -27,36 +27,20 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 export type SelectionMenuAt = { x: number; y: number };
 
 /** Whether a right-click on this row should open the selection's menu. */
-export function rowInSelection(m: MailPageModel, rowKey: string): boolean {
-  return m.multiKeys.size >= 2 && m.multiKeys.has(rowKey);
+export function rowInSelection(multiKeys: ReadonlySet<string>, rowKey: string): boolean {
+  return multiKeys.size >= 2 && multiKeys.has(rowKey);
 }
 
 export function SelectionRowMenu({
-  m,
   at,
   onClose,
 }: {
-  m: MailPageModel;
   at: SelectionMenuAt | null;
   onClose: () => void;
 }) {
-  const {
-    actOnSelection,
-    askDeleteForever,
-    multiKeys,
-    personRows,
-    pinKeySet,
-    purgeFrom,
-    rowMenuActions,
-    selectedThreadsNow,
-    snooze,
-    t,
-    togglePersonPin,
-    togglePin,
-    toggleRead,
-    unsnooze,
-    viewMode,
-  } = m;
+  const t = useMailT();
+  const { actOnSelection, askDeleteForever, purgeFrom, rowMenuActions, snooze, togglePersonPin, togglePin, toggleRead, unsnooze } = usePageActions();
+  const { multiKeys, personRows, pinKeySet, selectedThreadsNow, viewMode } = usePageList();
   /*
     The times, hung where the menu was. The menu closes as the picker
     opens, so the picker cannot live inside it; the threads are read when

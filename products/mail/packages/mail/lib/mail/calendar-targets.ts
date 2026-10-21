@@ -1,19 +1,18 @@
 /**
  * Where an invite goes when the reader says "add it".
  *
- * The one answer used to be the calendar application on this machine, which
- * is the wrong answer for anybody whose calendar lives on the web. These are
+ * The calendar application on this machine is the wrong answer for anybody
+ * whose calendar lives on the web. These are
  * the three places, the addresses that reach the two web ones, and the memory
  * of which one was picked last.
  */
 
+import { CALENDAR_TARGET_KEY } from "@/lib/mail/storage-keys";
 import type { ParsedCalendarInvite } from "@/lib/mail/ics";
 
 export type CalendarTarget = "app" | "google" | "outlook";
 
 export const CALENDAR_TARGETS: CalendarTarget[] = ["app", "google", "outlook"];
-
-const CALENDAR_TARGET_KEY = "redd-plan-mail-calendar-target";
 
 function isCalendarTarget(value: unknown): value is CalendarTarget {
   return (

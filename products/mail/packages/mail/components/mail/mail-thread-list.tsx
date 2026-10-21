@@ -3,11 +3,13 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { usePageAccounts, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import * as React from "react";
@@ -41,65 +43,45 @@ import { MailListLoading } from "@/components/mail/MailListLoading";
 import { gmailOauthHref, MAIL_OFF_TAB_VIEWS, mailboxScopeApiAccount, outlookOauthHref } from "@/components/mail/mail-list-state";
 import { OlderMailRows } from "@/components/mail/mail-older-rows";
 import { useOlderMail } from "@/components/mail/use-older-mail";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/mail/mail-list-rows";
 import { HiddenAccountsContext } from "@/components/mail/hidden-account-mark";
 
 /** The scheduled group above the list, in the views it belongs in. */
-function ScheduledOnTop({ m }: { m: MailPageModel }) {
-  const { draftsView, debouncedSearch, accountEmails, tab } = m;
+function ScheduledOnTop() {
+  const { draftsView } = usePageCompose();
+  const { debouncedSearch, tab } = usePageList();
+  const { accountEmails } = usePageAccounts();
   if (draftsView || debouncedSearch || !accountEmails.length) return null;
   if (["outbox", "snoozed", "sent", TRIAGE_TAB].includes(tab)) return null;
-  return <OutboxGroup m={m} onTop />;
+  return <OutboxGroup onTop />;
 }
 
 /** The rows, with the banners over them and the load-more under them. */
 
 export function ThreadListColumn({
-  m,
   listTabsOrFolder,
   hide,
 }: {
-  m: MailPageModel;
   listTabsOrFolder: React.ReactNode;
   /** Hidden mailboxes: with every one hidden, the list says so, not "connect". */
   hide?: MailboxHideControls;
 }) {
-  const {
-    accountEmails,
-    chromeDark,
-    debouncedSearch,
-    draftsView,
-    listCursor,
-    listError,
-    listExpanded,
-    listNarrow,
-    listRowsOnPane,
-    listScrollRef,
-    listVertical,
-    loadMoreThreads,
-    loadingList,
-    loadingMore,
-    mailProviderNames,
-    phone,
-    pinnedThreads,
-    readSoFar,
-    searchedVisible,
-    t,
-    tab,
-    threadListRef,
-    threads,
-    viewMode,
-  } = m;
-  const older = useOlderSearch(m);
+  const t = useMailT();
+  const pageList = usePageList();
+  const { accountEmails } = usePageAccounts();
+  const { chromeDark, listExpanded, listNarrow, listRowsOnPane, listVertical, phone, threadListRef } = usePageLayout();
+  const { debouncedSearch, listCursor, listError, listScrollRef, loadMoreThreads, loadingList, loadingMore, mailProviderNames, pinnedThreads, searchedVisible, tab, threads, viewMode } = usePageList();
+  const { draftsView } = usePageCompose();
+  const { readSoFar } = usePageSync();
+  const older = useOlderSearch();
   // Stacks switched: the rows glide from where they were (lib/mail/stack-glide).
   React.useLayoutEffect(() => {
     glideToNewPlaces(listScrollRef.current);
   }, [viewMode, listScrollRef]);
   // The rows mark a hidden account's mail (hidden-account-mark).
   const hiddenSet = React.useMemo(
-    () => new Set(m.hiddenSearch.emails.map((email) => email.toLowerCase())),
-    [m.hiddenSearch.emails]
+    () => new Set(pageList.hiddenSearch.emails.map((email) => email.toLowerCase())),
+    [pageList.hiddenSearch.emails]
   );
   return (
     <HiddenAccountsContext.Provider value={hiddenSet}>
@@ -124,13 +106,13 @@ export function ThreadListColumn({
             listExpanded ? "pb-4" : "pb-6"
           )}
         >
-          <ListNotices m={m} />
+          <ListNotices />
           {/* What this computer or the server will send later, at the top
               of the list, where the reader sees it every time they look —
               not only in the Outbox view (docs/mail-send-later.md, 4.7). */}
-          <ScheduledOnTop m={m} />
+          <ScheduledOnTop />
           {draftsView ? (
-            <DraftsListView m={m} />
+            <DraftsListView />
           ) : loadingList &&
           accountEmails.length > 0 &&
           !threads.length &&
@@ -159,31 +141,31 @@ export function ThreadListColumn({
                 {t("connect")}
               </p>
             ) : hide?.hidden.length ? (
-            <HiddenMailboxesNotice m={m} hide={hide} />
+            <HiddenMailboxesNotice hide={hide} />
             ) : (
-            <NoMailboxNotice m={m} />
+            <NoMailboxNotice />
             )
           ) : tab === TRIAGE_TAB ? (
             // The ranked list, in the organization's build. It stands in for
             // the list rather than filtering it: the order is its own.
-            <TriageListPane m={m} />
+            <TriageListPane />
           ) : tab === "outbox" ? (
             // The Outbox view shows what is on its way out, and nothing of
             // the inbox the list still holds underneath.
             <div className="pt-2">
-              <OutboxGroup m={m} />
+              <OutboxGroup />
             </div>
           ) : !searchedVisible.length && !pinnedThreads.length && !older.threads.length ? (
-            <EmptyListNotice m={m} />
+            <EmptyListNotice />
           ) : viewMode === "people" && tab !== "snoozed" && tab !== "sent" ? (
-            <PeopleRows m={m} />
+            <PeopleRows />
           ) : (
-            <ThreadRows m={m} />
+            <ThreadRows />
           )}
           {/* Below the local results: the server's matches in mail older
               than the copy's body window. */}
           {debouncedSearch && !draftsView && tab !== "outbox" ? (
-            <OlderMailRows m={m} older={older} />
+            <OlderMailRows older={older} />
           ) : null}
           {/* Results in hand, and more of them behind the button below. A
               search that has answered still looks finished, so say it is not. */}
@@ -246,8 +228,10 @@ export function ThreadListColumn({
  * every folder: the server search is of All Mail, so a search inside a
  * folder or a view of its own does not reach past the copy.
  */
-function useOlderSearch(m: MailPageModel) {
-  const { accountEmails, activeFolder, debouncedSearch, draftsView, loadingList, mailboxScopeEmails, tab, threads } = m;
+function useOlderSearch() {
+  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
+  const { activeFolder, debouncedSearch, loadingList, tab, threads } = usePageList();
+  const { draftsView } = usePageCompose();
   return useOlderMail({
     query: debouncedSearch,
     account: mailboxScopeApiAccount(mailboxScopeEmails, accountEmails),
@@ -307,25 +291,10 @@ function useDraftKeys(rows: MailDraftRow[], openKey: string | null, open: (row: 
   }, []);
 }
 
-function DraftsListView({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    closeCompose,
-    composeSeed,
-    composing,
-    debouncedSearch,
-    drafts,
-    draftsAccount,
-    draftsLoading,
-    refreshDrafts,
-    selected,
-    setSelected,
-    setSelectedPersonKey,
-    startCompose,
-  } = m;
+function DraftsListView() {
+  const { closeCompose, composeSeed, composing, drafts, draftsAccount, draftsLoading, refreshDrafts, startCompose } = usePageCompose();
+  const { debouncedSearch } = usePageList();
+  const { selected, setSelected, setSelectedPersonKey } = usePageReader();
   const selection = useDraftSelection();
   // A selection is of this view's rows; leaving the view lets go of it.
   React.useEffect(() => clearDraftSelection, []);
@@ -419,19 +388,10 @@ function DraftsListView({
  * What the list says when it has no rows to show: nothing found for a
  * search, nothing in the folder or tab, or nothing yet.
  */
-function EmptyListNotice({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    activeCustomList,
-    activeFolder,
-    listNarrow,
-    searchEmptyText,
-    t,
-    tab,
-  } = m;
+const EmptyListNotice = React.memo(function EmptyListNotice() {
+  const t = useMailT();
+  const { activeCustomList, activeFolder, searchEmptyText, tab } = usePageList();
+  const { listNarrow } = usePageLayout();
   return (
     <p
       className={cn(
@@ -452,9 +412,9 @@ function EmptyListNotice({
           ? searchEmptyText
           : activeFolder
             ? // The breadcrumb above names the folder, so naming it
-              // again here is the same sentence twice — and it was
-              // the long form, the whole path, under a header that
-              // had just spelt it out one part at a time.
+              // again here is the same sentence twice. The name is
+              // also the long form, the whole path, under a header that
+              // spells it out one part at a time.
               "No mail in here."
             : activeCustomList
               ? `No mail from people in “${activeCustomList.name}”.`
@@ -474,7 +434,7 @@ function EmptyListNotice({
                       : "Nothing else — enjoy the quiet."}
     </p>
   );
-}
+});
 
 /**
  * What the list shows when every connected mailbox is hidden: that they are,
@@ -482,8 +442,9 @@ function EmptyListNotice({
  * is wrong for a mailbox hidden by its schedule. The reading pane shows it
  * too, for a list that is folded away.
  */
-export function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: MailboxHideControls }) {
-  const { t } = m;
+export function HiddenMailboxesNotice({ hide }: { hide: MailboxHideControls }) {
+  const t = useMailT();
+  
   return (
     <div className="px-5 py-8">
       <p className="text-sm font-medium text-[var(--mail-chrome-fg)]">{t("mailboxesHiddenTitle")}</p>
@@ -513,16 +474,9 @@ export function HiddenMailboxesNotice({ m, hide }: { m: MailPageModel; hide: Mai
 /**
  * What the list shows before any mailbox is connected: how to connect one.
  */
-function NoMailboxNotice({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    connect,
-    connecting,
-    t,
-  } = m;
+const NoMailboxNotice = React.memo(function NoMailboxNotice() {
+  const t = useMailT();
+  const { connect, connecting } = usePageAccounts();
   return (
     <div className="px-5 py-8">
       <p className="text-sm font-medium text-[var(--mail-chrome-fg)]">
@@ -601,4 +555,4 @@ function NoMailboxNotice({
       </div>
     </div>
   );
-}
+});

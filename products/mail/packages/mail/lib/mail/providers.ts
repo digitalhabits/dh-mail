@@ -100,10 +100,9 @@ export async function assertUserOwnsMailAccount(
  * one per step. The account modules clear it when a mailbox is connected
  * or removed.
  *
- * A mailbox nobody connected is an error, not Gmail. It used to fall
- * through to Gmail, and the failure then surfaced a few calls later as a
- * missing Gmail token — which read as a Gmail problem on a mailbox that
- * was never Gmail.
+ * A mailbox nobody connected is an error, not Gmail. If it falls through
+ * to Gmail, the failure shows a few calls later as a missing Gmail token.
+ * That reads as a Gmail problem on a mailbox that is not Gmail.
  */
 export async function resolveMailProvider(
   email: string
@@ -118,9 +117,9 @@ export async function resolveMailProvider(
     `vera.holm@` and `veraholm@` are one mailbox to Google. That is
     right for telling two addresses apart, and wrong for finding a row:
     the account is stored exactly as it was connected — with the dots —
-    so the tidied spelling matched nothing, and every operation on that
-    mailbox failed with "No connected mailbox" while the mailbox sat in
-    the list and its threads sat under it.
+    so the tidied spelling alone matches nothing. Then every operation on
+    that mailbox fails with "No connected mailbox", while the mailbox sits
+    in the list and its threads sit under it.
 
     So the address itself is tried first, since that is the form a row is
     keyed by, and the tidied one after it, which finds a mailbox connected

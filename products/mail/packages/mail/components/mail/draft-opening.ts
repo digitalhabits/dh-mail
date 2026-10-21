@@ -4,10 +4,10 @@
  * Opening a row of the Drafts view, and the next row when a draft goes.
  *
  * In the inbox a delete lands on the conversation below (see
- * lib/mail/successor.ts). The Drafts view used to drop to the empty pane
- * instead, so a reader clearing out old drafts had to click each next one.
- * Now a discarded draft opens the one below it, or the one above at the end
- * of the list, by the same rule.
+ * lib/mail/successor.ts). In the Drafts view, a discarded draft opens the one
+ * below it, or the one above at the end of the list, by the same rule. If the
+ * view drops to the empty pane, a reader who clears out old drafts must click
+ * each next one.
  *
  * No state of its own: the page's setters come in, and the rows are the ones
  * the Drafts list paints, in the same order.
@@ -98,8 +98,8 @@ export function openDraftRowId(
     /**
      * The row last opened, by a click or the arrow keys. Several drafts can
      * belong to one thread (a reply written here, and the provider's own),
-     * and the thread alone names the first of them: the list marked that
-     * one, and Down went on from there, back up the list. The row picked
+     * and the thread alone names the first of them. If the list marks that
+     * one, Down goes on from there, back up the list. So the row picked
      * wins while it is still the one open.
      */
     chosen?: string | null;
@@ -277,7 +277,7 @@ export function landAfterThreadDraftDiscarded(input: {
 /**
  * The number at the head of the rail beside "Drafts": the drafts of the
  * mailboxes the tabs picked (null: every tab), as the Drafts view shows
- * them. It counted every mailbox's (found in the KU test, 2026-09-26).
+ * them, not the drafts of every mailbox.
  */
 export function draftCountForTabs(drafts: MailDraftRow[], picked: string[] | null): number | null {
   return draftsInView(drafts, picked).length || null;

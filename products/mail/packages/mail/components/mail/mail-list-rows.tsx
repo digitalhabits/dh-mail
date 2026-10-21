@@ -4,10 +4,11 @@
  * Parts of the thread list's markup (ThreadListColumn), moved out of
  * mail-thread-list.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads the
- * names it needs from it. The JSX is the list's own, word for word.
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). The JSX is the list's own, word for word.
  */
 
+import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
 import { isMailboxScopeAll } from "@/components/mail/mail-list-state";
 import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
 import { openScheduledMessage, useOpenScheduledMessage } from "@/components/mail/ScheduledMessageView";
@@ -34,59 +35,29 @@ import { threadDraftKey } from "@/lib/mail/local-drafts";
 import { rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
 import { cn } from "@/lib/utils";
 import { rowTime } from "@/lib/mail/date-format";
-import { type MailStringKey } from "@/lib/mail/i18n";
+import { type MailStringKey, useMailT } from "@/lib/mail/i18n";
 import { PersonAvatar } from "@/components/mail/PersonAvatar";
 import { PersonRowActions } from "@/components/mail/PersonRowActions";
 import { Highlighted } from "@/components/mail/Highlighted";
 import { ConfirmPurgeDialog } from "@/components/mail/ConfirmPurgeDialog";
 import { OutboxRowMenu, type OutboxMenuAt } from "@/components/mail/OutboxRowMenu";
-import type { MailScheduledMessage } from "@/lib/mail/types";
+import type { MailScheduledMessage, MailThreadSummary } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
+
 
 /** The thread view's rows: the pinned band, then the list by day. */
-export function ThreadRows({
-  m,
-
-}: {
-  m: MailPageModel;
-
-}) {
-  const {
-    archive,
-    capturePinFlip,
-    chromeDark,
-    clickThreadRow,
-    debouncedSearch,
-    expandThreadRow,
-    groups,
-    highlightTerms,
-    inTrashView,
-    listDensity,
-    listExpanded,
-    listNarrow,
-    listRowWide,
-    multiKeys,
-    phone,
-    pinKeySet,
-    pinnedThreads,
-    rowMenuActions,
-    selected: selectedThread,
-    showPinnedBand,
-    snooze,
-    t,
-    togglePin,
-    toggleRead,
-    trash,
-    unsnooze,
-  } = m;
+export function ThreadRows() {
+  const t = useMailT();
+  const { archive, capturePinFlip, rowMenuActions, snooze, togglePin, toggleRead, trash, unsnooze } = usePageActions();
+  const { chromeDark, listDensity, listExpanded, listNarrow, listRowWide, phone } = usePageLayout();
+  const { clickThreadRow, expandThreadRow, selected: selectedThread } = usePageReader();
+  const { debouncedSearch, groups, highlightTerms, inTrashView, multiKeys, pinKeySet, pinnedThreads, showPinnedBand } = usePageList();
   /*
     A scheduled message open in the reader is what is selected: its row in
-    the Scheduled group is lit, and the thread or person behind it is not
-    (Ulrik, 2026-10-20).
+    the Scheduled group is lit, and the thread or person behind it is not.
   */
   const scheduledOpen = Boolean(useOpenScheduledMessage());
   const selected = scheduledOpen ? null : selectedThread;
@@ -148,7 +119,7 @@ export function ThreadRows({
                     dragKind="pin"
                     touch={phone}
                     onSelectionMenu={
-                      rowInSelection(m, threadKey(t))
+                      rowInSelection(multiKeys, threadKey(t))
                         ? (x, y) => setSelectionMenu({ x, y })
                         : undefined
                     }
@@ -160,7 +131,7 @@ export function ThreadRows({
         <div
           // The same room above the first heading as the stacked list has
           // (its wrapper's pt-2), so the list does not shift when Stacks
-          // is switched (2026-10-17).
+          // is switched.
           className={listExpanded ? undefined : "pt-2"}
           onDragOver={(e) => {
             // Accept drops from the pinned band to unpin.
@@ -245,7 +216,7 @@ export function ThreadRows({
                     dragKind="folder"
                     touch={phone}
                     onSelectionMenu={
-                      rowInSelection(m, threadKey(t))
+                      rowInSelection(multiKeys, threadKey(t))
                         ? (x, y) => setSelectionMenu({ x, y })
                         : undefined
                     }
@@ -255,104 +226,14 @@ export function ThreadRows({
             ))}
         </div>
       </>
-      <SelectionRowMenu m={m} at={selectionMenu} onClose={() => setSelectionMenu(null)} />
+      <SelectionRowMenu at={selectionMenu} onClose={() => setSelectionMenu(null)} />
     </>
   );
 }
 
 /** The people view's rows: one per correspondent, pinned people first, then by day, with the person menu and its snooze times. */
-export function PeopleRows({
-  m,
-
-}: {
-  m: MailPageModel;
-
-}) {
-  const {
-    archive,
-    archivePerson,
-    askDeleteForever,
-    askPersonSnooze,
-    chromeDark,
-    clearMultiSelection,
-    clickPersonRow,
-    debouncedSearch,
-    draftKeys,
-    highlightTerms,
-    inTrashView,
-    listDensity,
-    listExpanded,
-    listNarrow,
-    listRowWide,
-    multiKeys,
-    onPersonSnoozeOpenChange,
-    openPersonWindow,
-    expandThreadRow,
-    paintedPersonKey,
-    pendingTokens,
-    personGroups,
-    personMenuAt,
-    personRows,
-    personSnooze,
-    personSnoozeSignal,
-    openThread,
-    purgeFrom,
-    rowMenuActions,
-    search,
-    selected: selectedThread,
-    setPersonMenuAt,
-    setPersonSnooze,
-    setSelectedPersonKey,
-    snooze,
-    t,
-    togglePersonPin,
-    toggleRead,
-    trash,
-    trashPerson,
-    unsnooze,
-  } = m;
-  // A scheduled message open in the reader is what is selected (ThreadRows).
-  const scheduledOpen = Boolean(useOpenScheduledMessage());
-  const selected = scheduledOpen ? null : selectedThread;
-  const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
-  /*
-    The stacks open in the list (person-stack.tsx). A click on a closed
-    stack unfolds it and opens its newest thread; on an open one, folds it.
-    With a modifier key a click picks rows, as on any row.
-  */
-  const [openStacks, setOpenStacks] = React.useState<ReadonlySet<string>>(() => new Set());
-  const toggleStack = (key: string) =>
-    setOpenStacks((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const isOpenThread = (th: { account: string; threadId: string }) =>
-    selected != null && selected.account === th.account && selected.threadId === th.threadId;
-  const openFromStack = (row: PersonRow, th: PersonRow["threads"][number]) => {
-    clearMultiSelection();
-    setSelectedPersonKey(row.key);
-    openThread(th);
-  };
-  /** A stack in the list, and open. Open, the thread's own row is marked, not the person's. */
-  const stackState = (row: PersonRow) => {
-    const stack = row.threads.length > 1 && !listNarrow;
-    const open = stack && openStacks.has(row.key);
-    return { open, painted: paintedPersonKey === row.key && !open };
-  };
-  const clickStack = (row: PersonRow, e: React.MouseEvent) => {
-    if (row.threads.length < 2 || e.metaKey || e.ctrlKey || e.shiftKey) return clickPersonRow(row, e);
-    toggleStack(row.key);
-    if (!openStacks.has(row.key)) openFromStack(row, row.threads[0]);
-    /*
-      Folded, the row is the person again, and so is the reader: their
-      pane, with every thread. The newest thread stayed open behind the
-      folded row, so the archive key took that one thread when the reader
-      meant all of them (Ulrik, 2026-10-17).
-    */
-    else clickPersonRow(row, e);
-  };
+export function PeopleRows() {
+  const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, snooze, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -440,233 +321,7 @@ export function PeopleRows({
             const painted = paintedNow && !scheduledOpen;
             return (
               <React.Fragment key={row.key}>
-              <div
-                // The threads this row holds, newest first, for the glide
-                // when Stacks is switched (lib/mail/stack-glide).
-                data-glide-keys={row.threads.map((th) => threadKey(th)).join(" ")}
-                onDoubleClick={(e) => {
-                  // The row's own control is the button that fills
-                  // it, so that is the container; a double click on
-                  // the actions beside it is two presses of those.
-                  const control =
-                    e.currentTarget.querySelector<HTMLElement>(
-                      "[data-person-key]"
-                    );
-                  if (isInteractiveDoubleClickTarget(e.target, control)) {
-                    return;
-                  }
-                  e.preventDefault();
-                  openPersonWindow(row);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  // One of a selection: the menu acts on all of it.
-                  if (rowInSelection(m, row.key)) {
-                    setSelectionMenu({ x: e.clientX, y: e.clientY });
-                    return;
-                  }
-                  setPersonMenuAt({
-                    key: row.key,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-                className={cn(
-                  // Relative: the hover actions float over its right end.
-                  "group relative flex w-full transition-colors",
-                  listNarrow
-                    ? "items-center justify-center px-1 py-1.5"
-                    : listRowWide && listDensity !== "compact"
-                      ? "items-start pl-5 pr-[18px] py-2"
-                    : listRowWide
-                      ? "items-center pl-5 pr-[18px] py-1.5"
-                    : listDensity !== "compact"
-                      ? "items-start pl-5 pr-[18px] py-2.5"
-                      : "items-center pl-5 pr-[18px] py-1.5",
-                  /* No fill for a stack only because it is open. It read as
-                     selected beside the row that was (Ulrik, 2026-10-20);
-                     the open threads under it say it is open. */
-                  !listExpanded && (painted || multiKeys.has(row.key))
-                    ? // The open person, marked as an open thread is: fill and bar.
-                      "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
-                    : "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
-                )}
-              >
-              <button
-                type="button"
-                data-person-key={row.key}
-                title={listNarrow ? personTitle : undefined}
-                aria-label={listNarrow ? personTitle : undefined}
-                onClick={(e) => clickStack(row, e)}
-                className={cn(
-                  "flex min-w-0 flex-1 text-left",
-                  listNarrow
-                    ? "items-center justify-center"
-                    : listRowWide && listDensity !== "compact"
-                      ? "items-start gap-3"
-                      : listRowWide
-                        ? "items-center gap-3"
-                      : listDensity !== "compact"
-                        ? "items-start gap-3"
-                        : "items-center gap-2.5"
-                )}
-              >
-                <PersonAvatar
-                  row={row}
-                  onNavy={chromeDark}
-                  size={
-                    listNarrow
-                      ? 36
-                      : listRowWide || listDensity !== "compact"
-                        ? 36
-                        : 28
-                  }
-                />
-                {listNarrow ? null : listRowWide ? (
-                listDensity !== "compact" ? (
-                <PersonWideBody
-                  name={row.name}
-                  threads={row.threads}
-                  open={stackOpen}
-                  hasDraft={personHasDraft}
-                  hasFile={personHasFile}
-                  highlight={highlightTerms}
-                  onNavy={chromeDark}
-                  time={
-                    <>
-                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
-                      {rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
-                    </>
-                  }
-                />
-                ) : (
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex w-[14rem] shrink-0 items-center gap-2">
-                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
-                        <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
-                      </span>
-                    </span>
-                    {personHasDraft ? <DraftBadge /> : null}
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      <span className="text-[var(--mail-chrome-fg)]">
-                        <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
-                      </span>
-                      {listDensity === "compact" && newest.snippet ? (
-                        <span className="text-[var(--mail-chrome-muted)]">
-                          {" — "}
-                          {personHasFile ? (
-                        <Paperclip
-                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
-                          aria-label={t("hasAttachments")}
-                        />
-                      ) : null}
-                          <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
-                        </span>
-                      ) : null}
-                    </span>
-                    {/* Invisible on hover, not gone: it keeps its room, and
-                        the actions float over it (PersonRowActions), so
-                        nothing in the row moves when they show. The
-                        count goes with the time. */}
-                    <PersonCount threads={row.threads} open={stackOpen} />
-                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
-                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
-                      {rowTime(row.lastAt, {
-                        withYear: Boolean(debouncedSearch),
-                      })}
-                    </span>
-                  </span>
-                  {listDensity === "compact" || !newest.snippet ? null : (
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="w-[14rem] shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--mail-chrome-muted)]">
-                        {personHasFile ? (
-                        <Paperclip
-                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
-                          aria-label={t("hasAttachments")}
-                        />
-                      ) : null}
-                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
-                      </span>
-                      <span className="w-[4.5rem] shrink-0 group-hover:hidden" aria-hidden />
-                    </span>
-                  )}
-                </span>
-                )
-                ) : (
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
-                        <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
-                      </span>
-                      <PersonCount threads={row.threads} open={stackOpen} />
-                      {personHasDraft ? <DraftBadge /> : null}
-                    </span>
-                    {/* The time, away on hover for the actions. As wide a
-                        slot as a thread row keeps for them, so a name is as
-                        long with Stacks on as off (2026-10-17). */}
-                    <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
-                      <span className="text-xs text-[var(--mail-chrome-faint)]">
-                        <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
-                        {rowTime(row.lastAt, {
-                          withYear: Boolean(debouncedSearch),
-                        })}
-                      </span>
-                    </span>
-                  </span>
-                  {listDensity === "compact" ? null : (
-                    // The newest thread's subject, as a thread row shows it.
-                    <span
-                      className={cn(
-                        "block truncate text-sm",
-                        row.unread && "font-semibold",
-                        chromeDark ? "text-white/85" : "text-stone-700"
-                      )}
-                    >
-                      <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
-                    </span>
-                  )}
-                  {listDensity === "compact" || !newest.snippet ? null : (
-                    <span className="mt-px flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate text-xs text-[var(--mail-chrome-muted)]">
-                        {personHasFile ? (
-                        <Paperclip
-                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
-                          aria-label={t("hasAttachments")}
-                        />
-                      ) : null}
-                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
-                      </span>
-                    </span>
-                  )}
-                </span>
-                )}
-              </button>
-              {listNarrow ? null : (
-                <PersonRowActions
-                  // On the name's line: its middle is the row's padding and half a line down.
-                  className={
-                    listDensity === "compact"
-                      ? undefined
-                      : listRowWide
-                        ? "top-[18px]"
-                        : "top-5"
-                  }
-                  row={row}
-                  pinned={isMailPersonPinned(row.key)}
-                  onNavy={chromeDark}
-                  onTogglePin={() => togglePersonPin(row)}
-                  onArchive={
-                    purgeFrom === "trash" ? undefined : () => void archivePerson(row)
-                  }
-                  onToggleRead={() =>
-                    void toggleRead(row.threads, row.name)
-                  }
-                />
-              )}
-              </div>
+              <PersonListRow archivePerson={archivePerson} chromeDark={chromeDark} clickStack={clickStack} debouncedSearch={debouncedSearch} highlightTerms={highlightTerms} listDensity={listDensity} listExpanded={listExpanded} listNarrow={listNarrow} listRowWide={listRowWide} multiKeys={multiKeys} newest={newest} openPersonWindow={openPersonWindow} painted={painted} personHasDraft={personHasDraft} personHasFile={personHasFile} personTitle={personTitle} purgeFrom={purgeFrom} row={row} setPersonMenuAt={setPersonMenuAt} setSelectionMenu={setSelectionMenu} stackOpen={stackOpen} t={t} togglePersonPin={togglePersonPin} toggleRead={toggleRead} />
               {stackOpen ? (
                 <StackThreads
                   threads={row.threads}
@@ -797,51 +452,317 @@ export function PeopleRows({
           />
         ) : null}
       </div>
-      <SelectionRowMenu m={m} at={selectionMenu} onClose={() => setSelectionMenu(null)} />
+      <SelectionRowMenu at={selectionMenu} onClose={() => setSelectionMenu(null)} />
     </>
   );
 }
 
-/** What stands above the rows: the search still running, first reads, stopped syncs, mailboxes the list is missing, the delete-forever question, and search notes. */
-export function ListNotices({
-  m,
-
+/** One person in the people view: the stack of their conversations, and the row that opens them. */
+function PersonListRow({
+  archivePerson,
+  chromeDark,
+  clickStack,
+  debouncedSearch,
+  highlightTerms,
+  listDensity,
+  listExpanded,
+  listNarrow,
+  listRowWide,
+  multiKeys,
+  newest,
+  openPersonWindow,
+  painted,
+  personHasDraft,
+  personHasFile,
+  personTitle,
+  purgeFrom,
+  row,
+  setPersonMenuAt,
+  setSelectionMenu,
+  stackOpen,
+  t,
+  togglePersonPin,
+  toggleRead,
 }: {
-  m: MailPageModel;
-
+  archivePerson: ReturnType<typeof usePeopleRowsState>["archivePerson"];
+  chromeDark: ReturnType<typeof usePeopleRowsState>["chromeDark"];
+  clickStack: ReturnType<typeof usePeopleRowsState>["clickStack"];
+  debouncedSearch: ReturnType<typeof usePeopleRowsState>["debouncedSearch"];
+  highlightTerms: ReturnType<typeof usePeopleRowsState>["highlightTerms"];
+  listDensity: ReturnType<typeof usePeopleRowsState>["listDensity"];
+  listExpanded: ReturnType<typeof usePeopleRowsState>["listExpanded"];
+  listNarrow: ReturnType<typeof usePeopleRowsState>["listNarrow"];
+  listRowWide: ReturnType<typeof usePeopleRowsState>["listRowWide"];
+  multiKeys: ReturnType<typeof usePeopleRowsState>["multiKeys"];
+  newest: MailThreadSummary;
+  openPersonWindow: ReturnType<typeof usePeopleRowsState>["openPersonWindow"];
+  painted: boolean;
+  personHasDraft: boolean;
+  personHasFile: boolean;
+  personTitle: string;
+  purgeFrom: ReturnType<typeof usePeopleRowsState>["purgeFrom"];
+  row: PersonRow;
+  setPersonMenuAt: ReturnType<typeof usePeopleRowsState>["setPersonMenuAt"];
+  setSelectionMenu: ReturnType<typeof usePeopleRowsState>["setSelectionMenu"];
+  stackOpen: boolean;
+  t: ReturnType<typeof usePeopleRowsState>["t"];
+  togglePersonPin: ReturnType<typeof usePeopleRowsState>["togglePersonPin"];
+  toggleRead: ReturnType<typeof usePeopleRowsState>["toggleRead"];
 }) {
-  const {
-    cancelPurge,
-    debouncedSearch,
-    firstReads,
-    isOutlookAccount,
-    listNarrow,
-    loadThreads,
-    loadingList,
-    pinnedThreads,
-    purgeAsk,
-    refreshing,
-    runPurge,
-    searchingMailboxCount,
-    syncPaused,
-    t,
-    threads,
-    unreadable,
-  } = m;
+  return (
+    <div
+                // The threads this row holds, newest first, for the glide
+                // when Stacks is switched (lib/mail/stack-glide).
+                data-glide-keys={row.threads.map((th) => threadKey(th)).join(" ")}
+                onDoubleClick={(e) => {
+                  // The row's own control is the button that fills
+                  // it, so that is the container; a double click on
+                  // the actions beside it is two presses of those.
+                  const control =
+                    e.currentTarget.querySelector<HTMLElement>(
+                      "[data-person-key]"
+                    );
+                  if (isInteractiveDoubleClickTarget(e.target, control)) {
+                    return;
+                  }
+                  e.preventDefault();
+                  openPersonWindow(row);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  // One of a selection: the menu acts on all of it.
+                  if (rowInSelection(multiKeys, row.key)) {
+                    setSelectionMenu({ x: e.clientX, y: e.clientY });
+                    return;
+                  }
+                  setPersonMenuAt({
+                    key: row.key,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
+                className={cn(
+                  // Relative: the hover actions float over its right end.
+                  "group relative flex w-full transition-colors",
+                  listNarrow
+                    ? "items-center justify-center px-1 py-1.5"
+                    : listRowWide && listDensity !== "compact"
+                      ? "items-start pl-5 pr-[18px] py-2"
+                    : listRowWide
+                      ? "items-center pl-5 pr-[18px] py-1.5"
+                    : listDensity !== "compact"
+                      ? "items-start pl-5 pr-[18px] py-2.5"
+                      : "items-center pl-5 pr-[18px] py-1.5",
+                  /* No fill for a stack only because it is open. A fill
+                     reads as selected beside the row that is selected.
+                     The open threads under it say it is open. */
+                  !listExpanded && (painted || multiKeys.has(row.key))
+                    ? // The open person, marked as an open thread is: fill and bar.
+                      "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                    : "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
+                )}
+              >
+              <button
+                type="button"
+                data-person-key={row.key}
+                title={listNarrow ? personTitle : undefined}
+                aria-label={listNarrow ? personTitle : undefined}
+                onClick={(e) => clickStack(row, e)}
+                className={cn(
+                  "flex min-w-0 flex-1 text-left",
+                  listNarrow
+                    ? "items-center justify-center"
+                    : listRowWide && listDensity !== "compact"
+                      ? "items-start gap-3"
+                      : listRowWide
+                        ? "items-center gap-3"
+                      : listDensity !== "compact"
+                        ? "items-start gap-3"
+                        : "items-center gap-2.5"
+                )}
+              >
+                <PersonAvatar
+                  row={row}
+                  onNavy={chromeDark}
+                  size={
+                    listNarrow
+                      ? 36
+                      : listRowWide || listDensity !== "compact"
+                        ? 36
+                        : 28
+                  }
+                />
+                {listNarrow ? null : listRowWide ? (
+                listDensity !== "compact" ? (
+                <PersonWideBody
+                  name={row.name}
+                  threads={row.threads}
+                  open={stackOpen}
+                  hasDraft={personHasDraft}
+                  hasFile={personHasFile}
+                  highlight={highlightTerms}
+                  onNavy={chromeDark}
+                  time={
+                    <>
+                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                      {rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
+                    </>
+                  }
+                />
+                ) : (
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex w-[14rem] shrink-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
+                        <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
+                      </span>
+                    </span>
+                    {personHasDraft ? <DraftBadge /> : null}
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="text-[var(--mail-chrome-fg)]">
+                        <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
+                      </span>
+                      {listDensity === "compact" && newest.snippet ? (
+                        <span className="text-[var(--mail-chrome-muted)]">
+                          {" — "}
+                          {personHasFile ? (
+                        <Paperclip
+                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
+                          aria-label={t("hasAttachments")}
+                        />
+                      ) : null}
+                          <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                        </span>
+                      ) : null}
+                    </span>
+                    {/* Invisible on hover, not gone: it keeps its room, and
+                        the actions float over it (PersonRowActions), so
+                        nothing in the row moves when they show. The
+                        count goes with the time. */}
+                    <PersonCount threads={row.threads} open={stackOpen} />
+                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
+                      <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                      {rowTime(row.lastAt, {
+                        withYear: Boolean(debouncedSearch),
+                      })}
+                    </span>
+                  </span>
+                  {listDensity === "compact" || !newest.snippet ? null : (
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="w-[14rem] shrink-0" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--mail-chrome-muted)]">
+                        {personHasFile ? (
+                        <Paperclip
+                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
+                          aria-label={t("hasAttachments")}
+                        />
+                      ) : null}
+                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                      </span>
+                      <span className="w-[4.5rem] shrink-0 group-hover:hidden" aria-hidden />
+                    </span>
+                  )}
+                </span>
+                )
+                ) : (
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
+                        <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
+                      </span>
+                      <PersonCount threads={row.threads} open={stackOpen} />
+                      {personHasDraft ? <DraftBadge /> : null}
+                    </span>
+                    {/* The time, away on hover for the actions. As wide a
+                        slot as a thread row keeps for them, so a name is as
+                        long with Stacks on as off. */}
+                    <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
+                      <span className="text-xs text-[var(--mail-chrome-faint)]">
+                        <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                        {rowTime(row.lastAt, {
+                          withYear: Boolean(debouncedSearch),
+                        })}
+                      </span>
+                    </span>
+                  </span>
+                  {listDensity === "compact" ? null : (
+                    // The newest thread's subject, as a thread row shows it.
+                    <span
+                      className={cn(
+                        "block truncate text-sm",
+                        row.unread && "font-semibold",
+                        chromeDark ? "text-white/85" : "text-stone-700"
+                      )}
+                    >
+                      <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
+                    </span>
+                  )}
+                  {listDensity === "compact" || !newest.snippet ? null : (
+                    <span className="mt-px flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-xs text-[var(--mail-chrome-muted)]">
+                        {personHasFile ? (
+                        <Paperclip
+                          className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
+                          aria-label={t("hasAttachments")}
+                        />
+                      ) : null}
+                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                      </span>
+                    </span>
+                  )}
+                </span>
+                )}
+              </button>
+              {listNarrow ? null : (
+                <PersonRowActions
+                  // On the name's line: its middle is the row's padding and half a line down.
+                  className={
+                    listDensity === "compact"
+                      ? undefined
+                      : listRowWide
+                        ? "top-[18px]"
+                        : "top-5"
+                  }
+                  row={row}
+                  pinned={isMailPersonPinned(row.key)}
+                  onNavy={chromeDark}
+                  onTogglePin={() => togglePersonPin(row)}
+                  onArchive={
+                    purgeFrom === "trash" ? undefined : () => void archivePerson(row)
+                  }
+                  onToggleRead={() =>
+                    void toggleRead(row.threads, row.name)
+                  }
+                />
+              )}
+              </div>
+  );
+}
+
+
+/** What stands above the rows: the search still running, first reads, stopped syncs, mailboxes the list is missing, the delete-forever question, and search notes. */
+export function ListNotices() {
+  const t = useMailT();
+  const { cancelPurge, purgeAsk, runPurge } = usePageActions();
+  const { debouncedSearch, loadingList, pinnedThreads, searchingMailboxCount, threads, unreadable } = usePageList();
+  const { firstReads, loadThreads, refreshing, syncPaused } = usePageSync();
+  const { isOutlookAccount } = usePageAccounts();
+  const { listNarrow } = usePageLayout();
   const { offline, waiting } = useOffline();
   return (
     <>
       {/*
         While a search is actually running, whatever is already on screen.
-        It used to appear only when the list was empty, which is the one
-        time a reader does not need telling — with rows from the last
-        query still showing, a new one looks like nothing is happening.
+        Not only when the list is empty, which is the one time a reader
+        does not need telling. With rows from the last query still
+        showing, a new one looks like nothing is happening.
 
         `refreshing`, not `loadingList`: a search typed over rows already
-        on screen keeps those rows and never sets loadingList at all, so
-        the banner missed exactly the common case — the reader saw a
-        plausible list, no sign anything was still out, and then a slow
-        mailbox's answer landed in one late lump as if from nowhere.
+        on screen keeps those rows and never sets loadingList at all. With
+        loadingList, the banner misses exactly the common case. The reader
+        sees a plausible list and no sign that anything is still out. Then
+        a slow mailbox's answer lands in one late lump as if from nowhere.
         `refreshing` holds until the last mailbox has answered.
 
         A search is not a page loading: it is every mailbox being asked on
@@ -850,14 +771,13 @@ export function ListNotices({
       */}
       {/* Not before the first row. Until then the list below is saying
           the same thing in more words — one wait, said once. This one
-          is for what is still out *while* there is something to read,
-          which is the case nobody was told about. */}
+          is for what is still out *while* there is something to read. */}
       {/* The first read of a mailbox, for as long as it is not complete.
           It takes hours, across many sittings, and the list grows as it
           goes. The line stays up in every state — reading, waiting to try
-          again, stopped — and says which, at every width of the list. It
-          used to show only while the phase was "full" and the list was
-          wide, so a reader saw it go and took the read for finished. */}
+          again, stopped — and says which, at every width of the list. If
+          it shows only while the phase is "full" and the list is wide, a
+          reader sees it go and takes the read for finished. */}
       {firstReads.map((line) => (
         <MailFirstReadLine
           key={`${line.account}|${line.folder}`}
@@ -915,14 +835,14 @@ export function ListNotices({
                   /* The mail server did not answer. Nothing is wrong
                      with the account and there is nothing to press: the
                      worker tries again by itself. The worker's own words
-                     are in the log, and no longer on a tooltip — a
-                     reader hovered and met a sentence in English about
+                     are in the log, not on a tooltip. On a tooltip, a
+                     reader hovers and meets a sentence in English about
                      seconds and servers. */
                   <ListNotice
                     kind="offline"
                     /* The mailbox's own provider, not Gmail for
-                       everybody: an Outlook account was told that Mail
-                       could not reach Gmail for it. */
+                       everybody. If not, an Outlook account is told that
+                       Mail cannot reach Gmail for it. */
                     title={t("syncOffline", {
                       provider: mailProviderLabel(mailProviderFor(s.account, isOutlookAccount)),
                       account: s.account,
@@ -1026,11 +946,11 @@ export function ListNotices({
       !listNarrow &&
       (threads.length > 0 || pinnedThreads.length > 0) ? (
         /*
-          Chrome colors, not white. This was written for a list that sat
-          on the navy chrome, and on the cream one it was white text on
-          near-white: a blank band above the results, with the spinner
-          invisible in it too. What it looked like was a search that had
-          lost its earlier rows and left a hole where they had been.
+          Chrome colors, not white. White suits only a list on the navy
+          chrome. On the cream chrome it is white text on near-white: a
+          blank band above the results, with the spinner invisible in it
+          too. That looks like a search that lost its earlier rows and left
+          a hole where they were.
         */
         <div className="border-b border-[var(--mail-chrome-border)] px-5 pb-2 pt-3">
           <p className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mail-chrome-muted)]">
@@ -1057,20 +977,25 @@ export function ListNotices({
  */
 /**
  * The Outbox: what is held for later, what is being sent, and what the
- * server refused. Its own view since 2026-09-29, opened from the folder
- * rail while it holds anything; it was a group at the top of the list.
+ * server refused. Its own view, opened from the folder rail while it holds
+ * anything.
  */
-export function OutboxGroup({ m, onTop = false }: { m: MailPageModel; onTop?: boolean }) {
+export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
+  const t = useMailT();
+  const pageList = usePageList();
   const openHeld = useOpenScheduledMessage();
-  const { listNarrow, listExpanded, t, actOnHeld, setSelected, chromeDark, accountEmails, mailboxScopeEmails } = m;
+  const { listNarrow, listExpanded, chromeDark } = usePageLayout();
+  const { actOnHeld } = usePageActions();
+  const { setSelected } = usePageReader();
+  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
   // Above the list, on one mailbox's tab: that mailbox's. On All: every
   // one, a hidden mailbox's too — hiding a mailbox holds its incoming mail,
   // and what it will send is still the reader's to see.
   const oneMailbox = onTop && !isMailboxScopeAll(mailboxScopeEmails, accountEmails);
   const inView = new Set(mailboxScopeEmails.map((e) => e.trim().toLowerCase()));
   const heldMessages = oneMailbox
-    ? m.heldMessages.filter((held) => inView.has(held.account.trim().toLowerCase()))
-    : m.heldMessages;
+    ? pageList.heldMessages.filter((held) => inView.has(held.account.trim().toLowerCase()))
+    : pageList.heldMessages;
   const [menu, setMenu] = React.useState<OutboxMenuAt | null>(null);
   // A reply opens its thread, where it stands as a dashed bubble. A new
   // message has no thread yet: it opens on a page of its own.
@@ -1303,4 +1228,57 @@ function RowAction({
       {children}
     </span>
   );
+}
+
+/** What the people view reads from the page, and which people are unfolded into their conversations. */
+export function usePeopleRowsState() {
+  const t = useMailT();
+  const { archive, archivePerson, askDeleteForever, askPersonSnooze, onPersonSnoozeOpenChange, personMenuAt, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, setPersonMenuAt, setPersonSnooze, snooze, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
+  const { chromeDark, listDensity, listExpanded, listNarrow, listRowWide } = usePageLayout();
+  const { clearMultiSelection, debouncedSearch, highlightTerms, inTrashView, multiKeys, pendingTokens, personGroups, personRows, search } = usePageList();
+  const { clickPersonRow, openPersonWindow, expandThreadRow, paintedPersonKey, openThread, selected: selectedThread, setSelectedPersonKey } = usePageReader();
+  const { draftKeys } = usePageCompose();
+  // A scheduled message open in the reader is what is selected (ThreadRows).
+  const scheduledOpen = Boolean(useOpenScheduledMessage());
+  const selected = scheduledOpen ? null : selectedThread;
+  const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
+  /*
+    The stacks open in the list (person-stack.tsx). A click on a closed
+    stack unfolds it and opens its newest thread; on an open one, folds it.
+    With a modifier key a click picks rows, as on any row.
+  */
+  const [openStacks, setOpenStacks] = React.useState<ReadonlySet<string>>(() => new Set());
+  const toggleStack = (key: string) =>
+    setOpenStacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const isOpenThread = (th: { account: string; threadId: string }) =>
+    selected != null && selected.account === th.account && selected.threadId === th.threadId;
+  const openFromStack = (row: PersonRow, th: PersonRow["threads"][number]) => {
+    clearMultiSelection();
+    setSelectedPersonKey(row.key);
+    openThread(th);
+  };
+  /** A stack in the list, and open. Open, the thread's own row is marked, not the person's. */
+  const stackState = (row: PersonRow) => {
+    const stack = row.threads.length > 1 && !listNarrow;
+    const open = stack && openStacks.has(row.key);
+    return { open, painted: paintedPersonKey === row.key && !open };
+  };
+  const clickStack = (row: PersonRow, e: React.MouseEvent) => {
+    if (row.threads.length < 2 || e.metaKey || e.ctrlKey || e.shiftKey) return clickPersonRow(row, e);
+    toggleStack(row.key);
+    if (!openStacks.has(row.key)) openFromStack(row, row.threads[0]);
+    /*
+      Folded, the row is the person again, and so is the reader: their
+      pane, with every thread. If the newest thread stays open behind the
+      folded row, the archive key takes that one thread when the reader
+      means all of them.
+    */
+    else clickPersonRow(row, e);
+  };
+  return { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, snooze, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze };
 }

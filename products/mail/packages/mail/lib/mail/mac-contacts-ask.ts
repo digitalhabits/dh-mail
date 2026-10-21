@@ -14,7 +14,8 @@
  * anyone who wants it later, and it is where a reader who said no goes.
  */
 
-const KEY = "redd-plan-mail-mac-contacts-ask";
+import { MAC_CONTACTS_ASK_KEY as KEY } from "@/lib/mail/storage-keys";
+
 const MAX_ASKS = 2;
 
 type AskState = { asked: number };

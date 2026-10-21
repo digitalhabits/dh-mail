@@ -6,26 +6,24 @@
  * Mail sends a scheduled message by itself until an hour past its time.
  * Later than that — the computer was asleep, or Mail was closed — it waits
  * for the person: a message meant for 09:00 must not go at 15:00 by
- * itself. That used to show only as a warning in the Scheduled row, "Not
- * sent · Try again · Keep as draft", which read as an error and ran out of
- * the row (Ulrik, 2026-10-20). Now Mail asks, in plain words, once per
- * message: one message with a look at what it says, or several with a
+ * itself. A warning in the Scheduled row alone, "Not sent · Try again ·
+ * Keep as draft", reads as an error and runs out of the row. So Mail asks,
+ * in plain words, once per message: one message with a look at what it says, or several with a
  * box each. Not now leaves them in Scheduled, marked as missed.
  */
 
+import { usePageActions, usePageList } from "@/components/mail/mail-page-slices";
+import { MISSED_SCHEDULED_ASKED_KEY as ASKED_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { ChangeTimeMenu, openScheduledMessage } from "@/components/mail/ScheduledMessageView";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { currentMailLocale } from "@/lib/mail/i18n-strings";
 import { useMailT } from "@/lib/mail/i18n";
 import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
 import type { MailScheduledMessage } from "@/lib/mail/types";
 
 /** The messages asked about in this window, so a reload does not ask again. */
-const ASKED_KEY = "mail-missed-scheduled-asked";
-
 const keyOf = (held: MailScheduledMessage) => `${held.account.toLowerCase()}|${held.id}`;
 
 function readAsked(): Set<string> {
@@ -70,15 +68,17 @@ function firstLine(held: MailScheduledMessage): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
+export function MissedScheduledDialog() {
+  const pageList = usePageList();
+  const pageActions = usePageActions();
   const t = useMailT();
   const [askedNow, setAskedNow] = React.useState(0);
   const missed = React.useMemo(() => {
     const asked = readAsked();
-    return m.heldMessages.filter((held) => held.missed && !asked.has(keyOf(held)));
+    return pageList.heldMessages.filter((held) => held.missed && !asked.has(keyOf(held)));
     // `askedNow` makes it read again once the person has answered.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m.heldMessages, askedNow]);
+  }, [pageList.heldMessages, askedNow]);
   const [ticked, setTicked] = React.useState<Set<string>>(new Set());
   // Every one ticked, as it comes: the question is which to hold back.
   const missedKey = missed.map(keyOf).join(",");
@@ -95,7 +95,7 @@ export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
   };
   const sendNow = (list: MailScheduledMessage[]) => {
     done();
-    for (const held of list) void m.actOnHeld(held, "sendNow");
+    for (const held of list) void pageActions.actOnHeld(held, "sendNow");
   };
   const allDrafts = missed.every((held) => isScheduledDraftId(held.id));
   const one = missed.length === 1 ? missed[0] : null;
@@ -165,7 +165,7 @@ export function MissedScheduledDialog({ m }: { m: MailPageModel }) {
                   label={t("reschedule")}
                   onPick={(iso) => {
                     done();
-                    void m.actOnHeld(one, "reschedule", iso);
+                    void pageActions.actOnHeld(one, "reschedule", iso);
                   }}
                 />
               ) : null}

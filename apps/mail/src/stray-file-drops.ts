@@ -4,8 +4,7 @@
  * The app turns the web view's own file drop handling off
  * (`dragDropEnabled: false`), so the page's drags work. A file dropped on
  * the window then falls to WebKit, which opens it in place of the app: a
- * PDF let go over the window filled it, with no way back short of quitting
- * (Ulrik, 2026-10-17).
+ * PDF let go over the window fills it, with no way back short of quitting.
  *
  * The listeners are on the window, in the bubbling phase, so a place that
  * takes files (the composer, a folder in the rail) has answered first and

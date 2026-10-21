@@ -226,9 +226,9 @@ export async function handleDemoMailApi(
         folders: [
           /*
             The ones the provider manages, as a real mailbox reports them.
-            They were left out, so the rail in this mode showed an account
-            with three folders and none of the places mail actually is —
-            which is not what the app looks like for anybody.
+            Without them, the rail in this mode shows an account with three
+            folders and none of the places mail actually is. That is not
+            what the app looks like for anybody.
 
             `role` is what sorts them above the rest and draws each as
             itself; the rail puts them in its own order, so the order here

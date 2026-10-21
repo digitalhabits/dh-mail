@@ -165,8 +165,8 @@ export async function listScheduledMailMessages(input: {
 /**
  * What a held message says, read from its source in the outbox.
  *
- * Its page showed an empty bubble and no Edit without it: the outbox list
- * carries no source (2026-10-20). Null from a shell without the command.
+ * Without it, its page shows an empty bubble and no Edit, because the outbox
+ * list carries no source. Null from a shell without the command.
  */
 async function outboxWords(
   account: string,

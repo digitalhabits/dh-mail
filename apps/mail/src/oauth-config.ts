@@ -136,13 +136,19 @@ export const MICROSOFT_SCOPES = [
 ];
 
 /**
- * Microsoft returns a refresh token only when it is asked. Asking for consent
- * every time is what makes a reconnect actually re-grant.
+ * Microsoft gives a refresh token whenever `offline_access` is in the scopes,
+ * so it does not need a consent prompt for one. It asks for consent by itself
+ * when a scope is new to the person.
+ *
+ * "consent" is not sent. In a tenant where people cannot consent for
+ * themselves, that prompt stops them even after an admin has approved the
+ * app for everyone. "select_account" lets a person with more than one
+ * account pick the one to connect.
  *
  * One value only: "select_account consent" is refused with AADSTS90023.
  */
 export const MICROSOFT_AUTH_EXTRA = {
-  prompt: "consent",
+  prompt: "select_account",
 };
 
 /**

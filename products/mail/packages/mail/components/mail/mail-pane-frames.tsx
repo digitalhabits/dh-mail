@@ -3,8 +3,8 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
@@ -14,21 +14,19 @@ import { ArrowLeft, Moon, PanelLeft, PanelRight, Pin } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { autoReplyActive } from "@/components/mail/AutoReplyDialog";
 import { formatAccountChipLabel } from "@/lib/mail/account-labels";
-import { currentMailLocale } from "@/lib/mail/i18n";
+import { currentMailLocale, useMailT } from "@/lib/mail/i18n";
+import { usePageAccounts, usePageCompose, usePageLayout, usePageList, usePageSync } from "@/components/mail/mail-page-slices";
 import { AutoReplyMark } from "@/components/mail/AutoReplyMark";
 import { cn } from "@/lib/utils";
 import { SyncIcon } from "@/components/mail/MailListControls";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import { listBoxStyle, listInnerStyle } from "@/components/mail/list-box-style";
 import { pinListInPlace, type ListPeek } from "@/components/mail/use-list-peek";
 
 /** The reading pane's frame: it holds the pane through the expand sweep. */
 export function ReadingPaneFrame({
-  m,
   peek,
   readingPaneContent,
 }: {
-  m: MailPageModel;
   peek: ListPeek;
   readingPaneContent: React.ReactNode;
 }) {
@@ -39,7 +37,8 @@ export function ReadingPaneFrame({
     listSliding,
     listWidth,
     railInset,
-  } = m;
+  } = usePageLayout();
+  const t = useMailT();
   /*
     The list shown from the edge pushes the reader over rather than lying
     on it, so the message nearest the list stays in view beside it. The
@@ -79,7 +78,7 @@ export function ReadingPaneFrame({
         {readingPaneContent}
         {/* Shown while the list is dragged far enough to take the pane. */}
         <div className="mail-list-snap-hint" aria-hidden>
-          <span>{m.t("listSnapHint")}</span>
+          <span>{t("listSnapHint")}</span>
         </div>
       </div>
       ) : null}
@@ -88,13 +87,8 @@ export function ReadingPaneFrame({
 }
 
 /** The drag handle that sizes the thread list. */
-export function ListResizeHandle({
-  m,
-
-}: {
-  m: MailPageModel;
-
-}) {
+export const ListResizeHandle = React.memo(function ListResizeHandle() {
+  const t = useMailT();
   const {
     detailOpen,
     expandListFromNarrow,
@@ -109,8 +103,7 @@ export function ListResizeHandle({
     listWidth,
     startListHeightResize,
     startListResize,
-    t,
-  } = m;
+  } = usePageLayout();
   return (
     <>
       {/* Drag handle for resizing the thread list. Not while the list is
@@ -164,55 +157,26 @@ export function ListResizeHandle({
       ) : null}
     </>
   );
-}
+});
 
 /** The thread list's frame: its size, its slide, and the controls over it. */
 export function ListPaneFrame({
-  m,
   peek,
   foldersButton,
   foldersMenu,
   listTabsOrFolder,
   threadListColumn,
 }: {
-  m: MailPageModel;
   peek: ListPeek;
   foldersButton: React.ReactNode;
   foldersMenu: (iconOnly: boolean) => React.ReactNode;
   listTabsOrFolder: React.ReactNode;
   threadListColumn: React.ReactNode;
 }) {
-  const {
-    accountLabels,
-    autoReplies,
-    controlsWidth,
-    expandClip,
-    hideList,
-    listBorderClass,
-    listExpandSliding,
-    listExpanded,
-    listFirst,
-    listHeight,
-    listMounted,
-    listNarrow,
-    listNearSnap,
-    listOpen,
-    listRowsOnPane,
-    listSliding,
-    listSlideOverlay,
-    listSlideTransform,
-    listSplit,
-    listVertical,
-    listWidth,
-    openAutoReply,
-    phone,
-    railInset,
-    shownListWidth,
-    startControlsResize,
-    startListResize,
-    t,
-    toggleListExpanded,
-  } = m;
+  const t = useMailT();
+  const { accountLabels, autoReplies } = usePageAccounts();
+  const { controlsWidth, expandClip, hideList, listBorderClass, listExpandSliding, listExpanded, listFirst, listHeight, listMounted, listNarrow, listNearSnap, listOpen, listRowsOnPane, listSliding, listSlideOverlay, listSlideTransform, listSplit, listVertical, listWidth, phone, railInset, shownListWidth, startControlsResize, startListResize, toggleListExpanded } = usePageLayout();
+  const { openAutoReply } = usePageCompose();
   const box = {
     listExpandSliding,
     listSlideOverlay,
@@ -266,7 +230,7 @@ export function ListPaneFrame({
       <div
         data-mail-peek={peeking ? "" : undefined}
         // Whether the list has taken the pane (⌥⌘L), for tests and styles:
-        // the button that showed it is gone.
+        // no button shows it.
         data-list-expanded={listExpanded ? "true" : "false"}
         className={cn(
           "relative overflow-hidden",
@@ -320,7 +284,7 @@ export function ListPaneFrame({
         }}
       >
         {listNarrow ? (
-          <NarrowListControls m={m} foldersMenu={foldersMenu} />
+          <NarrowListControls foldersMenu={foldersMenu} />
         ) : (
         <div
           className={cn(
@@ -475,8 +439,9 @@ export function ListPaneFrame({
  *   (use-list-peek), and a click keeps it out.
  * - Out from the edge or for a search: it is the pin.
  */
-export function ListHideButton({ m, peek }: { m: MailPageModel; peek: ListPeek }) {
-  const { chromeIconBtn, hideList, listExpanded, listFirst, listOutForSearch, listSliding, listVertical, phone, setListCollapsed, t } = m;
+export function ListHideButton({ peek }: { peek: ListPeek }) {
+  const { chromeIconBtn, hideList, listExpanded, listFirst, listOutForSearch, listSliding, listVertical, phone, setListCollapsed } = usePageLayout();
+  const t = useMailT();
   if (phone || listExpanded || listVertical) return null;
   // The pin, the show and the hide are one button, so the pointer on it
   // stays on it when it changes from one to the next.
@@ -537,24 +502,15 @@ export function ListHideButton({ m, peek }: { m: MailPageModel; peek: ListPeek }
  * and the way back to the inbox, as icons in a column.
  */
 function NarrowListControls({
-  m,
   foldersMenu,
 }: {
-  m: MailPageModel;
   foldersMenu: (iconOnly: boolean) => React.ReactNode;
 }) {
-  const {
-    activeFolder,
-    chromeIconBtn,
-    noneFetching,
-    pausedLabel,
-    refreshing,
-    resumeFetching,
-    setActiveFolder,
-    syncNow,
-    syncTurn,
-    t,
-  } = m;
+  const t = useMailT();
+  const { activeFolder, setActiveFolder } = usePageList();
+  const { chromeIconBtn } = usePageLayout();
+  const { noneFetching, pausedLabel, resumeFetching } = usePageAccounts();
+  const { refreshing, syncNow, syncTurn } = usePageSync();
   return (
     <div className="flex shrink-0 flex-col items-center gap-0.5 border-b border-[var(--mail-chrome-border)] px-1 py-2">
       <button

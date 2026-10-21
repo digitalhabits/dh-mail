@@ -11,7 +11,7 @@
  * that has already been addressed.
  */
 
-const COMPOSE_FROM_KEY = "redd-plan-mail-compose-from";
+import { COMPOSE_FROM_KEY } from "@/lib/mail/storage-keys";
 
 /** The remembered address, or null when there has never been one. */
 export function readComposeFrom(): string | null {

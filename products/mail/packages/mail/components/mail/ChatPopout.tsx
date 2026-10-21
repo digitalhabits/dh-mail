@@ -14,57 +14,28 @@
  * exactly like the main mail client.
  */
 
+import { ChatComposer, ChatHeader, ChatMessages } from "@/components/mail/chat-popout-parts";
+import { MAIL_POPOUT_SENT_KEY, POPOUT_SEEN_PREFIX } from "@/lib/mail/storage-keys";
 import { earlierFromSameSender } from "@/lib/mail/repeat-signature";
 import * as React from "react";
-import { Minus, Square, X } from "lucide-react";
 
-import { attachmentUrl } from "@/lib/mail/attachment-save";
-import {
-  AttachmentSizeSummary,
-  AttachToolbarButton,
-  ComposerDropOverlay,
-  DraftAttachmentThumbs,
-  useComposerFileDrop,
-  useComposerPaste,
-  useDraftAttachments,
-} from "@/components/mail/draft-attachments";
+import { ComposerDropOverlay, useComposerFileDrop, useComposerPaste, useDraftAttachments } from "@/components/mail/draft-attachments";
 import {
   DraftAttachmentPreviewDialog,
 } from "@/components/mail/attachment-preview";
-import { openAttachmentOutside } from "@/components/mail/attachment-files";
-import { MailBubble } from "@/components/mail/MailBubble";
-import { EmojiPickerButton } from "@/components/ui/EmojiPicker";
-import {
-  RichTextEditor,
-  type RichTextEditorHandle,
-} from "@/components/ui/RichTextEditor";
+import { type RichTextEditorHandle } from "@/components/ui/RichTextEditor";
 import { bodyToEmailHtml, htmlToPlainText } from "@/lib/client-email-html";
-import {
-  avatarStyle,
-  senderInitials,
-} from "@/components/mail/avatar";
 import {
   CHAT_POPOUT_COLLAPSED_HEIGHT,
   CHAT_POPOUT_EXPANDED_HEIGHT,
   CHAT_POPOUT_WIDTH,
   readPopoutSeed,
-  MAIL_POPOUT_SENT_KEY,
   signalPopoutSend,
   signalEditAsNewRequest,
   signalForwardRequest,
 } from "@/lib/mail/popout";
-import {
-  chatDayLabel,
-  messageStamp,
-  sameDay,
-  timeOfDay,
-} from "@/lib/mail/date-format";
-import {
-  quotedReplyMessage,
-  reactionMessage,
-  reactionQuoteText,
-} from "@/lib/mail/reaction-message";
-import { teamAvatarSrc } from "@/lib/mail/team-avatars";
+import { messageStamp } from "@/lib/mail/date-format";
+import { quotedReplyMessage, reactionMessage } from "@/lib/mail/reaction-message";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { closeChatPopout, resizeChatPopout } from "@/lib/native-shell";
 import { actionForEvent } from "@/lib/mail/shortcuts";
@@ -74,6 +45,7 @@ import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { useMailColorMode } from "@/lib/mail/theme";
+
 
 const POLL_MS = 30_000;
 
@@ -106,11 +78,20 @@ type LocalBubble = {
   sentAt: string;
 };
 
+/** The thread a chat window shows. */
+export type ChatPopoutProps = {
+  account: string;
+  threadId: string;
+  personName: string;
+  personEmail: string;
+  subject: string;
+};
+
 /*
  * How tall the box may grow — about six lines, past which the window is the
  * wrong place for the message — is `max-height` on .mail-chat-input in
- * `mail.css`. The box measured and set its own height while it was a
- * textarea, which is the one element that will not grow with its content.
+ * `mail.css`. The box is not a textarea, because a textarea is the one
+ * element that will not grow with its content.
  */
 
 export function ChatPopout({
@@ -119,23 +100,86 @@ export function ChatPopout({
   personName,
   personEmail,
   subject,
-}: {
-  account: string;
-  threadId: string;
-  personName: string;
-  personEmail: string;
-  subject: string;
-}) {
+}: ChatPopoutProps) {
+  const { addAttachFiles, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachTotalBytes, attachmentPayload, attachmentsReady, clearAttachments, collapsed, collapsedRef, colorMode, composerKey, composerRef, contentRef, draft, draftPreviewId, draftText, inputRef, lastSeenAt, loadError, localBubbles, ownSignalAtRef, pendingCaretRef, readerScrolledRef, removeAttach, scrollRef, seenKey, sendError, sending, setCollapsed, setComposerKey, setDraft, setDraftPreviewId, setLastSeenAt, setLoadError, setLocalBubbles, setSendError, setSending, setThread, t, thread } = useChatState({ account, threadId });
+  const { loadThread, markSeen } = useChatLoad({ account, collapsedRef, ownSignalAtRef, pendingCaretRef, seenKey, setDraft, setLastSeenAt, setLoadError, setLocalBubbles, setThread, threadId });
+  const { canLoadOlder, earlierBySender, loadOlder, loadingOlder, messages, unseenCount } = useChatHistory({ account, collapsed, contentRef, lastSeenAt, localBubbles, readerScrolledRef, scrollRef, thread, threadId });
+  const { setWindowCollapsed } = useChatWindow({ account, collapsed, collapsedRef, composerRef, draft, draftText, inputRef, markSeen, pendingCaretRef, personEmail, setCollapsed, thread, threadId });
+  const { bubbleActions, close, insertEmoji, quotedForReply, send, setQuoteMessageId } = useChatSend({ account, attachmentPayload, attachmentsReady, clearAttachments, draft, draftText, inputRef, loadThread, ownSignalAtRef, personEmail, sending, setComposerKey, setDraft, setLocalBubbles, setSendError, setSending, thread, threadId });
+
+  const header = (
+    <ChatHeader close={close} collapsed={collapsed} personEmail={personEmail} personName={personName} setWindowCollapsed={setWindowCollapsed} subject={subject} t={t} unseenCount={unseenCount} />
+  );
+
+  return (
+    <>
+      {/* The Tauri window is transparent; this page draws the rounded card. */}
+      <style>{`html, body { background: transparent !important; } body { overflow: hidden; }`}</style>
+      {/*
+        The card fills the window exactly.
+
+        It does not sit six pixels in with a CSS shadow around it. A shadow
+        that size wants about twenty-five, so the window's edge cuts it off
+        square. That shows as a hairline under the popout, with the desktop
+        showing through the six pixels above it. macOS draws a
+        shadow round the window's opaque content by itself, and does not clip
+        it, so this leaves that to macOS and keeps only the card.
+      */}
+      <div className="fixed inset-0 flex">
+        <div
+          className={cn(
+            // mail-shell provides the bubble CSS variables MailBubble uses.
+            // min-w-0: never let a long unbreakable token (URLs in emails)
+            // widen the card past the window via flex min-content sizing.
+            // mail-surface-root: the card is the shell itself, so the dark
+            // rules for descendants cannot reach it. See mail.css.
+            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-surface border border-stone-200 bg-white",
+            // relative: the drop overlay covers the card, not the desktop.
+            !collapsed && "relative"
+          )}
+          data-theme={colorMode}
+          {...(collapsed ? null : attachDropHandlers)}
+        >
+          {!collapsed ? <ComposerDropOverlay visible={attachDragging} /> : null}
+          {header}
+          {!collapsed ? (
+            <>
+              <ChatMessages account={account} bubbleActions={bubbleActions} canLoadOlder={canLoadOlder} contentRef={contentRef} earlierBySender={earlierBySender} loadError={loadError} loadOlder={loadOlder} loadingOlder={loadingOlder} messages={messages} readerScrolledRef={readerScrolledRef} scrollRef={scrollRef} subject={subject} t={t} thread={thread} />
+              {/* The same inset as the messages above, so the box lines up with the
+                  bubbles rather than sitting a few pixels inside them. */}
+              <ChatComposer addAttachFiles={addAttachFiles} attachItems={attachItems} attachPasteHandlers={attachPasteHandlers} attachTotalBytes={attachTotalBytes} composerKey={composerKey} composerRef={composerRef} draft={draft} inputRef={inputRef} insertEmoji={insertEmoji} quotedForReply={quotedForReply} removeAttach={removeAttach} send={send} sendError={sendError} sending={sending} setDraft={setDraft} setDraftPreviewId={setDraftPreviewId} setQuoteMessageId={setQuoteMessageId} t={t} thread={thread} />
+            </>
+          ) : null}
+        </div>
+      </div>
+      <DraftAttachmentPreviewDialog
+        items={attachItems}
+        previewId={draftPreviewId}
+        onSelect={setDraftPreviewId}
+        onClose={() => setDraftPreviewId(null)}
+      />
+    </>
+  );
+}
+
+
+
+/** The window's state: the thread, the draft, what is sending, what was seen, the elements, and the attachments. */
+export function useChatState({
+  account,
+  threadId,
+}: { account: ChatPopoutProps["account"]; threadId: ChatPopoutProps["threadId"] }) {
   const t = useMailT();
   const colorMode = useMailColorMode();
   /*
     Folded or not — asked of the window, not assumed.
 
-    The window keeps its size across a reload and the state did not: a
-    chat parked as a bar came back believing it was open, drew the header
-    and the composer into fifty-six pixels, and showed a clipped name
-    above a box with no conversation over it. Anything that reloads the
-    page does this — the app restarting, and the dev server on every save.
+    The window keeps its size across a reload, but the state does not. If
+    the state is assumed, a chat parked as a bar comes back as open. It
+    draws the header and the composer into fifty-six pixels, and shows a
+    clipped name above a box with no conversation over it. Anything that
+    reloads the page does this — the app restarting, and the dev server on
+    every save.
 
     The window's own height is the answer. Halfway between the two heights
     is the line, so neither a title bar nor a pixel of rounding can put it
@@ -164,14 +208,11 @@ export function ChatPopout({
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
   const [localBubbles, setLocalBubbles] = React.useState<LocalBubble[]>([]);
-
-
-  const seenKey = `redd-plan-chat-popout-seen:${account}|${threadId}`;
+  const seenKey = `${POPOUT_SEEN_PREFIX}${account}|${threadId}`;
   const [lastSeenAt, setLastSeenAt] = React.useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(seenKey) ?? "";
   });
-
   const collapsedRef = React.useRef(collapsed);
   collapsedRef.current = collapsed;
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -193,7 +234,6 @@ export function ChatPopout({
   const composerRef = React.useRef<HTMLDivElement>(null);
   /** Where the caret goes once the box exists and has been focused. */
   const pendingCaretRef = React.useRef<number | null>(null);
-
   const {
     items: attachItems,
     totalBytes: attachTotalBytes,
@@ -212,19 +252,36 @@ export function ChatPopout({
    *
    * Anywhere, rather than only on the box: this window is one conversation
    * and one message being written, so there is nowhere else a file could be
-   * meant for. Dropping one used to do nothing at all.
+   * meant for.
    */
   const { dragging: attachDragging, dropHandlers: attachDropHandlers } =
     useComposerFileDrop(addAttachFiles);
   const { pasteHandlers: attachPasteHandlers } =
     useComposerPaste(addAttachFiles);
+  return { addAttachFiles, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachTotalBytes, attachmentPayload, attachmentsReady, clearAttachments, collapsed, collapsedRef, colorMode, composerKey, composerRef, contentRef, draft, draftPreviewId, draftText, inputRef, lastSeenAt, loadError, localBubbles, ownSignalAtRef, pendingCaretRef, readerScrolledRef, removeAttach, scrollRef, seenKey, sendError, sending, setCollapsed, setComposerKey, setDraft, setDraftPreviewId, setLastSeenAt, setLoadError, setLocalBubbles, setSendError, setSending, setThread, t, thread };
+}
 
+/** Reading the thread, again on the poll, and marking it seen. */
+export function useChatLoad({
+  account,
+  collapsedRef,
+  ownSignalAtRef,
+  pendingCaretRef,
+  seenKey,
+  setDraft,
+  setLastSeenAt,
+  setLoadError,
+  setLocalBubbles,
+  setThread,
+  threadId,
+}: Pick<ReturnType<typeof useChatState>, "collapsedRef" | "ownSignalAtRef" | "pendingCaretRef" | "seenKey" | "setDraft" | "setLastSeenAt" | "setLoadError" | "setLocalBubbles" | "setThread"> &
+  { account: ChatPopoutProps["account"]; threadId: ChatPopoutProps["threadId"] }) {
   /*
    * The box grows with the message, to a few lines, and then scrolls.
    *
-   * A min-height and a max-height do all of it now, in `mail.css`. The box
-   * used to be a textarea, which is one line tall whatever is in it, so its
-   * height had to be measured and set on every keystroke.
+   * A min-height and a max-height do all of it, in `mail.css`. The box is
+   * not a textarea. A textarea is one line tall whatever is in it, so its
+   * height must be measured and set on every keystroke.
    */
 
   const markSeen = React.useCallback(
@@ -241,9 +298,8 @@ export function ChatPopout({
         return newest;
       });
     },
-    [seenKey]
+    [seenKey, setLastSeenAt]
   );
-
   const loadThread = React.useCallback(async () => {
     // Only clear provider-side unread when the user is actually looking.
     const viewing = !collapsedRef.current && document.hasFocus();
@@ -256,11 +312,11 @@ export function ChatPopout({
       /*
         Keep the state we have when the answer is the state we have.
 
-        Every poll used to replace the thread object whether or not anything
-        changed, and every replacement re-rendered the message frames and
-        attachment tiles — whose heights settle again a beat later, jolting
-        a reader parked at the bottom a few hundred pixels up. Same
-        messages, same words: nothing to paint.
+        A new thread object re-renders the message frames and attachment
+        tiles. Their heights settle again a beat later, and that jolts a
+        reader parked at the bottom a few hundred pixels up. So a poll that
+        changes nothing does not replace the object. Same messages, same
+        words: nothing to paint.
       */
       setThread((current) => {
         if (current && sameThreadPage(current, json.thread)) return current;
@@ -280,8 +336,7 @@ export function ChatPopout({
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Couldn't load thread");
     }
-  }, [account, threadId, markSeen]);
-
+  }, [account, threadId, markSeen, collapsedRef, setLoadError, setLocalBubbles, setThread]);
   // Instant first paint: the opener hands the already-loaded thread over via
   // localStorage; the fetch below still refreshes it in the background.
   React.useLayoutEffect(() => {
@@ -293,13 +348,12 @@ export function ChatPopout({
     // box: this window's own draft is never overwritten by a handover.
     if (seed.draft) {
       setDraft((current) => current || seed.draft);
-      // And in the same place in it. The caret is put after the box has
-      // been filled and focused, or focusing would take it to the end
-      // again — which is where it always used to land.
+      // And in the same place in it. The caret is put after the box is
+      // filled and focused. If it is put before, focusing takes it to the
+      // end again.
       if (seed.caret != null) pendingCaretRef.current = seed.caret;
     }
-  }, [account, threadId]);
-
+  }, [account, threadId, pendingCaretRef, setDraft, setThread]);
   // Poll for new mail; refresh immediately when the window regains focus.
   React.useEffect(() => {
     void loadThread();
@@ -311,7 +365,6 @@ export function ChatPopout({
       window.removeEventListener("focus", onFocus);
     };
   }, [loadThread]);
-
   /*
     A reply sent from the reader shows here at once, not at the next poll.
 
@@ -373,8 +426,23 @@ export function ChatPopout({
       unlisten?.();
       for (const timer of timers) window.clearTimeout(timer);
     };
-  }, [account, threadId, loadThread]);
+  }, [account, threadId, loadThread, ownSignalAtRef]);
+  return { loadThread, markSeen };
+}
 
+/** The older messages, the bubbles in order, and what is not seen yet. */
+export function useChatHistory({
+  account,
+  collapsed,
+  contentRef,
+  lastSeenAt,
+  localBubbles,
+  readerScrolledRef,
+  scrollRef,
+  thread,
+  threadId,
+}: Pick<ReturnType<typeof useChatState>, "collapsed" | "contentRef" | "lastSeenAt" | "localBubbles" | "readerScrolledRef" | "scrollRef" | "thread"> &
+  { account: ChatPopoutProps["account"]; threadId: ChatPopoutProps["threadId"] }) {
   /**
    * Earlier pages, fetched when a reader scrolls to the top.
    *
@@ -391,13 +459,11 @@ export function ChatPopout({
   const [olderHasMore, setOlderHasMore] = React.useState<boolean | null>(null);
   const [loadingOlder, setLoadingOlder] = React.useState(false);
   const canLoadOlder = olderHasMore ?? Boolean(thread?.hasOlder);
-
   React.useEffect(() => {
     // A different thread in the same window starts again from the newest.
     setOlder([]);
     setOlderHasMore(null);
   }, [account, threadId]);
-
   const loadOlder = React.useCallback(async () => {
     const oldest = older[0] ?? thread?.messages[0];
     if (!oldest || loadingOlder) return;
@@ -432,8 +498,7 @@ export function ChatPopout({
     } finally {
       setLoadingOlder(false);
     }
-  }, [older, thread, loadingOlder, account, threadId]);
-
+  }, [older, thread, loadingOlder, account, threadId, readerScrolledRef, scrollRef]);
   const messages = React.useMemo<MailMessage[]>(() => {
     const base = [...older, ...(thread?.messages ?? [])];
     const extras = localBubbles.map((b) => ({
@@ -457,8 +522,6 @@ export function ChatPopout({
   }, [thread, older, localBubbles, account]);
   /** Each message's previous one from the same sender: its signature folds. */
   const earlierBySender = React.useMemo(() => earlierFromSameSender(messages), [messages]);
-
-
   const unseenCount = React.useMemo(
     () =>
       messages.filter(
@@ -466,7 +529,6 @@ export function ChatPopout({
       ).length,
     [messages, lastSeenAt]
   );
-
   /**
    * The window opens at the end of the conversation, and stays there.
    *
@@ -477,11 +539,11 @@ export function ChatPopout({
    * pictures land after that. Every one of those moves the end of the
    * conversation further down.
    *
-   * Earlier versions tried to work out, at each of those moments, whether the
-   * reader was still at the bottom, and read the answer off scroll events.
-   * The browser fires those when content resizes, so the window's own loading
-   * kept being mistaken for the reader scrolling away, and the view let go
-   * half way through and settled short. That is what the bouncing was.
+   * Scroll events cannot tell, at each of those moments, whether the reader
+   * is still at the bottom. The browser fires those events when content
+   * resizes. If they are used, the window's own loading is mistaken for the
+   * reader scrolling away. The view then lets go half way through and settles
+   * short, and the conversation bounces.
    *
    * So only one thing turns this off, and it is the reader taking hold of the
    * scroll themselves. A wheel, a drag, or a key is a person. A scroll event
@@ -515,8 +577,7 @@ export function ChatPopout({
       observer.disconnect();
       window.removeEventListener("resize", pin);
     };
-  }, [collapsed]);
-
+  }, [collapsed, contentRef, readerScrolledRef, scrollRef]);
   /**
    * And again whenever the conversation itself changes.
    *
@@ -543,8 +604,28 @@ export function ChatPopout({
       cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [collapsed, messages.length, thread?.threadId]);
+  }, [collapsed, messages.length, thread?.threadId, readerScrolledRef, scrollRef]);
+  return { canLoadOlder, earlierBySender, loadOlder, loadingOlder, messages, unseenCount };
+}
 
+/** Handing the thread back to the main window, the window's keys, and folding the window. */
+export function useChatWindow({
+  account,
+  collapsed,
+  collapsedRef,
+  composerRef,
+  draft,
+  draftText,
+  inputRef,
+  markSeen,
+  pendingCaretRef,
+  personEmail,
+  setCollapsed,
+  thread,
+  threadId,
+}: Pick<ReturnType<typeof useChatState>, "collapsed" | "collapsedRef" | "composerRef" | "draft" | "draftText" | "inputRef" | "pendingCaretRef" | "setCollapsed" | "thread"> &
+  Pick<ReturnType<typeof useChatLoad>, "markSeen"> &
+  { account: ChatPopoutProps["account"]; personEmail: ChatPopoutProps["personEmail"]; threadId: ChatPopoutProps["threadId"] }) {
   /**
    * Give the message back to the thread, and go.
    *
@@ -605,8 +686,7 @@ export function ChatPopout({
         // Losing the draft is bad; refusing to close is worse.
       })
       .finally(done);
-  }, [draft, draftText, thread, account, threadId, personEmail]);
-
+  }, [draft, draftText, thread, account, threadId, personEmail, inputRef]);
   /**
    * Escape asks for it from in here — and so does the key that opened it.
    *
@@ -629,7 +709,6 @@ export function ChatPopout({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handBack, shortcuts]);
-
   /**
    * "Bring back" asks for it from the thread.
    *
@@ -645,7 +724,6 @@ export function ChatPopout({
    */
   const handBackRef = React.useRef(handBack);
   handBackRef.current = handBack;
-
   React.useEffect(() => {
     const tauriEvent = (
       window as unknown as {
@@ -674,8 +752,6 @@ export function ChatPopout({
       unlisten?.();
     };
   }, []);
-
-
   /**
    * The box is ready to type in as soon as the window is there.
    *
@@ -718,14 +794,12 @@ export function ChatPopout({
     };
     frame = requestAnimationFrame(() => tryFocus(0));
     return () => cancelAnimationFrame(frame);
-  }, [collapsed]);
-
+  }, [collapsed, composerRef, inputRef, pendingCaretRef]);
   // Seeing the expanded, focused window counts as reading.
   React.useEffect(() => {
     if (collapsed || !thread) return;
     if (document.hasFocus()) markSeen(thread);
   }, [collapsed, thread, markSeen]);
-
   const setWindowCollapsed = React.useCallback(async (next: boolean) => {
     setCollapsed(next);
     const height = next
@@ -743,8 +817,7 @@ export function ChatPopout({
         // Plain tab (opened directly): nothing to resize.
       }
     }
-  }, []);
-
+  }, [setCollapsed]);
   /**
    * "Show", pressed on the strip in the reader, unfolds this window.
    *
@@ -785,7 +858,32 @@ export function ChatPopout({
       unlisten?.();
     };
   }, []);
+  return { setWindowCollapsed };
+}
 
+/** Sending, quoting, emoji, the bubbles' actions, and closing. */
+export function useChatSend({
+  account,
+  attachmentPayload,
+  attachmentsReady,
+  clearAttachments,
+  draft,
+  draftText,
+  inputRef,
+  loadThread,
+  ownSignalAtRef,
+  personEmail,
+  sending,
+  setComposerKey,
+  setDraft,
+  setLocalBubbles,
+  setSendError,
+  setSending,
+  thread,
+  threadId,
+}: Pick<ReturnType<typeof useChatState>, "attachmentPayload" | "attachmentsReady" | "clearAttachments" | "draft" | "draftText" | "inputRef" | "ownSignalAtRef" | "sending" | "setComposerKey" | "setDraft" | "setLocalBubbles" | "setSendError" | "setSending" | "thread"> &
+  Pick<ReturnType<typeof useChatLoad>, "loadThread"> &
+  { account: ChatPopoutProps["account"]; personEmail: ChatPopoutProps["personEmail"]; threadId: ChatPopoutProps["threadId"] }) {
   /**
    * Reply quoting one message, rather than answering the thread in general.
    *
@@ -796,7 +894,6 @@ export function ChatPopout({
   const [quoteMessageId, setQuoteMessageId] = React.useState<string | null>(
     null
   );
-
   const send = React.useCallback(async (options?: {
     /** An emoji reaction sends this instead of what is in the box. */
     body?: string;
@@ -854,9 +951,9 @@ export function ChatPopout({
       ? reactionMessage(options.body, quoted)
       : null;
     // A reply to one message carries that message in its body, in the same
-    // card the reaction uses. Sent as the quoted history it was folded away
-    // behind a "…" by the reader, and dropped altogether by a chat-style
-    // thread — so what was picked never showed.
+    // card the reaction uses. If it is sent as the quoted history, the
+    // reader folds it away behind a "…", and a chat-style thread drops it
+    // altogether. Then what was picked does not show.
     const outgoing =
       reaction ?? (quoted ? quotedReplyMessage(body, quoted, bodyHtml) : null);
 
@@ -932,8 +1029,7 @@ export function ChatPopout({
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [
-    draft,
+  }, [draft,
     draftText,
     sending,
     thread,
@@ -944,9 +1040,7 @@ export function ChatPopout({
     attachmentPayload,
     attachmentsReady,
     clearAttachments,
-    quoteMessageId,
-  ]);
-
+    quoteMessageId, inputRef, ownSignalAtRef, setComposerKey, setDraft, setLocalBubbles, setSendError, setSending]);
   /**
    * Put an emoji where the caret is, not on the end.
    *
@@ -958,14 +1052,12 @@ export function ChatPopout({
     // The editor knows where its own caret is, puts the emoji there, and
     // moves the caret past it. Its change event updates the draft.
     inputRef.current?.insertText(emoji);
-  }, []);
-
+  }, [inputRef]);
   /** The message the next send will quote, when one was picked. */
   const quotedForReply = React.useMemo(
     () => thread?.messages.find((m) => m.id === quoteMessageId) ?? null,
     [thread, quoteMessageId]
   );
-
   const bubbleActions = React.useCallback(
     (m: { id: string }) => ({
       onReact: (emoji: string) => void send({ body: emoji, quoteId: m.id }),
@@ -983,384 +1075,10 @@ export function ChatPopout({
     // `send` belongs here. Without it this kept the first one ever made —
     // the one closed over a thread that had not loaded — and every reaction
     // returned at its own `!thread` guard without a word.
-    [account, threadId, send]
+    [account, threadId, send, inputRef]
   );
-
   const close = React.useCallback(() => {
     void closeChatPopout().catch(() => window.close());
   }, []);
-
-  const header = (
-    <div
-      data-tauri-drag-region
-      // The same cream as the main window's chrome, so the strip that names
-      // who you are talking to reads as chrome here too, and the messages
-      // below it keep the pane to themselves. The rule only makes sense when
-      // there is something under it — folded, this strip is the whole card,
-      // and fills it.
-      className={cn(
-        "flex shrink-0 items-center bg-[var(--mail-chrome)]",
-        // Folded it is the whole window, so it gives back the room it does
-        // not need: a smaller face, less air around it.
-        collapsed ? "gap-2.5 px-3 py-1.5" : "gap-3 px-4 py-2",
-        // Folded, this strip is the whole card, so it takes the whole of it.
-        // Left at its own height it sat centred in a taller white card, and
-        // the card showed above and below it as two white bands.
-        collapsed && "grow",
-        !collapsed && "border-b border-[var(--mail-chrome-border)]"
-      )}
-    >
-      {teamAvatarSrc(personEmail) ? (
-        <img
-          aria-hidden
-          data-tauri-drag-region
-          src={teamAvatarSrc(personEmail)}
-          alt=""
-          className={cn(
-            "shrink-0 rounded-full object-cover",
-            collapsed ? "h-8 w-8" : "h-10 w-10"
-          )}
-        />
-      ) : (
-        <span
-          aria-hidden
-          data-tauri-drag-region
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-            collapsed ? "h-8 w-8" : "h-10 w-10",
-            avatarStyle((personEmail || personName).toLowerCase())
-          )}
-        >
-          <span data-tauri-drag-region className="pointer-events-none">
-            {senderInitials(personName, personEmail)}
-          </span>
-        </span>
-      )}
-      <div data-tauri-drag-region className="min-w-0 flex-1">
-        <p
-          data-tauri-drag-region
-          className="truncate text-[15px] font-bold leading-tight text-stone-900"
-        >
-          {personName || personEmail}
-        </p>
-        <p
-          data-tauri-drag-region
-          className="truncate text-[13px] leading-tight text-stone-500"
-        >
-          {subject}
-        </p>
-      </div>
-      {unseenCount > 0 ? (
-        <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-teal-600 px-1.5 text-xs font-semibold text-white">
-          {unseenCount}
-        </span>
-      ) : null}
-      <button
-        type="button"
-        aria-label={collapsed ? "Expand" : "Collapse"}
-        title={collapsed ? "Expand" : "Collapse"}
-        className="rounded-inner p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
-        onClick={() => void setWindowCollapsed(!collapsed)}
-      >
-        {collapsed ? (
-          <Square className="h-4 w-4" />
-        ) : (
-          <Minus className="h-4 w-4" />
-        )}
-      </button>
-      <button
-        type="button"
-        aria-label={t("close")}
-        title={t("close")}
-        className="rounded-inner p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
-        onClick={close}
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-
-  return (
-    <>
-      {/* The Tauri window is transparent; this page draws the rounded card. */}
-      <style>{`html, body { background: transparent !important; } body { overflow: hidden; }`}</style>
-      {/*
-        The card fills the window exactly.
-
-        It used to sit six pixels in, with a CSS shadow around it. A shadow
-        that size wants about twenty-five, so it was cut off square at the
-        window's edge — which is what the hairline under the popout was, with
-        the desktop showing through the six pixels above it. macOS draws a
-        shadow round the window's opaque content by itself, and does not clip
-        it, so this leaves that to macOS and keeps only the card.
-      */}
-      <div className="fixed inset-0 flex">
-        <div
-          className={cn(
-            // mail-shell provides the bubble CSS variables MailBubble uses.
-            // min-w-0: never let a long unbreakable token (URLs in emails)
-            // widen the card past the window via flex min-content sizing.
-            // mail-surface-root: the card is the shell itself, so the dark
-            // rules for descendants cannot reach it. See mail.css.
-            "mail-shell mail-surface-root flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-surface border border-stone-200 bg-white",
-            // relative: the drop overlay covers the card, not the desktop.
-            !collapsed && "relative"
-          )}
-          data-theme={colorMode}
-          {...(collapsed ? null : attachDropHandlers)}
-        >
-          {!collapsed ? <ComposerDropOverlay visible={attachDragging} /> : null}
-          {header}
-          {!collapsed ? (
-            <>
-              <div
-                ref={scrollRef}
-                className="mail-thread-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-2"
-                /**
-                 * The browser must not move the view for us.
-                 *
-                 * Scroll anchoring shifts scrollTop when content around the
-                 * view resizes, which is a second thing pulling at the scroll
-                 * while the window loads. One rule owns the position here.
-                 */
-                style={{ overflowAnchor: "none" }}
-                /* A person did this. Nothing else sets it. */
-                onWheel={() => {
-                  readerScrolledRef.current = true;
-                }}
-                onTouchMove={() => {
-                  readerScrolledRef.current = true;
-                }}
-                onKeyDown={() => {
-                  readerScrolledRef.current = true;
-                }}
-                onScroll={(e) => {
-                  const el = e.currentTarget;
-                  // Only ever hands the view back. Scrolling to the end says
-                  // "keep me here"; nothing a scroll event says can take the
-                  // end away, because the window's own loading fires these.
-                  if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
-                    readerScrolledRef.current = false;
-                  }
-                  // Near the top and there is more behind it.
-                  //
-                  // Only for a reader who scrolled there. A window that has
-                  // just opened is also at the top: every HTML message is a
-                  // frame 140pt tall until it paints, so a long thread is far
-                  // shorter than it will be, and the pin to the end lands at
-                  // the start and fires this. The window then fetched a page
-                  // nobody asked for and put the view back where that page
-                  // began — which is the wrong place, held for as long as the
-                  // fetch took, until the frames settled and the pin threw
-                  // the reader to the end.
-                  if (!readerScrolledRef.current) return;
-                  if (el.scrollTop > 60) return;
-                  if (!canLoadOlder || loadingOlder) return;
-                  void loadOlder();
-                }}
-              >
-                {/* One box around the messages, so their growth is one thing
-                    to watch. The spacing rides with them. */}
-                <div ref={contentRef} className="space-y-2">
-                {canLoadOlder ? (
-                  <p className="py-2 text-center text-[11px] text-stone-400">
-                    {loadingOlder ? t("loadingEarlierMessages") : t("scrollUpForEarlier")}
-                  </p>
-                ) : null}
-                {loadError && !thread ? (
-                  <p className="pt-6 text-center text-sm text-stone-400">
-                    {loadError}
-                  </p>
-                ) : !thread ? (
-                  <p className="pt-6 text-center text-sm text-stone-400">
-                    {t("loading")}
-                  </p>
-                ) : null}
-                {messages.map((m, i) => {
-                  const previous = messages[i - 1];
-                  const newDay =
-                    !previous || !sameDay(previous.sentAt, m.sentAt);
-                  return (
-                  <React.Fragment key={`day-${m.id}`}>
-                  {/* The day, once, over the messages that belong to it —
-                      in the mail list's small capitals, the same as the
-                      thread reader's. This window shows the same
-                      conversation the reader does. */}
-                  {newDay && m.sentAt ? (
-                    <p className="pb-1 pt-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]">
-                      {chatDayLabel(m.sentAt, t)}
-                    </p>
-                  ) : null}
-                  <div key={m.id} className="min-w-0">
-                    <MailBubble
-                      {...bubbleActions(m)}
-                      earlierFromSender={earlierBySender.get(m.id)}
-                      showPrint={false}
-                      // One window, one conversation, one person: their name
-                      // over every message says nothing that the window does
-                      // not already. The time goes in the bubble instead.
-                      showMeta={false}
-                      timeLabel={timeOfDay(m.sentAt)}
-                      message={m}
-                      account={account}
-                      subject={subject}
-                      defaultAllowImages
-                      // Never folded here. This window holds one short
-                      // conversation, and a fold in it hid the very thing
-                      // somebody opened the window to read.
-                      sendStatus={
-                        m.id.startsWith("local-") ? "sending" : undefined
-                      }
-                      onPreviewAttachment={(attachment) =>
-                        openAttachmentOutside({
-                          path: attachmentUrl({
-                            account,
-                            messageId: m.id,
-                            attachment,
-                          }),
-                          filename: attachment.filename,
-                        })
-                      }
-                    />
-                  </div>
-                  </React.Fragment>
-                  );
-                })}
-                </div>
-              </div>
-              {/* The same inset as the messages above, so the box lines up with the
-                  bubbles rather than sitting a few pixels inside them. */}
-              <div className="shrink-0 px-3 pb-3 pt-0">
-                {sendError ? (
-                  <p className="pb-1.5 text-xs text-red-600">{sendError}</p>
-                ) : null}
-                {/* In the colour of a message from you, because that is what
-                    it is about to be. On the card's own white, with a rule
-                    above it, a waiting file read as part of the window rather
-                    than part of what was being written. */}
-                {/* What the next send will quote. Picking a message to reply
-                    to used to do nothing you could see — the box took the
-                    caret and the quote was invisible until it arrived at the
-                    other end. */}
-                {quotedForReply ? (
-                  <div className="mb-1 flex items-start gap-2 rounded-surface border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-3 py-2">
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold text-stone-500">
-                        Replying to{" "}
-                        {quotedForReply.own
-                          ? "yourself"
-                          : quotedForReply.fromName || quotedForReply.fromEmail}
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-stone-600">
-                        {reactionQuoteText(quotedForReply.bodyText) ||
-                          "(no text)"}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      title={t("dontQuoteIt")}
-                      aria-label={t("dontQuoteIt")}
-                      className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                      onClick={() => setQuoteMessageId(null)}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ) : null}
-                {attachItems.length ? (
-                  <div className="mb-1 rounded-surface border border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)] px-1 pb-1.5 pt-1">
-                    <DraftAttachmentThumbs
-                      items={attachItems}
-                      onRemove={removeAttach}
-                      onPreview={setDraftPreviewId}
-                    />
-                    <div className="px-1 pt-1">
-                      <AttachmentSizeSummary
-                        count={attachItems.length}
-                        totalBytes={attachTotalBytes}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                {/* Ends aligned. The offsets below put both icons level with
-                    the first line, which is where the box starts — so they
-                    read as centred on an empty box and stay in the bottom
-                    corner as it grows, rather than drifting up the middle of
-                    a paragraph. */}
-                <div ref={composerRef} className="flex items-end gap-2">
-                  {/* The paste handlers sit here rather than on the box:
-                      the editor takes no DOM props of its own, and a paste
-                      into it bubbles up to this either way. */}
-                  <div
-                    className="relative min-w-0 flex-1"
-                    {...attachPasteHandlers}
-                  >
-                  {/* The same editor as the reply box in the reader, in
-                      Quill's bubble theme: no toolbar of its own, and B,
-                      I, U and the link over whatever is selected. There is
-                      no room in a window this size for a permanent bar,
-                      and this is a window for short messages anyway.
-
-                      rounded-control, the same as New email in the main window,
-                      so the two boxes you type into are the same shape.
-                      The heights and the room kept for the emoji button
-                      are in `mail.css`, on .mail-chat-input. */}
-                  <RichTextEditor
-                    key={composerKey}
-                    className="mail-chat-input"
-                    variant="bubble"
-                    handleRef={inputRef}
-                    defaultValue={draft}
-                    onChange={setDraft}
-                    // Enter sends, shift-Enter starts a line — the same as
-                    // every chat window. Also with nothing typed, when a
-                    // file is waiting: there is no Send button to reach for.
-                    onEnter={() => void send()}
-                    // Just "Message". The name is the window's title and is
-                    // right above this; when there is no display name it was
-                    // the address, which filled the box and said nothing.
-                    placeholder={sending ? "Sending…" : "Message"}
-                    minHeight={41}
-                  />
-                  {/* In the box, on the right, where every chat app puts it
-                      — it writes into the box, so it belongs in it.
-                      The offsets here and on the paperclip are what the eye
-                      wants rather than what the box measures: a glyph is not
-                      centred in its own viewBox, and the two are not centred
-                      the same way, so they need different numbers to sit on
-                      the same line. */}
-                  <span className="absolute bottom-1 right-1.5">
-                    <EmojiPickerButton
-                      onPick={insertEmoji}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-                    />
-                  </span>
-                  </div>
-                  {/* The paperclip stays outside: it attaches a file to the
-                      message rather than putting anything in the box. */}
-                  <span className="flex shrink-0 items-end pb-1.5">
-                    <AttachToolbarButton
-                      onPick={addAttachFiles}
-                      disabled={!thread || sending}
-                      // Optically the size of the emoji, not numerically:
-                      // a paperclip fills its box top to bottom, a smiley is
-                      // a circle inside one, so equal boxes do not look
-                      // equal.
-                      iconClassName="h-[18px] w-[18px]"
-                    />
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
-      <DraftAttachmentPreviewDialog
-        items={attachItems}
-        previewId={draftPreviewId}
-        onSelect={setDraftPreviewId}
-        onClose={() => setDraftPreviewId(null)}
-      />
-    </>
-  );
+  return { bubbleActions, close, insertEmoji, quotedForReply, send, setQuoteMessageId };
 }

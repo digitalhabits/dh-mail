@@ -15,7 +15,7 @@ const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
  * Graph allows four, and answers the fifth with 429 ApplicationThrottled —
  * "over its MailboxConcurrency limit". Three leaves room for the request the
  * reader is actually waiting on: a forward reads its attachments in parallel
- * and then sends, and it was the send that came back refused.
+ * and then sends. Without that room, it is the send that comes back refused.
  */
 const GRAPH_CONCURRENCY = 3;
 
@@ -24,9 +24,9 @@ const GRAPH_CONCURRENCY = 3;
 
   The first read of a big mailbox asks for a page of a hundred messages and
   then for the files of each one, side by side: a hundred requests in the
-  queue at once, page after page, for hours. The list the reader was waiting
-  for queued behind them, so a mailbox of fifty thousand showed nothing until
-  some 650 messages had been read. Now the background's requests carry a
+  queue at once, page after page, for hours. If the list that the reader
+  waits for queues behind them, a mailbox of fifty thousand shows nothing
+  until some 650 messages are read. So the background's requests carry a
   mark (`backgroundToken`), take at most two of the three places, and wait
   behind anything the reader asked for. A reader's request always finds a
   place free, or the next one.

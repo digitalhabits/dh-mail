@@ -6,17 +6,17 @@
  * Its place is a distance from the bottom right corner of the thread, so
  * it stays in the same corner when the window changes size. It is not
  * kept: it lasts while the thread is open, and the next thread opens the
- * tray in its usual place. Kept for every thread, a tray moved once stood
- * somewhere odd in every thread after it (Ulrik, 2026-10-17). A
+ * tray in its usual place. If the place is kept for every thread, a tray
+ * moved once stands somewhere odd in every thread after it. A
  * press on a button that moves less than a few pixels is still a press;
  * a drag that starts on a button does not also press it. A double-click on
  * the tray's own edge puts it back in its usual place.
  */
 
+import { OLD_REPLY_TRAY_KEY as OLD_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-/** Where a place was kept before it was not. Cleared once, so an old one goes. */
-const OLD_KEY = "dh-mail-reply-tray";
+/** OLD_KEY holds a place that an earlier build kept. Cleared once, so an old one goes. */
 /** How far the pointer moves before a press becomes a drag. */
 const DRAG_SLOP = 4;
 /** The space kept between the tray and the thread's edges. */

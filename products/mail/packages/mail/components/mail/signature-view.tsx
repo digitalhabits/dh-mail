@@ -9,7 +9,7 @@
  *
  * Links in it are the words' own colour with a quiet underline, and the
  * underline goes under the pointer — a signature is four lines of small
- * grey text and a blue word in it was the loudest thing on the card.
+ * grey text, and a blue word in it is the loudest thing on the card.
  *
  * The mail sends the same colour and the same underline, inlined per
  * anchor (see `signatureHtml`), so this shows what will arrive. It does

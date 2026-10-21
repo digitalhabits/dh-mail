@@ -66,9 +66,9 @@ function gmailMessageHasFile(m: GmailMessage): boolean {
  * The name this message will be known by, everywhere it lands.
  *
  * Written by us rather than left to the provider. A message sent without
- * one is named by the server as it goes, so the same message sent twice —
- * which two workers over one outbox once managed — arrived under two
- * names, and nothing at either end could tell it was one message. With a
+ * one is named by the server as it goes. So the same message sent twice
+ * (for example, by two workers over one outbox) arrives under two names,
+ * and nothing at either end can tell that it is one message. With a
  * name of our own, a second copy folds into the first wherever messages
  * are folded by it, this app's own reader included.
  *

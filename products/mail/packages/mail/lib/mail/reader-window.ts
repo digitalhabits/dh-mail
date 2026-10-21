@@ -8,6 +8,11 @@
  */
 
 import {
+  READER_HANDOFF_PREFIX as HANDOFF_PREFIX,
+  PERSON_HANDOFF_PREFIX,
+  MAIL_CHANGED_KEY,
+} from "@/lib/mail/storage-keys";
+import {
   isNativeShell,
   notifyMailChanged,
   openMailReaderWindow,
@@ -33,7 +38,6 @@ export type ReaderWindowHandoff = {
   unread?: boolean;
 };
 
-const HANDOFF_PREFIX = "redd-plan-mail-reader-handoff:";
 const HANDOFF_TTL_MS = 60_000;
 
 function handoffKey(account: string, threadId: string): string {
@@ -166,8 +170,6 @@ export async function openMailThreadWindow(input: {
  */
 export type PersonWindowHandoff = { row: PersonRow };
 
-const PERSON_HANDOFF_PREFIX = "redd-plan-mail-person-handoff:";
-
 function personHandoffKey(key: string): string {
   return `${PERSON_HANDOFF_PREFIX}${key}`;
 }
@@ -267,8 +269,6 @@ export async function openMailDraftWindow(input: {
  * browsers, a Tauri event for the desktop shells, where cross-window
  * storage events are unreliable.
  */
-export const MAIL_CHANGED_KEY = "redd-plan-mail-thread-changed";
-
 export function signalMailChanged(account: string, threadId: string): void {
   try {
     window.localStorage.setItem(

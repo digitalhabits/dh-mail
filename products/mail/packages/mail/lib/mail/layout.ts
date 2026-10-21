@@ -1,9 +1,11 @@
 /** Where the mail thread list sits relative to the reading pane. */
 
+import { MAIL_LIST_PLACEMENT_KEY, MAIL_FILTER_ROW_KEY } from "@/lib/mail/storage-keys";
+
 export type MailListPlacement = "left" | "right" | "top" | "bottom";
 
-export const MAIL_LIST_PLACEMENT_KEY = "redd-plan-mail-list-placement";
-export const MAIL_LIST_PLACEMENT_EVENT = "redd-plan-mail-list-placement";
+/** The window event has the same name as the storage key. */
+export const MAIL_LIST_PLACEMENT_EVENT = MAIL_LIST_PLACEMENT_KEY;
 
 const ALL: MailListPlacement[] = ["left", "right", "top", "bottom"];
 
@@ -42,8 +44,8 @@ export function setMailListPlacement(placement: MailListPlacement): void {
  * who lives in In Contacts wants that row every morning, and one who never
  * filters should not be given it back every time the app opens.
  */
-export const MAIL_FILTER_ROW_KEY = "redd-plan-mail-filter-row";
-export const MAIL_FILTER_ROW_EVENT = "redd-plan-mail-filter-row";
+/** The window event has the same name as the storage key. */
+export const MAIL_FILTER_ROW_EVENT = MAIL_FILTER_ROW_KEY;
 
 export function getMailFilterRowOpen(): boolean {
   if (typeof window === "undefined") return false;

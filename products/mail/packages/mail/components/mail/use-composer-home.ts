@@ -219,10 +219,11 @@ export function useComposerHome(input: {
      *
      * Not only the one this mount imported. A draft imported from Gmail
      * saves a copy here, and once that copy exists the composer opens from
-     * it instead — so a discard after any remount deleted our copy and left
-     * the provider's, which the next poll imported again, which saved a new
-     * copy, which put the Draft badge back on a thread the reader had just
-     * cleared. Discarding a reply means the reply is gone, on both sides.
+     * it instead. If only that one is deleted, a discard after any remount
+     * deletes our copy and leaves the provider's. The next poll imports it
+     * again and saves a new copy, and the Draft badge comes back on a thread
+     * that the reader just cleared. Discarding a reply means the reply is
+     * gone, on both sides.
      */
     const providerRef =
       importedDraftRef.current ?? thread?.providerDraft?.ref ?? draftRef ?? null;
@@ -237,9 +238,9 @@ export function useComposerHome(input: {
      * And this thread's provider draft has now been dealt with.
      *
      * The loaded thread still carries it until the next fetch, and the
-     * import runs off what is loaded — so without this the discard was
-     * followed straight away by the same draft opening again, from a copy
-     * that no longer exists anywhere.
+     * import runs off what is loaded. Without this, the same draft opens
+     * again straight after the discard, from a copy that no longer exists
+     * anywhere.
      */
     importedForThreadRef.current = threadId;
 
@@ -535,9 +536,7 @@ export function useComposerHome(input: {
     const counterpart = thread.messages.find((m) => !m.own && m.fromEmail);
     const email = counterpart?.fromEmail ?? thread.reply.to[0] ?? "";
     // What is being written travels with the conversation, formatting and
-    // all: both boxes hold rich text now, so bold stays bold across the
-    // move. It used to go as words only, because the pop-out's box was a
-    // plain one.
+    // all: both boxes hold rich text, so bold stays bold across the move.
     //
     // A reply travels. A forward does not: it goes to somebody the pop-out
     // has no picker to name, so it stays in the box that can send it.

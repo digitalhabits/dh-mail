@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
+
 /**
- * Sync: one button that syncs (2026-10-20).
+ * Sync: one button that syncs.
  *
- * Pausing has moved to the account tabs: the menu of an account's tab, or
+ * Pausing is on the account tabs: the menu of an account's tab, or
  * of All, sets when it is shown and when new mail comes in
  * (account-hours-menu.tsx). Sync keeps a small amber dot while anything is
  * paused, and says what in its hover, so a quiet inbox is not taken for a
@@ -11,12 +13,15 @@
  */
 
 import { SyncIcon } from "@/components/mail/MailListControls";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
+import { usePageLayout, usePageSync } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { cn } from "@/lib/utils";
 
-export function SyncControl({ m }: { m: MailPageModel }) {
-  const { chromeDark, noneFetching, pausedCount, pausedLabel, refreshing, syncNow, syncTurn, t } = m;
+export const SyncControl = React.memo(function SyncControl() {
+  const { noneFetching, pausedCount, pausedLabel, refreshing, syncNow, syncTurn } = usePageSync();
+  const { chromeDark } = usePageLayout();
+  const t = useMailT();
   const paused = noneFetching || pausedCount > 0;
   const title = noneFetching
     ? pausedLabel
@@ -44,4 +49,4 @@ export function SyncControl({ m }: { m: MailPageModel }) {
       ) : null}
     </button>
   );
-}
+});

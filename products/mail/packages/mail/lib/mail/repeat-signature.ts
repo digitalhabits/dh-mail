@@ -56,9 +56,9 @@ function sharedTail(mine: Segments, earlier: Segments): number {
 /*
   The sign-off is the writer's, not the signature's.
 
-  "Best, Ulrik" closes most of a person's mail the same way, so it was in
-  the tail the earlier message shared, and went behind the fold with the
-  title and the address. But it is the last thing the writer wrote, and how
+  "Best, Ulrik" closes most of a person's mail the same way, so it is in
+  the tail that the earlier message shares. Without this, it goes behind the
+  fold with the title and the address. But it is the last thing the writer wrote, and how
   they closed is part of what they said. So a shared tail that starts with
   a closing ("Best,", "Thanks!", "Venlig hilsen") keeps that line, and the
   short line under it that is the name, out of the fold.

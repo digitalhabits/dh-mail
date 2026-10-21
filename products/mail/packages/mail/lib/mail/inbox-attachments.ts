@@ -27,11 +27,11 @@ import { base64ToBytes, base64UrlToBytes } from "@/lib/base64";
 
   A file in a message never changes, and the same one is asked for again
   and again: once for the small picture in the thread, once more to look
-  at it, and once more to save it. Each time was a new read from the
-  mailbox — for a four-megabyte photograph, five megabytes of base64 over
-  IMAP, after a connection that may have to be opened first. The download
-  button therefore took as long as the thumbnail had, to fetch what the
-  page was already showing.
+  at it, and once more to save it. Without this, each time is a new read
+  from the mailbox. For a four-megabyte photograph, that is five megabytes
+  of base64 over IMAP, sometimes after a connection has to be opened first.
+  The download button then takes as long as the thumbnail did, to fetch
+  what the page already shows.
 
   Only in the desktop app, where this memory is the reader's own. A server
   would be keeping people's files in a process they share.

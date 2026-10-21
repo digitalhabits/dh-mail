@@ -42,10 +42,10 @@ const MAX_COPIES = 4;
  * The conversation's messages from the reader's other mailboxes, added to
  * this mailbox's rows. Only the ones this mailbox lacks, by Message-ID.
  *
- * A conversation that reached two mailboxes is one row in the list, and
- * the thread view read only that row's mailbox. A message only the other
- * mailbox had, most often the reader's own reply in its Sent folder, was
- * missing from the conversation (2026-10-19). A message with no
+ * A conversation that reached two mailboxes is one row in the list. If the
+ * thread view reads only that row's mailbox, a message that only the other
+ * mailbox has is missing from the conversation. Most often that message is
+ * the reader's own reply in its Sent folder. A message with no
  * Message-ID cannot be matched, so it is not merged.
  */
 async function withCopies(account: string, rows: StoredWithBody[]): Promise<StoredWithBody[]> {

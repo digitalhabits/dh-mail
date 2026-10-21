@@ -3,7 +3,7 @@
  *
  * Off unless the reader turns it on (Settings > General). A number beside
  * every folder is one more thing waiting to be brought to zero, which is
- * the pressure this app is meant to take away (Ulrik, 2026-10-14). The
+ * the pressure this app is meant to take away. The
  * Outbox keeps its count either way: mail that has not gone out yet is
  * something to know, not a score.
  *
@@ -11,9 +11,9 @@
  * sends an event, so the rail follows at once.
  */
 
+import { FOLDER_COUNTS_KEY as KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-const KEY = "redd-plan-mail-folder-counts";
 const CHANGED_EVENT = "redd-plan-mail-folder-counts-changed";
 
 export function readShowFolderCounts(): boolean {

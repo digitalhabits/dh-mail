@@ -39,6 +39,7 @@ import {
   messageKeys,
 } from "@/components/mail/thread-messages";
 
+
 /** Close enough to the end of a thread to count as being at it. */
 export const NEAR_LATEST_PX = 120;
 
@@ -101,10 +102,11 @@ export function useThreadStreamState() {
   };
 }
 
-/** The code that drives the stream. Call it where the pane always ran it. */
-export function useThreadStream(
-  stream: ReturnType<typeof useThreadStreamState>,
-  input: {
+/** The stream's state, as useThreadStreamState makes it. */
+export type ThreadStreamState = ReturnType<typeof useThreadStreamState>;
+
+/** What the pane hands to useThreadStream. */
+export type ThreadStreamInput = {
     account: string;
     threadId: string;
     /** Search hit — open centered on this message instead of the tip. */
@@ -118,8 +120,10 @@ export function useThreadStream(
     zoomRef: React.RefObject<number>;
     scrollRef: React.RefObject<HTMLDivElement | null>;
     streamNode: HTMLDivElement | null;
-  }
-) {
+};
+
+/** The code that drives the stream. Call it where the pane always ran it. */
+export function useThreadStream(stream: ThreadStreamState, input: ThreadStreamInput) {
   const {
     thread,
     setThread,
@@ -146,7 +150,69 @@ export function useThreadStream(
     scrollRef,
     streamNode,
   } = input;
+  const { loadNewerMessages, loadOlderMessages, seenRefreshToken } = useStreamLoad({ account, chatParts, focusMessageId, loadingNewer, loadingOlder, messageCount, olderParts, refreshToken, scrollRef, setChatParts, setError, setHighlightMessageId, setLoadingNewer, setLoadingOlder, setOlderParts, setThread, thread, threadId });
+  const { canLoadOlderAcrossParts, headHasOlderInPart } = useStreamAutoload({ loadNewerMessages, loadOlderMessages, olderParts, scrollRef, thread, threadId });
+  const { captureZoomAnchor, probeRectSpace } = useStreamZoom({ scrollRef, zoom });
+  const { awayFromLatest, goToLatestMessage, skipOpenPinRef } = useStreamLatest({ account, captureZoomAnchor, messageCount, probeRectSpace, refreshToken, scrollRef, seenRefreshToken, setLoadingNewer, setOlderParts, setThread, streamNode, thread, threadId });
+  useStreamOpenPosition({ focusMessageId, highlightMessageId, scrollRef, setHighlightMessageId, skipOpenPinRef, thread, threadId, zoomRef });
 
+  return {
+    loadOlderMessages,
+    loadNewerMessages,
+    headHasOlderInPart,
+    canLoadOlderAcrossParts,
+    captureZoomAnchor,
+    awayFromLatest,
+    goToLatestMessage,
+    skipOpenPinRef,
+  };
+}
+
+/**
+ * Bring `target` to the top of the scroller `el`, `margin` CSS pixels (of
+ * the target's own, zoomed, space) below its edge. Only `el` moves: the
+ * browser would scroll every box around it as well, even ones that hide
+ * their overflow, so those are put back before anything paints.
+ */
+function scrollToTopOf(el: HTMLElement, target: HTMLElement, margin: number): void {
+  const kept: [Element, number, number][] = [];
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    kept.push([node, node.scrollTop, node.scrollLeft]);
+  }
+  const page = [window.scrollX, window.scrollY];
+  const before = target.style.scrollMarginTop;
+  target.style.scrollMarginTop = `${margin}px`;
+  target.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+  target.style.scrollMarginTop = before;
+  for (const [node, top, left] of kept) {
+    if (node.scrollTop !== top) node.scrollTop = top;
+    if (node.scrollLeft !== left) node.scrollLeft = left;
+  }
+  if (window.scrollX !== page[0] || window.scrollY !== page[1]) window.scrollTo(page[0], page[1]);
+}
+
+/** Reading the thread, again when new mail comes, and its older and newer parts. */
+export function useStreamLoad({
+  account,
+  chatParts,
+  focusMessageId,
+  loadingNewer,
+  loadingOlder,
+  messageCount,
+  olderParts,
+  refreshToken,
+  scrollRef,
+  setChatParts,
+  setError,
+  setHighlightMessageId,
+  setLoadingNewer,
+  setLoadingOlder,
+  setOlderParts,
+  setThread,
+  thread,
+  threadId,
+}: Pick<ThreadStreamInput, "account" | "focusMessageId" | "messageCount" | "refreshToken" | "scrollRef" | "threadId"> &
+  Pick<ThreadStreamState, "chatParts" | "loadingNewer" | "loadingOlder" | "olderParts" | "setChatParts" | "setError" | "setHighlightMessageId" | "setLoadingNewer" | "setLoadingOlder" | "setOlderParts" | "setThread" | "thread">) {
   const applyThreadChrome = React.useCallback(
     (detail: MailThreadDetail) => {
       // Don't wipe the composer — local drafts restore into it, and revalidation
@@ -163,10 +229,8 @@ export function useThreadStream(
     },
     [focusMessageId, setHighlightMessageId]
   );
-
   // Tracks list tip while this pane is open (also set on cache-fresh opens).
   const seenRefreshToken = React.useRef(refreshToken);
-
   React.useEffect(() => {
     let cancelled = false;
     setLoadingOlder(false);
@@ -258,17 +322,14 @@ export function useThreadStream(
     // refreshToken read on open for freshness; live tip changes use the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, threadId, focusMessageId, applyThreadChrome]);
-
   // Keep the LRU in sync as the open pane grows (older pages, sends, merges).
   React.useEffect(() => {
     if (!thread) return;
     setCachedMailThread(account, threadId, thread, refreshToken);
   }, [account, threadId, thread, refreshToken]);
-
   React.useEffect(() => {
     setOlderParts([]);
   }, [threadId, setOlderParts]);
-
   React.useEffect(() => {
     const chatId = thread?.chat?.chatId;
     if (!chatId) {
@@ -292,7 +353,6 @@ export function useThreadStream(
       cancelled = true;
     };
   }, [account, thread?.chat?.chatId, setChatParts]);
-
   const loadOlderMessages = React.useCallback(async () => {
     if (loadingOlder || !thread) return;
     const head = olderParts[0];
@@ -416,7 +476,6 @@ export function useThreadStream(
     setOlderParts,
     setThread,
   ]);
-
   const loadNewerMessages = React.useCallback(async () => {
     if (!thread?.hasNewer || loadingNewer || !thread.messages.length) return;
     const newestId = thread.messages[thread.messages.length - 1].id;
@@ -453,7 +512,20 @@ export function useThreadStream(
       setLoadingNewer(false);
     }
   }, [account, loadingNewer, thread, threadId, setLoadingNewer, setThread]);
+  return { loadNewerMessages, loadOlderMessages, seenRefreshToken };
+}
 
+/** Reading the next part by itself when the reader nears the end of what is read. */
+export function useStreamAutoload({
+  loadNewerMessages,
+  loadOlderMessages,
+  olderParts,
+  scrollRef,
+  thread,
+  threadId,
+}: Pick<ReturnType<typeof useStreamLoad>, "loadNewerMessages" | "loadOlderMessages"> &
+  Pick<ThreadStreamInput, "scrollRef" | "threadId"> &
+  Pick<ThreadStreamState, "olderParts" | "thread">) {
   // Avoid fetching older/newer pages while the open-thread pin is still settling.
   const canAutoloadPagesRef = React.useRef(false);
   React.useEffect(() => {
@@ -463,7 +535,6 @@ export function useThreadStream(
     }, 700);
     return () => window.clearTimeout(t);
   }, [threadId]);
-
   const headOlder = olderParts[0];
   const headHasOlderInPart = headOlder
     ? headOlder.hasOlder
@@ -509,7 +580,14 @@ export function useThreadStream(
     thread?.hasNewer,
     scrollRef,
   ]);
+  return { canLoadOlderAcrossParts, headHasOlderInPart };
+}
 
+/** Keeping the message under the reader's eye in place when the zoom changes. */
+export function useStreamZoom({
+  scrollRef,
+  zoom,
+}: Pick<ThreadStreamInput, "scrollRef" | "zoom">) {
   /**
    * Scrolled up, with the newest message somewhere below.
    *
@@ -522,7 +600,6 @@ export function useThreadStream(
    * button that appears for that is a button that flickers.
    */
   const zoomAnchorRef = React.useRef<ZoomAnchor | null>(null);
-
   /** The scroller's own padding, which does not scale with the stream. */
   const scrollerPadding = (el: HTMLElement) => {
     const style = window.getComputedStyle(el);
@@ -531,14 +608,13 @@ export function useThreadStream(
       bottom: Number.parseFloat(style.paddingBottom) || 0,
     };
   };
-
   /**
    * Can a message's rectangle be compared with the scroller's numbers?
    *
    * The messages sit inside the zoomed element and the scroller sits
    * outside it, and whether a rectangle measured in there comes back in
-   * the same pixels as `scrollTop` is up to the engine. Twice now this
-   * has been assumed and twice it has been wrong, so it is measured:
+   * the same pixels as `scrollTop` is up to the engine. An assumption
+   * about this is not safe, so it is measured:
    * while the reader scrolls, a message's rectangle has to move by
    * exactly what `scrollTop` moved by. Anything else and the two are in
    * different units and must not be mixed.
@@ -559,11 +635,11 @@ export function useThreadStream(
     if (!node || !id) return;
     const top = node.getBoundingClientRect().top;
     const previous = rectProbeRef.current;
-    // The reading to compare against is kept until it has been used, not
+    // The reading to compare against is kept until it is used, not
     // replaced on every scroll event. A trackpad delivers a dozen events
-    // for one flick of a finger, so replacing it each time left every
-    // comparison a few pixels wide — never enough to answer anything,
-    // and the exact anchoring below therefore never once ran.
+    // for one flick of a finger. If the reading is replaced each time,
+    // every comparison is only a few pixels wide. That is never enough to
+    // answer anything, and the exact anchoring below never runs.
     if (!previous || previous.id !== id) {
       rectProbeRef.current = { id, top, scrollTop: el.scrollTop };
       return;
@@ -575,7 +651,6 @@ export function useThreadStream(
     rectsMoveWithScroll.current = Math.abs(moved - 1) < 0.05;
     rectProbeRef.current = { id, top, scrollTop: el.scrollTop };
   };
-
   /**
    * Take a reading, for zoom to put back.
    *
@@ -631,7 +706,6 @@ export function useThreadStream(
       hold,
     };
   }, [scrollRef]);
-
   /**
    * Put that place back under the middle at the new size.
    *
@@ -680,7 +754,28 @@ export function useThreadStream(
       (anchor.top * content) / anchor.content + pad.top - anchor.hold;
     captureZoomAnchor(el.getBoundingClientRect().top + anchor.hold);
   }, [zoom, captureZoomAnchor, scrollRef]);
+  return { captureZoomAnchor, probeRectSpace };
+}
 
+/** Whether the reader is away from the newest message, keeping the stream's foot in place, and the way back to it. */
+export function useStreamLatest({
+  account,
+  captureZoomAnchor,
+  messageCount,
+  probeRectSpace,
+  refreshToken,
+  scrollRef,
+  seenRefreshToken,
+  setLoadingNewer,
+  setOlderParts,
+  setThread,
+  streamNode,
+  thread,
+  threadId,
+}: Pick<ReturnType<typeof useStreamLoad>, "seenRefreshToken"> &
+  Pick<ReturnType<typeof useStreamZoom>, "captureZoomAnchor" | "probeRectSpace"> &
+  Pick<ThreadStreamInput, "account" | "messageCount" | "refreshToken" | "scrollRef" | "streamNode" | "threadId"> &
+  Pick<ThreadStreamState, "setLoadingNewer" | "setOlderParts" | "setThread" | "thread">) {
   const [awayFromLatest, setAwayFromLatest] = React.useState(false);
   React.useEffect(() => {
     const el = streamNode;
@@ -723,16 +818,17 @@ export function useThreadStream(
       observer.disconnect();
     };
     // streamNode: the element itself, so this runs the moment there is
-    // one to listen to rather than once before there is.
+    // one to listen to rather than once before there is. probeRectSpace is
+    // a new function on each render; in the list it would run this on each.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamNode, captureZoomAnchor]);
-
   /*
     The reply box pushes the thread up rather than covering its tail.
 
     The composer stands in the flow below the stream, so opening it makes
-    the stream shorter — but the scroll held its number, and what the
-    number now showed ended higher, so the end of the last message went
-    under the box just as the reader turned to answer it. When the
+    the stream shorter. But the scroll keeps its number, and what that
+    number shows ends higher. So the end of the last message goes under
+    the box just as the reader turns to answer it. When the
     stream's own height changes, the scroll moves by the same amount: the
     bottom edge of what was being read stays put above whatever took the
     room, and gets the room back when it goes. Clamped at both ends by
@@ -765,7 +861,6 @@ export function useThreadStream(
     observer.observe(el);
     return () => observer.disconnect();
   }, [streamNode, keepStreamBottom]);
-
   /**
    * The newest window as it was, so coming back to it costs nothing.
    *
@@ -782,14 +877,22 @@ export function useThreadStream(
     // A window with nothing newer beyond it is the newest window.
     if (thread && !thread.hasNewer) latestWindowRef.current = thread;
   }, [thread]);
-
+  /**
+   * Set when the reader asked to go somewhere specific in this thread.
+   *
+   * Replacing the window changes the newest message, which is what wakes
+   * the open-at-the-bottom pin below. Without this it would drag the view
+   * back down — twice, because its observer re-pins as the new page lays
+   * out. Cleared when the thread changes, which is the next time opening
+   * at the bottom is the right thing to do.
+   */
+  const skipOpenPinRef = React.useRef(false);
   /**
    * Back to the newest message in the thread, not the newest one loaded.
    *
    * Scrolling to the bottom of the window is only the end of the thread
    * when the window reaches it. Read back to the start of a long thread
-   * and the bottom of what is on screen is the middle of the conversation
-   * — which is where this used to stop.
+   * and the bottom of what is on screen is the middle of the conversation.
    *
    * A jump, not a walk, and the mirror of `goToFirstMessage`: the window
    * is replaced with the newest page outright. Paging forward through
@@ -857,7 +960,6 @@ export function useThreadStream(
       if (wasAtEnd) return;
     }
   }, [account, messageCount, thread, threadId, scrollRef, setLoadingNewer, setOlderParts, setThread]);
-
   // A list refresh showing this thread gained mail refetches the newest page
   // and merges it — older prepended history is kept. Skip while mid-thread
   // (search deep-link) so we don't create a gap to the tip.
@@ -888,33 +990,36 @@ export function useThreadStream(
     return () => {
       cancelled = true;
     };
-  }, [refreshToken, account, threadId, messageCount, setThread]);
+  }, [refreshToken, account, threadId, messageCount, setThread, seenRefreshToken]);
+  return { awayFromLatest, goToLatestMessage, skipOpenPinRef };
+}
 
+/** Where the stream opens: at the newest message, at a search hit, or at a deep link. */
+export function useStreamOpenPosition({
+  focusMessageId,
+  highlightMessageId,
+  scrollRef,
+  setHighlightMessageId,
+  skipOpenPinRef,
+  thread,
+  threadId,
+  zoomRef,
+}: Pick<ReturnType<typeof useStreamLatest>, "skipOpenPinRef"> &
+  Pick<ThreadStreamState, "highlightMessageId" | "setHighlightMessageId" | "thread"> &
+  Pick<ThreadStreamInput, "focusMessageId" | "scrollRef" | "threadId" | "zoomRef">) {
   const newestMessageId =
     thread?.messages[thread.messages.length - 1]?.id ?? null;
-  /**
-   * Set when the reader asked to go somewhere specific in this thread.
-   *
-   * Replacing the window changes the newest message, which is what wakes
-   * the open-at-the-bottom pin below. Without this it would drag the view
-   * back down — twice, because its observer re-pins as the new page lays
-   * out. Cleared when the thread changes, which is the next time opening
-   * at the bottom is the right thing to do.
-   */
-  const skipOpenPinRef = React.useRef(false);
   const scrolledToFocusRef = React.useRef<string | null>(null);
-
   React.useEffect(() => {
     scrolledToFocusRef.current = null;
   }, [threadId, focusMessageId]);
-
   /**
    * A search hit that is not the newest message: land on it.
    *
    * Only then. The newest message is where a thread opens anyway (below),
    * and a hit the loaded window does not hold has nowhere to land, so both
-   * fall through to that rule rather than leaving the pane where it started
-   * — which was the top, and read as the thread opening on its oldest
+   * fall through to that rule. They do not leave the pane where it started.
+   * That is the top, and it reads as the thread opening on its oldest
    * message.
    */
   const deepLinkTarget =
@@ -923,14 +1028,13 @@ export function useThreadStream(
     thread?.messages.some((m) => m.id === focusMessageId)
       ? focusMessageId
       : null;
-
   React.useEffect(() => {
     /*
       Search deep-link: the hit's head a quarter of the way down the pane,
-      held there while the thread settles. Placed once, it drifted: the
-      messages above it are frames that reach their height after they
-      load, and each one pushed the hit down, so the pane ended part-way
-      into another message (Ulrik, 2026-10-09). Held as the newest-message
+      held there while the thread settles. If it is placed only once, it
+      drifts: the messages above it are frames that reach their height
+      after they load. Each one pushes the hit down, and the pane ends
+      part-way into another message. Held as the newest-message
       pin below holds its place, until the stream stops growing or the
       reader moves.
     */
@@ -993,13 +1097,11 @@ export function useThreadStream(
     // thread object would move the scroll under the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(thread), deepLinkTarget, scrollRef]);
-
   React.useEffect(() => {
     if (!highlightMessageId) return;
     const t = window.setTimeout(() => setHighlightMessageId(null), 2200);
     return () => window.clearTimeout(t);
   }, [highlightMessageId, setHighlightMessageId]);
-
   /**
    * Where a thread opens.
    *
@@ -1035,16 +1137,16 @@ export function useThreadStream(
       a reader who has not moved yet, and the newest message has to stay
       where it was put.
 
-      Two things end it, and both used to be missed.
+      Two things end it.
 
       A resize the reader asked for is not the thread settling. Changing
-      the text size resizes the whole stream, and this read that as more
-      mail arriving and put them back at the newest message — which on a
-      one-message thread is `scrollTop = 0`, the very top. Zoom holds its
-      own place; this must not take it back.
+      the text size resizes the whole stream. If this reads that as more
+      mail arriving, it puts them back at the newest message. On a
+      one-message thread that is `scrollTop = 0`, the very top. Zoom holds
+      its own place. This must not take it back.
 
       And the reader moving ends it however they move. `wheel` alone
-      missed the keyboard, the scrollbar, and a trackpad that reports
+      misses the keyboard, the scrollbar, and a trackpad that reports
       scrolling any other way.
     */
     const zoomAtOpen = zoomRef.current;
@@ -1054,8 +1156,8 @@ export function useThreadStream(
     /*
       A reply waiting in the box (a draft of the reader's, or one triage
       wrote) is the end of the conversation: the thread opens at the
-      bottom, the newest message just above the draft. Opened on an older
-      unread message, the draft covered what it answers (Ulrik, 2026-10-17).
+      bottom, the newest message just above the draft. If it opens on an
+      older unread message, the draft covers what it answers.
     */
     const toTheEnd = hasThreadDraft(thread.account, thread.threadId);
     const landSelector = `[data-message-id="${landOn.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
@@ -1063,17 +1165,17 @@ export function useThreadStream(
     /*
       Until the stream has stopped growing, not for a fixed time. Each
       message's text is a frame that reaches its height a moment after it
-      loads, and a long thread has dozens of them: two seconds in, a
-      76-message thread was still growing above its newest message, the
-      pin stopped, and the growth pushed the newest message far below a
-      pane left near the top (Ulrik, 2026-10-07).
+      loads, and a long thread has dozens of them. Two seconds in, a
+      76-message thread can still grow above its newest message. If the
+      pin stops then, the growth pushes the newest message far below a
+      pane left near the top.
 
       Nor for "still for a moment": a message above can grow after a
-      pause, when its pictures come in. The pin stopped 800 ms after the
-      stream was last still, an automatic reply above the newest message
-      grew after that, and the thread opened on the reply every time, read
-      or not (Ulrik, 2026-10-14). So the pin holds for the whole span
-      below; only the reader moving, or a zoom, ends it sooner.
+      pause, when its pictures come in. An automatic reply above the
+      newest message can grow 800 ms after the stream was last still. If
+      the pin stops before that, the thread opens on the reply every time,
+      read or not. So the pin holds for the whole span below. Only the
+      reader moving, or a zoom, ends it sooner.
     */
     const LONGEST_MS = 10_000;
     const startedAt = Date.now();
@@ -1094,13 +1196,12 @@ export function useThreadStream(
       const newest = bubbles[bubbles.length - 1];
       if (!newest) {
         /*
-          No bubbles yet — the stream is still putting them up. Guessing
-          meant jumping to the bottom of everything: the guess was made
-          against a stream tens of thousands of pixels tall that had not
-          measured itself, the clamp as it shrank read as the reader
-          moving, and the follower stopped before it ever saw a bubble —
-          which is how a long thread opened at the very end of its last
-          message. The observer calls again when there is something to
+          No bubbles yet — the stream is still putting them up. Do not
+          guess. A guess is made against a stream tens of thousands of
+          pixels tall that did not measure itself yet. The clamp as it
+          shrinks reads as the reader moving, and the follower stops before
+          it sees a bubble. Then a long thread opens at the very end of its
+          last message. The observer calls again when there is something to
           stand on.
         */
         return;
@@ -1122,11 +1223,10 @@ export function useThreadStream(
       /*
         Before anything was placed, a scroll is not the reader's. The pane
         still holds the last thread's place, and the browser clamps it as
-        that thread's mail is taken away: a scroll event nobody made. Read
-        as the reader moving, it stopped the pin before it had put anything
-        anywhere, and a long thread opened on its oldest message, at the top
-        (Ulrik, 2026-10-05, Google's eight-message verification thread).
-        Until the pin has placed, only the reader's own input stops it:
+        that thread's mail is taken away: a scroll event nobody made. If
+        it is read as the reader moving, it stops the pin before the pin
+        puts anything anywhere. Then a long thread opens on its oldest
+        message, at the top. Until the pin has placed, only the reader's own input stops it:
         `readerInput` below.
       */
       if (placed < 0) return;
@@ -1140,11 +1240,10 @@ export function useThreadStream(
       /*
         A scroll nobody made by hand is not the reader moving: the reader's
         own scrolls come with a wheel, a press or a key (`readerInput`),
-        and those stop the pin. Something nudged the pane 34 px a moment
-        after it was placed, the pin took that for the reader and let go,
-        and the reply above then grew and pushed the newest message below
-        the fold — every open after the first (Ulrik, 2026-10-14). Put
-        back instead.
+        and those stop the pin. Something can nudge the pane 34 px a
+        moment after it is placed. If the pin takes that for the reader and
+        lets go, the reply above grows and pushes the newest message below
+        the fold. So put it back instead.
       */
       if (Math.round(el.scrollTop) !== clampedPlace) pin();
     };
@@ -1211,38 +1310,4 @@ export function useThreadStream(
     // scroll under the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, newestMessageId, deepLinkTarget]);
-
-  return {
-    loadOlderMessages,
-    loadNewerMessages,
-    headHasOlderInPart,
-    canLoadOlderAcrossParts,
-    captureZoomAnchor,
-    awayFromLatest,
-    goToLatestMessage,
-    skipOpenPinRef,
-  };
-}
-
-/**
- * Bring `target` to the top of the scroller `el`, `margin` CSS pixels (of
- * the target's own, zoomed, space) below its edge. Only `el` moves: the
- * browser would scroll every box around it as well, even ones that hide
- * their overflow, so those are put back before anything paints.
- */
-function scrollToTopOf(el: HTMLElement, target: HTMLElement, margin: number): void {
-  const kept: [Element, number, number][] = [];
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    kept.push([node, node.scrollTop, node.scrollLeft]);
-  }
-  const page = [window.scrollX, window.scrollY];
-  const before = target.style.scrollMarginTop;
-  target.style.scrollMarginTop = `${margin}px`;
-  target.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
-  target.style.scrollMarginTop = before;
-  for (const [node, top, left] of kept) {
-    if (node.scrollTop !== top) node.scrollTop = top;
-    if (node.scrollLeft !== left) node.scrollLeft = left;
-  }
-  if (window.scrollX !== page[0] || window.scrollY !== page[1]) window.scrollTo(page[0], page[1]);
 }

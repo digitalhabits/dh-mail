@@ -1,5 +1,7 @@
 /** Client-persisted custom mail tabs that filter by selected people. */
 
+import { MAIL_CUSTOM_LISTS_KEY } from "@/lib/mail/storage-keys";
+
 export type MailCustomListMember = {
   email: string;
   name: string;
@@ -32,7 +34,6 @@ export type MailCustomListSchedule = {
   days: MailScheduleDay[];
 };
 
-const MAIL_CUSTOM_LISTS_KEY = "redd-plan-mail-custom-lists";
 export const MAIL_CUSTOM_LISTS_EVENT = "redd-plan-mail-custom-lists-changed";
 
 /** Stable empty snapshot for SSR / useSyncExternalStore. */

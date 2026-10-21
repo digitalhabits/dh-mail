@@ -9,8 +9,7 @@
  * time (docs/mail-send-later.md), and the menu says so.
  *
  * The other actions are the same on every mailbox: preview the mail, an
- * action a build adds, or finish it in Outlook. They used to sit under
- * the box as a second row of chrome.
+ * action a build adds, or finish it in Outlook.
  */
 
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
@@ -99,11 +98,10 @@ export function SendLaterMenu({
   const options = React.useMemo(() => snoozeOptions(), [open]);
 
   /*
-    A time picked is a time scheduled, at once, as Change time always was.
-    It went on the Send button first ("Send at …") and waited for Send,
-    and with the menu open it was not plain what Send would do: it sent
-    at once, and the time picked was lost (Ulrik, 2026-10-20). The toast
-    that follows has Undo. `onArm` stays for a time the composer already
+    A time picked is a time scheduled, at once, as with Change time. If
+    the time waits on the Send button ("Send at …") for a press of Send,
+    it is not plain what Send does with the menu open. Send sends at once,
+    and the time picked is lost. The toast that follows has Undo. `onArm` stays for a time the composer already
     holds (Edit on a scheduled message), which the menu can take off.
   */
   const setMenuOpen = (next: boolean) => {
@@ -112,8 +110,8 @@ export function SendLaterMenu({
   };
   /*
     Send pauses while the menu is open (mail.css, [data-send-main]): dimmed,
-    and a press on it only closes the menu. With the menu open it was not
-    plain whether Send would use the time being picked; it did not.
+    and a press on it only closes the menu. With the menu open, it is not
+    plain whether Send uses the time being picked. It does not.
   */
   React.useEffect(() => {
     if (!open) return;
@@ -144,9 +142,8 @@ export function SendLaterMenu({
         {schedule && onPick && picking ? (
           /*
             The picker in place of everything else: the presets, the hint
-            and the other ways to send. Under them, it ran past the window
-            and Schedule was out of sight (Ulrik, 2026-10-20). A back row
-            returns to them.
+            and the other ways to send. Under them, it runs past the window
+            and Schedule is out of sight. A back row returns to them.
           */
           <>
             <div className="mb-2 flex items-center gap-3 border-b border-stone-100 px-1.5 pb-2 pt-1">

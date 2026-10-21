@@ -2,8 +2,7 @@
  * How the mail panes are sized, and the gestures that resize them.
  *
  * Widths, heights, zoom, pull-to-refresh, and pinch. All of it is layout: none
- * of it knows what a message is, and none of it renders anything. It sat in
- * MailPage because that is where it was written, not because it belonged there.
+ * of it knows what a message is, and none of it renders anything.
  *
  * Each size is kept in localStorage under its own key, so a pane stays where
  * the user put it. The defaults are fixed values rather than measurements of
@@ -11,6 +10,14 @@
  * mismatch on a host that renders this on a server first.
  */
 
+import {
+  MAIL_LIST_WIDTH_KEY,
+  MAIL_LIST_HEIGHT_KEY,
+  MAIL_CONTROLS_WIDTH_KEY,
+  MAIL_COMPOSER_WIDTH_KEY,
+  MAIL_COMPOSER_HEIGHT_KEY,
+  MAIL_ZOOM_KEY,
+} from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import {
@@ -25,9 +32,6 @@ import {
   type MailListPlacement,
 } from "@/lib/mail/layout";
 
-const MAIL_LIST_WIDTH_KEY = "redd-plan-mail-list-width";
-const MAIL_LIST_HEIGHT_KEY = "redd-plan-mail-list-height";
-const MAIL_CONTROLS_WIDTH_KEY = "redd-plan-mail-controls-width";
 /** Default thread-list width (left sidebar). */
 export const DEFAULT_LIST_WIDTH = 380;
 /** Normal list floor — below this, width snaps to the avatar rail. */
@@ -93,11 +97,9 @@ function showListSnap(state: "near" | "go" | null): void {
 }
 /** Divider thickness reserved so the list can still be dragged back. */
 const LIST_DIVIDER_PX = 8;
-const MAIL_COMPOSER_WIDTH_KEY = "redd-plan-mail-composer-width-pct";
 const MIN_COMPOSER_PCT = 40;
 const MAX_COMPOSER_PCT = 100;
 const DEFAULT_COMPOSER_PCT = 82;
-const MAIL_COMPOSER_HEIGHT_KEY = "redd-plan-mail-composer-height-px";
 /** Two lines and the room to see they are two. */
 const MIN_COMPOSER_HEIGHT = 80;
 const MAX_COMPOSER_HEIGHT = 900;
@@ -106,8 +108,9 @@ export const DEFAULT_COMPOSER_HEIGHT = 80;
 /**
  * How tall the reply box is, dragged by its top edge and remembered.
  *
- * The box grew with what was typed and started at two lines, and the only
- * way to more room was the button that takes the whole pane. A long reply
+ * The box grows with what is typed and starts at two lines. Without a
+ * handle, the only way to more room is the button that takes the whole
+ * pane. A long reply
  * wants a bigger box without giving up the conversation above it, so the
  * top edge is a handle, the way the sides already are.
  *
@@ -439,11 +442,11 @@ export function useMailListWidth(options: {
       const shell = (event.currentTarget as HTMLElement).parentElement;
       /*
         As far as the list may go: the pane less the reader's room (the
-        clamp takes the divider off). The divider used to go to the pane's
-        edge while the list on screen stopped at the reader's room, so the
-        width kept on growing unseen, and the next drag began from it: the
-        first few hundred pixels moved nothing, and the list stood out past
-        the pointer.
+        clamp takes the divider off). If the divider goes to the pane's edge
+        while the list on screen stops at the reader's room, the width keeps
+        on growing unseen. The next drag then begins from it: the first few
+        hundred pixels move nothing, and the list stands out past the
+        pointer.
       */
       const available = Math.max(
         MIN_LIST_WIDTH + LIST_DIVIDER_PX,
@@ -757,7 +760,6 @@ export function useMailListPlacement(): MailListPlacement {
   }, []);
   return placement;
 }
-const MAIL_ZOOM_KEY = "redd-plan-mail-zoom";
 /*
  * How far the reader's text size goes.
  *
@@ -773,7 +775,7 @@ export const MAX_ZOOM = 2;
  *
  * macOS reports a pinch as a stream of small magnifications, and a
  * comfortable one — fingers together to spread — adds up to about 1.0 to
- * 2.0. Mapped straight through, as this was, that is the whole of a range
+ * 2.0. Mapped straight through, that is the whole of a range
  * a single unit wide in one movement: the reader arrives at an end without
  * having aimed for it, and has to creep back.
  *
@@ -943,10 +945,9 @@ export function usePinchZoom(
       /*
         Ctrl only, which is what a trackpad pinch reports.
 
-        Cmd used to zoom as well, and it is one binding too many: a pinch
-        does it, and so does Ctrl and the wheel. What Cmd mostly did was
-        zoom the reader when somebody meant to scroll with a hand still on
-        the key from the shortcut before it.
+        Not Cmd. It is one binding too many: a pinch zooms, and so does Ctrl
+        and the wheel. Cmd mostly zooms the reader when somebody means to
+        scroll with a hand still on the key from the shortcut before it.
       */
       if (!e.ctrlKey) return; // plain scrolling
       if (!eventOverPane(e)) return;

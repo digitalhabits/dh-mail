@@ -117,9 +117,9 @@ export function discardExchangeDraft(account: string, itemId: string, afterSend 
 /**
  * After a send in a thread: this app's own server copies of drafts still in
  * it go, as the sent draft's would. Its copy is found by the key of the draft
- * here, and when that key did not match (the draft resumed under another),
- * the copy stayed, and the thread went on showing "Draft" with the sent
- * words in the composer. Only copies this app saved are touched.
+ * here. That is not enough alone: if the key does not match (the draft
+ * resumed under another), the copy stays, and the thread goes on showing
+ * "Draft" with the sent words in the composer. Only copies this app saved are touched.
  */
 export async function discardOwnDraftCopiesInThread(account: string, threadId: string, except?: string): Promise<void> {
   const email = account.trim().toLowerCase();

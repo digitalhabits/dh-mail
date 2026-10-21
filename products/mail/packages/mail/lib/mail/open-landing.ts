@@ -4,14 +4,14 @@
  * The first of the unread messages at the end: the ones after the last
  * message the reader has read. Not the first unread anywhere. A message
  * in the middle of a thread can stay unread for good, read on a phone
- * that never said so, or passed over. The rule that took the first unread
- * anywhere opened such a thread weeks back, in the middle, and the new
- * mail was far below. When nothing at the end is unread, the newest.
+ * that never said so, or passed over. If the rule takes the first unread
+ * anywhere, such a thread opens weeks back, in the middle, and the new
+ * mail is far below. When nothing at the end is unread, the newest.
  *
  * A message the reader sent ends the run, unread or not: writing it, they
- * had read what came before. A reply of theirs that the copy holds as
- * unread made the thread open on it, above the answer that was new
- * (2026-10-14).
+ * had read what came before. If it does not end the run, a reply of theirs
+ * that the copy holds as unread opens the thread on it, above the answer
+ * that is new.
  *
  * No React here, so a test can read it.
  */

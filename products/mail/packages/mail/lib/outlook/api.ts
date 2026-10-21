@@ -837,10 +837,10 @@ export async function moveOutlookConversation(
   /*
     A move that failed must be said to have failed.
 
-    Every per-message error was swallowed here, so a conversation whose
-    messages all refused to move still resolved — the app said "moved to
-    Trash", forgot the thread, and the mailbox had not changed. The reader
-    found the mail back on the next open and rightly stopped trusting the
+    If every per-message error is swallowed here, a conversation whose
+    messages all refuse to move still resolves. The app says "moved to
+    Trash" and forgets the thread, but the mailbox did not change. The
+    reader finds the mail back on the next open and stops trusting the
     button. A message already gone (404) is not a failure: a retried or
     half-done move finds some messages moved by the earlier attempt.
   */

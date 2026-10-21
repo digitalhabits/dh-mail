@@ -84,8 +84,8 @@ function quoteCardHtml(quoted?: { fromName?: string; text?: string }): {
   /**
    * Laid out the way a messaging app lays a reply out: a bar down the left,
    * whose message it was in bold on its own line, and what they said under
-   * it. On one line with the name run into the words it read as a sentence
-   * somebody had written, rather than as something being answered.
+   * it. On one line with the name run into the words, it reads as a
+   * sentence that somebody wrote, not as something being answered.
    *
    * White rather than a tint of the bubble. This card travels — it is read
    * inside our own bubble here, and inside whatever the recipient uses,

@@ -16,6 +16,8 @@ import {
   setExchangeAccountInMailTab,
 } from "@/lib/mail/exchange-accounts";
 import { forgetExchangeFolders } from "@/lib/mail/exchange-folders";
+import { forgetAccountEverywhere } from "@/lib/mail/list-cache";
+import { unpinAccount } from "@/lib/mail/pins";
 import { searchOlderMail } from "@/lib/mail/older-search";
 import { trackMailWrite } from "./pending-writes";
 import {
@@ -611,9 +613,9 @@ async function send({ body }: RouteContext): Promise<Response> {
         threadId: prep.sendThreadId ?? undefined,
         inReplyTo: prep.sendThreadId ? input.inReplyTo : undefined,
         references: prep.sendThreadId ? input.references : undefined,
-        // Whatever the composer asked for. Chat style used to force the
-    // signature off here, which quietly undid the composer's own
-    // choice: leaving the history out says nothing about signing.
+        // Whatever the composer asked for. Chat style does not force the
+    // signature off here. That undoes the composer's own choice, and
+    // leaving the history out says nothing about signing.
     includeSignature: input.includeSignature,
     signatureHtml: input.signatureHtml,
       });
@@ -791,6 +793,9 @@ async function accounts({ url, q, method, body }: RouteContext): Promise<Respons
     // side changes; the mail is still there to sync again.
     await stopLocalStoreSync(email).catch(() => {});
     await mailStore().messages.removeAccount(email).catch(() => {});
+    // The saved lists and pins hold its senders and subjects: they go too.
+    forgetAccountEverywhere(email);
+    unpinAccount(email);
     return ok({ ok: true, success: true });
   }
 
@@ -824,6 +829,9 @@ async function exchangeAccounts({ q, method, body }: RouteContext): Promise<Resp
     invalidateInboxCache();
     await stopLocalStoreSync(email).catch(() => {});
     await mailStore().messages.removeAccount(email).catch(() => {});
+    // The saved lists and pins hold its senders and subjects: they go too.
+    forgetAccountEverywhere(email);
+    unpinAccount(email);
     await forgetExchangeFolders(email).catch(() => {});
     return ok({ ok: true, success: true });
   }
@@ -958,9 +966,9 @@ async function contactSourcesSync({ q }: RouteContext): Promise<Response> {
     one query per mailbox — so `includeHistory` is false there, which
     holds the slow scan back and lets the cheap one through.
 
-    Neither reason, and nothing runs. Before this there was only the
-    first, so once every source had synced once the pass never ran
-    again and the history rows stopped moving.
+    Neither reason, and nothing runs. The second reason is necessary. If
+    only the first counts, the pass never runs again after every source
+    synced once, and the history rows stop moving.
 
     History from the copy goes stale after two minutes, and the books
     after an hour. Each is read only when it is stale: the books are

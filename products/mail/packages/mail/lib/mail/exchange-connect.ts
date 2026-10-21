@@ -12,6 +12,7 @@
  * In both builds (section 18, item 5 of `docs/mail-exchange-ews.md`).
  */
 
+import { SEARCH_KNOWN_SERVERS_KEY } from "@/lib/mail/storage-keys";
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 
 
@@ -75,8 +76,6 @@ export function domainOf(email: string): string {
  * inspector, kept in localStorage so it lasts a reload. The internal
  * flavor only: the public build never reads it.
  */
-export const SEARCH_KNOWN_SERVERS_KEY = "redd-plan-mail-exchange-search-known";
-
 export function searchKnownServers(): boolean {
   if (isPublicMailProduct()) return false;
   try {

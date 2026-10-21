@@ -48,7 +48,7 @@ const DB_NAME = "redd-plan-mail-thread-bodies";
 // worked out here, and so is the folding of a message cc'd to yourself into
 // one bubble. An entry is kept while the conversation has not changed, and a
 // conversation does not change because we changed our minds about it — so a
-// thread opened before either fix kept answering with the old one.
+// thread opened before either change keeps answering with the old one.
 //
 // The rule this is the third instance of: derived data in the cache, and a
 // freshness test that only asks about the provider. Anything worked out on
@@ -73,7 +73,7 @@ const MAX_DISK_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   is added, or the Exchange directory answers after the first threads were
   fetched. So each entry keeps the own addresses it was worked out with, and
   an entry made with other ones is not used. Without this, a reader's own
-  mail stayed on the left in threads opened before they added an alias.
+  mail stays on the left in threads opened before they add an alias.
 */
 function ownKey(): string {
   const { addresses, domains } = ownMailIdentity();

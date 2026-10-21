@@ -2,7 +2,7 @@
 
 /**
  * "To show it early" and "To get new mail early", as pages of the account
- * menu (account-hours-menu.tsx), as in Ulrik's design of 2026-10-20.
+ * menu (account-hours-menu.tsx).
  *
  * - One account: what the words are for, in a sentence; how many; and, for
  *   showing it, "Hide again after". Each account can have its own.

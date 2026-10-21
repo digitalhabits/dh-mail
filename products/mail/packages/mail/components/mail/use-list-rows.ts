@@ -73,10 +73,10 @@ export function useListRows({
   /**
    * Pinned conversations stand at the top wherever the list is the inbox.
    *
-   * It used to be All and a folder alone, so a reader with In contacts
-   * chosen — or one of their own lists — pressed Pin, was told the thread
-   * was pinned, and watched nothing happen. The pin was kept; there was
-   * simply nowhere on screen for it to show.
+   * If it is All and a folder alone, a reader with In contacts chosen, or
+   * one of their own lists, presses Pin and is told that the thread is
+   * pinned. Then nothing happens. The pin is kept, but there is nowhere on
+   * screen for it to show.
    *
    * Only where the pinned thread belongs, though: a filter that quietly
    * held something it excludes is not a filter. Sent, Drafts, Trash, Junk
@@ -133,7 +133,7 @@ export function useListRows({
     : flowThreads;
   /*
     On the Triage tab the list shows the triage rows, in their order. An
-    archive there went to the next row of the inbox instead (2026-10-19).
+    archive there goes to the next row of the triage list, not of the inbox.
     A row the list has not loaded stands in with what it is known by.
   */
   const triageOrder = useTriageOrder();

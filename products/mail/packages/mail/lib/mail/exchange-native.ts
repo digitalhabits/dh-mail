@@ -14,7 +14,7 @@
  */
 
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
-import { SEARCH_KNOWN_SERVERS_KEY } from "@/lib/mail/exchange-connect";
+import { SEARCH_KNOWN_SERVERS_KEY } from "@/lib/mail/storage-keys";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 
 /** The inbox name and counts, as `GetFolder` returns them. */

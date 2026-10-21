@@ -4,12 +4,12 @@
  * Not the inbox, which is what a list serves when asked for nothing, and not
  * Drafts or Snoozed: drafts have their own endpoint and snoozed is ours.
  *
- * One list, because there were two. The interface decided which views to ask
- * for by name, and the desktop transport decided which names to pass on, and
- * when Archived was added to the first and not the second the request fell
- * through to undefined — so the rail lit, the placeholder said Archived, and
- * the inbox came back. A closed set that answers "no" by silently meaning
- * "inbox" has to be written down once.
+ * One list, for the interface and the desktop transport both. The interface
+ * decides which views to ask for by name, and the transport decides which
+ * names to pass on. If a view is in the first and not the second, the request
+ * falls through to undefined. Then the rail lights, the placeholder names the
+ * view, and the inbox comes back. A closed set that answers "no" by silently
+ * meaning "inbox" must be written down once.
  */
 
 export const MAIL_FOLDER_VIEWS = ["sent", "trash", "junk", "archived"] as const;

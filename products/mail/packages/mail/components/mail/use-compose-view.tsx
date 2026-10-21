@@ -10,6 +10,7 @@
  * hooks run in the same order as before.
  */
 
+import { FLOATING_COMPOSE_SIZE_KEY } from "@/lib/mail/storage-keys";
 import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled } from "@/lib/mail/scheduled-events";
 import * as React from "react";
@@ -31,13 +32,10 @@ import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 import { useComposeAssistant } from "@/components/mail/team-layer";
 import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
 import {
-  bodyTravels,
   ccBackToSelf,
-  copyMessageToClipboard,
+  openReplyInOutlook,
   saveAttachmentsForHandover,
   withoutTrailingSignature,
-  openOutlookCompose,
-  outlookComposeUrl,
 } from "@/lib/mail/outlook-compose";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
@@ -70,6 +68,7 @@ import {
 } from "@/lib/mail/local-drafts";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { useFloatingCard } from "@/components/mail/floating-card";
+
 /**
  * How large a pasted picture may be, written into the message.
  *
@@ -196,7 +195,111 @@ export function useComposeView(props: ComposeViewProps) {
   onUndoSend,
   seed,
 } = props;
+  const { canOpenInOutlook, canSendLater, from, fromSettledRef, handingOver, outlookElsewhere, outlookTarget, rememberFrom, setFrom, setHandingOver, setRememberFrom, t } = useComposeFrom({ accounts, scope });
+  const { addAttachFiles, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachmentPayload, attachmentsReady, bccList, body, card, ccList, composeRef, draftKeyRef, draftPreviewId, editorHandle, editorKey, includeSignature, removeAttach, replaceAttachments, sending, setBccList, setBody, setCcList, setComposeNode, setDraftPreviewId, setEditorKey, setIncludeSignature, setShowBcc, setShowCc, setShowPreview, setSigDialogOpen, setSigSettings, setSignatureHtml, setSubject, setToList, showBcc, showCc, showPreview, sigDialogOpen, sigSettings, signatureHtml, subject, toList } = useComposeContent({ floating, onZoomAdjust, seed });
+  const { armedSendAt, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef } = useComposeDraft({ attachItems, bccList, body, ccList, draftKeyRef, from, includeSignature, onClose, onDiscarded, onFloat, showBcc, showCc, signatureHtml, subject, toList });
+  const { bodyText, canSend, caretGoesTo, draftComposeWithAssist, draftNotes, draftWorking, draftingReply, flatBcc, flatCc, flatTo, hasRecipient, setCaretGoesTo, setDraftNotes, shortcuts, stopDraft } = useComposeDraftLife({ accounts, attachItems, attachmentsReady, bccList, body, ccList, draftDiscardedRef, draftKeyRef, draftReadyRef, draftSaveTimerRef, from, fromSettledRef, includeSignature, persistComposeDraft, replaceAttachments, replacesRef, seed, sending, setArmedSendAt, setBccList, setBody, setCcList, setEditingScheduled, setEditorKey, setFrom, setIncludeSignature, setShowBcc, setShowCc, setSigSettings, setSignatureHtml, setSubject, setToList, showBcc, showCc, sigTouchedRef, signatureHtml, subject, t, toList });
+  const { openInOutlook, send } = useComposeSend({ armedSendAt, attachmentPayload, attachmentsReady, body, bodyText, canOpenInOutlook, canSend, composeRef, discardCompose, draftKeyRef, draftSaveTimerRef, flatBcc, flatCc, flatTo, floatCompose, floating, from, handingOver, includeSignature, onClose, onFloat, onSending, onSent, onToggleFocus, onUndoSend, onUnfloat, outlookElsewhere, outlookTarget, replacesRef, setHandingOver, shortcuts, sigSettings, signatureHtml, subject });
+  const { cardH, cardShellRef, cardW, ccInputRef, focusBody, fromSelectRef, labelClass, onSubjectKeyDown, rowClass, startCardResize, subjectInputRef, toInputRef } = useComposeForm({ caretGoesTo, composeRef, editorKey, setCaretGoesTo, subject, zoom });
 
+  return {
+    armedSendAt,
+    setArmedSendAt,
+    editingScheduled,
+    accounts,
+    addAttachFiles,
+    draftNotes,
+    draftWorking,
+    attachDragging,
+    attachDropHandlers,
+    attachItems,
+    attachPasteHandlers,
+    bccList,
+    body,
+    bodyText,
+    canOpenInOutlook,
+    canSend,
+    canSendLater,
+    card,
+    cardH,
+    cardShellRef,
+    cardW,
+    ccInputRef,
+    ccList,
+    discardCompose,
+    draftComposeWithAssist,
+    draftPreviewId,
+    draftingReply,
+    editorHandle,
+    editorKey,
+    flatCc,
+    flatTo,
+    floatCompose,
+    floating,
+    focusBody,
+    focusMode,
+    from,
+    fromSelectRef,
+    fromSettledRef,
+    handingOver,
+    hasRecipient,
+    includeSignature,
+    labelClass,
+    onClose,
+    onFloat,
+    onSubjectKeyDown,
+    onToggleFocus,
+    onZoomAdjust,
+    openInOutlook,
+    outlookElsewhere,
+    outlookTarget,
+    rememberFrom,
+    removeAttach,
+    rowClass,
+    send,
+    sending,
+    setDraftNotes,
+    setBccList,
+    setBody,
+    setCcList,
+    setComposeNode,
+    setDraftPreviewId,
+    setEditorKey,
+    setFrom,
+    setIncludeSignature,
+    setRememberFrom,
+    setShowBcc,
+    setShowCc,
+    setShowPreview,
+    setSigDialogOpen,
+    setSigSettings,
+    setSignatureHtml,
+    setSubject,
+    setToList,
+    shortcuts,
+    showBcc,
+    showCc,
+    showPreview,
+    sigDialogOpen,
+    sigSettings,
+    sigTouchedRef,
+    signatureHtml,
+    startCardResize,
+    stopDraft,
+    subject,
+    subjectInputRef,
+    t,
+    toInputRef,
+    toList,
+    zoom,
+  };
+}
+
+/** The words, the From address and whether it is kept, Send later, and whether Outlook can take the draft. */
+export function useComposeFrom({
+  accounts,
+  scope,
+}: { accounts: ComposeViewProps["accounts"]; scope: ComposeViewProps["scope"] }) {
   const t = useMailT();
   /**
    * The address this composer opens on, settled before the first paint.
@@ -240,7 +343,7 @@ export function useComposeView(props: ComposeViewProps) {
     [outlookAccounts, from]
   );
   /*
-    The button no longer waits for a mailbox. The route that needs one is
+    The button does not wait for a mailbox. The route that needs one is
     the better of the two — a real draft, in the conversation — but the one
     that needs nothing is the one that reaches the mailbox this app cannot
     sign in to, which is usually the mailbox the reader is reaching for.
@@ -248,140 +351,15 @@ export function useComposeView(props: ComposeViewProps) {
   const canOpenInOutlook = !isPublicMailProduct();
   const outlookElsewhere = Boolean(outlookTarget) && outlookTarget !== from;
   const [handingOver, setHandingOver] = React.useState(false);
-  /** Finish this one in Outlook: the draft is made in the mailbox, not sent. */
-  const openInOutlook = async () => {
-    if (!canOpenInOutlook || handingOver) return;
-    if (!attachmentsReady) {
-      toast.error(mailSay("stillPreparingAttachments"));
-      return;
-    }
-    const attachments = attachmentPayload();
-    const bcc = [...flatBcc, ...flatTo.bccEmails, ...flatCc.bccEmails];
-    setHandingOver(true);
-    try {
-      // No mailbox of ours to write into — see the reply box, which explains
-      // why that is the ordinary case rather than the odd one.
-      if (!outlookTarget) {
-        const html = bodyText.trim() ? bodyToEmailHtml(body) : "";
-        // Outlook puts its own signature on what it opens, so ours does not
-        // go over with the words — see withoutTrailingSignature.
-        const carrying = withoutTrailingSignature(
-          { html: html || bodyText, text: bodyText },
-          htmlToPlainText(sigSettings?.signature ?? "")
-        );
-        const carried = bodyTravels(carrying.html, carrying.text);
-        if (!carried) {
-          await copyMessageToClipboard(carrying);
-        }
-        await openOutlookCompose(
-          outlookComposeUrl({
-            to: flatTo.emails,
-            // A copy back to the mailbox it was written from, so what goes
-            // out from Outlook lands in this app's mail too.
-            cc: ccBackToSelf({
-              from: from,
-              to: flatTo.emails,
-              cc: flatCc.emails,
-            }),
-            subject: subject.trim(),
-            body: carried ? carrying.text : undefined,
-          })
-        );
-        /*
-          The files, which a mailto: cannot carry.
+  return { canOpenInOutlook, canSendLater, from, fromSettledRef, handingOver, outlookElsewhere, outlookTarget, rememberFrom, setFrom, setHandingOver, setRememberFrom, t };
+}
 
-          They were dropped without a word before this: the message opened
-          in Outlook and the attachments simply were not on it. Now they go
-          to the downloads folder with the file manager pointed at them, and
-          the toast says where they are — or says they did not travel, when
-          there is nowhere to put them.
-        */
-        const savedFiles = await saveAttachmentsForHandover(attachments);
-        toast.success(
-          carried ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
-          attachments.length
-            ? {
-                description: savedFiles
-                  ? mailSay("outlookFilesInDownloads", {
-                      count: `${savedFiles} file${savedFiles === 1 ? "" : "s"}`,
-                    })
-                  : mailSay("outlookFilesLeftBehind", {
-                      count: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
-                    }),
-                duration: 12_000,
-              }
-            : undefined
-        );
-        return;
-      }
-      await apiJson("/api/mail/outlook-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          account: outlookTarget,
-          to: flatTo.emails,
-          cc: flatCc.emails.length ? flatCc.emails : undefined,
-          bcc: bcc.length ? [...new Set(bcc)] : undefined,
-          subject: subject.trim(),
-          body: bodyText,
-          html: bodyText.trim() ? bodyToEmailHtml(body) : undefined,
-          // The signature belongs to the mailbox it is sent from, and that
-          // mailbox will add its own.
-          includeSignature: outlookElsewhere ? false : includeSignature,
-          signatureHtml: outlookElsewhere ? undefined : (signatureHtml ?? undefined),
-          attachments: attachments.length ? attachments : undefined,
-        }),
-      });
-      const invoke = tauriInvoke();
-      const refused = invoke
-        ? await invoke("activate_outlook").then(
-            () => "",
-            (err: unknown) => {
-              console.warn("[mail] couldn't bring Outlook forward:", err);
-              // What Rust said, which is what `open` said. A reason on the
-              // screen is the difference between a bug report and a shrug.
-              return err instanceof Error
-                ? err.message
-                : String(err) || mailSay("outlookDidNotOpen");
-            }
-          )
-        : mailSay("outlookDidNotOpen");
-      const landed = outlookElsewhere
-        ? mailSay("draftIsInOutlookFrom", { account: outlookTarget })
-        : mailSay("draftIsInOutlook");
-      void markDraftHandedOver(draftKeyRef.current, from);
-      /* The same offer the reply box makes: a handover is not a send, so
-         the copy here would sit in Drafts for ever otherwise. */
-      toast.success(landed, {
-        ...(refused ? { description: refused } : null),
-        duration: 12_000,
-        action: {
-          label: mailSay("discardTheCopyHere"),
-          onClick: () => discardCompose(),
-        },
-      });
-    } catch (err) {
-      const fallback = outlookTarget
-        ? mailSay("couldNotDraftInOutlook")
-        : mailSay("couldNotOpenOutlook");
-      /*
-        Tauri refuses with a string, not an Error.
-
-        Reading `.message` off it and falling back to a sentence of our own
-        threw away the only line that said what was wrong — "command not
-        found", when the window is older than the command it is calling.
-      */
-      const said =
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : "";
-      toast.error(said.trim() || fallback);
-    } finally {
-      setHandingOver(false);
-    }
-  };
+/** What the message holds: recipients, subject, body, signature, attachments, and the composer's own element. */
+export function useComposeContent({
+  floating,
+  onZoomAdjust,
+  seed,
+}: { floating: ComposeViewProps["floating"]; onZoomAdjust: ComposeViewProps["onZoomAdjust"]; seed: ComposeViewProps["seed"] }) {
   const [toList, setToList] = React.useState<MailRecipient[]>(() =>
     seed?.to?.length ? recipientsFromEmails(seed.to) : []
   );
@@ -407,8 +385,8 @@ export function useComposeView(props: ComposeViewProps) {
    * This composer's own draft key, fixed for its lifetime.
    *
    * A composer opened to continue a draft is handed that draft's key. Any
-   * other composer makes a new one, so two unsent messages can exist at once
-   * — they used to share a single key and the second wrote over the first.
+   * other composer makes a new one, so two unsent messages can exist at once.
+   * If two composers share one key, the second writes over the first.
    */
   const draftKeyRef = React.useRef<string>(
     seed?.draftKey ?? newComposeDraftKey()
@@ -423,7 +401,7 @@ export function useComposeView(props: ComposeViewProps) {
    */
   const card = useFloatingCard(
     Boolean(floating),
-    "dh-mail-floating-compose-size"
+    FLOATING_COMPOSE_SIZE_KEY
   );
   /** The root element, to the pinch zoom and to the card alike. */
   const setComposeNode = React.useCallback(
@@ -465,6 +443,35 @@ export function useComposeView(props: ComposeViewProps) {
   const { pasteHandlers: attachPasteHandlers } =
     useComposerPaste(addAttachFiles, insertInlineImage);
   usePinchZoom(composeRef, onZoomAdjust, true);
+  return { addAttachFiles, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachmentPayload, attachmentsReady, bccList, body, card, ccList, composeRef, draftKeyRef, draftPreviewId, editorHandle, editorKey, includeSignature, removeAttach, replaceAttachments, sending, setBccList, setBody, setCcList, setComposeNode, setDraftPreviewId, setEditorKey, setIncludeSignature, setShowBcc, setShowCc, setShowPreview, setSigDialogOpen, setSigSettings, setSignatureHtml, setSubject, setToList, showBcc, showCc, showPreview, sigDialogOpen, sigSettings, signatureHtml, subject, toList };
+}
+
+/** The stored draft: its snapshot, its save, floating it, and discarding it; and the scheduled send it replaces. */
+export function useComposeDraft({
+  attachItems,
+  bccList,
+  body,
+  ccList,
+  draftKeyRef,
+  from,
+  includeSignature,
+  onClose,
+  onDiscarded,
+  onFloat,
+  showBcc,
+  showCc,
+  signatureHtml,
+  subject,
+  toList,
+}: Pick<ReturnType<typeof useComposeFrom>, "from"> &
+  Pick<ReturnType<typeof useComposeContent>, "attachItems" | "bccList" | "body" | "ccList" | "draftKeyRef" | "includeSignature" | "showBcc" | "showCc" | "signatureHtml" | "subject" | "toList"> &
+  { onClose: ComposeViewProps["onClose"]; onDiscarded: ComposeViewProps["onDiscarded"]; onFloat: ComposeViewProps["onFloat"] }) {
+  /* A time Set in the Send later menu, not sent yet: the Send button says
+     "Send at …" (docs/mail-send-later.md). */
+  const [armedSendAt, setArmedSendAt] = React.useState<string | null>(null);
+  /** Opened with Edit on a scheduled message: the one it replaces. */
+  const replacesRef = React.useRef<ScheduledOriginal | null>(null);
+  const [editingScheduled, setEditingScheduled] = React.useState<ScheduledOriginal | null>(null);
   // Follow the sending account's "include on new messages" preference until
   // the user adds/removes the signature themselves.
   const sigTouchedRef = React.useRef(false);
@@ -525,7 +532,7 @@ export function useComposeView(props: ComposeViewProps) {
       };
       void saveComposeDraft(draft);
     },
-    []
+    [draftKeyRef]
   );
   /**
    * Hand the message to the floating card.
@@ -543,7 +550,7 @@ export function useComposeView(props: ComposeViewProps) {
     // No saves after the handover: the card owns the draft now.
     draftDiscardedRef.current = true;
     onFloat?.(draftKeyRef.current);
-  }, [persistComposeDraft, onFloat]);
+  }, [persistComposeDraft, onFloat, draftKeyRef]);
   /**
    * Throw the message away, with a way back.
    *
@@ -587,14 +594,86 @@ export function useComposeView(props: ComposeViewProps) {
       );
     })();
     (onDiscarded ?? onClose)();
-  }, [onClose, onDiscarded]);
+  }, [onClose, onDiscarded, draftKeyRef]);
+  return { armedSendAt, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef };
+}
+
+/** Opening and keeping the draft, where the caret goes, whether the message can be sent, and the assistant. */
+export function useComposeDraftLife({
+  accounts,
+  attachItems,
+  attachmentsReady,
+  bccList,
+  body,
+  ccList,
+  draftDiscardedRef,
+  draftKeyRef,
+  draftReadyRef,
+  draftSaveTimerRef,
+  from,
+  fromSettledRef,
+  includeSignature,
+  persistComposeDraft,
+  replaceAttachments,
+  replacesRef,
+  seed,
+  sending,
+  setArmedSendAt,
+  setBccList,
+  setBody,
+  setCcList,
+  setEditingScheduled,
+  setEditorKey,
+  setFrom,
+  setIncludeSignature,
+  setShowBcc,
+  setShowCc,
+  setSigSettings,
+  setSignatureHtml,
+  setSubject,
+  setToList,
+  showBcc,
+  showCc,
+  sigTouchedRef,
+  signatureHtml,
+  subject,
+  t,
+  toList,
+}: Pick<ReturnType<typeof useComposeFrom>, "from" | "fromSettledRef" | "setFrom" | "t"> &
+  Pick<ReturnType<typeof useComposeContent>, "attachItems" | "attachmentsReady" | "bccList" | "body" | "ccList" | "draftKeyRef" | "includeSignature" | "replaceAttachments" | "sending" | "setBccList" | "setBody" | "setCcList" | "setEditorKey" | "setIncludeSignature" | "setShowBcc" | "setShowCc" | "setSigSettings" | "setSignatureHtml" | "setSubject" | "setToList" | "showBcc" | "showCc" | "signatureHtml" | "subject" | "toList"> &
+  Pick<ReturnType<typeof useComposeDraft>, "draftDiscardedRef" | "draftReadyRef" | "draftSaveTimerRef" | "persistComposeDraft" | "replacesRef" | "setArmedSendAt" | "setEditingScheduled" | "sigTouchedRef"> &
+  { accounts: ComposeViewProps["accounts"]; seed: ComposeViewProps["seed"] }) {
+  /**
+   * Where the caret is when the card opens.
+   *
+   * The subject, on a message that has none. It is the first thing written.
+   * If the card opens with nothing focused, the first words go to the page
+   * and are lost.
+   *
+   * A card opened on a stored draft, or on a seed that brought a subject
+   * with it, already has one — there the message is what is unfinished, so
+   * the caret goes into it instead of landing in the middle of a line
+   * somebody has already written.
+   *
+   * Asked for as a state, and done in the effect below, because what it
+   * has to land on may not be there yet: the draft arrives after the card,
+   * and loading one swaps the editor for a new one, which would take the
+   * focus off whatever had it.
+   */
+  const [caretGoesTo, setCaretGoesTo] = React.useState<
+    "subject" | "body" | null
+  >(null);
+  const placeCaret = React.useCallback(
+    (hasSubject: boolean) => setCaretGoesTo(hasSubject ? "body" : "subject"),
+    []
+  );
   /**
    * Load the one new-message draft, or stand off it.
    *
    * There is a single slot. A composer opened with a seed is a different
-   * message from whatever is in it, so it neither loads it nor writes over it
-   * — it used to do the second, which threw away a half-written email every
-   * time an address was clicked in a message.
+   * message from whatever is in it, so it neither loads it nor writes over it.
+   * If it writes over the slot, each click on an address in a message throws
+   * away a half-written email.
    */
   React.useEffect(() => {
     let cancelled = false;
@@ -677,8 +756,7 @@ export function useComposeView(props: ComposeViewProps) {
         draftSaveTimerRef.current = null;
       }
     };
-  }, [
-    from,
+  }, [from,
     toList,
     ccList,
     bccList,
@@ -689,8 +767,7 @@ export function useComposeView(props: ComposeViewProps) {
     includeSignature,
     signatureHtml,
     attachItems,
-    persistComposeDraft,
-  ]);
+    persistComposeDraft, draftDiscardedRef, draftReadyRef, draftSaveTimerRef]);
   React.useEffect(() => {
     let cancelled = false;
     void fetchSignatureSettings(from)
@@ -705,7 +782,7 @@ export function useComposeView(props: ComposeViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [from]);
+  }, [from, setIncludeSignature, setSigSettings, sigTouchedRef]);
   const bodyText = htmlToPlainText(body);
   const flatTo = flattenRecipientsForSend(toList);
   const flatCc = flattenRecipientsForSend(ccList);
@@ -757,12 +834,50 @@ export function useComposeView(props: ComposeViewProps) {
     setSubject,
     t,
   });
-  /* A time Set in the Send later menu, not sent yet: the Send button says
-     "Send at …" (docs/mail-send-later.md). */
-  const [armedSendAt, setArmedSendAt] = React.useState<string | null>(null);
-  /** Opened with Edit on a scheduled message: the one it replaces. */
-  const replacesRef = React.useRef<ScheduledOriginal | null>(null);
-  const [editingScheduled, setEditingScheduled] = React.useState<ScheduledOriginal | null>(null);
+  return { bodyText, canSend, caretGoesTo, draftComposeWithAssist, draftNotes, draftWorking, draftingReply, flatBcc, flatCc, flatTo, hasRecipient, setCaretGoesTo, setDraftNotes, shortcuts, stopDraft };
+}
+
+/** Sending, the composer's keys, and handing the draft to Outlook. */
+export function useComposeSend({
+  armedSendAt,
+  attachmentPayload,
+  attachmentsReady,
+  body,
+  bodyText,
+  canOpenInOutlook,
+  canSend,
+  composeRef,
+  discardCompose,
+  draftKeyRef,
+  draftSaveTimerRef,
+  flatBcc,
+  flatCc,
+  flatTo,
+  floatCompose,
+  floating,
+  from,
+  handingOver,
+  includeSignature,
+  onClose,
+  onFloat,
+  onSending,
+  onSent,
+  onToggleFocus,
+  onUndoSend,
+  onUnfloat,
+  outlookElsewhere,
+  outlookTarget,
+  replacesRef,
+  setHandingOver,
+  shortcuts,
+  sigSettings,
+  signatureHtml,
+  subject,
+}: Pick<ReturnType<typeof useComposeFrom>, "canOpenInOutlook" | "from" | "handingOver" | "outlookElsewhere" | "outlookTarget" | "setHandingOver"> &
+  Pick<ReturnType<typeof useComposeContent>, "attachmentPayload" | "attachmentsReady" | "body" | "composeRef" | "draftKeyRef" | "includeSignature" | "sigSettings" | "signatureHtml" | "subject"> &
+  Pick<ReturnType<typeof useComposeDraft>, "armedSendAt" | "discardCompose" | "draftSaveTimerRef" | "floatCompose" | "replacesRef"> &
+  Pick<ReturnType<typeof useComposeDraftLife>, "bodyText" | "canSend" | "flatBcc" | "flatCc" | "flatTo" | "shortcuts"> &
+  { floating: ComposeViewProps["floating"]; onClose: ComposeViewProps["onClose"]; onFloat: ComposeViewProps["onFloat"]; onSending: ComposeViewProps["onSending"]; onSent: ComposeViewProps["onSent"]; onToggleFocus: ComposeViewProps["onToggleFocus"]; onUndoSend: ComposeViewProps["onUndoSend"]; onUnfloat: ComposeViewProps["onUnfloat"] }) {
   const send = async (sendAtPicked?: string) => {
     if (!canSend) return;
     // A time Set in the menu goes with the next send, by button or keys.
@@ -964,7 +1079,161 @@ export function useComposeView(props: ComposeViewProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shortcuts, floating]);
+  }, [shortcuts, floating, composeRef]);
+  /** Finish this one in Outlook: the draft is made in the mailbox, not sent. */
+  const openInOutlook = async () => {
+    if (!canOpenInOutlook || handingOver) return;
+    if (!attachmentsReady) {
+      toast.error(mailSay("stillPreparingAttachments"));
+      return;
+    }
+    const attachments = attachmentPayload();
+    const bcc = [...flatBcc, ...flatTo.bccEmails, ...flatCc.bccEmails];
+    setHandingOver(true);
+    try {
+      // No mailbox of ours to write into — see the reply box, which explains
+      // why that is the ordinary case rather than the odd one.
+      if (!outlookTarget) {
+        const html = bodyText.trim() ? bodyToEmailHtml(body) : "";
+        // Outlook puts its own signature on what it opens, so ours does not
+        // go over with the words — see withoutTrailingSignature.
+        const carrying = withoutTrailingSignature(
+          { html: html || bodyText, text: bodyText },
+          htmlToPlainText(sigSettings?.signature ?? "")
+        );
+        // Outlook makes the draft itself, with the files attached. Only
+        // when it cannot be asked does a new Outlook message open, with
+        // the words in the URL or on the pasteboard.
+        const opened = await openReplyInOutlook({
+          own: carrying,
+          history: null,
+          anchor: null,
+          threadSubject: "",
+          subject: subject.trim(),
+          from,
+          to: flatTo.emails,
+          // A copy back to the mailbox it was written from, so what goes
+          // out from Outlook lands in this app's mail too.
+          cc: ccBackToSelf({
+            from: from,
+            to: flatTo.emails,
+            cc: flatCc.emails,
+          }),
+          bcc,
+          files: attachments,
+        });
+        if (opened === "draft" || opened === "replyDraft") {
+          toast.success(mailSay("outlookDraftMade"));
+          return;
+        }
+        /*
+          The files, which a mailto: cannot carry.
+
+          Without this, the message opens in Outlook without its attachments
+          and nothing says so. They go to the downloads folder with the file
+          manager pointed at them, and the toast says where they are. If
+          there is nowhere to put them, the toast says that they did not travel.
+        */
+        const savedFiles = await saveAttachmentsForHandover(attachments);
+        toast.success(
+          opened === "url" ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
+          attachments.length
+            ? {
+                description: savedFiles
+                  ? mailSay("outlookFilesInDownloads", {
+                      count: `${savedFiles} file${savedFiles === 1 ? "" : "s"}`,
+                    })
+                  : mailSay("outlookFilesLeftBehind", {
+                      count: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
+                    }),
+                duration: 12_000,
+              }
+            : undefined
+        );
+        return;
+      }
+      await apiJson("/api/mail/outlook-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account: outlookTarget,
+          to: flatTo.emails,
+          cc: flatCc.emails.length ? flatCc.emails : undefined,
+          bcc: bcc.length ? [...new Set(bcc)] : undefined,
+          subject: subject.trim(),
+          body: bodyText,
+          html: bodyText.trim() ? bodyToEmailHtml(body) : undefined,
+          // The signature belongs to the mailbox it is sent from, and that
+          // mailbox will add its own.
+          includeSignature: outlookElsewhere ? false : includeSignature,
+          signatureHtml: outlookElsewhere ? undefined : (signatureHtml ?? undefined),
+          attachments: attachments.length ? attachments : undefined,
+        }),
+      });
+      const invoke = tauriInvoke();
+      const refused = invoke
+        ? await invoke("activate_outlook").then(
+            () => "",
+            (err: unknown) => {
+              console.warn("[mail] couldn't bring Outlook forward:", err);
+              // What Rust said, which is what `open` said. A reason on the
+              // screen is the difference between a bug report and a shrug.
+              return err instanceof Error
+                ? err.message
+                : String(err) || mailSay("outlookDidNotOpen");
+            }
+          )
+        : mailSay("outlookDidNotOpen");
+      const landed = outlookElsewhere
+        ? mailSay("draftIsInOutlookFrom", { account: outlookTarget })
+        : mailSay("draftIsInOutlook");
+      void markDraftHandedOver(draftKeyRef.current, from);
+      /* The same offer the reply box makes: a handover is not a send, so
+         the copy here would sit in Drafts for ever otherwise. */
+      toast.success(landed, {
+        ...(refused ? { description: refused } : null),
+        duration: 12_000,
+        action: {
+          label: mailSay("discardTheCopyHere"),
+          onClick: () => discardCompose(),
+        },
+      });
+    } catch (err) {
+      const fallback = outlookTarget
+        ? mailSay("couldNotDraftInOutlook")
+        : mailSay("couldNotOpenOutlook");
+      /*
+        Tauri refuses with a string, not an Error.
+
+        Reading `.message` off it and falling back to a sentence of our own
+        threw away the only line that said what was wrong — "command not
+        found", when the window is older than the command it is calling.
+      */
+      const said =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "";
+      toast.error(said.trim() || fallback);
+    } finally {
+      setHandingOver(false);
+    }
+  };
+  return { openInOutlook, send };
+}
+
+/** The form's rows and inputs, the subject's keys, and the floating card's size. */
+export function useComposeForm({
+  caretGoesTo,
+  composeRef,
+  editorKey,
+  setCaretGoesTo,
+  subject,
+  zoom,
+}: Pick<ReturnType<typeof useComposeContent>, "composeRef" | "editorKey" | "subject"> &
+  Pick<ReturnType<typeof useComposeDraftLife>, "caretGoesTo" | "setCaretGoesTo"> &
+  { zoom: ComposeViewProps["zoom"] }) {
   /* px-4 and a narrower label column: "From" and "To" are four letters and
      two, and sixty-four pixels of nothing after them pushed every address
      into the middle of the window. */
@@ -977,41 +1246,16 @@ export function useComposeView(props: ComposeViewProps) {
   /**
    * Tab out of the last recipient field lands in the message.
    *
-   * It used to land in the Subject row, which was the next thing down the
-   * card. The subject is the heading now and sits above From, so sending
-   * Tab to it would walk back up the card past everything already filled
-   * in. Quill has no focus on its handle, so the editor is found the way
+   * The subject is the heading and sits above From. If Tab goes to the
+   * subject, focus walks back up the card past everything that is already
+   * filled in. Quill has no focus on its handle, so the editor is found the way
    * the thread composer finds it.
    */
   const focusBody = React.useCallback(() => {
     composeRef.current?.querySelector<HTMLElement>(".ql-editor")?.focus();
-  }, []);
+  }, [composeRef]);
   const fromSelectRef = React.useRef<HTMLButtonElement | null>(null);
   const toInputRef = React.useRef<HTMLInputElement | null>(null);
-  /**
-   * Where the caret is when the card opens.
-   *
-   * The subject, on a message that has none. It is the first thing written
-   * and the card used to open with nothing focused at all, so the first
-   * words went to the page and were lost.
-   *
-   * A card opened on a stored draft, or on a seed that brought a subject
-   * with it, already has one — there the message is what is unfinished, so
-   * the caret goes into it instead of landing in the middle of a line
-   * somebody has already written.
-   *
-   * Asked for as a state, and done in the effect below, because what it
-   * has to land on may not be there yet: the draft arrives after the card,
-   * and loading one swaps the editor for a new one, which would take the
-   * focus off whatever had it.
-   */
-  const [caretGoesTo, setCaretGoesTo] = React.useState<
-    "subject" | "body" | null
-  >(null);
-  const placeCaret = React.useCallback(
-    (hasSubject: boolean) => setCaretGoesTo(hasSubject ? "body" : "subject"),
-    []
-  );
   /**
    * Tab out of the subject goes on down the card.
    *
@@ -1063,7 +1307,7 @@ export function useComposeView(props: ComposeViewProps) {
     }
     editor.focus();
     setCaretGoesTo(null);
-  }, [caretGoesTo, editorKey]);
+  }, [caretGoesTo, editorKey, composeRef, setCaretGoesTo]);
   const cardShellRef = React.useRef<HTMLDivElement>(null);
   const [cardW, setCardW] = React.useState(720);
   const [cardH, setCardH] = React.useState<number | null>(null);
@@ -1120,14 +1364,14 @@ export function useComposeView(props: ComposeViewProps) {
         { onMove }
       );
     },
-    [zoom, cardW, cardH]
+    [zoom, cardW, cardH, composeRef]
   );
   /**
    * The subject grows to a second line, and stops there.
    *
-   * A long subject used to scroll sideways out of its own box, which hid
-   * the end of the line the other person triages by. The box is a textarea
-   * now, so the words wrap. Two lines is the limit, because more than two
+   * The box is a textarea, so the words wrap. If a long subject scrolls
+   * sideways out of its box, it hides the end of the line that the other
+   * person triages by. Two lines is the limit, because more than two
    * pushes the message itself down the card.
    *
    * A subject too long for two lines is set smaller until it fits. The
@@ -1156,96 +1400,5 @@ export function useComposeView(props: ComposeViewProps) {
     el.style.height = `${Math.min(full, max)}px`;
     el.style.overflowY = full > max ? "auto" : "hidden";
   }, [subject, cardW]);
-
-  return {
-    armedSendAt,
-    setArmedSendAt,
-    editingScheduled,
-    accounts,
-    addAttachFiles,
-    draftNotes,
-    draftWorking,
-    attachDragging,
-    attachDropHandlers,
-    attachItems,
-    attachPasteHandlers,
-    bccList,
-    body,
-    bodyText,
-    canOpenInOutlook,
-    canSend,
-    canSendLater,
-    card,
-    cardH,
-    cardShellRef,
-    cardW,
-    ccInputRef,
-    ccList,
-    discardCompose,
-    draftComposeWithAssist,
-    draftPreviewId,
-    draftingReply,
-    editorHandle,
-    editorKey,
-    flatCc,
-    flatTo,
-    floatCompose,
-    floating,
-    focusBody,
-    focusMode,
-    from,
-    fromSelectRef,
-    fromSettledRef,
-    handingOver,
-    hasRecipient,
-    includeSignature,
-    labelClass,
-    onClose,
-    onFloat,
-    onSubjectKeyDown,
-    onToggleFocus,
-    onZoomAdjust,
-    openInOutlook,
-    outlookElsewhere,
-    outlookTarget,
-    rememberFrom,
-    removeAttach,
-    rowClass,
-    send,
-    sending,
-    setDraftNotes,
-    setBccList,
-    setBody,
-    setCcList,
-    setComposeNode,
-    setDraftPreviewId,
-    setEditorKey,
-    setFrom,
-    setIncludeSignature,
-    setRememberFrom,
-    setShowBcc,
-    setShowCc,
-    setShowPreview,
-    setSigDialogOpen,
-    setSigSettings,
-    setSignatureHtml,
-    setSubject,
-    setToList,
-    shortcuts,
-    showBcc,
-    showCc,
-    showPreview,
-    sigDialogOpen,
-    sigSettings,
-    sigTouchedRef,
-    signatureHtml,
-    startCardResize,
-    stopDraft,
-    subject,
-    subjectInputRef,
-    t,
-    toInputRef,
-    toList,
-    zoom,
-  };
+  return { cardH, cardShellRef, cardW, ccInputRef, focusBody, fromSelectRef, labelClass, onSubjectKeyDown, rowClass, startCardResize, subjectInputRef, toInputRef };
 }

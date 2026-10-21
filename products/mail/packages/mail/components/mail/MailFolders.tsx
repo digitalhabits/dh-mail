@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 
 
+
 /** Nested Gmail labels use `/` — show `…/leaf`; full path is on hover. */
 function formatFolderLabel(name: string): string {
   const parts = name.split("/").filter(Boolean);
@@ -285,7 +286,7 @@ export function readMailThreadDragData(
  * Session cache so every open of the folder menu isn't a cold fetch.
  *
  * One row per account per folder, the way the provider holds them. Anything
- * that wants the old single list folds them together with
+ * that wants a single list folds them together with
  * `mergeFoldersByName` — the rail is the one place that needs them apart.
  */
 let foldersCache: MailAccountFolder[] | null = null;
@@ -521,25 +522,8 @@ export function NewFolderRow({
   );
 }
 
-export function FoldersTabMenu({
-  folders,
-  loading,
-  onOpenFolder,
-  onOpenSnoozed,
-  onOpenOutbox,
-  snoozedCount,
-  outboxCount,
-  onOpenSent,
-  onOpenDrafts,
-  draftCount,
-  onOpenTrash,
-  onOpenJunk,
-  onCreateFolder,
-  onMenuOpen,
-  onDropThread,
-  onNavy = false,
-  iconOnly = false,
-}: {
+/** What the folders menu takes. */
+export type FoldersTabMenuProps = {
   folders: MailFolder[];
   loading: boolean;
   onOpenFolder: (folder: MailFolder) => void;
@@ -573,148 +557,28 @@ export function FoldersTabMenu({
   onNavy?: boolean;
   /** Square icon button (avatar-rail chrome) instead of the tab-row trigger. */
   iconOnly?: boolean;
-}) {
-  const t = useMailT();
-  const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
-  const [highlight, setHighlight] = React.useState(0);
-  const [saving, setSaving] = React.useState(false);
-  /** The name being made, while the provider is making it. */
-  const [creating, setCreating] = React.useState<string | null>(null);
-  /** The box names a new folder rather than filtering the list. */
-  const [naming, setNaming] = React.useState(false);
-  const [dragOverTrigger, setDragOverTrigger] = React.useState(false);
-  const [dragOverFolder, setDragOverFolder] = React.useState<string | null>(
-    null
-  );
-  const openedByDragRef = React.useRef(false);
-  const triggerDragDepth = React.useRef(0);
-  const triggerRef = React.useRef<HTMLButtonElement | null>(null);
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  const searchRef = React.useRef<HTMLInputElement | null>(null);
-  const ignoreDismissWhileDrag = React.useCallback(
-    () => openedByDragRef.current,
-    []
-  );
+};
 
-  const q = query.trim().toLowerCase();
-  const items: FolderPickItem[] = folderPickItems(folders, query, { naming });
-  const nameProblem = naming
-    ? newFolderNameProblem(checkNewFolderName(folders, query))
-    : null;
-  /** The one row naming mode shows, once the name can be used. */
-  const newFolder =
-    naming && items[0]?.kind === "create" ? items[0] : null;
-
-  const dismissMenu = React.useCallback(() => {
-    if (openedByDragRef.current) return;
-    setOpen(false);
-    setQuery("");
-    setHighlight(0);
-    setNaming(false);
-    setDragOverTrigger(false);
-    setDragOverFolder(null);
-    openedByDragRef.current = false;
-  }, []);
-
-  const startNaming = React.useCallback(() => {
-    setNaming(true);
-    setQuery("");
-    setHighlight(0);
-    requestAnimationFrame(() => searchRef.current?.focus());
-  }, []);
-
-  const openMenu = React.useCallback(
-    (fromDrag: boolean) => {
-      if (fromDrag) openedByDragRef.current = true;
-      setOpen(true);
-      onMenuOpen?.();
-    },
-    [onMenuOpen]
-  );
-
-  useDismissFolderPopover(open, dismissMenu, {
-    contentRef,
-    triggerRef,
-    shouldIgnore: ignoreDismissWhileDrag,
-  });
-
-  React.useEffect(() => {
-    setHighlight(0);
-  }, [query, open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setHighlight(0);
-    setNaming(false);
-    // Don't steal focus while filing via drag — the pointer is busy.
-    if (!openedByDragRef.current) {
-      requestAnimationFrame(() => searchRef.current?.focus());
-    }
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onDragEnd = () => {
-      setDragOverTrigger(false);
-      setDragOverFolder(null);
-      triggerDragDepth.current = 0;
-      if (openedByDragRef.current) {
-        openedByDragRef.current = false;
-        setOpen(false);
-      }
-    };
-    window.addEventListener("dragend", onDragEnd);
-    return () => window.removeEventListener("dragend", onDragEnd);
-  }, [open]);
-
-  const pick = async (item: (typeof items)[number]) => {
-    if (saving) return;
-    if (item.kind === "folder") {
-      onOpenFolder(item.folder);
-      dismissMenu();
-      return;
-    }
-    setSaving(true);
-    setCreating(item.name);
-    try {
-      await onCreateFolder(item.name);
-      setQuery("");
-      setNaming(false);
-      setOpen(false);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : mailSay("couldNotMakeFolder")
-      );
-    } finally {
-      setSaving(false);
-      setCreating(null);
-    }
-  };
-
-  const acceptThreadDrag = (e: React.DragEvent) => {
-    if (!isMailThreadDrag(e.dataTransfer)) return false;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    return true;
-  };
-
-  const dropOnFolder = async (folderName: string, e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const thread = readMailThreadDragData(e.dataTransfer);
-    setDragOverFolder(null);
-    setDragOverTrigger(false);
-    openedByDragRef.current = false;
-    setOpen(false);
-    if (!thread || !onDropThread) return;
-    try {
-      await onDropThread(folderName, thread);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : mailSay("couldNotMove"));
-    }
-  };
+export function FoldersTabMenu({
+  folders,
+  loading,
+  onOpenFolder,
+  onOpenSnoozed,
+  onOpenOutbox,
+  snoozedCount,
+  outboxCount,
+  onOpenSent,
+  onOpenDrafts,
+  draftCount,
+  onOpenTrash,
+  onOpenJunk,
+  onCreateFolder,
+  onMenuOpen,
+  onDropThread,
+  onNavy = false,
+  iconOnly = false,
+}: FoldersTabMenuProps) {
+  const { acceptThreadDrag, contentRef, creating, dismissMenu, dragOverFolder, dragOverTrigger, dropOnFolder, highlight, items, nameProblem, naming, newFolder, open, openMenu, openedByDragRef, pick, q, query, saving, searchRef, setDragOverFolder, setDragOverTrigger, setHighlight, setNaming, setOpen, setQuery, startNaming, t, triggerDragDepth, triggerRef } = useFoldersMenuState({ folders, onCreateFolder, onDropThread, onMenuOpen, onOpenFolder });
 
   return (
     <Popover
@@ -810,7 +674,87 @@ export function FoldersTabMenu({
           )}
         </button>
       </PopoverTrigger>
-      <MailPopoverContent
+      <FoldersMenuContent acceptThreadDrag={acceptThreadDrag} contentRef={contentRef} creating={creating} dismissMenu={dismissMenu} draftCount={draftCount} dragOverFolder={dragOverFolder} dropOnFolder={dropOnFolder} folders={folders} highlight={highlight} iconOnly={iconOnly} items={items} loading={loading} nameProblem={nameProblem} naming={naming} newFolder={newFolder} onOpenDrafts={onOpenDrafts} onOpenJunk={onOpenJunk} onOpenOutbox={onOpenOutbox} onOpenSent={onOpenSent} onOpenSnoozed={onOpenSnoozed} onOpenTrash={onOpenTrash} outboxCount={outboxCount} pick={pick} q={q} query={query} saving={saving} searchRef={searchRef} setDragOverFolder={setDragOverFolder} setHighlight={setHighlight} setNaming={setNaming} setOpen={setOpen} setQuery={setQuery} snoozedCount={snoozedCount} startNaming={startNaming} t={t} />
+    </Popover>
+  );
+}
+
+/** The open folders menu: the places, the filter, and the folders. */
+function FoldersMenuContent({
+  acceptThreadDrag,
+  contentRef,
+  creating,
+  dismissMenu,
+  draftCount,
+  dragOverFolder,
+  dropOnFolder,
+  folders,
+  highlight,
+  iconOnly,
+  items,
+  loading,
+  nameProblem,
+  naming,
+  newFolder,
+  onOpenDrafts,
+  onOpenJunk,
+  onOpenOutbox,
+  onOpenSent,
+  onOpenSnoozed,
+  onOpenTrash,
+  outboxCount,
+  pick,
+  q,
+  query,
+  saving,
+  searchRef,
+  setDragOverFolder,
+  setHighlight,
+  setNaming,
+  setOpen,
+  setQuery,
+  snoozedCount,
+  startNaming,
+  t,
+}: {
+  acceptThreadDrag: ReturnType<typeof useFoldersMenuState>["acceptThreadDrag"];
+  contentRef: ReturnType<typeof useFoldersMenuState>["contentRef"];
+  creating: ReturnType<typeof useFoldersMenuState>["creating"];
+  dismissMenu: ReturnType<typeof useFoldersMenuState>["dismissMenu"];
+  draftCount: FoldersTabMenuProps["draftCount"];
+  dragOverFolder: ReturnType<typeof useFoldersMenuState>["dragOverFolder"];
+  dropOnFolder: ReturnType<typeof useFoldersMenuState>["dropOnFolder"];
+  folders: FoldersTabMenuProps["folders"];
+  highlight: ReturnType<typeof useFoldersMenuState>["highlight"];
+  iconOnly: Exclude<FoldersTabMenuProps["iconOnly"], undefined>;
+  items: ReturnType<typeof useFoldersMenuState>["items"];
+  loading: FoldersTabMenuProps["loading"];
+  nameProblem: ReturnType<typeof useFoldersMenuState>["nameProblem"];
+  naming: ReturnType<typeof useFoldersMenuState>["naming"];
+  newFolder: ReturnType<typeof useFoldersMenuState>["newFolder"];
+  onOpenDrafts: FoldersTabMenuProps["onOpenDrafts"];
+  onOpenJunk: FoldersTabMenuProps["onOpenJunk"];
+  onOpenOutbox: FoldersTabMenuProps["onOpenOutbox"];
+  onOpenSent: FoldersTabMenuProps["onOpenSent"];
+  onOpenSnoozed: FoldersTabMenuProps["onOpenSnoozed"];
+  onOpenTrash: FoldersTabMenuProps["onOpenTrash"];
+  outboxCount: FoldersTabMenuProps["outboxCount"];
+  pick: ReturnType<typeof useFoldersMenuState>["pick"];
+  q: ReturnType<typeof useFoldersMenuState>["q"];
+  query: ReturnType<typeof useFoldersMenuState>["query"];
+  saving: ReturnType<typeof useFoldersMenuState>["saving"];
+  searchRef: ReturnType<typeof useFoldersMenuState>["searchRef"];
+  setDragOverFolder: ReturnType<typeof useFoldersMenuState>["setDragOverFolder"];
+  setHighlight: ReturnType<typeof useFoldersMenuState>["setHighlight"];
+  setNaming: ReturnType<typeof useFoldersMenuState>["setNaming"];
+  setOpen: ReturnType<typeof useFoldersMenuState>["setOpen"];
+  setQuery: ReturnType<typeof useFoldersMenuState>["setQuery"];
+  snoozedCount: FoldersTabMenuProps["snoozedCount"];
+  startNaming: ReturnType<typeof useFoldersMenuState>["startNaming"];
+  t: ReturnType<typeof useFoldersMenuState>["t"];
+}) {
+  return (
+    <MailPopoverContent
         ref={contentRef}
         align={iconOnly ? "start" : "end"}
         className="w-72 p-0"
@@ -1044,18 +988,18 @@ export function FoldersTabMenu({
           />
         )}
       </MailPopoverContent>
-    </Popover>
   );
 }
+
 
 /** Replaces the tab row while a folder is open. */
 /**
  * The open folder, and the folders it sits inside.
  *
- * A nested folder used to be one pill reading `…/A second test`, which
- * gives the reader an ellipsis where the answer should be and makes them
- * hover to learn where they are. The parents are written out now, in plain
- * grey, each one a way back up to it.
+ * The parents are written out, in plain grey, each one a way back up to it.
+ * If a nested folder is one pill that reads `…/A second test`, the reader
+ * gets an ellipsis where the answer is needed. Then they must hover to learn
+ * where they are.
  *
  * Only the open folder is an object: one pill, one thing you are in. The
  * parents are text, so the row reads as a place with a path to it rather
@@ -1162,4 +1106,145 @@ export function FolderViewHeader({
       </span>
     </div>
   );
+}
+
+/** The folders menu: open, the filter and its mark, naming a new folder, the drag over it, and what a pick or a drop does. */
+export function useFoldersMenuState({
+  folders,
+  onCreateFolder,
+  onDropThread,
+  onMenuOpen,
+  onOpenFolder,
+}: { folders: FoldersTabMenuProps["folders"]; onCreateFolder: FoldersTabMenuProps["onCreateFolder"]; onDropThread: FoldersTabMenuProps["onDropThread"]; onMenuOpen: FoldersTabMenuProps["onMenuOpen"]; onOpenFolder: FoldersTabMenuProps["onOpenFolder"] }) {
+  const t = useMailT();
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [highlight, setHighlight] = React.useState(0);
+  const [saving, setSaving] = React.useState(false);
+  /** The name being made, while the provider is making it. */
+  const [creating, setCreating] = React.useState<string | null>(null);
+  /** The box names a new folder rather than filtering the list. */
+  const [naming, setNaming] = React.useState(false);
+  const [dragOverTrigger, setDragOverTrigger] = React.useState(false);
+  const [dragOverFolder, setDragOverFolder] = React.useState<string | null>(
+    null
+  );
+  const openedByDragRef = React.useRef(false);
+  const triggerDragDepth = React.useRef(0);
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const searchRef = React.useRef<HTMLInputElement | null>(null);
+  const ignoreDismissWhileDrag = React.useCallback(
+    () => openedByDragRef.current,
+    []
+  );
+  const q = query.trim().toLowerCase();
+  const items: FolderPickItem[] = folderPickItems(folders, query, { naming });
+  const nameProblem = naming
+    ? newFolderNameProblem(checkNewFolderName(folders, query))
+    : null;
+  /** The one row naming mode shows, once the name can be used. */
+  const newFolder =
+    naming && items[0]?.kind === "create" ? items[0] : null;
+  const dismissMenu = React.useCallback(() => {
+    if (openedByDragRef.current) return;
+    setOpen(false);
+    setQuery("");
+    setHighlight(0);
+    setNaming(false);
+    setDragOverTrigger(false);
+    setDragOverFolder(null);
+    openedByDragRef.current = false;
+  }, []);
+  const startNaming = React.useCallback(() => {
+    setNaming(true);
+    setQuery("");
+    setHighlight(0);
+    requestAnimationFrame(() => searchRef.current?.focus());
+  }, []);
+  const openMenu = React.useCallback(
+    (fromDrag: boolean) => {
+      if (fromDrag) openedByDragRef.current = true;
+      setOpen(true);
+      onMenuOpen?.();
+    },
+    [onMenuOpen]
+  );
+  useDismissFolderPopover(open, dismissMenu, {
+    contentRef,
+    triggerRef,
+    shouldIgnore: ignoreDismissWhileDrag,
+  });
+  React.useEffect(() => {
+    setHighlight(0);
+  }, [query, open]);
+  React.useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setHighlight(0);
+    setNaming(false);
+    // Don't steal focus while filing via drag — the pointer is busy.
+    if (!openedByDragRef.current) {
+      requestAnimationFrame(() => searchRef.current?.focus());
+    }
+  }, [open]);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDragEnd = () => {
+      setDragOverTrigger(false);
+      setDragOverFolder(null);
+      triggerDragDepth.current = 0;
+      if (openedByDragRef.current) {
+        openedByDragRef.current = false;
+        setOpen(false);
+      }
+    };
+    window.addEventListener("dragend", onDragEnd);
+    return () => window.removeEventListener("dragend", onDragEnd);
+  }, [open]);
+  const pick = async (item: (typeof items)[number]) => {
+    if (saving) return;
+    if (item.kind === "folder") {
+      onOpenFolder(item.folder);
+      dismissMenu();
+      return;
+    }
+    setSaving(true);
+    setCreating(item.name);
+    try {
+      await onCreateFolder(item.name);
+      setQuery("");
+      setNaming(false);
+      setOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : mailSay("couldNotMakeFolder")
+      );
+    } finally {
+      setSaving(false);
+      setCreating(null);
+    }
+  };
+  const acceptThreadDrag = (e: React.DragEvent) => {
+    if (!isMailThreadDrag(e.dataTransfer)) return false;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    return true;
+  };
+  const dropOnFolder = async (folderName: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const thread = readMailThreadDragData(e.dataTransfer);
+    setDragOverFolder(null);
+    setDragOverTrigger(false);
+    openedByDragRef.current = false;
+    setOpen(false);
+    if (!thread || !onDropThread) return;
+    try {
+      await onDropThread(folderName, thread);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : mailSay("couldNotMove"));
+    }
+  };
+  return { acceptThreadDrag, contentRef, creating, dismissMenu, dragOverFolder, dragOverTrigger, dropOnFolder, highlight, items, nameProblem, naming, newFolder, open, openMenu, openedByDragRef, pick, q, query, saving, searchRef, setDragOverFolder, setDragOverTrigger, setHighlight, setNaming, setOpen, setQuery, startNaming, t, triggerDragDepth, triggerRef };
 }

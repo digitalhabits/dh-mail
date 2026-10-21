@@ -91,8 +91,8 @@ function flatten(value: string): string {
  * The message without the sign-off at the end of it.
  *
  * A message handed to Outlook is finished in Outlook, and Outlook puts its
- * own signature on what it opens. Ours went over with the words, so the
- * mail carried two — a sign-off, then the same sign-off in Outlook's face
+ * own signature on what it opens. If ours goes over with the words, the
+ * mail carries two — a sign-off, then the same sign-off in Outlook's face
  * and size under it.
  *
  * Only at the end, and only when it matches. A signature quoted in the
@@ -185,8 +185,8 @@ export function withoutTrailingSignature(
  *
  * Two doors, because one of them is shut here. `navigator.clipboard.write`
  * carries both flavours, and the WebKit the desktop app runs in has no such
- * method — measured 2026-09-22, where the message went over as words alone
- * and a paste into Outlook lost its bold headings and its bullets. A copy
+ * method. There the message goes over as words alone, and a paste into
+ * Outlook loses its bold headings and its bullets. A copy
  * event carries both flavours in every engine: the words go in a box off
  * the page, the box is selected, and the handler writes the two flavours
  * into the event.
@@ -427,81 +427,113 @@ export function withHistory(
   };
 }
 
+/** A file for the draft, as the composer holds it. */
+export type OutlookDraftFile = { filename: string; contentBase64: string };
+
 /**
- * Make the reply in Outlook, as a reply to its own copy of the message, so
- * it has Outlook's quote and sits in the conversation. False when Outlook
- * has no such message or cannot be asked: open a new message instead.
- * Desktop app only. See `outlook_reply` in handover.rs.
+ * Make the message as a draft in Outlook itself, without opening it.
+ *
+ * With `reply`, Outlook is asked to find its own copy of that message and
+ * reply to it, so the draft has Outlook's quote and sits in the
+ * conversation, in the mailbox that holds it. With no reply, or a message
+ * Outlook does not have, it is a new message with the history under the
+ * words, in the Outlook account of the From address when Outlook has one.
+ * The files are attached in Outlook.
+ *
+ * Answers what was made, or null when Outlook cannot be asked this way
+ * (the new Outlook, or not a Mac). Desktop app only. See `outlook_draft`
+ * in handover.rs.
  */
-export async function replyInOutlook(input: {
-  message: MailMessage;
-  /** The thread's subject: the message's own, as it came. */
+export async function draftInOutlook(input: {
+  reply: MailMessage | null;
+  /** The thread's subject, as it came: how Outlook's copy is found. */
+  threadSubject: string;
   subject: string;
+  /** The words, without our signature, as HTML. */
   html: string;
+  /** Under the words, for a new message only. */
+  historyHtml: string;
+  from: string;
   to: string[];
   cc: string[];
-}): Promise<boolean> {
+  bcc: string[];
+  files: OutlookDraftFile[];
+}): Promise<"reply" | "new" | null> {
   const invoke = tauriInvoke();
-  if (!invoke) return false;
-  const sentAtMs = input.message.sentAt ? Date.parse(input.message.sentAt) : NaN;
-  if (!Number.isFinite(sentAtMs)) return false;
-  try {
-    return Boolean(
-      await invoke("outlook_reply", {
-        reply: {
-          messageId: input.message.rfcMessageId ?? "",
-          subject: input.subject,
-          from: input.message.fromEmail,
+  if (!invoke) return null;
+  const sentAtMs = input.reply?.sentAt ? Date.parse(input.reply.sentAt) : NaN;
+  const reply =
+    input.reply && Number.isFinite(sentAtMs)
+      ? {
+          messageId: input.reply.rfcMessageId ?? "",
+          subject: input.threadSubject,
+          from: input.reply.fromEmail,
           sentAtMs,
-          html: input.html,
-          to: input.to,
-          cc: input.cc,
-        },
-      })
-    );
+        }
+      : null;
+  try {
+    const made = await invoke("outlook_draft", {
+      draft: {
+        reply,
+        subject: input.subject,
+        html: input.html,
+        historyHtml: input.historyHtml,
+        from: input.from,
+        to: input.to,
+        cc: input.cc,
+        bcc: input.bcc,
+        files: input.files,
+      },
+    });
+    return made === "reply" || made === "new" ? made : null;
   } catch (err) {
-    console.warn("[mail] Outlook could not make the reply:", err);
-    return false;
+    console.warn("[mail] Outlook could not make the draft:", err);
+    return null;
   }
 }
 
 /**
- * A reply to a mailbox this app cannot draft in, opened in Outlook.
+ * A message for a mailbox this app cannot draft in, handed to Outlook.
  *
- * First as Outlook's own reply to its copy of the message: a new message
- * had no quote and no place in the conversation over there (2026-10-19).
- * Outlook writes its own quote, so the history does not go with it. Only
- * when the reply keeps the thread's subject: one with a subject of its own
- * starts a new thread.
+ * First as a draft that Outlook makes itself (`draftInOutlook`): a reply
+ * to Outlook's copy of the message when it keeps the thread's subject (one
+ * with a subject of its own starts a new thread), else a new message with
+ * the history under the words. Nothing opens, and nothing is pasted.
  *
- * Else a new message, with the history under the words, as a send writes
- * it. Plain and short, it rides in the URL. Otherwise the pasteboard
- * carries it, which keeps the formatting a mailto: cannot.
+ * Only when Outlook cannot be asked that way, a new Outlook message opens.
+ * Plain and short, the words ride in the URL; otherwise the pasteboard
+ * carries them, which keeps the formatting a mailto: cannot.
+ *
+ * "replyDraft" and "draft" carried the files. "url" and "paste" did not.
  */
 export async function openReplyInOutlook(input: {
   /** The words, without our signature. */
   own: { html: string; text: string };
   history: { html: string; text: string } | null;
-  /** The message replied to; null for a forward. */
+  /** The message replied to; null for a new message or a forward. */
   anchor: MailMessage | null;
   threadSubject: string;
   subject: string;
+  from: string;
   to: string[];
   cc: string[];
-}): Promise<"reply" | "url" | "paste"> {
-  if (
-    input.anchor &&
-    replyKeepsSubject(input.subject, input.threadSubject) &&
-    (await replyInOutlook({
-      message: input.anchor,
-      subject: input.threadSubject,
-      html: input.own.html,
-      to: input.to,
-      cc: input.cc,
-    }))
-  ) {
-    return "reply";
-  }
+  bcc: string[];
+  files: OutlookDraftFile[];
+}): Promise<"replyDraft" | "draft" | "url" | "paste"> {
+  const made = await draftInOutlook({
+    reply: input.anchor && replyKeepsSubject(input.subject, input.threadSubject) ? input.anchor : null,
+    threadSubject: input.threadSubject,
+    subject: input.subject,
+    html: input.own.html,
+    historyHtml: input.history?.html ?? "",
+    from: input.from,
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    files: input.files,
+  });
+  if (made === "reply") return "replyDraft";
+  if (made === "new") return "draft";
   const carrying = withHistory(input.own, input.history);
   const travels = bodyTravels(carrying.html, carrying.text);
   if (!travels) await copyMessageToClipboard(carrying);

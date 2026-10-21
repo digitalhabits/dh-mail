@@ -43,9 +43,9 @@ const ORIGIN_LABELS: Record<MailDraftRow["origin"], string> = {
 /**
  * Ours is the odd one out, so it is the one that looks different.
  *
- * Different, not alarming. It was red, which in a mail client means a thing
- * has gone wrong — and a draft kept on this machine is a choice working as
- * intended. Teal is the colour this app uses for its own doing.
+ * Different, not alarming. It is not red, because red in a mail client means
+ * that a thing went wrong. A draft kept on this machine is a choice that
+ * works as intended. Teal is the colour this app uses for its own doing.
  */
 const ORIGIN_STYLES: Record<MailDraftRow["origin"], string> = {
   here: "bg-teal-50 text-teal-800",
@@ -119,9 +119,9 @@ export function MailDraftsList({
   /**
    * The draft that is open in the composer, so its row says so.
    *
-   * A thread list marks the thread being read; this list marked nothing,
-   * and a reader who opened a draft had no way to see which one of a
-   * hundred rows they were looking at.
+   * A thread list marks the thread being read. If this list marks nothing,
+   * a reader who opens a draft has no way to see which one of a hundred
+   * rows they are looking at.
    */
   openKey?: string | null;
 }) {

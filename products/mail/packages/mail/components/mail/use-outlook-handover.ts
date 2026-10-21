@@ -9,7 +9,7 @@
  *
  * Nothing here writes the composer. It reads the values of one render, and
  * every one of them is in the dependency list: a value left out of that list
- * is how a forward went to Outlook under a reply's subject. If the
+ * can send a forward to Outlook under a reply's subject. If the
  * hand-over needs a new value, add it to the input and to the list.
  */
 
@@ -42,7 +42,8 @@ import { mailSay } from "@/lib/mail/i18n";
 
 /** What the toast says, by how the message reached Outlook. */
 const OPENED_SAYS = {
-  reply: "outlookReplyIsOpen",
+  replyDraft: "outlookReplyDraftMade",
+  draft: "outlookDraftMade",
   url: "outlookIsOpen",
   paste: "outlookIsOpenPaste",
 } as const;
@@ -159,11 +160,11 @@ export function useOutlookHandover(input: {
     /**
      * A forward hands over as a forward.
      *
-     * This built a reply whatever the composer was doing: the subject went
-     * over as "Re:" and the message being forwarded was left behind
-     * entirely, so what opened in Outlook was an empty reply to the wrong
-     * subject. The forward carries its own subject — the writer's, if they
-     * changed it — and the message underneath.
+     * If this built a reply whatever the composer was doing, the subject
+     * goes over as "Re:" and the message being forwarded is left behind.
+     * What opens in Outlook is then an empty reply to the wrong subject.
+     * The forward carries its own subject — the writer's, if they changed
+     * it — and the message underneath.
      */
     const forwardHandover = forwarding && forwardSource
       ? {
@@ -191,13 +192,14 @@ export function useOutlookHandover(input: {
     setHandingOver(true);
     try {
       /*
-        No mailbox of ours: a new Outlook message, and the body pasted in.
+        No mailbox of ours: Outlook makes the draft itself.
 
         The mailbox the reader wants is often one this app can never hold a
         token for — a university that will not approve a third-party client
-        cannot be handed a draft over Graph either. Outlook opens on the
-        recipients and the subject, and the message waits on the pasteboard
-        with its formatting intact.
+        cannot be handed a draft over Graph either. Outlook holds it, so
+        Outlook is asked to make the draft: a reply in the conversation, or
+        a new message. Only when Outlook cannot be asked does a new Outlook
+        message open, with the body on the pasteboard.
       */
       if (!outlookTarget) {
         const html = replyText.trim() || pickedQuote ? composed.html : "";
@@ -213,10 +215,19 @@ export function useOutlookHandover(input: {
           to: flatTo.emails,
           cc: flatCc.emails,
         });
+        /*
+          The files, and the pictures in the body.
+
+          A draft that Outlook makes takes them as attachments. The other
+          route cannot carry them: a mailto: has no files, and Outlook
+          drops a `data:` picture from a paste. Then they go to the
+          downloads folder with the file manager pointed at them, and the
+          toast says where they are, or that they did not travel.
+        */
+        const travelling = handoverFiles(attachments, own.html);
         const opened = await openReplyInOutlook({
           own,
-          // A forward carries the message it forwards, as a send writes it:
-          // it went to Outlook with the words alone (2026-10-19).
+          // A forward carries the message it forwards, as a send writes it.
           history: forwardHandover
             ? { html: forwardedHtml(forwardHandover), text: forwardedPlainText(forwardHandover) }
             : noQuote || forwarding
@@ -225,42 +236,22 @@ export function useOutlookHandover(input: {
           anchor: forwarding ? null : replyAnchor(thread.messages),
           threadSubject: thread.subject,
           subject: handoverSubject,
+          from: fromAccount,
           to: flatTo.emails,
           cc,
+          bcc: [...flatTo.bccEmails, ...flatCc.bccEmails],
+          files: travelling,
         });
-        /*
-          The files, which a mailto: cannot carry.
-
-          They were dropped without a word before this: the message opened
-          in Outlook and the attachments simply were not on it. Now they go
-          to the downloads folder with the file manager pointed at them, and
-          the toast says where they are — or says they did not travel, when
-          there is nowhere to put them.
-        */
         // What did happen here, recorded: the words went to Outlook. See
         // markDraftHandedOver, and the list, which says so rather than
         // showing the copy as an unfinished letter.
         void markDraftHandedOver(threadDraftKey(account, threadId), fromAccount);
-        /*
-          The pictures in the body, which the pasteboard cannot carry either.
-
-          The HTML on the pasteboard holds each one as a `data:` URI, and
-          Outlook drops those on the paste: the message arrived with its
-          words and a gap where each picture had been, and nothing said so.
-
-          A send lifts them into parts of the message — see
-          `extractInlineImages` — but here there is no message to make
-          parts of. So they go to the downloads folder beside the
-          attachments, to be dragged in where they belong. The pasteboard
-          keeps them as they are: a `cid:` left in a paste is a broken
-          picture rather than none, which is worse than the gap.
-        */
-        const travelling = handoverFiles(attachments, own.html);
-        const savedFiles = await saveAttachmentsForHandover(travelling);
+        const filesInDraft = opened === "replyDraft" || opened === "draft";
+        const savedFiles = filesInDraft ? 0 : await saveAttachmentsForHandover(travelling);
         toast.success(
           mailSay(OPENED_SAYS[opened]),
           {
-            ...(travelling.length
+            ...(travelling.length && !filesInDraft
               ? {
                   description: savedFiles
                     ? mailSay("outlookFilesInDownloads", {

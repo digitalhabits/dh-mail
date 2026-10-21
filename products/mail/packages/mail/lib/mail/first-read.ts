@@ -1,12 +1,13 @@
 /**
  * The first read of a mailbox, as the list says it.
  *
- * The first read of a big mailbox takes hours, across many sittings. The list
- * used to show its bar only for the phase "full". A pause put a notice in the
- * place of the bar, a stop put nothing there, and a narrow list hid all of it.
- * A reader saw the bar go away and took the read for finished, or for broken.
+ * The first read of a big mailbox takes hours, across many sittings. If the
+ * list shows its bar only for the phase "full", a pause puts a notice in the
+ * place of the bar. A stop puts nothing there, and a narrow list hides all of
+ * it. A reader sees the bar go away and takes the read for finished, or for
+ * broken.
  *
- * The rule now: while the first read is not finished, a line stays up in every
+ * The rule: while the first read is not finished, a line stays up in every
  * state, with the count, and says which state it is. The line goes away only
  * when the read is complete. This module decides that from the sync states
  * alone, so a test can give it the rows the store holds.
@@ -20,10 +21,10 @@
  * - A folder of the mailbox has the phase "reading": the Outlook worker keeps
  *   its place in a folder under that phase until the folder is finished.
  *
- * A row for a mailbox that is not in the list is not a read. When a mailbox
- * was removed while its worker read a batch, the worker wrote that batch
- * after the store dropped the mailbox, and a row stayed with a short count.
- * Mail never starts that mailbox again, so the line said "stopped" forever.
+ * A row for a mailbox that is not in the list is not a read. If a mailbox is
+ * removed while its worker reads a batch, the worker writes that batch after
+ * the store drops the mailbox. A row then stays with a short count. Mail
+ * never starts that mailbox again, so the line says "stopped" forever.
  */
 
 import { syncPauseKind } from "@/lib/mail/sync-pause";
@@ -103,7 +104,7 @@ export function firstReadLines(all: MailSyncState[], mailboxes?: readonly string
     });
 }
 
-/** A sync that paused on a mailbox whose first read is complete. The old notice is for these. */
+/** A sync that paused on a mailbox whose first read is complete. The pause notice is for these. */
 export function pausedAfterFirstRead(all: MailSyncState[], mailboxes?: readonly string[]): MailSyncState[] {
   const states = ofMailboxes(all, mailboxes);
   return states.filter((row) => row.phase === "paused" && !firstReadUnfinished(row, states));

@@ -22,6 +22,8 @@ import * as React from "react";
 import {
   MAIL_EDIT_AS_NEW_REQUEST_KEY,
   MAIL_FORWARD_REQUEST_KEY,
+} from "@/lib/mail/storage-keys";
+import {
   readComposeSeed,
   readEditAsNewRequest,
   readForwardRequest,

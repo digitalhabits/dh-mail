@@ -61,9 +61,9 @@ export type ThreadMailDraft = DraftBase & {
    *
    * Absent means the reply goes out under the name the thread already has.
    * Saved because the composer's state travels through this record — to the
-   * floating card, to another thread and back, into a new window — and a
-   * subject left out of it came back as the old one, which is what the
-   * message then went out as.
+   * floating card, to another thread and back, into a new window. If the
+   * subject is left out of it, it comes back as the old one, and the
+   * message goes out with that subject.
    */
   subject?: string;
   toList: MailRecipient[];
@@ -105,12 +105,12 @@ export type ComposeMailDraft = DraftBase & {
   showBcc: boolean;
   includeSignature: boolean;
   /**
-   * Chat style, as a new message once asked for it.
+   * Chat style, as an older draft of a new message holds it.
    *
-   * The composer no longer asks — the question is about replies quoting
-   * history, and a new message has none, so it is asked on the first reply
-   * instead. Kept optional so a draft saved by an older version still reads
-   * back; nothing sets it now.
+   * The composer does not ask this for a new message. The question is about
+   * replies that quote history, and a new message has none, so the first
+   * reply asks it. Optional so that a draft saved by an older version still
+   * reads back. Nothing sets it.
    */
   chatStyle?: boolean;
   /**
@@ -127,9 +127,9 @@ export function threadDraftKey(account: string, threadId: string): string {
 }
 
 /**
- * The key a new-message draft used to have — all of them, which is why there
- * was only ever one. Still read, so a draft written before this change is not
- * lost, but nothing writes to it any more.
+ * The one key that all new-message drafts of older versions shared. It is
+ * still read, so that a draft from an older version is not lost. Nothing
+ * writes to it.
  */
 export const COMPOSE_DRAFT_KEY = "compose";
 
@@ -386,9 +386,9 @@ function draftContent(draft: MailDraft): string {
  * Whether two drafts say the same thing.
  *
  * Opening a draft writes it back — the composer's fields fill in, and that
- * is a change to the autosave — and every save used to stamp it now. The
- * Drafts list shows the newest first, so a draft moved to the top when it
- * was only looked at. Its time now moves only when what it says does.
+ * is a change to the autosave. The Drafts list shows the newest first. If
+ * every save stamps the time, a draft moves to the top when it is only
+ * looked at. So its time moves only when what it says changes.
  */
 export function sameDraftContent(a: MailDraft, b: MailDraft): boolean {
   return a.kind === b.kind && draftContent(a) === draftContent(b);

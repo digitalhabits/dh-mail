@@ -43,7 +43,7 @@ export type MailboxHide = {
   autoHidden?: boolean;
   /**
    * Its own words to type before it is shown early, and its own "Hide again
-   * after" (2026-10-20). Absent: the state's, which are every account's
+   * after". Absent: the state's, which are every account's
    * until one is given its own. 0 is kept: none, for this account.
    */
   showWords?: number;
@@ -78,7 +78,7 @@ export function hideAgainLabel(minutes: number, t: MailT): string {
 /**
  * Whether "Hide again after" is what ends an early show: set, and sooner
  * than the end of the mailbox's own time or window. Then the question
- * before showing it names how long (Ulrik, 2026-10-17).
+ * before showing it names how long.
  */
 export function hideAgainEndsShow(ownEnd: number | null, hideAgainMinutes: number, now: Date): boolean {
   if (hideAgainMinutes <= 0) return false;

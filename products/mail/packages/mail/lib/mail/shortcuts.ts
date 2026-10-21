@@ -22,6 +22,7 @@
  * listen for those themselves rather than through the thread handler, which
  * stands down wherever a reply is written.
  */
+import { MAIL_SHORTCUTS_KEY as STORAGE_KEY } from "@/lib/mail/storage-keys";
 import type { MailStringKey } from "@/lib/mail/i18n-strings";
 
 
@@ -198,14 +199,13 @@ export const DEFAULT_MAIL_SHORTCUTS: Record<MailShortcutAction, MailShortcut> = 
    */
   focusMessage: { key: "r", meta: true, alt: true },
   /**
-   * The Mac's own "Paste and Match Style", and Outlook's. It was Cmd+Shift+V
-   * until 2026-10-08, which is Gmail's in a browser.
+   * The Mac's own "Paste and Match Style", and Outlook's. Not Cmd+Shift+V,
+   * which is Gmail's in a browser.
    */
   pastePlain: { key: "v", meta: true, alt: true, shift: true },
   insertLink: { key: "k", meta: true },
 };
 
-const STORAGE_KEY = "redd-plan-mail-shortcuts";
 export const MAIL_SHORTCUTS_EVENT = "redd-plan-mail-shortcuts-changed";
 
 /**

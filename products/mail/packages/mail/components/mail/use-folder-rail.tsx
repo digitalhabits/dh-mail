@@ -54,6 +54,7 @@ import {
   folderParentPath,
 } from "@/lib/mail/folder-drop";
 
+
 export function useFolderRail(props: FolderRailProps) {
   const {
     accountFolders,
@@ -80,7 +81,96 @@ export function useFolderRail(props: FolderRailProps) {
     onDropInbox,
     side = "left",
   } = props;
+  const { accountMenu, accountSpringRef, collapsed, collapsedAccounts, confirmDelete, creatingFor, creatingIn, creatingUnder, deleting, favourites, fixedMenu, isOutlookAccount, menu, movingFolder, newName, openAccount, query, railRef, renamingKey, saving, setAccountMenu, setCollapsed, setCollapsedState, setConfirmDelete, setCreatingFor, setCreatingIn, setCreatingUnder, setDeleting, setFixedMenu, setMenu, setMovingFolder, setNewName, setQuery, setRenamingKey, setSaving, t, toggleAccount, toggleCollapsed } = useRailState();
+  const { accountDrag, accountDropBefore, busyFolder, dragOver, dropFolderAtTop, dropFolderInto, folderDrag, openCollapsed, revealFolder, revealed, sectionRefs, setAccountDrag, setAccountDropBefore, setDragOver, setFolderDrag, systemTwoUp, whileBusy } = useRailDrops({ accountFolders, collapsed, loading, onRenameFolder, openAccount, railRef, setCollapsed, setCollapsedState, t });
+  const { dragging, dropPlaceAt, dropStateFor, favouriteKeys, favouriteRows, filtered, openFixedMenu, railAccounts, runDelete, submitNewFolder, submitRename, submitSubfolder } = useRailRows({ accountDrag, accountFolders, accounts, confirmDelete, creatingUnder, deleting, draggingAccount, favourites, newName, onCreateFolder, onDeleteFolder, onRenameFolder, query, revealFolder, saving, sectionRefs, setAccountMenu, setConfirmDelete, setCreatingFor, setCreatingIn, setCreatingUnder, setDeleting, setDragOver, setFixedMenu, setMenu, setNewName, setRenamingKey, setSaving, t, whileBusy });
 
+  return {
+    accountDrag,
+    accountDropBefore,
+    accountFolders,
+    accountMenu,
+    accountSpringRef,
+    busyFolder,
+    collapsed,
+    collapsedAccounts,
+    confirmDelete,
+    creatingFor,
+    creatingIn,
+    creatingUnder,
+    deleting,
+    draftCount,
+    dragOver,
+    dragging,
+    dropFolderAtTop,
+    dropFolderInto,
+    dropPlaceAt,
+    dropStateFor,
+    favouriteKeys,
+    favouriteRows,
+    filtered,
+    fixedMenu,
+    folderDrag,
+    isOutlookAccount,
+    loading,
+    menu,
+    movingFolder,
+    newName,
+    onDropInbox,
+    onDropJunk,
+    onDropThread,
+    onDropTrash,
+    onOpenArchived,
+    onOpenDrafts,
+    onOpenFolder,
+    onOpenInbox,
+    onOpenJunk,
+    onOpenSent,
+    onOpenTrash,
+    onRenameFolder,
+    onReorderAccount,
+    openAccount,
+    openCollapsed,
+    openFixedMenu,
+    openFolder,
+    query,
+    railAccounts,
+    railRef,
+    renamingKey,
+    revealFolder,
+    revealed,
+    runDelete,
+    saving,
+    sectionRefs,
+    setAccountDrag,
+    setAccountDropBefore,
+    setAccountMenu,
+    setConfirmDelete,
+    setCreatingFor,
+    setCreatingUnder,
+    setDragOver,
+    setFixedMenu,
+    setFolderDrag,
+    setMenu,
+    setMovingFolder,
+    setNewName,
+    setQuery,
+    setRenamingKey,
+    side,
+    submitNewFolder,
+    submitRename,
+    submitSubfolder,
+    systemTwoUp,
+    systemView,
+    t,
+    toggleAccount,
+    toggleCollapsed,
+    whileBusy,
+  };
+}
+
+/** The rail's state: the filter, what is folded, the menus, renaming, deleting, creating, and favourites. */
+export function useRailState() {
   const t = useMailT();
   const railRef = React.useRef<HTMLElement>(null);
   const [query, setQuery] = React.useState("");
@@ -103,8 +193,8 @@ export function useFolderRail(props: FolderRailProps) {
    * Its own state, and not `creatingFor` and `saving` together, because the
    * name box does not survive the wait: it is disabled the moment the work
    * starts, a disabled field cannot hold focus, and the blur that follows is
-   * the one that closes the box. So by the time there was anything to wait
-   * for, `creatingFor` was already null and the spinner had nothing to hang
+   * the one that closes the box. So by the time there is anything to wait
+   * for, `creatingFor` is already null and the spinner has nothing to hang
    * from.
    */
   const [creatingIn, setCreatingIn] = React.useState<string | null>(null);
@@ -221,6 +311,22 @@ export function useFolderRail(props: FolderRailProps) {
     },
     [collapsed, setCollapsed]
   );
+  return { accountMenu, accountSpringRef, collapsed, collapsedAccounts, confirmDelete, creatingFor, creatingIn, creatingUnder, deleting, favourites, fixedMenu, isOutlookAccount, menu, movingFolder, newName, openAccount, query, railRef, renamingKey, saving, setAccountMenu, setCollapsed, setCollapsedState, setConfirmDelete, setCreatingFor, setCreatingIn, setCreatingUnder, setDeleting, setFixedMenu, setMenu, setMovingFolder, setNewName, setQuery, setRenamingKey, setSaving, t, toggleAccount, toggleCollapsed };
+}
+
+/** Revealing a folder, the drags and drops, and folding open on the way. */
+export function useRailDrops({
+  accountFolders,
+  collapsed,
+  loading,
+  onRenameFolder,
+  openAccount,
+  railRef,
+  setCollapsed,
+  setCollapsedState,
+  t,
+}: Pick<ReturnType<typeof useRailState>, "collapsed" | "openAccount" | "railRef" | "setCollapsed" | "setCollapsedState" | "t"> &
+  { accountFolders: FolderRailProps["accountFolders"]; loading: FolderRailProps["loading"]; onRenameFolder: FolderRailProps["onRenameFolder"] }) {
   /**
    * A folder taken off the favourites is shown where it actually lives.
    *
@@ -274,7 +380,7 @@ export function useFolderRail(props: FolderRailProps) {
     const observer = new ResizeObserver(([entry]) => twoUp(entry.contentRect.width));
     observer.observe(rail);
     return () => observer.disconnect();
-  }, []);
+  }, [railRef]);
   /** Each mailbox section, so a drop can be told which space it is in. */
   const sectionRefs = React.useRef(new Map<string, HTMLDivElement>());
   /**
@@ -346,7 +452,7 @@ export function useFolderRail(props: FolderRailProps) {
         }
       });
     },
-    [folderDrag, onRenameFolder, whileBusy, t]
+    [folderDrag, onRenameFolder, whileBusy, t, setCollapsedState]
   );
   /** Out of whatever holds it, back to the top of its own mailbox. */
   const dropFolderAtTop = React.useCallback(
@@ -385,7 +491,7 @@ export function useFolderRail(props: FolderRailProps) {
       });
       setRevealed(folderFavouriteKey(account, name));
     },
-    [openAccount]
+    [openAccount, setCollapsedState]
   );
   /** Stop pointing at it after a beat. */
   React.useEffect(() => {
@@ -462,6 +568,44 @@ export function useFolderRail(props: FolderRailProps) {
     if (loading || !accountFolders.length) return;
     pruneFolderFavourites(accountFolders);
   }, [accountFolders, loading]);
+  return { accountDrag, accountDropBefore, busyFolder, dragOver, dropFolderAtTop, dropFolderInto, folderDrag, openCollapsed, revealFolder, revealed, sectionRefs, setAccountDrag, setAccountDropBefore, setDragOver, setFolderDrag, systemTwoUp, whileBusy };
+}
+
+/** The trees, the filtered rows, favourites, the drop targets, and the menus' actions. */
+export function useRailRows({
+  accountDrag,
+  accountFolders,
+  accounts,
+  confirmDelete,
+  creatingUnder,
+  deleting,
+  draggingAccount,
+  favourites,
+  newName,
+  onCreateFolder,
+  onDeleteFolder,
+  onRenameFolder,
+  query,
+  revealFolder,
+  saving,
+  sectionRefs,
+  setAccountMenu,
+  setConfirmDelete,
+  setCreatingFor,
+  setCreatingIn,
+  setCreatingUnder,
+  setDeleting,
+  setDragOver,
+  setFixedMenu,
+  setMenu,
+  setNewName,
+  setRenamingKey,
+  setSaving,
+  t,
+  whileBusy,
+}: Pick<ReturnType<typeof useRailState>, "confirmDelete" | "creatingUnder" | "deleting" | "favourites" | "newName" | "query" | "saving" | "setAccountMenu" | "setConfirmDelete" | "setCreatingFor" | "setCreatingIn" | "setCreatingUnder" | "setDeleting" | "setFixedMenu" | "setMenu" | "setNewName" | "setRenamingKey" | "setSaving" | "t"> &
+  Pick<ReturnType<typeof useRailDrops>, "accountDrag" | "revealFolder" | "sectionRefs" | "setDragOver" | "whileBusy"> &
+  { accountFolders: FolderRailProps["accountFolders"]; accounts: FolderRailProps["accounts"]; draggingAccount: FolderRailProps["draggingAccount"]; onCreateFolder: FolderRailProps["onCreateFolder"]; onDeleteFolder: FolderRailProps["onDeleteFolder"]; onRenameFolder: FolderRailProps["onRenameFolder"] }) {
   const trees = React.useMemo(() => {
     const byAccount = new Map<string, MailAccountFolder[]>();
     for (const row of accountFolders) {
@@ -519,7 +663,7 @@ export function useFolderRail(props: FolderRailProps) {
       }
       return accountDropPlace(railAccounts, spans, accountDrag, y);
     },
-    [accountDrag, railAccounts]
+    [accountDrag, railAccounts, sectionRefs]
   );
   const favouriteKeys = React.useMemo(
     () =>
@@ -568,7 +712,7 @@ export function useFolderRail(props: FolderRailProps) {
   // refused it — and none of those send a last leave.
   React.useEffect(() => {
     if (!dragging) setDragOver(null);
-  }, [dragging]);
+  }, [dragging, setDragOver]);
   /**
    * Rename, keeping the folder where it is.
    *
@@ -596,7 +740,7 @@ export function useFolderRail(props: FolderRailProps) {
         }
       });
     },
-    [onRenameFolder, whileBusy, t]
+    [onRenameFolder, whileBusy, t, setRenamingKey]
   );
   const runDelete = React.useCallback(async () => {
     const target = confirmDelete?.node;
@@ -612,7 +756,7 @@ export function useFolderRail(props: FolderRailProps) {
     } finally {
       setDeleting(false);
     }
-  }, [confirmDelete, deleting, onDeleteFolder, t]);
+  }, [confirmDelete, deleting, onDeleteFolder, t, setConfirmDelete, setDeleting]);
   /**
    * Make a folder inside the one that was right-clicked.
    *
@@ -674,87 +818,5 @@ export function useFolderRail(props: FolderRailProps) {
     setAccountMenu(null);
     setFixedMenu({ x: event.clientX, y: event.clientY });
   };
-
-  return {
-    accountDrag,
-    accountDropBefore,
-    accountFolders,
-    accountMenu,
-    accountSpringRef,
-    busyFolder,
-    collapsed,
-    collapsedAccounts,
-    confirmDelete,
-    creatingFor,
-    creatingIn,
-    creatingUnder,
-    deleting,
-    draftCount,
-    dragOver,
-    dragging,
-    dropFolderAtTop,
-    dropFolderInto,
-    dropPlaceAt,
-    dropStateFor,
-    favouriteKeys,
-    favouriteRows,
-    filtered,
-    fixedMenu,
-    folderDrag,
-    isOutlookAccount,
-    loading,
-    menu,
-    movingFolder,
-    newName,
-    onDropInbox,
-    onDropJunk,
-    onDropThread,
-    onDropTrash,
-    onOpenArchived,
-    onOpenDrafts,
-    onOpenFolder,
-    onOpenInbox,
-    onOpenJunk,
-    onOpenSent,
-    onOpenTrash,
-    onRenameFolder,
-    onReorderAccount,
-    openAccount,
-    openCollapsed,
-    openFixedMenu,
-    openFolder,
-    query,
-    railAccounts,
-    railRef,
-    renamingKey,
-    revealFolder,
-    revealed,
-    runDelete,
-    saving,
-    sectionRefs,
-    setAccountDrag,
-    setAccountDropBefore,
-    setAccountMenu,
-    setConfirmDelete,
-    setCreatingFor,
-    setCreatingUnder,
-    setDragOver,
-    setFixedMenu,
-    setFolderDrag,
-    setMenu,
-    setMovingFolder,
-    setNewName,
-    setQuery,
-    setRenamingKey,
-    side,
-    submitNewFolder,
-    submitRename,
-    submitSubfolder,
-    systemTwoUp,
-    systemView,
-    t,
-    toggleAccount,
-    toggleCollapsed,
-    whileBusy,
-  };
+  return { dragging, dropPlaceAt, dropStateFor, favouriteKeys, favouriteRows, filtered, openFixedMenu, railAccounts, runDelete, submitNewFolder, submitRename, submitSubfolder };
 }

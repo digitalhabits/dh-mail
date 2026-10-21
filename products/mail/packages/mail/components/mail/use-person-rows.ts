@@ -66,10 +66,10 @@ export function usePersonRows({
     Who an address belongs to, from the address books — see person-identity.
 
     Read once, and again when the mailboxes change; not when Stacks is
-    switched. Read on the switch, the rows were grouped by address first
-    and again a moment later by person, under the stacking animation
-    (2026-10-17). A host without the contact mirrors (a web host)
-    answers with nothing, and every address stands for itself as before.
+    switched. If it is read on the switch, the rows are grouped by address
+    first and again a moment later by person, under the stacking animation.
+    A host without the contact mirrors (a web host) answers with nothing,
+    and every address stands for itself.
   */
   const [personIdentity, setPersonIdentity] =
     React.useState<PersonIdentity | null>(null);

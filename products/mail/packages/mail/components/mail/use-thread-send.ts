@@ -67,6 +67,7 @@ import type { useThreadComposer } from "@/components/mail/use-thread-composer";
 import { readyAttachmentsForDraft } from "@/lib/mail/local-drafts";
 import { forwardPayload } from "@/components/mail/forward-payload";
 
+
 /** The quoted message as a send carries it. */
 type QuotePayload = Parameters<typeof quotedReplyMessage>[1];
 /** What a reaction says it answers. */
@@ -74,7 +75,8 @@ type ReactionQuote = Parameters<typeof reactionMessage>[1];
 type Strip = ReturnType<typeof useDraftAttachments>;
 type Composer = ReturnType<typeof useThreadComposer>;
 
-export function useThreadSend(input: {
+/** What the pane hands to useThreadSend. */
+export type ThreadSendInput = {
   account: string;
   threadId: string;
   thread: MailThreadDetail | null;
@@ -127,7 +129,9 @@ export function useThreadSend(input: {
     chat: MailChatRef,
     focusMessageId?: string
   ) => void;
-}) {
+};
+
+export function useThreadSend(input: ThreadSendInput) {
   const {
     account,
     threadId,
@@ -170,7 +174,45 @@ export function useThreadSend(input: {
     onChatPromoted,
     onChatThreadChanged,
   } = input;
+  const { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox } = useSendOutbox({ account, focusReply, mode, onChatPromoted, onChatThreadChanged, onSent, readableAttachments, restoreComposer, restoreForwardBoxes, setThread, threadId });
+  const { armedSendAt, armedSendAtRef, editingScheduled, replacesRef, setArmedSendAt, setReplacesScheduled } = useSendSchedule({ mode });
+  const { editOutboxSend, retryOutboxSend, send } = useSendReply({ account, armedSendAtRef, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, closeComposer, closeFloatingCardRef, dispatchOutboxSend, editRecipients, fromAccount, historyAppendix, importedDraftRef, includeSignature, loadScheduled, mode, olderParts, outbox, outgoingSubject, putBackFromOutbox, quoteMessageId, quotePayload, replacesRef, reply, replyText, sending, setArmedSendAt, setForgottenAttachment, setOutbox, setThread, showCc, signatureHtml, startsNewThread, subjectDraft, thread, threadId, toList, updateRecordsAfterSend });
+  const { dropSettledOutboxRows, resetOutbox, sendForward, sendQuickReply } = useSendOthers({ account, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, closeComposer, closeFloatingCardRef, dispatchOutboxSend, editRecipients, forwardFiles, forwardSource, fromAccount, includeSignature, olderParts, outgoingSubject, putBackFromOutbox, quoteMessageId, quotePayload, reply, replySubject, replyText, sending, setConfirmingIds, setOutbox, setThread, showCc, signatureHtml, subjectDraft, thread, threadId, toList });
 
+  return {
+    armedSendAt,
+    setArmedSendAt,
+    setReplacesScheduled,
+    editingScheduled,
+    sending,
+    outbox,
+    confirmingIds,
+    forgottenAttachment,
+    clearForgottenAttachment,
+    send,
+    sendForward,
+    sendQuickReply,
+    retryOutboxSend,
+    editOutboxSend,
+    resetOutbox,
+    dropSettledOutboxRows,
+  };
+}
+
+/** The Outbox of this thread: what is sending, what waits, what came back, and the send that the Outbox runs. */
+export function useSendOutbox({
+  account,
+  focusReply,
+  mode,
+  onChatPromoted,
+  onChatThreadChanged,
+  onSent,
+  readableAttachments,
+  restoreComposer,
+  restoreForwardBoxes,
+  setThread,
+  threadId,
+}: Pick<ThreadSendInput, "account" | "focusReply" | "mode" | "onChatPromoted" | "onChatThreadChanged" | "onSent" | "readableAttachments" | "restoreComposer" | "restoreForwardBoxes" | "setThread" | "threadId">) {
   const [sending, setSending] = React.useState(false);
   /** Optimistic sends keyed by local-* message id (pending / failed). */
   const [outbox, setOutbox] = React.useState<Record<string, OutboxEntry>>({});
@@ -187,7 +229,6 @@ export function useThreadSend(input: {
     () => setForgottenAttachment(null),
     []
   );
-
   /**
    * Is the pane still here, and is a composer open in it.
    *
@@ -207,7 +248,6 @@ export function useThreadSend(input: {
   React.useEffect(() => {
     composerOpenRef.current = Boolean(mode);
   }, [mode]);
-
   /**
    * Take a held or failed message back into the composer, as it was written.
    *
@@ -261,7 +301,6 @@ export function useThreadSend(input: {
     },
     [focusReply, restoreComposer, restoreForwardBoxes, setThread]
   );
-
   const markOutboxConfirmed = React.useCallback((localId: string) => {
     setOutbox((prev) => {
       if (!(localId in prev)) return prev;
@@ -279,7 +318,6 @@ export function useThreadSend(input: {
       });
     }, 220);
   }, []);
-
   const dispatchOutboxSendRef = React.useRef<
     ((localId: string, entry: OutboxEntry) => Promise<void>) | null
   >(null);
@@ -425,7 +463,13 @@ export function useThreadSend(input: {
   /* Through a ref so the failure toast's Retry reaches the newest version
      of the dispatch rather than the one closed over when it was shown. */
   dispatchOutboxSendRef.current = dispatchOutboxSend;
+  return { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox };
+}
 
+/** A send set for later, and the scheduled message this one replaces. */
+export function useSendSchedule({
+  mode,
+}: Pick<ThreadSendInput, "mode">) {
   /*
    * A time set in the Send later menu, not sent yet: the Send button says
    * "Send at …" and the next send — the button or the keys — goes then.
@@ -451,7 +495,53 @@ export function useThreadSend(input: {
     setEditingScheduled(null);
     setArmedSendAt(null);
   }, [mode]);
+  return { armedSendAt, armedSendAtRef, editingScheduled, replacesRef, setArmedSendAt, setReplacesScheduled };
+}
 
+/** Sending the reply, and sending it again or editing it from the Outbox. */
+export function useSendReply({
+  account,
+  armedSendAtRef,
+  attachItems,
+  attachmentPayload,
+  attachmentsReady,
+  bccList,
+  ccList,
+  closeComposer,
+  closeFloatingCardRef,
+  dispatchOutboxSend,
+  editRecipients,
+  fromAccount,
+  historyAppendix,
+  importedDraftRef,
+  includeSignature,
+  loadScheduled,
+  mode,
+  olderParts,
+  outbox,
+  outgoingSubject,
+  putBackFromOutbox,
+  quoteMessageId,
+  quotePayload,
+  replacesRef,
+  reply,
+  replyText,
+  sending,
+  setArmedSendAt,
+  setForgottenAttachment,
+  setOutbox,
+  setThread,
+  showCc,
+  signatureHtml,
+  startsNewThread,
+  subjectDraft,
+  thread,
+  threadId,
+  toList,
+  updateRecordsAfterSend,
+}: Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "outbox" | "putBackFromOutbox" | "sending" | "setForgottenAttachment" | "setOutbox"> &
+  Pick<ReturnType<typeof useSendSchedule>, "armedSendAtRef" | "replacesRef" | "setArmedSendAt"> &
+  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "closeComposer" | "closeFloatingCardRef" | "editRecipients" | "fromAccount" | "historyAppendix" | "importedDraftRef" | "includeSignature" | "loadScheduled" | "mode" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replyText" | "setThread" | "showCc" | "signatureHtml" | "startsNewThread" | "subjectDraft" | "thread" | "threadId" | "toList" | "updateRecordsAfterSend">) {
   const send = React.useCallback(async (
     sendAtPicked?: string,
     extras?: { updateRecords?: boolean },
@@ -518,10 +608,10 @@ export function useThreadSend(input: {
     /**
      * A reply to one message the reader picked, rather than to the thread.
      *
-     * It carries that message in its body, in the card a reaction uses. Sent
-     * as the quoted history it was folded away behind a "…" by the reader,
-     * and a chat-style thread drops the history altogether — so the message
-     * that was picked never showed up at either end.
+     * It carries that message in its body, in the card a reaction uses. If it
+     * goes as the quoted history, the reader folds it away behind a "…".
+     * A chat-style thread drops the history altogether. Then the message that
+     * was picked does not show at either end.
      */
     const pickedQuote = quoteMessageId ? quotePayload : undefined;
     const noQuote = chatNoQuote || Boolean(pickedQuote);
@@ -562,9 +652,9 @@ export function useThreadSend(input: {
         subject: outgoingSubject,
         body: composed.text,
         html: replyHtml,
-        // Whatever was asked for. Not quoting the history used to turn the
-        // signature off with it, which made one answer out of two
-        // questions: a reply can leave the history out and still be signed.
+        // Whatever was asked for. These are two different questions, so
+        // leaving the history out does not turn the signature off: a reply
+        // can leave the history out and still be signed.
         includeSignature,
         // Only a copy the writer changed: see `outgoingSignature`.
         signatureHtml: signatureHtml ?? undefined,
@@ -733,8 +823,7 @@ export function useThreadSend(input: {
       // message with no bubble would then have nothing to come back from.
       onUndo: () => putBackFromOutbox(localId, entry),
     });
-  }, [
-    thread,
+  }, [thread,
     reply,
     replyText,
     toList,
@@ -774,9 +863,7 @@ export function useThreadSend(input: {
     setThread,
     importedDraftRef,
     closeFloatingCardRef,
-    putBackFromOutbox,
-  ]);
-
+    putBackFromOutbox, armedSendAtRef, replacesRef, setArmedSendAt, setForgottenAttachment, setOutbox]);
   const retryOutboxSend = React.useCallback(
     (localId: string) => {
       const entry = outbox[localId];
@@ -785,7 +872,6 @@ export function useThreadSend(input: {
     },
     [outbox, sending, dispatchOutboxSend]
   );
-
   /** Edit on a bubble that failed: back into the composer, as it was written. */
   const editOutboxSend = React.useCallback(
     (localId: string) => {
@@ -795,13 +881,50 @@ export function useThreadSend(input: {
     },
     [outbox, putBackFromOutbox]
   );
+  return { editOutboxSend, retryOutboxSend, send };
+}
 
+/** Forwarding, the quick reply, and clearing the Outbox. */
+export function useSendOthers({
+  account,
+  attachItems,
+  attachmentPayload,
+  attachmentsReady,
+  bccList,
+  ccList,
+  closeComposer,
+  closeFloatingCardRef,
+  dispatchOutboxSend,
+  editRecipients,
+  forwardFiles,
+  forwardSource,
+  fromAccount,
+  includeSignature,
+  olderParts,
+  outgoingSubject,
+  putBackFromOutbox,
+  quoteMessageId,
+  quotePayload,
+  reply,
+  replySubject,
+  replyText,
+  sending,
+  setConfirmingIds,
+  setOutbox,
+  setThread,
+  showCc,
+  signatureHtml,
+  subjectDraft,
+  thread,
+  threadId,
+  toList,
+}: Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "putBackFromOutbox" | "sending" | "setConfirmingIds" | "setOutbox"> &
+  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "closeComposer" | "closeFloatingCardRef" | "editRecipients" | "forwardFiles" | "forwardSource" | "fromAccount" | "includeSignature" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replySubject" | "replyText" | "setThread" | "showCc" | "signatureHtml" | "subjectDraft" | "thread" | "threadId" | "toList">) {
   /**
    * Forward, with the same few seconds as a reply.
    *
-   * It went straight out once, and a forward is the message most likely to
-   * go to the wrong person: the recipient is typed fresh each time. So it is
-   * held like a reply. The whole request is made now, because the composer
+   * A forward is the message most likely to go to the wrong person: the
+   * recipient is typed fresh each time. So it is held like a reply. The whole request is made now, because the composer
    * closes now and the boxes under it reset. Undo puts all of it back.
    *
    * No bubble goes into this thread. The message is for somebody else, and
@@ -869,8 +992,7 @@ export function useThreadSend(input: {
       // message with no bubble would then have nothing to come back from.
       onUndo: () => putBackFromOutbox(localId, entry),
     });
-  }, [
-    thread,
+  }, [thread,
     forwardSource,
     forwardFiles,
     olderParts,
@@ -898,9 +1020,7 @@ export function useThreadSend(input: {
     attachItems,
     dispatchOutboxSend,
     closeFloatingCardRef,
-    putBackFromOutbox,
-  ]);
-
+    putBackFromOutbox, setOutbox]);
   /** Gmail-style quick reaction: replies with just the emoji (+ quoted history). */
   const sendQuickReply = React.useCallback(
     async (emoji: string, quoteOverride?: ReactionQuote) => {
@@ -976,8 +1096,7 @@ export function useThreadSend(input: {
       );
       await dispatchOutboxSend(localId, entry);
     },
-    [
-      thread,
+    [thread,
       sending,
       account,
       threadId,
@@ -985,16 +1104,13 @@ export function useThreadSend(input: {
       olderParts,
       dispatchOutboxSend,
       replySubject,
-      setThread,
-    ]
+      setThread, setOutbox]
   );
-
   /** Another thread: no send of the last one waits in this pane. */
   const resetOutbox = React.useCallback(() => {
     setOutbox({});
     setConfirmingIds(new Set());
-  }, []);
-
+  }, [setConfirmingIds, setOutbox]);
   /** Drop outbox rows once the provider message replaced the local-* bubble. */
   const dropSettledOutboxRows = React.useCallback(
     (loaded: MailThreadDetail) => {
@@ -1011,25 +1127,7 @@ export function useThreadSend(input: {
         return changed ? next : prev;
       });
     },
-    []
+    [setOutbox]
   );
-
-  return {
-    armedSendAt,
-    setArmedSendAt,
-    setReplacesScheduled,
-    editingScheduled,
-    sending,
-    outbox,
-    confirmingIds,
-    forgottenAttachment,
-    clearForgottenAttachment,
-    send,
-    sendForward,
-    sendQuickReply,
-    retryOutboxSend,
-    editOutboxSend,
-    resetOutbox,
-    dropSettledOutboxRows,
-  };
+  return { dropSettledOutboxRows, resetOutbox, sendForward, sendQuickReply };
 }

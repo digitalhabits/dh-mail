@@ -2,9 +2,9 @@
  * The window buttons on Windows.
  *
  * On a Mac the traffic lights float over the title strip at the left. On
- * Windows the system title bar used to sit above the strip as a second bar,
- * with the buttons in it. The window has no system title bar now (see
- * tauri.windows.conf.json), so the buttons go here: over the strip, at the
+ * Windows a system title bar sits above the strip as a second bar, with the
+ * buttons in it. So the window has no system title bar (see
+ * tauri.windows.conf.json), and the buttons go here: over the strip, at the
  * right, where Windows keeps them. `main.tsx` sets `data-dh-os`; nothing
  * renders on any other system.
  */
@@ -34,13 +34,12 @@ export function isWindowsShell(): boolean {
  * The shape of a window button, with nothing said about what it does under
  * the pointer.
  *
- * Two backgrounds asked for on one button is one background too many. Close
- * used to carry the ordinary wash and the red both, and the red lost — not
- * to the order they are written in, which counts for nothing, but to the
- * order Tailwind prints them in, where the wash comes later and wins. The
- * white glyph had no rival and arrived anyway, so close under the pointer
- * was a white cross on a pale wash: the one button you must never mistake,
- * and the only one you could not see.
+ * Two backgrounds asked for on one button is one background too many. If
+ * Close carries the ordinary wash and the red both, the red loses. The
+ * order they are written in counts for nothing. Tailwind prints the wash
+ * later, so the wash wins. The white glyph has no rival and arrives anyway.
+ * Then Close under the pointer is a white cross on a pale wash: the one
+ * button that you must never mistake, and the only one that you cannot see.
  */
 const btnShape =
   "flex h-full w-[46px] items-center justify-center text-[var(--mail-chrome-fg,#292524)] " +

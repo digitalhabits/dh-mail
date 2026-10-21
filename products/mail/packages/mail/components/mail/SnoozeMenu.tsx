@@ -217,8 +217,8 @@ export function SnoozeMenu({
         /**
          * The first time, focused, rather than the box it sits in. Radix
          * focuses the content element itself, which takes the keys without
-         * being able to act on any of them: Enter did nothing and the
-         * arrows went to the thread list.
+         * being able to act on any of them: Enter does nothing and the
+         * arrows go to the thread list.
          */
         onOpenAutoFocus={(e) => {
           e.preventDefault();

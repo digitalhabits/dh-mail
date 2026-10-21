@@ -4,8 +4,8 @@
  * Exact address matches from the user's Google and Outlook address books, and
  * no domain matching: this is the flavor that has no team layer.
  *
- * It reads through the store, so it works on both hosts. It used to query
- * Postgres directly, which the standalone product cannot do.
+ * It reads through the store, so it works on both hosts. It does not query
+ * Postgres directly, because the standalone product cannot do that.
  */
 
 import { mailStore } from "@/lib/mail/store";

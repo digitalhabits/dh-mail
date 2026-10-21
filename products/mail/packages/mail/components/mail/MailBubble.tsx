@@ -8,6 +8,7 @@
  * message already on screen from the same sender follows it at once.
  */
 
+import { MAIL_IMAGES_SENDER_KEY, MAIL_LOAD_IMAGES_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import { paintSearchHits } from "@/lib/mail/search-highlight";
@@ -58,7 +59,7 @@ import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import type { MailT } from "@/lib/mail/i18n-strings";
 
-const MAIL_IMAGES_SENDER_KEY = "redd-plan-mail-images-senders";
+
 /** Bubbles in the open thread listen so "Load images" applies to every message from that sender. */
 const MAIL_IMAGES_CHANGED_EVENT = "redd-plan-mail-images-changed";
 /** Explicit per-sender image choices; senders not present use the tab default. */
@@ -237,28 +238,8 @@ type BubbleMessage = {
   own: boolean;
 };
 
-export function MailBubble({
-  message,
-  account,
-  subject,
-  defaultAllowImages,
-  sendStatus,
-  zoom = 1,
-  onRetrySend,
-  onEditSend,
-  onPreviewAttachment,
-  showMeta = true,
-  earlierFromSender,
-  meta: metaNeeds = NO_MESSAGE_META,
-  timeLabel,
-  onReact,
-  onReplyTo,
-  onForward,
-  onEditAsNew,
-  onShowOriginal,
-  showPrint = true,
-  highlight,
-}: {
+/** What a message bubble takes. */
+export type MailBubbleProps = {
   /** Search words to paint in the message: the one a search landed on. */
   highlight?: string[];
   message: BubbleMessage;
@@ -329,371 +310,40 @@ export function MailBubble({
   showPrint?: boolean;
   /** Open the message's source over the thread — Gmail's "Show original". */
   onShowOriginal?: () => void;
-}) {
-  const t = useMailT();
-  const [showQuoted, setShowQuoted] = React.useState(false);
-  const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const [loadImagesByDefault] = useLoadImagesByDefault();
-  // Per-sender override used only when "Load images by default" is off.
-  const senderKey = message.fromEmail.trim().toLowerCase();
-  const [senderAllowImages, setSenderAllowImages] = React.useState(
-    () => readImageChoices()[senderKey] ?? defaultAllowImages
-  );
-  // Sibling bubbles mount with their own state; keep them in sync when any
-  // one of them toggles Load/Hide images for this sender.
-  React.useEffect(() => {
-    const onChange = (e: Event) => {
-      const detail = (e as CustomEvent<{ sender: string; allowed: boolean }>)
-        .detail;
-      if (detail?.sender === senderKey) setSenderAllowImages(detail.allowed);
-    };
-    window.addEventListener(MAIL_IMAGES_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(MAIL_IMAGES_CHANGED_EVENT, onChange);
-  }, [senderKey]);
-  React.useEffect(() => {
-    setSenderAllowImages(readImageChoices()[senderKey] ?? defaultAllowImages);
-  }, [senderKey, defaultAllowImages]);
+};
 
-  const bubbleRef = React.useRef<HTMLDivElement>(null);
-  /** The bubble the hover rail hangs off; the row measures from it. */
-  const railAnchorRef = React.useRef<HTMLDivElement>(null);
-  /** Thread-pane scrollTop captured when expanding the quote. */
-  const scrollBeforeExpand = React.useRef<number | null>(null);
-  const allowImages = loadImagesByDefault || senderAllowImages;
-  const toggleImages = () => {
-    const next = !senderAllowImages;
-    setSenderAllowImages(next);
-    rememberImageChoice(senderKey, next);
-  };
-  const fullBody = decodeHtmlEntities(formatEmailBody(message.bodyText)).trim();
-  /**
-   * The same sender's earlier message in this thread, as what its own part
-   * says (history taken off): a later message's signature is what it shares
-   * with that, and goes behind the "…" with the history. See
-   * lib/mail/repeat-signature.
-   */
-  const earlierSegments = React.useMemo(() => {
-    if (!earlierFromSender) return null;
-    if (earlierFromSender.bodyHtml) {
-      return htmlSegments(stripQuotedHtml(earlierFromSender.bodyHtml, { keepForwarded: true }).html);
-    }
-    return textSegments(
-      stripQuotedReplies(decodeHtmlEntities(formatEmailBody(earlierFromSender.bodyText)).trim())
-    );
-  }, [earlierFromSender]);
-  const withoutHistory = stripQuotedReplies(fullBody);
-  const stripped = earlierSegments ? stripRepeatedSignatureText(withoutHistory, earlierSegments) : withoutHistory;
-  const hasHidden = stripped.length < fullBody.length;
-
-  // Same idea in the rich view: quoted history (and a repeated signature)
-  // collapse behind the "…" pill.
-  const htmlSplit = React.useMemo(() => {
-    if (!message.bodyHtml) return null;
-    // A forward shows the forwarded mail; its own history is what folds.
-    const history = stripQuotedHtml(message.bodyHtml, { keepForwarded: true });
-    if (!earlierSegments) return history;
-    const signature = stripRepeatedSignatureHtml(history.html, earlierSegments);
-    return signature.changed ? { html: signature.html, hadQuote: true } : history;
-  }, [message.bodyHtml, earlierSegments]);
-
-  const showHtml = Boolean(message.bodyHtml);
-  const hasImages = message.bodyHtml ? htmlHasRemoteImages(message.bodyHtml) : false;
-
-  /** The HTML that is actually on screen — quoted history in or out. */
-  const shownHtml = showHtml
-    ? showQuoted || !htmlSplit?.hadQuote
-      ? message.bodyHtml!
-      : htmlSplit.html
-    : "";
-
-  /**
-   * A message read in the dark.
-   *
-   * A sender's HTML is written for a white page. The first answer here was
-   * to give it one — every message on a lit slab, and later only the ones
-   * that painted a page of their own. But a page of one's own is what a
-   * newsletter is, and it is what most mail from a company is, so the
-   * reader turned the lights down and got a white rectangle for nearly
-   * everything anyone sent them.
-   *
-   * What every other client does instead is re-light the message: dark
-   * words come up light, light backgrounds go down dark, and the colours
-   * that read either way are left. That is `recolorForDark`, in the
-   * frame script (`lib/mail/frame-script/dark.ts`), and it means every
-   * HTML message sits on the card. There is no white sheet any more.
-   */
-  const colorMode = useMailColorMode();
-  const readInTheDark = colorMode === "dark" && showHtml;
-
-  /**
-   * Print this message alone.
-   *
-   * It prints the body that is on screen: quoted history is included only
-   * when the reader opened it, and remote images only when they loaded them.
-   */
-  function printThisMessage() {
-    const bodyHtml = message.bodyHtml
-      ? showQuoted || !htmlSplit?.hadQuote
-        ? message.bodyHtml
-        : htmlSplit.html
-      : undefined;
-    printMailMessages({
-      subject: subject ?? "",
-      messages: [
-        {
-          ...message,
-          bodyHtml,
-          bodyText: showQuoted || !hasHidden ? fullBody : stripped,
-          allowRemoteImages: allowImages,
-        },
-      ],
-    });
-  }
-
-
-  /** Expand/collapse quoted history, restoring scroll when collapsing. */
-  const toggleQuoted = () => {
-    const scroller = nearestScrollParent(bubbleRef.current);
-    if (!showQuoted) {
-      if (scroller) scrollBeforeExpand.current = scroller.scrollTop;
-      setShowQuoted(true);
-      return;
-    }
-    const saved = scrollBeforeExpand.current;
-    scrollBeforeExpand.current = null;
-    setShowQuoted(false);
-    if (!scroller || saved == null) return;
-    // HTML iframes resize async after the srcDoc swap — keep pinning until
-    // the bubble's height settles so we don't land in empty space below.
-    const restore = () => {
-      scroller.scrollTop = saved;
-    };
-    requestAnimationFrame(() => {
-      restore();
-      const root = bubbleRef.current;
-      if (!root) return;
-      const ro = new ResizeObserver(restore);
-      ro.observe(root);
-      window.setTimeout(() => ro.disconnect(), 600);
-    });
-  };
-
-  const sendingOut = sendStatus === "sending";
-  const failedOut = sendStatus === "failed";
-  const { displayName, fromLabel } = bubbleSender(message, account);
-  /** Nothing to stamp until it has gone. */
-  const stamp = sendingOut || failedOut ? "" : messageStamp(message.sentAt);
-
-  const statusCaption = (
-    <SendStatusCaption
-      status={sendStatus}
-      onRetry={onRetrySend}
-      onEdit={onEditSend}
-    />
-  );
-
-  const [failedCalendarIds, setFailedCalendarIds] = React.useState(
-    () => new Set<string>()
-  );
-  const fileAttachments = nonCalendarAttachments(
-    message.attachments,
-    failedCalendarIds
-  );
-  /* What the menu can save: the tiles, less any file still on its way out.
-     A calendar invite is not among them — it has its own "Download event". */
-  const savableFiles = savableAttachments(fileAttachments);
-  const noteCalendarUnavailable = React.useCallback((attachmentId: string) => {
-    setFailedCalendarIds((prev) => {
-      if (prev.has(attachmentId)) return prev;
-      const next = new Set(prev);
-      next.add(attachmentId);
-      return next;
-    });
-  }, []);
-
-  /**
-   * The time, in the corner of the bubble.
-   *
-   * Floated and written after the words, so it settles on the right of the
-   * last line — a short message keeps it beside the words instead of
-   * spending a whole line on four digits. Declared before them it floated to
-   * the top corner, which is not where a chat puts it.
-   */
-  const timeCornerClass = cn(
-    "select-none text-[10px] leading-none tabular-nums",
-    message.own ? "text-teal-800/60" : "text-stone-400"
-  );
-  const timeCorner = timeLabel ? (
-    <span className={cn("float-right ml-2 mt-1", timeCornerClass)}>
-      {timeLabel}
-    </span>
-  ) : null;
-
-
-  /**
-   * The line above the bubble, when there is one.
-   *
-   * `metaHeadline` is what the message before it did not already say: a
-   * different person talking, or somebody added to or dropped from the
-   * message. Most messages in most threads have neither, and then there is
-   * no line at all.
-   *
-   * `metaDetails` is everything, one thing per line and each line labelled:
-   * when it was sent, who from, who to. Shown only when the reader asks for
-   * it under the message's own menu. It ran as one sentence before, which
-   * put the sender twice at the front — once as a name, once in brackets as
-   * the address it was named after — and left the reader to find the time
-   * at the end of it.
-   */
-  const { metaHeadline, metaDetails } = bubbleMetaLines({
-    message,
-    account,
-    displayName,
-    fromLabel,
-    stamp,
-    metaNeeds,
-    t,
-  });
-  const canLoadImages =
-    !loadImagesByDefault && showHtml && hasImages && !sendingOut && !failedOut;
-  const showMetaRow =
-    showMeta && (detailsOpen ? true : Boolean(metaHeadline) || canLoadImages);
-
-  /**
-   * Double-clicking the message is the same answer as the menu's "Details".
-   *
-   * Only where there is something to tell: `showMeta` is what decides
-   * whether the menu offers the item at all, and a bubble that cannot
-   * answer must not swallow the double click either.
-   *
-   * Two clicks, not one. A single click lands on a message all the time:
-   * to bring the pane forward, to put the cursor somewhere, to start a
-   * drag across the words. When one click was the toggle, the line above
-   * the message came and went with every one of them. A double click is
-   * asked for on purpose. Anything that is its own control keeps its.
-   */
-  const toggleDetailsFromBody = React.useCallback(() => {
-    if (!showMeta) return;
-    setDetailsOpen((open) => !open);
-  }, [showMeta]);
-
-  const onBubbleDoubleClick = (event: React.MouseEvent) => {
-    if (isInteractiveDoubleClickTarget(event.target)) return;
-    if (doubleClickOnText(event)) return;
-    // The word WebKit selected beside the click is not what was meant.
-    window.getSelection()?.removeAllRanges();
-    toggleDetailsFromBody();
-  };
-
-
-  /** To and Cc as written, each address once, for "Copy recipients". */
-  const messageRecipients = React.useMemo(() => {
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of [...(message.toEmails ?? []), ...(message.ccEmails ?? [])]) {
-      const email = raw.trim();
-      const key = email.toLowerCase();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(email);
-    }
-    return out;
-  }, [message.toEmails, message.ccEmails]);
-
-  const outgoing = sendingOut || failedOut;
-  const reactAction = outgoing ? undefined : onReact;
-  const replyAction = outgoing ? undefined : onReplyTo;
-
-  /** The body's box, which the Reader button measures in lines. */
-  const bodyBoxRef = React.useRef<HTMLDivElement>(null);
-  /* The Reader: the button in the rail for a long message, and the Reader
-     while it is open. Not in a chat window, where a message is one line
-     of a conversation. */
-  const bubbleReader = useBubbleReader({
-    id: message.id,
-    inChatWindow: !showMeta,
-    outgoing,
-    bubbleRef,
-    bodyBoxRef,
-    findScroller: nearestScrollParent,
-    message,
-    displayName,
-    subject,
-    fullText: fullBody,
-    foldedText: stripped,
-    htmlSplit,
-    showQuoted,
-    shownHtml,
-    allowImages,
-    readInTheDark,
-    zoom,
-    highlight,
-    onReplyTo: replyAction,
-    onForward,
-  });
-  /** The "…" menu's rows, in the rail and on a right-click alike. */
-  const menuActions: MessageMenuActions = {
-    bodyText: message.bodyText,
-    recipients: messageRecipients,
-    onForward: outgoing ? undefined : onForward,
-    onEditAsNew: outgoing ? undefined : onEditAsNew,
-    onDownloadAttachments: savableFiles.length
-      ? () =>
-          void saveMessageAttachments({
-            account,
-            messageId: message.id,
-            attachments: savableFiles,
-          })
-      : undefined,
-    attachmentCount: savableFiles.length,
-    onPrint: showPrint ? printThisMessage : undefined,
-    onShowOriginal: outgoing ? undefined : onShowOriginal,
-    // Who it was from and who it went to, for the message where the line
-    // above says nothing because nothing about it changed.
-    onToggleDetails: showMeta ? () => setDetailsOpen((open) => !open) : undefined,
-    detailsOpen,
-  };
-
-  /*
-    A right-click on the message: its own menu (react, reply, and the "…"
-    rows) in place of WebKit's. A link, a field or a name with a menu of its
-    own keeps that menu. The selection is read on mousedown: WebKit selects
-    the word under a right-click before the menu event, and that word is
-    not something the reader chose.
-  */
-  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; selectedText: string } | null>(null);
-  const selectionBeforeMenu = React.useRef<Range[]>([]);
-  const onBubbleMouseDown = (event: React.MouseEvent) => {
-    if (!(event.button === 2 || (event.button === 0 && event.ctrlKey))) return;
-    const sel = window.getSelection();
-    selectionBeforeMenu.current = [];
-    if (!sel || sel.isCollapsed) return;
-    for (let i = 0; i < sel.rangeCount; i += 1) selectionBeforeMenu.current.push(sel.getRangeAt(i).cloneRange());
-  };
-  const onBubbleContextMenu = (event: React.MouseEvent) => {
-    if (event.defaultPrevented) return;
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("a[href], input, textarea, select, [contenteditable='true']")) return;
-    event.preventDefault();
-    const before = selectionBeforeMenu.current;
-    const sel = window.getSelection();
-    if (sel) {
-      sel.removeAllRanges();
-      for (const range of before) sel.addRange(range);
-    }
-    setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      selectedText: before.map((range) => range.toString()).join(" ").trim(),
-    });
-  };
+export function MailBubble({
+  message,
+  account,
+  subject,
+  defaultAllowImages,
+  sendStatus,
+  zoom = 1,
+  onRetrySend,
+  onEditSend,
+  onPreviewAttachment,
+  showMeta = true,
+  earlierFromSender,
+  meta: metaNeeds = NO_MESSAGE_META,
+  timeLabel,
+  onReact,
+  onReplyTo,
+  onForward,
+  onEditAsNew,
+  onShowOriginal,
+  showPrint = true,
+  highlight,
+}: MailBubbleProps) {
+  const { allowImages, bubbleRef, detailsOpen, fullBody, hasHidden, hasImages, htmlSplit, loadImagesByDefault, printThisMessage, railAnchorRef, readInTheDark, setDetailsOpen, showHtml, showQuoted, shownHtml, stripped, t, toggleImages, toggleQuoted } = useBubbleContent({ defaultAllowImages, earlierFromSender, message, subject });
+  const { canLoadImages, displayName, failedOut, fileAttachments, messageRecipients, metaDetails, metaHeadline, noteCalendarUnavailable, onBubbleDoubleClick, outgoing, reactAction, replyAction, savableFiles, sendingOut, showMetaRow, statusCaption, timeCorner, toggleDetailsFromBody } = useBubbleMeta({ account, detailsOpen, hasImages, loadImagesByDefault, message, metaNeeds, onEditSend, onReact, onReplyTo, onRetrySend, sendStatus, setDetailsOpen, showHtml, showMeta, t, timeLabel });
+  const { bodyBoxRef, bubbleReader, contextMenu, menuActions, onBubbleContextMenu, onBubbleMouseDown, setContextMenu } = useBubbleMenu({ account, allowImages, bubbleRef, detailsOpen, displayName, fullBody, highlight, htmlSplit, message, messageRecipients, onEditAsNew, onForward, onShowOriginal, outgoing, printThisMessage, readInTheDark, replyAction, savableFiles, setDetailsOpen, showMeta, showPrint, showQuoted, shownHtml, stripped, subject, zoom });
 
   return (
     // The row the message sits in, and what the pointer has to be on for
-    // the actions beside it to show. It used to be the bubble itself, which
-    // ends at the edge of the words: the gutter the actions stand in was
-    // outside it, and so was the hair of space between the two, so crossing
-    // to them dismissed them.
+    // the actions beside it to show. It is not the bubble itself, which
+    // ends at the edge of the words. The gutter that the actions stand in is
+    // outside the bubble, and so is the hair of space between the two. If
+    // the bubble is the target, crossing to the actions dismisses them.
     <div
       className="group/bubble flex w-full min-w-0"
       onPointerEnter={(e) =>
@@ -765,7 +415,74 @@ export function MailBubble({
           onDismiss={() => setContextMenu(null)}
         />
       ) : null}
-      <div
+      <BubbleWords account={account} allowImages={allowImages} bodyBoxRef={bodyBoxRef} failedOut={failedOut} fileAttachments={fileAttachments} fullBody={fullBody} hasHidden={hasHidden} highlight={highlight} htmlSplit={htmlSplit} message={message} noteCalendarUnavailable={noteCalendarUnavailable} onBubbleContextMenu={onBubbleContextMenu} onBubbleDoubleClick={onBubbleDoubleClick} onBubbleMouseDown={onBubbleMouseDown} onPreviewAttachment={onPreviewAttachment} readInTheDark={readInTheDark} sendingOut={sendingOut} setContextMenu={setContextMenu} showHtml={showHtml} showQuoted={showQuoted} shownHtml={shownHtml} stripped={stripped} t={t} timeCorner={timeCorner} toggleDetailsFromBody={toggleDetailsFromBody} toggleQuoted={toggleQuoted} zoom={zoom} />
+      </div>
+      {statusCaption}
+    </div>
+    </div>
+  );
+}
+
+/** The bubble's words, its quote and its attachments. */
+function BubbleWords({
+  account,
+  allowImages,
+  bodyBoxRef,
+  failedOut,
+  fileAttachments,
+  fullBody,
+  hasHidden,
+  highlight,
+  htmlSplit,
+  message,
+  noteCalendarUnavailable,
+  onBubbleContextMenu,
+  onBubbleDoubleClick,
+  onBubbleMouseDown,
+  onPreviewAttachment,
+  readInTheDark,
+  sendingOut,
+  setContextMenu,
+  showHtml,
+  showQuoted,
+  shownHtml,
+  stripped,
+  t,
+  timeCorner,
+  toggleDetailsFromBody,
+  toggleQuoted,
+  zoom,
+}: {
+  account: MailBubbleProps["account"];
+  allowImages: ReturnType<typeof useBubbleContent>["allowImages"];
+  bodyBoxRef: ReturnType<typeof useBubbleMenu>["bodyBoxRef"];
+  failedOut: ReturnType<typeof useBubbleMeta>["failedOut"];
+  fileAttachments: ReturnType<typeof useBubbleMeta>["fileAttachments"];
+  fullBody: ReturnType<typeof useBubbleContent>["fullBody"];
+  hasHidden: ReturnType<typeof useBubbleContent>["hasHidden"];
+  highlight: MailBubbleProps["highlight"];
+  htmlSplit: ReturnType<typeof useBubbleContent>["htmlSplit"];
+  message: MailBubbleProps["message"];
+  noteCalendarUnavailable: ReturnType<typeof useBubbleMeta>["noteCalendarUnavailable"];
+  onBubbleContextMenu: ReturnType<typeof useBubbleMenu>["onBubbleContextMenu"];
+  onBubbleDoubleClick: ReturnType<typeof useBubbleMeta>["onBubbleDoubleClick"];
+  onBubbleMouseDown: ReturnType<typeof useBubbleMenu>["onBubbleMouseDown"];
+  onPreviewAttachment: MailBubbleProps["onPreviewAttachment"];
+  readInTheDark: ReturnType<typeof useBubbleContent>["readInTheDark"];
+  sendingOut: ReturnType<typeof useBubbleMeta>["sendingOut"];
+  setContextMenu: ReturnType<typeof useBubbleMenu>["setContextMenu"];
+  showHtml: ReturnType<typeof useBubbleContent>["showHtml"];
+  showQuoted: ReturnType<typeof useBubbleContent>["showQuoted"];
+  shownHtml: ReturnType<typeof useBubbleContent>["shownHtml"];
+  stripped: ReturnType<typeof useBubbleContent>["stripped"];
+  t: ReturnType<typeof useBubbleContent>["t"];
+  timeCorner: ReturnType<typeof useBubbleMeta>["timeCorner"];
+  toggleDetailsFromBody: ReturnType<typeof useBubbleMeta>["toggleDetailsFromBody"];
+  toggleQuoted: ReturnType<typeof useBubbleContent>["toggleQuoted"];
+  zoom: Exclude<MailBubbleProps["zoom"], undefined>;
+}) {
+  return (
+    <div
         onDoubleClick={onBubbleDoubleClick}
         onMouseDown={onBubbleMouseDown}
         onContextMenu={onBubbleContextMenu}
@@ -831,12 +548,9 @@ export function MailBubble({
           boxRef={bodyBoxRef}
         />
       </div>
-      </div>
-      {statusCaption}
-    </div>
-    </div>
   );
 }
+
 
 /** Closest ancestor that clips what crosses its edge, scrolling or not. */
 function nearestClipParent(el: HTMLElement): HTMLElement | null {
@@ -917,7 +631,6 @@ export function useLoadImagesByDefault(): [boolean, (next: boolean) => void] {
   return [value, update];
 }
 
-const MAIL_LOAD_IMAGES_KEY = "redd-plan-mail-load-images";
 const MAIL_LOAD_IMAGES_EVENT = "redd-plan-mail-load-images-changed";
 /** Remote images load for every sender unless the user turns this off. */
 function readLoadImagesByDefault(): boolean {
@@ -946,8 +659,8 @@ export { isPendingLocalMessage } from "@/lib/mail/local-message";
 /**
  * The message's words: its html in a frame, or its text, with the quoted
  * history behind a toggle and the time in the corner. Always the whole
- * message: a long one used to be cut at 340px behind "Show full message",
- * which was one more click to read what had been opened to be read.
+ * message. A long one is not cut behind "Show full message", because that is
+ * one more click to read what the reader opened to read.
  */
 function BubbleBody({
   showHtml,
@@ -1269,4 +982,406 @@ function BubbleFiles({
       />
     </div>
   );
+}
+
+/** What the bubble shows: the words, the quoted history, the HTML, images, and printing. */
+export function useBubbleContent({
+  defaultAllowImages,
+  earlierFromSender,
+  message,
+  subject,
+}: { defaultAllowImages: MailBubbleProps["defaultAllowImages"]; earlierFromSender: MailBubbleProps["earlierFromSender"]; message: MailBubbleProps["message"]; subject: MailBubbleProps["subject"] }) {
+  const t = useMailT();
+  const [showQuoted, setShowQuoted] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [loadImagesByDefault] = useLoadImagesByDefault();
+  // Per-sender override used only when "Load images by default" is off.
+  const senderKey = message.fromEmail.trim().toLowerCase();
+  const [senderAllowImages, setSenderAllowImages] = React.useState(
+    () => readImageChoices()[senderKey] ?? defaultAllowImages
+  );
+  // Sibling bubbles mount with their own state; keep them in sync when any
+  // one of them toggles Load/Hide images for this sender.
+  React.useEffect(() => {
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ sender: string; allowed: boolean }>)
+        .detail;
+      if (detail?.sender === senderKey) setSenderAllowImages(detail.allowed);
+    };
+    window.addEventListener(MAIL_IMAGES_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(MAIL_IMAGES_CHANGED_EVENT, onChange);
+  }, [senderKey]);
+  React.useEffect(() => {
+    setSenderAllowImages(readImageChoices()[senderKey] ?? defaultAllowImages);
+  }, [senderKey, defaultAllowImages]);
+  const bubbleRef = React.useRef<HTMLDivElement>(null);
+  /** The bubble the hover rail hangs off; the row measures from it. */
+  const railAnchorRef = React.useRef<HTMLDivElement>(null);
+  /** Thread-pane scrollTop captured when expanding the quote. */
+  const scrollBeforeExpand = React.useRef<number | null>(null);
+  const allowImages = loadImagesByDefault || senderAllowImages;
+  const toggleImages = () => {
+    const next = !senderAllowImages;
+    setSenderAllowImages(next);
+    rememberImageChoice(senderKey, next);
+  };
+  const fullBody = decodeHtmlEntities(formatEmailBody(message.bodyText)).trim();
+  /**
+   * The same sender's earlier message in this thread, as what its own part
+   * says (history taken off): a later message's signature is what it shares
+   * with that, and goes behind the "…" with the history. See
+   * lib/mail/repeat-signature.
+   */
+  const earlierSegments = React.useMemo(() => {
+    if (!earlierFromSender) return null;
+    if (earlierFromSender.bodyHtml) {
+      return htmlSegments(stripQuotedHtml(earlierFromSender.bodyHtml, { keepForwarded: true }).html);
+    }
+    return textSegments(
+      stripQuotedReplies(decodeHtmlEntities(formatEmailBody(earlierFromSender.bodyText)).trim())
+    );
+  }, [earlierFromSender]);
+  const withoutHistory = stripQuotedReplies(fullBody);
+  const stripped = earlierSegments ? stripRepeatedSignatureText(withoutHistory, earlierSegments) : withoutHistory;
+  const hasHidden = stripped.length < fullBody.length;
+  // Same idea in the rich view: quoted history (and a repeated signature)
+  // collapse behind the "…" pill.
+  const htmlSplit = React.useMemo(() => {
+    if (!message.bodyHtml) return null;
+    // A forward shows the forwarded mail; its own history is what folds.
+    const history = stripQuotedHtml(message.bodyHtml, { keepForwarded: true });
+    if (!earlierSegments) return history;
+    const signature = stripRepeatedSignatureHtml(history.html, earlierSegments);
+    return signature.changed ? { html: signature.html, hadQuote: true } : history;
+  }, [message.bodyHtml, earlierSegments]);
+  const showHtml = Boolean(message.bodyHtml);
+  const hasImages = message.bodyHtml ? htmlHasRemoteImages(message.bodyHtml) : false;
+  /** The HTML that is actually on screen — quoted history in or out. */
+  const shownHtml = showHtml
+    ? showQuoted || !htmlSplit?.hadQuote
+      ? message.bodyHtml!
+      : htmlSplit.html
+    : "";
+  /**
+   * A message read in the dark.
+   *
+   * A sender's HTML is written for a white page. The first answer here was
+   * to give it one — every message on a lit slab, and later only the ones
+   * that painted a page of their own. But a page of one's own is what a
+   * newsletter is, and it is what most mail from a company is, so the
+   * reader turned the lights down and got a white rectangle for nearly
+   * everything anyone sent them.
+   *
+   * What every other client does instead is re-light the message: dark
+   * words come up light, light backgrounds go down dark, and the colours
+   * that read either way are left. That is `recolorForDark`, in the
+   * frame script (`lib/mail/frame-script/dark.ts`), and it means every
+   * HTML message sits on the card. There is no white sheet any more.
+   */
+  const colorMode = useMailColorMode();
+  const readInTheDark = colorMode === "dark" && showHtml;
+  /**
+   * Print this message alone.
+   *
+   * It prints the body that is on screen: quoted history is included only
+   * when the reader opened it, and remote images only when they loaded them.
+   */
+  function printThisMessage() {
+    const bodyHtml = message.bodyHtml
+      ? showQuoted || !htmlSplit?.hadQuote
+        ? message.bodyHtml
+        : htmlSplit.html
+      : undefined;
+    printMailMessages({
+      subject: subject ?? "",
+      messages: [
+        {
+          ...message,
+          bodyHtml,
+          bodyText: showQuoted || !hasHidden ? fullBody : stripped,
+          allowRemoteImages: allowImages,
+        },
+      ],
+    });
+  }
+  /** Expand/collapse quoted history, restoring scroll when collapsing. */
+  const toggleQuoted = () => {
+    const scroller = nearestScrollParent(bubbleRef.current);
+    if (!showQuoted) {
+      if (scroller) scrollBeforeExpand.current = scroller.scrollTop;
+      setShowQuoted(true);
+      return;
+    }
+    const saved = scrollBeforeExpand.current;
+    scrollBeforeExpand.current = null;
+    setShowQuoted(false);
+    if (!scroller || saved == null) return;
+    // HTML iframes resize async after the srcDoc swap — keep pinning until
+    // the bubble's height settles so we don't land in empty space below.
+    const restore = () => {
+      scroller.scrollTop = saved;
+    };
+    requestAnimationFrame(() => {
+      restore();
+      const root = bubbleRef.current;
+      if (!root) return;
+      const ro = new ResizeObserver(restore);
+      ro.observe(root);
+      window.setTimeout(() => ro.disconnect(), 600);
+    });
+  };
+  return { allowImages, bubbleRef, detailsOpen, fullBody, hasHidden, hasImages, htmlSplit, loadImagesByDefault, printThisMessage, railAnchorRef, readInTheDark, setDetailsOpen, showHtml, showQuoted, shownHtml, stripped, t, toggleImages, toggleQuoted };
+}
+
+/** Who sent it and when, its status, its files, and the line of details. */
+export function useBubbleMeta({
+  account,
+  detailsOpen,
+  hasImages,
+  loadImagesByDefault,
+  message,
+  metaNeeds,
+  onEditSend,
+  onReact,
+  onReplyTo,
+  onRetrySend,
+  sendStatus,
+  setDetailsOpen,
+  showHtml,
+  showMeta,
+  t,
+  timeLabel,
+}: Pick<ReturnType<typeof useBubbleContent>, "detailsOpen" | "hasImages" | "loadImagesByDefault" | "setDetailsOpen" | "showHtml" | "t"> &
+  { account: MailBubbleProps["account"]; message: MailBubbleProps["message"]; metaNeeds: Exclude<MailBubbleProps["meta"], undefined>; onEditSend: MailBubbleProps["onEditSend"]; onReact: MailBubbleProps["onReact"]; onReplyTo: MailBubbleProps["onReplyTo"]; onRetrySend: MailBubbleProps["onRetrySend"]; sendStatus: MailBubbleProps["sendStatus"]; showMeta: Exclude<MailBubbleProps["showMeta"], undefined>; timeLabel: MailBubbleProps["timeLabel"] }) {
+  const sendingOut = sendStatus === "sending";
+  const failedOut = sendStatus === "failed";
+  const { displayName, fromLabel } = bubbleSender(message, account);
+  /** Nothing to stamp until it has gone. */
+  const stamp = sendingOut || failedOut ? "" : messageStamp(message.sentAt);
+  const statusCaption = (
+    <SendStatusCaption
+      status={sendStatus}
+      onRetry={onRetrySend}
+      onEdit={onEditSend}
+    />
+  );
+  const [failedCalendarIds, setFailedCalendarIds] = React.useState(
+    () => new Set<string>()
+  );
+  const fileAttachments = nonCalendarAttachments(
+    message.attachments,
+    failedCalendarIds
+  );
+  /* What the menu can save: the tiles, less any file still on its way out.
+     A calendar invite is not among them — it has its own "Download event". */
+  const savableFiles = savableAttachments(fileAttachments);
+  const noteCalendarUnavailable = React.useCallback((attachmentId: string) => {
+    setFailedCalendarIds((prev) => {
+      if (prev.has(attachmentId)) return prev;
+      const next = new Set(prev);
+      next.add(attachmentId);
+      return next;
+    });
+  }, []);
+  /**
+   * The time, in the corner of the bubble.
+   *
+   * Floated and written after the words, so it settles on the right of the
+   * last line — a short message keeps it beside the words instead of
+   * spending a whole line on four digits. Declared before them it floated to
+   * the top corner, which is not where a chat puts it.
+   */
+  const timeCornerClass = cn(
+    "select-none text-[10px] leading-none tabular-nums",
+    message.own ? "text-teal-800/60" : "text-stone-400"
+  );
+  const timeCorner = timeLabel ? (
+    <span className={cn("float-right ml-2 mt-1", timeCornerClass)}>
+      {timeLabel}
+    </span>
+  ) : null;
+  /**
+   * The line above the bubble, when there is one.
+   *
+   * `metaHeadline` is what the message before it did not already say: a
+   * different person talking, or somebody added to or dropped from the
+   * message. Most messages in most threads have neither, and then there is
+   * no line at all.
+   *
+   * `metaDetails` is everything, one thing per line and each line labelled:
+   * when it was sent, who from, who to. Shown only when the reader asks for
+   * it under the message's own menu. It is not one sentence. A sentence puts
+   * the sender twice at the front, once as a name and once in brackets as
+   * the address. It also leaves the reader to find the time at the end.
+   */
+  const { metaHeadline, metaDetails } = bubbleMetaLines({
+    message,
+    account,
+    displayName,
+    fromLabel,
+    stamp,
+    metaNeeds,
+    t,
+  });
+  const canLoadImages =
+    !loadImagesByDefault && showHtml && hasImages && !sendingOut && !failedOut;
+  const showMetaRow =
+    showMeta && (detailsOpen ? true : Boolean(metaHeadline) || canLoadImages);
+  /**
+   * Double-clicking the message is the same answer as the menu's "Details".
+   *
+   * Only where there is something to tell: `showMeta` is what decides
+   * whether the menu offers the item at all, and a bubble that cannot
+   * answer must not swallow the double click either.
+   *
+   * Two clicks, not one. A single click lands on a message all the time:
+   * to bring the pane forward, to put the cursor somewhere, to start a
+   * drag across the words. If one click is the toggle, the line above
+   * the message comes and goes with every one of them. A double click is
+   * asked for on purpose. Anything that is its own control keeps its.
+   */
+  const toggleDetailsFromBody = React.useCallback(() => {
+    if (!showMeta) return;
+    setDetailsOpen((open) => !open);
+  }, [showMeta, setDetailsOpen]);
+  const onBubbleDoubleClick = (event: React.MouseEvent) => {
+    if (isInteractiveDoubleClickTarget(event.target)) return;
+    if (doubleClickOnText(event)) return;
+    // The word WebKit selected beside the click is not what was meant.
+    window.getSelection()?.removeAllRanges();
+    toggleDetailsFromBody();
+  };
+  /** To and Cc as written, each address once, for "Copy recipients". */
+  const messageRecipients = React.useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of [...(message.toEmails ?? []), ...(message.ccEmails ?? [])]) {
+      const email = raw.trim();
+      const key = email.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(email);
+    }
+    return out;
+  }, [message.toEmails, message.ccEmails]);
+  const outgoing = sendingOut || failedOut;
+  const reactAction = outgoing ? undefined : onReact;
+  const replyAction = outgoing ? undefined : onReplyTo;
+  return { canLoadImages, displayName, failedOut, fileAttachments, messageRecipients, metaDetails, metaHeadline, noteCalendarUnavailable, onBubbleDoubleClick, outgoing, reactAction, replyAction, savableFiles, sendingOut, showMetaRow, statusCaption, timeCorner, toggleDetailsFromBody };
+}
+
+/** Reading the selection, and the bubble's menu. */
+export function useBubbleMenu({
+  account,
+  allowImages,
+  bubbleRef,
+  detailsOpen,
+  displayName,
+  fullBody,
+  highlight,
+  htmlSplit,
+  message,
+  messageRecipients,
+  onEditAsNew,
+  onForward,
+  onShowOriginal,
+  outgoing,
+  printThisMessage,
+  readInTheDark,
+  replyAction,
+  savableFiles,
+  setDetailsOpen,
+  showMeta,
+  showPrint,
+  showQuoted,
+  shownHtml,
+  stripped,
+  subject,
+  zoom,
+}: Pick<ReturnType<typeof useBubbleContent>, "allowImages" | "bubbleRef" | "detailsOpen" | "fullBody" | "htmlSplit" | "printThisMessage" | "readInTheDark" | "setDetailsOpen" | "showQuoted" | "shownHtml" | "stripped"> &
+  Pick<ReturnType<typeof useBubbleMeta>, "displayName" | "messageRecipients" | "outgoing" | "replyAction" | "savableFiles"> &
+  { account: MailBubbleProps["account"]; highlight: MailBubbleProps["highlight"]; message: MailBubbleProps["message"]; onEditAsNew: MailBubbleProps["onEditAsNew"]; onForward: MailBubbleProps["onForward"]; onShowOriginal: MailBubbleProps["onShowOriginal"]; showMeta: Exclude<MailBubbleProps["showMeta"], undefined>; showPrint: Exclude<MailBubbleProps["showPrint"], undefined>; subject: MailBubbleProps["subject"]; zoom: Exclude<MailBubbleProps["zoom"], undefined> }) {
+  /** The body's box, which the Reader button measures in lines. */
+  const bodyBoxRef = React.useRef<HTMLDivElement>(null);
+  /* The Reader: the button in the rail for a long message, and the Reader
+     while it is open. Not in a chat window, where a message is one line
+     of a conversation. */
+  const bubbleReader = useBubbleReader({
+    id: message.id,
+    inChatWindow: !showMeta,
+    outgoing,
+    bubbleRef,
+    bodyBoxRef,
+    findScroller: nearestScrollParent,
+    message,
+    displayName,
+    subject,
+    fullText: fullBody,
+    foldedText: stripped,
+    htmlSplit,
+    showQuoted,
+    shownHtml,
+    allowImages,
+    readInTheDark,
+    zoom,
+    highlight,
+    onReplyTo: replyAction,
+    onForward,
+  });
+  /** The "…" menu's rows, in the rail and on a right-click alike. */
+  const menuActions: MessageMenuActions = {
+    bodyText: message.bodyText,
+    recipients: messageRecipients,
+    onForward: outgoing ? undefined : onForward,
+    onEditAsNew: outgoing ? undefined : onEditAsNew,
+    onDownloadAttachments: savableFiles.length
+      ? () =>
+          void saveMessageAttachments({
+            account,
+            messageId: message.id,
+            attachments: savableFiles,
+          })
+      : undefined,
+    attachmentCount: savableFiles.length,
+    onPrint: showPrint ? printThisMessage : undefined,
+    onShowOriginal: outgoing ? undefined : onShowOriginal,
+    // Who it was from and who it went to, for the message where the line
+    // above says nothing because nothing about it changed.
+    onToggleDetails: showMeta ? () => setDetailsOpen((open) => !open) : undefined,
+    detailsOpen,
+  };
+  /*
+    A right-click on the message: its own menu (react, reply, and the "…"
+    rows) in place of WebKit's. A link, a field or a name with a menu of its
+    own keeps that menu. The selection is read on mousedown: WebKit selects
+    the word under a right-click before the menu event, and that word is
+    not something the reader chose.
+  */
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; selectedText: string } | null>(null);
+  const selectionBeforeMenu = React.useRef<Range[]>([]);
+  const onBubbleMouseDown = (event: React.MouseEvent) => {
+    if (!(event.button === 2 || (event.button === 0 && event.ctrlKey))) return;
+    const sel = window.getSelection();
+    selectionBeforeMenu.current = [];
+    if (!sel || sel.isCollapsed) return;
+    for (let i = 0; i < sel.rangeCount; i += 1) selectionBeforeMenu.current.push(sel.getRangeAt(i).cloneRange());
+  };
+  const onBubbleContextMenu = (event: React.MouseEvent) => {
+    if (event.defaultPrevented) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("a[href], input, textarea, select, [contenteditable='true']")) return;
+    event.preventDefault();
+    const before = selectionBeforeMenu.current;
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      for (const range of before) sel.addRange(range);
+    }
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      selectedText: before.map((range) => range.toString()).join(" ").trim(),
+    });
+  };
+  return { bodyBoxRef, bubbleReader, contextMenu, menuActions, onBubbleContextMenu, onBubbleMouseDown, setContextMenu };
 }

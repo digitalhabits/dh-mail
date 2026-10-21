@@ -103,8 +103,8 @@ export const FromAccountMenu = React.forwardRef<
           aria-haspopup="listbox"
           aria-expanded={open}
           /* A down arrow is what a closed menu is asking for, and the
-             chevron on the face of this one says so. Tabbing here from the
-             subject and pressing it was doing nothing at all.
+             chevron on the face of this one says so. Without this, tabbing
+             here from the subject and pressing it does nothing at all.
 
              The press is stopped as well as answered. The mail list reads
              the arrows from the window, and it counts a control as busy

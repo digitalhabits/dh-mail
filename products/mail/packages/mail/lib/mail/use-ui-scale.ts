@@ -116,9 +116,9 @@ export function useApplyUiScale(scale: number): void {
       The shell's zoom is set over an async call, so this effect runs
       before the zoom it was woken for has reached the webview: the
       measurement is then the window at the old zoom, which is too big.
-      Nothing else told us — a zoom is not always a `resize` — so a card
-      that reads the variable stood taller than the screen, and its
-      heading, which is what carries it, hung off the top.
+      Nothing else tells us, because a zoom is not always a `resize`.
+      Without this, a card that reads the variable stands taller than the
+      screen, and its heading, which is what carries it, hangs off the top.
     */
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);

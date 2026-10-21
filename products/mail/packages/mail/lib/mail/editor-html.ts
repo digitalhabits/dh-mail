@@ -62,9 +62,9 @@ export function dropRemoteImagesForEditing(html: string): string {
  * A message is sent wrapped in the writer's font with dark grey words
  * (#222, text-style.ts) and a lighter signature (#444, signature-html.ts),
  * so other mail programs show it as it was written. Put back in the
- * composer, those fixed colours stayed dark on the dark composer and could
- * not be read (2026-10-20). The composer has its own ink; only these two
- * colours are taken off, so a colour the writer chose stays.
+ * composer, those fixed colours stay dark on the dark composer and cannot
+ * be read. The composer has its own ink. Only these two colours are taken
+ * off, so a colour the writer chose stays.
  */
 export function dropOwnInkForEditing(html: string): string {
   if (!html) return html;

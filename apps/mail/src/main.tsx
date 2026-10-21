@@ -12,6 +12,9 @@
  * `open_chat_popout` in src-tauri.
  */
 
+// First import: it upgrades the storage keys before any module reads a setting.
+import "./storage-upgrade-boot";
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
@@ -432,8 +435,8 @@ function MailToaster() {
       /*
         Eight seconds for everything, unless a toast says otherwise.
 
-        The archive and delete toasts already ask for eight, and a toast
-        with the library's four went down while its neighbours stood. One
+        The archive and delete toasts ask for eight. A toast with the
+        library's four goes down while its neighbours stand. One
         default, and a toast that wants longer still gets it.
       */
       toastOptions={{ duration: 8000 }}

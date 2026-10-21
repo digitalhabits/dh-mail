@@ -6,7 +6,7 @@
  * The card stays in place while the thread scrolls under it, so it covers
  * the end of the thread for as long as it is open. Minimised, it is a slim
  * bar at the bottom of the pane: who the reply is to, and a press brings
- * it back with everything in it (Ulrik, 2026-10-17). The composer holds the
+ * it back with everything in it. The composer holds the
  * state; the card's corner buttons put it away (ComposerCardButtons).
  */
 

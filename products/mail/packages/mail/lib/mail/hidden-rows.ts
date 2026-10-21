@@ -6,10 +6,11 @@
  * change, or a provider listing that lags, would bring it straight back. So
  * the row is kept out of the list for a minute.
  *
- * It was kept out of every list. A conversation keeps its id when it moves,
- * so the mail a reader sent to Trash was also hidden in Trash: for a minute
- * it was in no folder of the app at all, while the provider's own site showed
- * it in Trash. To the reader it had been deleted for good.
+ * It is not kept out of every list. A conversation keeps its id when it
+ * moves. If every list hides it, the mail a reader sends to Trash is also
+ * hidden in Trash. For a minute it is in no folder of the app at all, while
+ * the provider's own site shows it in Trash. To the reader it looks deleted
+ * for good.
  *
  * So a hide belongs to the view it was made in. The row is hidden there, and
  * is shown everywhere else, which is where it went.

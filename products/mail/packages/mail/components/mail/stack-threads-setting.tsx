@@ -4,10 +4,8 @@
  * Stack the threads from one sender into one row: a switch in the title
  * bar, left of the settings button.
  *
- * It was a pair of buttons in the title bar ("By thread", "By person"),
- * then a toggle in Settings > Reading (2026-09-29). Stacks change the list
- * more than any setting there, so the switch is back where the list is
- * looked at, as one control (Ulrik, 2026-10-17). On by default.
+ * Stacks change the list more than any setting in Settings > Reading, so
+ * the switch is where the list is looked at, as one control. On by default.
  *
  * On, the switch is the slate of a chosen folder (--mail-switch-on), not
  * the accent: "on" here reads as "chosen" in the folder rail.

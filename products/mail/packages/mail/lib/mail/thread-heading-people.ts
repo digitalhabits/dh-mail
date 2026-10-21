@@ -22,8 +22,8 @@ export type ParticipantChunk =
  * enough there; the header is where the reader checks who a person actually
  * is, and that is the address.
  *
- * Senders and recipients both. Senders alone left a thread of sent mail
- * saying nobody but "You", with no sign of who it went to. A recipient is
+ * Senders and recipients both. With senders alone, a thread of sent mail
+ * says nobody but "You", with no sign of who it went to. A recipient is
  * known by address only unless they wrote in the thread as well, in which
  * case their name comes from that.
  *
@@ -72,7 +72,7 @@ export function threadPeople(
 
 /**
  * The line's people. "You (…)" always holds the mailbox the thread came in
- * on, which the line no longer names apart: a list's mail or a Bcc names
+ * on, which the line does not name apart: a list's mail or a Bcc names
  * none of your addresses, and the mailbox went with them.
  */
 export function participantsWithAddresses(

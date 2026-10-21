@@ -10,8 +10,8 @@ import { useMailT } from "@/lib/mail/i18n";
  *
  * Their mail still turns up in Sent and in a search (use-thread-list-data),
  * and a row of theirs says so, the way a paperclip says a thread carries a
- * file: without it, a result from a hidden account looked like mail the
- * reader had chosen to see (Ulrik, 2026-10-20).
+ * file: without it, a result from a hidden account looks like mail that the
+ * reader chose to see.
  */
 export const HiddenAccountsContext = React.createContext<ReadonlySet<string>>(new Set());
 
@@ -19,7 +19,7 @@ export const HiddenAccountsContext = React.createContext<ReadonlySet<string>>(ne
  * A closed eye before a row's date, on a row from a hidden account: one
  * thread's `account`, or a person's `accounts` (any of them hidden). By the
  * date, quiet: it says where a hit came from, and the hover names the
- * account (Ulrik's design, 2026-10-20).
+ * account.
  */
 export function HiddenAccountMark({ account, accounts }: { account?: string; accounts?: string[] }) {
   const hidden = React.useContext(HiddenAccountsContext);

@@ -69,9 +69,9 @@ export async function saveAttachment(input: {
 
     Reading a file out of the mailbox takes a moment — seconds, when the
     connection has to be opened first — and a button that does nothing
-    for that long gets pressed again. Each press fetched and saved the
-    file over, so the folder filled with copies. Now the first press says
-    what it is doing, and the others wait for it.
+    for that long gets pressed again. If each press fetches and saves the
+    file, the folder fills with copies. So the first press says what it is
+    doing, and the others wait for it.
   */
   const key = `${input.open ? "open" : "save"}:${input.path}`;
   const running = inflight.get(key);
@@ -244,9 +244,8 @@ export function startAttachmentDrag(
  *
  * Called as soon as the pointer moves with the button down (see
  * attachmentDragProps), not on the page's `dragstart`. WebKit starts the
- * page's drag of a button only after the button has been held for a
- * moment, and what it carried could not be dropped in Finder (Ulrik,
- * 2026-10-17).
+ * page's drag of a button only after the button is held for a moment, and
+ * what it carries cannot be dropped in Finder.
  */
 export function dragAttachmentOut(input: {
   path: string;

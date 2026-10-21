@@ -27,8 +27,8 @@ import { mailApiFetch } from "@/lib/mail/api";
 /**
  * The row the arrow keys are on.
  *
- * The navy the rail paints an open folder in, rather than the palest teal
- * this had: on a white menu that teal was a tint you had to look for, and
+ * The navy the rail paints an open folder in, not the palest teal. On a
+ * white menu that teal is a tint that you have to look for, and
  * looking for it is the one thing a reader running down a list with the
  * keyboard cannot do. Navy is the same "you are here" the rest of the app
  * uses, and it takes the words on the row with it.
@@ -264,9 +264,9 @@ function contactMatchScore(contact: ContactSuggestion, q: string): number {
 /**
  * One collator for every sort here. `localeCompare` with options builds a
  * new one for each comparison in WebKit, and one letter matches nearly the
- * whole address book: sorting those took most of a key press (85 ms for
+ * whole address book. Sorting those takes most of a key press (85 ms for
  * 6,000 contacts against 3 ms), and the first letter typed into To or Cc
- * showed late (Ulrik, 2026-10-05).
+ * shows late.
  */
 const NAME_ORDER = new Intl.Collator(undefined, { sensitivity: "base" });
 
@@ -329,9 +329,9 @@ export function filterMenu(
   const selfHits = contactHits.filter((h) => h.contact.source === "self");
   /*
     Up to 3 places for the organization's directory, after the contacts.
-    Ranked with the rest, the directory's people came after every local
-    match, and a reader with many contacts never saw a colleague the
-    directory had found (KU, 2026-09-27).
+    Ranked with the rest, the directory's people come after every local
+    match, and a reader with many contacts never sees a colleague that the
+    directory found.
   */
   const directoryHits = contactHits.filter((h) => h.contact.source === "directory");
   const localHits = contactHits.filter((h) => h.contact.source !== "self" && h.contact.source !== "directory");
@@ -363,9 +363,9 @@ export function selfSuggestionsFromAccounts(
         No name, rather than the word "You".
 
         A recipient is a person the message is going to, and "You" is not
-        anybody: it went on the chip, so a message addressed to one of the
-        reader's own mailboxes said it was going to "You" and never said
-        which of the four. The badge below already says whose mailbox this
+        anybody. It goes on the chip, so a message addressed to one of the
+        reader's own mailboxes says that it is going to "You". It never
+        says which of the four. The badge below already says whose mailbox this
         is; what belongs here is a name, and where there is none the
         address stands in — which is what every other nameless contact
         does.

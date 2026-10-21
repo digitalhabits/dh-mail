@@ -6,6 +6,7 @@
  * the Pinned band after the thread is archived out of the inbox list.
  */
 
+import { MAIL_PINS_KEY as STORAGE_KEY } from "@/lib/mail/storage-keys";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
 export type MailPinRecord = {
@@ -15,8 +16,6 @@ export type MailPinRecord = {
   pinnedAt: number;
   summary: MailThreadSummary;
 };
-
-const STORAGE_KEY = "redd-plan-mail-pins-v1";
 
 const listeners = new Set<() => void>();
 
@@ -92,6 +91,14 @@ export function unpinMailThread(account: string, threadId: string): void {
       (p) => !(p.account === account && p.threadId === threadId)
     )
   );
+}
+
+/** Unpin every thread of one mailbox, when the mailbox is removed. */
+export function unpinAccount(account: string): void {
+  const email = account.trim().toLowerCase();
+  const pins = readAll();
+  const kept = pins.filter((p) => p.account.trim().toLowerCase() !== email);
+  if (kept.length !== pins.length) writeAll(kept);
 }
 
 export function toggleMailPin(summary: MailThreadSummary): boolean {

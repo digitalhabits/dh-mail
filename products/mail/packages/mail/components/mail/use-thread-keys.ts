@@ -166,9 +166,9 @@ export function useThreadKeys({
             Not while a reply is being written. The focus leaves the words
             more often than it seems: a click on the card's edge, on Bold
             or on "Show quoted text", or the editor drawn again under the
-            caret. Backspace then reached this, and the conversation went
-            to Trash in the middle of a sentence (Ulrik, 2026-10-20). The
-            card's own bin is there for the draft.
+            caret. Backspace then reaches this, and the conversation goes
+            to Trash in the middle of a sentence. The card's own bin is
+            there for the draft.
           */
           if (target?.closest(REPLY_OPEN) || document.querySelector(REPLY_OPEN)) break;
           onTrash({ account, threadId });

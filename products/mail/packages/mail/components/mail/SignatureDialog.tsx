@@ -105,10 +105,10 @@ export async function fetchSignatureSettings(
 /**
  * Every account's signature, on one card.
  *
- * It used to show one account at a time behind a dropdown, which meant the
- * only way to find out which addresses still had no signature was to open
- * the menu and try each of them. They are all here now, each saying what it
- * has, in the same grouped-card shape as the rest of settings.
+ * They are all here, each saying what it has, in the same grouped-card shape
+ * as the rest of settings. If one account at a time shows behind a dropdown,
+ * the only way to find out which addresses have no signature is to open the
+ * menu and try each of them.
  *
  * Editing one opens the editor over the list, for that account alone. The
  * two "include by default" boxes are not edited — they are settings, and

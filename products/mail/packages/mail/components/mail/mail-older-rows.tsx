@@ -6,16 +6,19 @@
  * See lib/mail/older-search.ts and use-older-mail.ts.
  */
 
+import { usePageActions, usePageLayout, usePageList, usePageReader } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import { History, Loader2 } from "lucide-react";
 
 import { ThreadListRow } from "@/components/mail/ThreadListRow";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import type { OlderMail } from "@/components/mail/use-older-mail";
 import { rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
 import { cn } from "@/lib/utils";
 
-export function OlderMailRows({ m, older }: { m: MailPageModel; older: OlderMail }) {
-  const { listExpanded, listNarrow, passesFilters, t } = m;
+export function OlderMailRows({ older }: { older: OlderMail }) {
+  const t = useMailT();
+  const { listExpanded, listNarrow } = usePageLayout();
+  const { passesFilters } = usePageList();
   // The tab's filter holds for these rows as it does for the rest.
   const rows = older.threads.filter(passesFilters);
   const quiet = cn(
@@ -51,7 +54,7 @@ export function OlderMailRows({ m, older }: { m: MailPageModel; older: OlderMail
             </p>
           )}
           {rows.map((thread) => (
-            <OlderRow key={threadKey(thread)} m={m} thread={thread} />
+            <OlderRow key={threadKey(thread)} thread={thread} />
           ))}
         </>
       ) : null}
@@ -65,24 +68,11 @@ export function OlderMailRows({ m, older }: { m: MailPageModel; older: OlderMail
  * snooze on the row: the list does not hold these threads, so it could
  * not show the result. The thread opens, and acts from there.
  */
-function OlderRow({ m, thread }: { m: MailPageModel; thread: OlderMail["threads"][number] }) {
-  const {
-    chromeDark,
-    clickThreadRow,
-    expandThreadRow,
-    highlightTerms,
-    listDensity,
-    listExpanded,
-    listNarrow,
-    listRowWide,
-    multiKeys,
-    phone,
-    pinKeySet,
-    rowMenuActions,
-    selected,
-    togglePin,
-    toggleRead,
-  } = m;
+function OlderRow({ thread }: { thread: OlderMail["threads"][number] }) {
+  const { chromeDark, listDensity, listExpanded, listNarrow, listRowWide, phone } = usePageLayout();
+  const { clickThreadRow, expandThreadRow, selected } = usePageReader();
+  const { highlightTerms, multiKeys, pinKeySet } = usePageList();
+  const { rowMenuActions, togglePin, toggleRead } = usePageActions();
   return (
     <ThreadListRow
       highlight={highlightTerms}

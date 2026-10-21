@@ -8,6 +8,10 @@
  * returns come in as props. The JSX is ThreadPane's own, word for word.
  */
 
+import {
+  FORWARD_SOURCE_OPEN_KEY as FORWARD_OPEN_KEY,
+  REPLY_HISTORY_OPEN_KEY as HISTORY_OPEN_KEY,
+} from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import { useComposerRoom } from "@/components/mail/composer-room";
@@ -220,16 +224,16 @@ export function ThreadComposerBand({
             How much of the pane the reply may take, on the band rather than
             on the box inside it.
 
-            The ceiling used to sit on the words alone, so everything around
-            them — the recipients, a forward's own banner and subject, the
-            row with Send on it — was added to it. On a short window that
-            put Send below the sill, with nothing to scroll to reach it: the
-            thread scrolls, and the band it sits above does not.
+            If the ceiling sits on the words alone, everything around them —
+            the recipients, a forward's own banner and subject, the row with
+            Send on it — is added to it. On a short window that puts Send
+            below the sill, with nothing to scroll to reach it: the thread
+            scrolls, and the band it sits above does not.
 
-            The card used to hold the zoom, so a 45vh cap was then drawn at
-            118% and the foot sat off the window. Zoom is on this band, and
-            the cap is divided by it, so the band that is seen is still 45vh
-            (or the dragged height) and the words scroll inside it.
+            Zoom is on this band, not on the card. If the card holds the
+            zoom, a 45vh cap is drawn at 118% and the foot sits off the
+            window. The cap is divided by the zoom, so the band that is seen
+            is 45vh (or the dragged height) and the words scroll inside it.
 
             Bounded here, the parts that cannot shrink take what they need
             and the words take the rest. Not in focus mode, where the band
@@ -273,11 +277,11 @@ export function ThreadComposerBand({
             The line where the thread stops and the reply starts is the
             handle, all the way across.
 
-            It used to be the top edge of the box itself, which is a
-            different line: the box is right-aligned and as narrow as its
-            dragged width, so the handle began somewhere in the middle of
-            the pane and sat on the recipients — a few pixels over the To
-            field, found by hunting for the cursor to change. This is the
+            It is not the top edge of the box itself, which is a different
+            line. The box is right-aligned and as narrow as its dragged
+            width. So a handle there begins somewhere in the middle of the
+            pane and sits on the recipients: a few pixels over the To field,
+            found by hunting for the cursor to change. This is the
             seam the reader can already see, it runs the width of the pane,
             and dragging a seam is what a seam is for.
 
@@ -316,7 +320,7 @@ export function ThreadComposerBand({
           >
           {/* The card's own top edge sizes its height too: standing over the
               thread, the band's seam is above the card, where nobody looks
-              for it (2026-10-17). */}
+              for it. */}
           <CardTopHandle m={m} available={minimiseValue.available} />
           {/* No edges to drag while the box is the whole pane: there is
               nowhere for either to go, and a handle that cannot move is a
@@ -344,10 +348,10 @@ export function ThreadComposerBand({
           {/* Hidden (not unmounted) during preview so the draft is kept.
 
               Scrolls when what it holds is taller than the band. A forward
-              on a short window used to fill the band with its banner,
-              subject and recipients, and the box you type in was squeezed
-              to nothing — there was a toolbar and no place to write. The box
-              keeps a floor now, and this column scrolls rather than let the
+              on a short window can fill the band with its banner, subject
+              and recipients. Without a floor, the box that you type in is
+              squeezed to nothing: a toolbar and no place to write. So the
+              box keeps a floor, and this column scrolls rather than let the
               band cut Send off below it. */}
           <div
             ref={composerColumnRef}
@@ -390,8 +394,8 @@ export function ThreadComposerBand({
                   chain the editor needs. */}
               {/* The message, the signature and the files scroll as one:
                   the signature is the end of the letter, not a lid on it.
-                  It used to sit under a box that scrolled by itself, so a
-                  long reply stopped mid-sentence and the signature began. */}
+                  If it sits under a box that scrolls by itself, a long
+                  reply stops mid-sentence and the signature begins. */}
               <div
                 /* Writing puts the opened recipients away again, down to
                    the one line, when there is somebody to send to. Not on
@@ -594,8 +598,6 @@ function QuotedReplyBanner({
 }
 
 /** Whether the forwarded message is shown whole. Kept across forwards. */
-const FORWARD_OPEN_KEY = "dh-mail-forward-source-open";
-
 function readForwardOpen(): boolean {
   try {
     return window.localStorage.getItem(FORWARD_OPEN_KEY) === "1";
@@ -684,8 +686,6 @@ function ForwardSourceQuote({
     </div>
   );
 }
-
-const HISTORY_OPEN_KEY = "dh-mail-reply-history-open";
 
 function readHistoryOpen(): boolean {
   try {
@@ -902,9 +902,8 @@ function ComposerSendBar({
             would overwrite them on the next render and leave the
             buttons unstyled.
 
-            The lists live in Aa. They used to sit on this row and
-            wrap it off the pane long before B, I, U and the link
-            ran out of room. */}
+            The lists live in Aa. On this row they wrap it off the
+            pane long before B, I, U and the link run out of room. */}
         <ComposerToolbar id="mail-reply-toolbar" editorHandle={replyEditorHandle} account={fromAccount} />
         <AttachToolbarButton
           onPick={addAttachFiles}

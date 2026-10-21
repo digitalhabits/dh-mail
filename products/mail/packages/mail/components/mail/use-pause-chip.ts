@@ -53,7 +53,7 @@ export function usePauseChip({
   const resumeMail = React.useCallback(
     (account?: string | null) => {
       void (async () => {
-        // The account's own words, when it has its own (2026-10-20).
+        // The account's own words, when it has its own.
         if (!(await requestUnpauseChallenge(unpauseWordsFor(pauseState, account ?? null)))) return;
         resumeNow(account);
       })();

@@ -1196,7 +1196,8 @@ export const en = {
     "Outlook cannot take files this way — {count} in your Downloads, ready to drag in",
   outlookFilesLeftBehind:
     "Outlook cannot take files this way — {count} did not go with it",
-  outlookReplyIsOpen: "The reply is open in Outlook, in its conversation",
+  outlookReplyDraftMade: "The reply is in Outlook, in Drafts, in its conversation",
+  outlookDraftMade: "The message is in Outlook, in Drafts",
   outlookIsOpen: "Outlook is open on this message",
   discardTheCopyHere: "Discard the copy here",
   couldNotOpenOutlook: "Couldn't open a new Outlook message",

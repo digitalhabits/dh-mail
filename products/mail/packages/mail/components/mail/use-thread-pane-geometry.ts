@@ -158,10 +158,10 @@ export function useThreadZoom(input: {
    * The reading that zoom puts back, taken at the moment the gesture
    * arrives.
    *
-   * It used to be taken when the reader last scrolled, and a reader who
-   * opens a thread and zooms without scrolling first has not scrolled:
-   * the only reading was the one from before the thread was pinned to its
-   * newest message, so zooming threw them to the top of it. Reading it
+   * If it is taken when the reader last scrolls, a reader who opens a
+   * thread and zooms without scrolling first has no reading but the one
+   * from before the thread was pinned to its newest message. Then zooming
+   * throws them to the top of it. Reading it
    * here means there is always one, and always from where they are now.
    *
    * A ref because the reading is defined further down, with the rest of
@@ -208,12 +208,11 @@ export function useThreadPaneWidth(input: {
   /**
    * Measured through the ref itself, not from an effect.
    *
-   * This pane returns early while a thread is loading, so on the render an
-   * effect would have run against there was no element to observe — and an
+   * This pane returns early while a thread is loading. So on the render
+   * that an effect runs against, there can be no element to observe. An
    * effect that runs once, finds nothing and never looks again leaves the
-   * width at nought for the life of the pane. Everything that asks how wide
-   * it is then gets the same answer: wide enough. Which is why none of this
-   * appeared to work at any size.
+   * width at nought for the life of the pane. Then everything that asks how
+   * wide it is gets the same answer: wide enough.
    *
    * A callback ref is told each time the node arrives or goes, which is
    * exactly when there is something to measure or stop measuring.

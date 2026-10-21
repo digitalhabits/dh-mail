@@ -34,6 +34,7 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { patchCachedThreads, type ActiveMailFolder } from "@/components/mail/mail-list-state";
 
+
 type OpenThread = {
   account: string;
   threadId: string;
@@ -41,28 +42,8 @@ type OpenThread = {
   focusMessageId?: string;
 };
 
-export function useThreadActions({
-  viewerId,
-  listCacheKey,
-  threads,
-  setThreads,
-  folder,
-  tab,
-  activeFolder,
-  selected,
-  setSelected,
-  removeThread,
-  openFolderName,
-  noteLeftOpenFolder,
-  hideRemovedRows,
-  unhideRows,
-  pushMailUndo,
-  dropMailUndo,
-  hiddenRowsRef,
-  listViewIdRef,
-  loadAbortRef,
-  setSnoozedCount,
-}: {
+/** What the page hands to useThreadActions. */
+export type ThreadActionsInput = {
   viewerId: string;
   listCacheKey: string;
   threads: MailThreadSummary[];
@@ -92,7 +73,66 @@ export function useThreadActions({
   listViewIdRef: React.RefObject<string>;
   loadAbortRef: React.RefObject<AbortController | null>;
   setSnoozedCount: React.Dispatch<React.SetStateAction<number | null>>;
-}) {
+};
+
+export function useThreadActions({
+  viewerId,
+  listCacheKey,
+  threads,
+  setThreads,
+  folder,
+  tab,
+  activeFolder,
+  selected,
+  setSelected,
+  removeThread,
+  openFolderName,
+  noteLeftOpenFolder,
+  hideRemovedRows,
+  unhideRows,
+  pushMailUndo,
+  dropMailUndo,
+  hiddenRowsRef,
+  listViewIdRef,
+  loadAbortRef,
+  setSnoozedCount,
+}: ThreadActionsInput) {
+  const { archive, isOutlookAccount, markUnread, moveToFolder, moveToInbox } = useMoveActions({ activeFolder, dropMailUndo, folder, hideRemovedRows, listCacheKey, loadAbortRef, noteLeftOpenFolder, openFolderName, pushMailUndo, removeThread, setThreads, threads, unhideRows, viewerId });
+  const { restoreFromTrash, setThreadJunk, toggleRead, trash } = useMarkAndDeleteActions({ dropMailUndo, hideRemovedRows, isOutlookAccount, noteLeftOpenFolder, openFolderName, pushMailUndo, removeThread, selected, setSelected, setThreads, threads, unhideRows });
+  const { snooze, unsnooze } = useSnoozeActions({ activeFolder, hiddenRowsRef, listCacheKey, listViewIdRef, loadAbortRef, pushMailUndo, removeThread, setSnoozedCount, setThreads, tab, threads, viewerId });
+
+  return {
+    markUnread,
+    moveToFolder,
+    isOutlookAccount,
+    archive,
+    moveToInbox,
+    toggleRead,
+    trash,
+    restoreFromTrash,
+    setThreadJunk,
+    snooze,
+    unsnooze,
+  };
+}
+
+/** Unread, moving to a folder, archiving, and moving back to the inbox. */
+export function useMoveActions({
+  activeFolder,
+  dropMailUndo,
+  folder,
+  hideRemovedRows,
+  listCacheKey,
+  loadAbortRef,
+  noteLeftOpenFolder,
+  openFolderName,
+  pushMailUndo,
+  removeThread,
+  setThreads,
+  threads,
+  unhideRows,
+  viewerId,
+}: { activeFolder: ThreadActionsInput["activeFolder"]; dropMailUndo: ThreadActionsInput["dropMailUndo"]; folder: ThreadActionsInput["folder"]; hideRemovedRows: ThreadActionsInput["hideRemovedRows"]; listCacheKey: ThreadActionsInput["listCacheKey"]; loadAbortRef: ThreadActionsInput["loadAbortRef"]; noteLeftOpenFolder: ThreadActionsInput["noteLeftOpenFolder"]; openFolderName: ThreadActionsInput["openFolderName"]; pushMailUndo: ThreadActionsInput["pushMailUndo"]; removeThread: ThreadActionsInput["removeThread"]; setThreads: ThreadActionsInput["setThreads"]; threads: ThreadActionsInput["threads"]; unhideRows: ThreadActionsInput["unhideRows"]; viewerId: ThreadActionsInput["viewerId"] }) {
   const markUnread = React.useCallback(
     async (t: { account: string; threadId: string }) => {
       // The reader's own word: a read still waiting to be told is dropped.
@@ -121,7 +161,6 @@ export function useThreadActions({
     },
     [listCacheKey, setThreads, threads, viewerId]
   );
-
   const moveToFolder = React.useCallback(
     async (
       t: { account: string; threadId: string },
@@ -182,15 +221,13 @@ export function useThreadActions({
       setThreads,
     ]
   );
-
   /*
    * Toasts name the provider that did the deed, so they ask which one it
-   * was. "Archived in Gmail" over an Outlook mailbox was the app talking
-   * about itself instead of the account in front of it — the mail had in
-   * fact gone to Outlook, and the sentence said otherwise.
+   * was. "Archived in Gmail" over an Outlook mailbox is the app talking
+   * about itself instead of the account in front of it. The mail went to
+   * Outlook, and the sentence says otherwise.
    */
   const isOutlookAccount = useIsOutlookAccount();
-
   const archive = React.useCallback(
     async (t: { account: string; threadId: string }) => {
       const key = threadKey(t);
@@ -215,9 +252,9 @@ export function useThreadActions({
         A pin is a shortcut to something in the inbox, so archiving takes
         it off.
 
-        It used to stay, and the band went on drawing the thread from the
-        summary the pin kept: the reader pressed Archive, was told it was
-        archived, and watched the row sit exactly where it was.
+        If it stays, the band goes on drawing the thread from the summary
+        the pin keeps. The reader presses Archive, is told it is archived,
+        and sees the row stay exactly where it was.
       */
       const wasPinned = isMailPinned(t.account, t.threadId);
       if (wasPinned) unpinMailThread(t.account, t.threadId);
@@ -270,7 +307,6 @@ export function useThreadActions({
       setThreads,
     ]
   );
-
   /**
    * Back to the inbox.
    *
@@ -294,11 +330,11 @@ export function useThreadActions({
         And where it comes back from decides how.
 
         Out of Junk it is "not junk", out of Trash it is "untrash", and from
-        anywhere else it is the undo of an archive. It used to be the undo of
-        an archive every time. On Gmail that only puts the inbox label back,
-        and a thread still in Spam or Trash stays there — the copy even looks
-        for it in All Mail, where a junked thread is not. The mail moved out
-        of Junk never reached the inbox.
+        anywhere else it is the undo of an archive. The undo of an archive
+        is not enough for all three. On Gmail it only puts the inbox label
+        back, and a thread still in Spam or Trash stays there. The copy even
+        looks for it in All Mail, where a junked thread is not. Mail moved
+        out of Junk that way never reaches the inbox.
       */
       const endpoint =
         !activeFolder && folder === "junk"
@@ -335,7 +371,25 @@ export function useThreadActions({
     },
     [threads, folder, activeFolder, removeThread, loadAbortRef, setThreads]
   );
+  return { archive, isOutlookAccount, markUnread, moveToFolder, moveToInbox };
+}
 
+/** Read and unread, deleting, restoring from Trash, and junk. */
+export function useMarkAndDeleteActions({
+  dropMailUndo,
+  hideRemovedRows,
+  isOutlookAccount,
+  noteLeftOpenFolder,
+  openFolderName,
+  pushMailUndo,
+  removeThread,
+  selected,
+  setSelected,
+  setThreads,
+  threads,
+  unhideRows,
+}: Pick<ReturnType<typeof useMoveActions>, "isOutlookAccount"> &
+  { dropMailUndo: ThreadActionsInput["dropMailUndo"]; hideRemovedRows: ThreadActionsInput["hideRemovedRows"]; noteLeftOpenFolder: ThreadActionsInput["noteLeftOpenFolder"]; openFolderName: ThreadActionsInput["openFolderName"]; pushMailUndo: ThreadActionsInput["pushMailUndo"]; removeThread: ThreadActionsInput["removeThread"]; selected: ThreadActionsInput["selected"]; setSelected: ThreadActionsInput["setSelected"]; setThreads: ThreadActionsInput["setThreads"]; threads: ThreadActionsInput["threads"]; unhideRows: ThreadActionsInput["unhideRows"] }) {
   /**
    * Read when anything is unread; otherwise the newest back to unread.
    *
@@ -410,7 +464,6 @@ export function useThreadActions({
     },
     [threads, setThreads]
   );
-
   const trash = React.useCallback(
     async (
       t: { account: string; threadId: string },
@@ -425,12 +478,12 @@ export function useThreadActions({
         Every copy, not the one the row happens to stand for.
 
         A mail that arrived in two of the reader's mailboxes is one row —
-        see dedupeThreadsByTip. Deleting only the row's own copy left the
-        other one to take the row's place on the next refresh, the same
-        subject in the same spot, so it read as though nothing had happened
-        and the reader deleted again. By then the selection had moved to
-        the next conversation, so what went the second time was a mail
-        they had never meant to touch.
+        see dedupeThreadsByTip. If only the row's own copy is deleted, the
+        other one takes the row's place on the next refresh: the same
+        subject in the same spot. It reads as though nothing happened, and
+        the reader deletes again. By then the selection is on the next
+        conversation, so the second delete takes a mail that they never
+        meant to touch.
       */
       /*
         Say what is going, from where, and what was on screen when it went.
@@ -508,7 +561,6 @@ export function useThreadActions({
       setThreads,
     ]
   );
-
   /**
    * Put a deleted conversation back where it came from.
    *
@@ -538,7 +590,6 @@ export function useThreadActions({
     },
     [threads, removeThread, setThreads, setSelected]
   );
-
   /**
    * File a conversation as junk, or take it back out.
    *
@@ -593,7 +644,24 @@ export function useThreadActions({
       setSelected,
     ]
   );
+  return { restoreFromTrash, setThreadJunk, toggleRead, trash };
+}
 
+/** Snoozing and unsnoozing. */
+export function useSnoozeActions({
+  activeFolder,
+  hiddenRowsRef,
+  listCacheKey,
+  listViewIdRef,
+  loadAbortRef,
+  pushMailUndo,
+  removeThread,
+  setSnoozedCount,
+  setThreads,
+  tab,
+  threads,
+  viewerId,
+}: { activeFolder: ThreadActionsInput["activeFolder"]; hiddenRowsRef: ThreadActionsInput["hiddenRowsRef"]; listCacheKey: ThreadActionsInput["listCacheKey"]; listViewIdRef: ThreadActionsInput["listViewIdRef"]; loadAbortRef: ThreadActionsInput["loadAbortRef"]; pushMailUndo: ThreadActionsInput["pushMailUndo"]; removeThread: ThreadActionsInput["removeThread"]; setSnoozedCount: ThreadActionsInput["setSnoozedCount"]; setThreads: ThreadActionsInput["setThreads"]; tab: ThreadActionsInput["tab"]; threads: ThreadActionsInput["threads"]; viewerId: ThreadActionsInput["viewerId"] }) {
   const snooze = React.useCallback(
     async (t: { account: string; threadId: string }, untilIso: string) => {
       const key = threadKey(t);
@@ -673,7 +741,6 @@ export function useThreadActions({
       viewerId,
     ]
   );
-
   const unsnooze = React.useCallback(
     async (t: { account: string; threadId: string }) => {
       const key = threadKey(t);
@@ -700,18 +767,5 @@ export function useThreadActions({
     },
     [threads, removeThread, hiddenRowsRef, setSnoozedCount, setThreads]
   );
-
-  return {
-    markUnread,
-    moveToFolder,
-    isOutlookAccount,
-    archive,
-    moveToInbox,
-    toggleRead,
-    trash,
-    restoreFromTrash,
-    setThreadJunk,
-    snooze,
-    unsnooze,
-  };
+  return { snooze, unsnooze };
 }

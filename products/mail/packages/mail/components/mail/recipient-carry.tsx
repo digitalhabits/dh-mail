@@ -63,8 +63,8 @@ export function withRecipient(list: MailRecipient[], recipient: MailRecipient) {
  *
  * Not the event's target: a finger keeps sending its events to where it
  * went down, and so does a mouse once something has captured the pointer.
- * The floating reply card did that, and a chip carried in it never found
- * the field it was over (2026-10-19). The ghost lets the point through.
+ * The floating reply card does that, and a chip carried in it never finds
+ * the field that it is over. The ghost lets the point through.
  */
 function dropIdAt(event: PointerEvent): string | null {
   let el: Element | null = event.target instanceof Element ? event.target : null;

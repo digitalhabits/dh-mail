@@ -3,10 +3,10 @@
 /**
  * Which mailbox the list is showing: All, or one of them.
  *
- * This is the row that used to hold All / In Contacts / Other. Those are
- * filters — they narrow whatever is on screen — and they moved behind the
- * button at the end of this row. What a reader reaches for first is whose
- * mail they are looking at, so that is what the row now holds.
+ * All / In Contacts / Other are filters. They narrow whatever is on screen,
+ * so they are behind the button at the end of this row. What a reader
+ * reaches for first is whose mail they are looking at, so that is what the
+ * row holds.
  *
  * The tabs are in the order the mailboxes are kept in, which the folder rail
  * sets by dragging. One row, one order, everywhere.
@@ -236,8 +236,8 @@ export function MailAccountTabs({
     A row of choices with one switched on.
 
     Named colours rather than `bg-white`: on the dark theme white is what
-    the blanket rewrite turns into chrome, so the chosen tab was the same
-    shade as the track it sits on. The three tokens say track, chosen, and
+    the blanket rewrite turns into chrome, so a white chosen tab is the
+    same shade as the track it sits on. The three tokens say track, chosen, and
     the rest — see --mail-segment in mail.css, which turns them over per
     theme.
   */

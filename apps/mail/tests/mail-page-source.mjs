@@ -23,11 +23,26 @@ const DIR = join(process.cwd(), "../../products/mail/packages/mail/components/ma
 export const readSource = (path) =>
   readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 
+/**
+ * MailPage and the files it is split into, read as one text: the markup in
+ * MailPage.tsx and mail-*.tsx, the assembler in use-mail-page.tsx, and the
+ * concern hooks that it calls (docs/mail-ui-structure.md).
+ */
 export function mailPageSource() {
   const split = readdirSync(DIR)
     .filter((f) => /^mail-.*\.tsx$/.test(f))
     .sort();
-  return ["MailPage.tsx", "use-mail-page.tsx", ...split]
+  const concerns = [
+    "use-page-setup.ts",
+    "use-mail-accounts.ts",
+    "use-mail-sync.ts",
+    "use-mail-page-layout.ts",
+    "use-mail-list.ts",
+    "use-mail-compose.ts",
+    "use-mail-actions.ts",
+    "use-mail-reader.ts",
+  ];
+  return ["MailPage.tsx", "use-mail-page.tsx", ...concerns, ...split]
     .map((f) => readSource(join(DIR, f)))
     .join("\n");
 }
@@ -47,6 +62,10 @@ export function threadPaneSource() {
     "use-thread-keys.ts",
     "use-thread-scheduled.ts",
     "use-composer-keys.ts",
+    // The parts of useThreadPane, by concern.
+    "use-thread-pane-setup.ts",
+    "use-thread-pane-reply.ts",
+    "use-thread-pane-flow.ts",
   ];
   return ["ThreadPane.tsx", "use-thread-pane.tsx", ...hooks, ...split]
     .map((f) => readSource(join(DIR, f)))

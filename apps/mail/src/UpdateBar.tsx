@@ -1,5 +1,5 @@
 /**
- * The bar at the top when a new version is ready (2026-10-18 design):
+ * The bar at the top when a new version is ready:
  * what is ready, What's new, Later, and Restart to update.
  *
  * What's new opens a pop-up over the window, as the other pop-ups do, so

@@ -2,7 +2,7 @@
 
 /**
  * The parts every time picker in Mail is made of, so Send later, Snooze and
- * the hours editors look and work the same (2026-10-18):
+ * the hours editors look and work the same:
  *
  * - `MenuHeading`: the small capitals at the top, with a way back when the
  *   card is a second step.
@@ -141,7 +141,7 @@ const QUARTERS = [0, 15, 30, 45];
 /**
  * The one time box. It takes typing ("0930" is 09:30), and a click opens
  * the time as two columns, hours and minutes in quarters, the chosen ones
- * teal (2026-10-18).
+ * teal.
  *
  * The columns are drawn inside the menu that holds the box, not in a portal
  * on the page: the mailbox menu closes on any press outside itself. They
@@ -357,8 +357,8 @@ export function CalendarTimePicker({
   onPick: (at: Date) => void;
   /**
    * The month beside an hour column and a minute column, and the chosen
-   * time beside the button (Send later). Under each other, the button ran
-   * past the bottom of the menu and was not seen (Ulrik, 2026-10-20).
+   * time beside the button (Send later). If they are under each other, the
+   * button runs past the bottom of the menu and is not seen.
    */
   wide?: boolean;
 }) {
@@ -555,7 +555,7 @@ function ClockColumns({
         <span className="w-14">{t("minuteColumn")}</span>
       </div>
       {/* The theme's card colour: stone-100/70 has no dark rewrite, and in
-          the dark the columns were a light grey slab (2026-10-21). */}
+          the dark the columns are a light grey slab. */}
       <div className="flex gap-1 rounded-surface bg-[var(--mail-hours-card)] p-1">
         {column(hoursRef, Array.from({ length: 24 }, (_, h) => h), hour, onHour)}
         {column(minutesRef, minutes, minute, onMinute)}

@@ -9,14 +9,14 @@
  * thread and the next one alike.
  */
 
-const KEY = "dh-mail-bubble-width";
-const SIDE_KEY = "dh-mail-bubble-grow";
+import { BUBBLE_WIDTH_KEY as KEY, BUBBLE_SIDE_KEY as SIDE_KEY } from "@/lib/mail/storage-keys";
+
 const VAR = "--mail-bubble-user-width";
 /**
  * Which way the Reader's column grows (thread-full-window in mail.css):
  * toward the edge that was dragged. One's own message is dragged by its
- * left edge, and the column grew to the right, so the edge did not follow
- * the pointer (Ulrik, 2026-10-17).
+ * left edge. If the column grows to the right, the edge does not follow
+ * the pointer.
  */
 const SIDE_ATTR = "data-mail-bubble-grow";
 export type BubbleGrowSide = "left" | "right";

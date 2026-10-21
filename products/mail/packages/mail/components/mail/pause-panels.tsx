@@ -35,8 +35,7 @@ import { MenuSelect } from "@/components/mail/menu-select";
 import { readPauseState, type MailQuietWindow } from "@/lib/mail/quiet-hours";
 import { cn } from "@/lib/utils";
 import { readHideState } from "@/lib/mail/mailbox-hide";
-import { MAIL_PAUSE_KEY } from "@/components/mail/use-mail-pause";
-import { MAILBOX_HIDE_KEY } from "@/components/mail/use-mailbox-hide";
+import { MAIL_PAUSE_KEY, MAILBOX_HIDE_KEY } from "@/lib/mail/storage-keys";
 import { MAX_UNPAUSE_WORDS, unpauseMinutes } from "@/lib/mail/unpause-friction";
 import { frictionLowered, scheduleLoosened, type PauseLock } from "@/lib/mail/pause-lock";
 
@@ -49,7 +48,7 @@ import { frictionLowered, scheduleLoosened, type PauseLock } from "@/lib/mail/pa
  * Done is a panel that loses them when it is dismissed.
  *
  * Except while a lock is on: a change that adds hours waits at the foot,
- * with how much it adds, for Unlock to save (2026-10-18). The week chart
+ * with how much it adds, for Unlock to save. The week chart
  * shows those hours hatched until then.
  */
 export function QuietHoursPanel({
@@ -220,8 +219,8 @@ export function QuietHoursPanel({
       {tabs ? <div className="mt-2">{tabs}</div> : null}
 
       {/* The week and its hours on the left, the suggestions in a rail on
-          the right: one above the other made the panel taller than the
-          window (2026-10-18). */}
+          the right: one above the other makes the panel taller than the
+          window. */}
       <div className={cn("mt-3 grid gap-x-9 gap-y-5", ownHours && offers.length && "sm:grid-cols-[minmax(0,1fr)_14rem]")}>
         <div className="min-w-0">
           {ownHours ? (
@@ -307,7 +306,7 @@ export function QuietHoursPanel({
 }
 
 /**
- * The hours offered, as the hours on (2026-10-18). Add puts them with the
+ * The hours offered, as the hours on. Add puts them with the
  * fields above.
  */
 const ON_SUGGESTIONS: { id: string; name: MailStringKey; rules: MailQuietWindow[] }[] = [

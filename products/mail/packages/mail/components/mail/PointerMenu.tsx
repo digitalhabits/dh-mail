@@ -14,12 +14,12 @@ import { MAIL_FRAME_PRESS_EVENT } from "@/lib/mail/frame-messages";
  *
  * Not when the window loses focus to another app: a reader who looks
  * something up elsewhere comes back to the menu as they left it, with a
- * half-made change in the hours editor still there (2026-10-18).
+ * half-made change in the hours editor still there.
  *
  * A press inside a message counts as outside too. The message is drawn in
  * a frame of its own, whose presses never reach this window, and a menu
  * opened by a right-click in there has the frame focused already, so no
- * blur comes either: the menu stayed up over the message.
+ * blur comes either. Without this, the menu stays up over the message.
  */
 /** The title bar's height, and a little: a shaded menu starts below it. */
 const TITLE_BAR_CLEAR = 52;
@@ -40,7 +40,7 @@ export function PointerMenu({
   className?: string;
   /**
    * A dark shade over the window behind the menu, for a menu that asks for
-   * some thought (the account hours, 2026-10-20). A press on it closes the
+   * some thought (the account hours). A press on it closes the
    * menu and reaches nothing under it.
    */
   backdrop?: boolean;
@@ -49,8 +49,8 @@ export function PointerMenu({
   const [placed, setPlaced] = React.useState({ left: x, top: y });
 
   /*
-    A menu with a shade keeps clear of the title bar: pushed up to fit, it
-    sat behind the window's own buttons (2026-10-20). It is then as tall as
+    A menu with a shade keeps clear of the title bar. If it is pushed up to
+    fit, it sits behind the window's own buttons. It is then as tall as
     the room under the bar, and scrolls inside past that.
   */
   const topMost = backdrop ? TITLE_BAR_CLEAR : 8;
@@ -78,8 +78,8 @@ export function PointerMenu({
     window.addEventListener("keydown", onKey);
     // A scroll of the page closes it; a scroll inside it (a tall panel) does
     // not. Under a shade nothing behind can be scrolled, so nothing closes
-    // it: a list in the menu that ran to its end used to carry the scroll on
-    // to the page, and the menu shut (2026-10-20).
+    // it. A list in the menu that runs to its end can carry the scroll on
+    // to the page, and that must not shut the menu.
     const onScroll = (event: Event) => {
       if (backdrop) return;
       if (ref.current?.contains(event.target as Node)) return;
@@ -120,14 +120,14 @@ export function PointerMenu({
       role="menu"
       /* Named, so a Radix popover this menu opens over can tell that a
          press landing here is not a press outside itself — the settings
-         panel is one, and it was closing under the pointer before the
-         click could land. See MailPage's settings content. */
+         panel is one. Without the name, it closes under the pointer before
+         the click can land. See MailPage's settings content. */
       data-mail-mark-menu=""
       /*
         `pointerEvents` because a Radix popover turns them off for
         everything outside its own content while it is open, and this menu
-        hangs on <body> beside it rather than inside it. It was drawn, and
-        it was not clickable: the presses went nowhere.
+        hangs on <body> beside it rather than inside it. Without this, it is
+        drawn but it is not clickable: the presses go nowhere.
       */
       style={{
         left: placed.left,

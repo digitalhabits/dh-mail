@@ -4,8 +4,8 @@
  * Blocker's rule, for Mail: while a block runs, its schedule can only be
  * made stricter, and a change that loosens it asks for the same words as
  * stopping early. Without it the words guard nothing. A reader paused on a
- * Monday could take Monday off the schedule, or set the words to zero, and
- * fetch at once without typing a thing (reported by a tester, 2026-10-05).
+ * Monday can take Monday off the schedule, or set the words to zero, and
+ * fetch at once without typing a thing.
  *
  * Stricter is free: more hours, more days, more words. Looser asks: fewer
  * hours or days, a window taken away, a mailbox that stops following All's

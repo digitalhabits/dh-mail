@@ -36,9 +36,8 @@ import { useMailT } from "@/lib/mail/i18n";
  * shows both bodies in the reader's frame, which is the one place in this
  * app where a stranger's markup is already safe.
  *
- * The frames are given the card's own face, so the preview looks the way it
- * looked when this was markup in the page. See `frameCss` in
- * `EmailHtmlView`.
+ * The frames are given the card's own face, so the preview looks the same
+ * as the card around it. See `frameCss` in `EmailHtmlView`.
  */
 
 /**
@@ -291,8 +290,7 @@ export function SentPreview({
         {hasBody ? (
           <EmailHtmlView
             html={bodyHtml}
-            /* Pictures show, as they did when this was markup in the page.
-               In the frame they are fetched the way the reader fetches
+            /* Pictures show. In the frame they are fetched the way the reader fetches
                them: by the shell, with no cookies and no referrer. */
             allowImages
             zoom={zoom}

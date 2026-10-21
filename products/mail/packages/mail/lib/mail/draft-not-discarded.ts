@@ -1,10 +1,10 @@
 /**
  * The server would not delete a draft. Say so, with its reason.
  *
- * A discard waits out its Undo and then asks the provider. When an
- * Exchange server refused, the refusal went to the page's console and no
- * further: the draft came back at the next refresh with no word why, and
- * the reader deleted it again, and again. Now the reader sees the reason.
+ * A discard waits out its Undo and then asks the provider. If an Exchange
+ * server refuses and the refusal goes only to the page's console, the draft
+ * comes back at the next refresh with no word why. Then the reader deletes
+ * it again, and again. So the reader sees the reason.
  * The shell writes it to the app's log as well (ews_send.rs).
  */
 

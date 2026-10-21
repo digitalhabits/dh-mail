@@ -2,11 +2,10 @@
  * The other addresses of an Exchange mailbox, so mail from them is ours.
  *
  * An Exchange mailbox signs in as one address and sends as another: on KU,
- * `abc123@uni.example` sends as `kim.example@dept.uni.example`. Mail counted
- * as the reader's only when it came
- * from a connected address, so a reply sent from the other address read as
- * somebody else's: on the left of the thread, new in the inbox, and pulling
- * an archived thread back (a tester on a university Exchange, 2026-10-05).
+ * `abc123@uni.example` sends as `kim.example@dept.uni.example`. If mail counts
+ * as the reader's only when it comes from a connected address, a reply sent
+ * from the other address reads as somebody else's. It shows on the left of
+ * the thread, new in the inbox, and it pulls an archived thread back.
  *
  * The directory knows every address a mailbox has (`mail_ews_own_addresses`
  * in mail-native, ews_directory.rs). It is asked once a launch for each

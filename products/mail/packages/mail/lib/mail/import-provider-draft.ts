@@ -80,8 +80,8 @@ export function draftPlainTextForComposer(bodyText: string): string {
  *
  * Every marker in `stripQuotedReplies` is anchored to a newline, which is the
  * right way to read a plain-text mail. A draft does not always arrive that
- * way: this one came through as one long line, so nothing matched and the
- * whole conversation went into the composer as a single paragraph.
+ * way. Some come through as one long line. Then nothing matches, and the
+ * whole conversation goes into the composer as a single paragraph.
  *
  * Only patterns that cannot plausibly appear in a sentence someone wrote.
  */
@@ -119,11 +119,10 @@ export type ImportDraftQuestion = {
   /**
    * When each was last written, in milliseconds.
    *
-   * A draft of ours used to outrank the provider's outright, on the grounds
-   * that it is what the reader was typing here. That is true right up until
-   * they go and edit the same reply in Gmail — and then the box here opens on
-   * words that were replaced somewhere else, with nothing to say so. The
-   * later of the two wins now, whichever side wrote it.
+   * A draft of ours does not outrank the provider's outright. It is what the
+   * reader typed here, but they can edit the same reply in Gmail after that.
+   * Then the box here opens on words that were replaced somewhere else, with
+   * nothing to say so. The later of the two wins, whichever side wrote it.
    */
   localDraftAt: number | null;
   providerDraftAt: number | null;

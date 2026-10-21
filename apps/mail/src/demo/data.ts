@@ -381,6 +381,11 @@ function conversation(input: {
  * receipt, and a couple of short ones so the list has ordinary rows in it.
  */
 export function demoThreads(): DemoThread[] {
+  return [...demoThreadsFirst(), ...demoThreadsSecond()];
+}
+
+/** The first half of the demo inbox, newest first. */
+function demoThreadsFirst(): DemoThread[] {
   return [
     {
       summary: summary({
@@ -618,6 +623,12 @@ export function demoThreads(): DemoThread[] {
         }),
       ],
     },
+  ];
+}
+
+/** The second half of the demo inbox, newest first. */
+function demoThreadsSecond(): DemoThread[] {
+  return [
     {
       summary: summary({
         threadId: "t-catalogue",

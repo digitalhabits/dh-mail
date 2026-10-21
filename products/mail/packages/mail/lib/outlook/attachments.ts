@@ -137,8 +137,8 @@ export async function resolveOutlookInlineImages(
    * asks for. The content id says that, and it only arrives with the bytes —
    * so a picture the body never mentions is fetched and then dropped. The
    * per-picture ceiling is what keeps that from mattering; an inline part
-   * nothing references is rare, and a wasted request is better than the hole
-   * the reader used to see.
+   * nothing references is rare, and a wasted request is better than a hole
+   * where the picture belongs.
    */
   const candidates = all.filter(
     (a) =>

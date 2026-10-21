@@ -6,10 +6,10 @@
  * halves: the folder it left says "this id is gone", and the folder it went
  * to says "here is a new message". The halves do not arrive together. The
  * inbox is read every ten seconds and the other folders once a minute, and
- * Graph's change feed for a folder can run behind the move itself. The first
- * half used to delete the row at once. So a mail moved to Trash was shown in
- * Trash for a few seconds, then in no folder at all for a minute or more,
- * and then in Trash again. To the reader it had been deleted.
+ * Graph's change feed for a folder can run behind the move itself. If the
+ * first half deletes the row at once, a mail moved to Trash shows in Trash
+ * for a few seconds. Then it is in no folder at all for a minute or more,
+ * and then in Trash again. To the reader it looks deleted.
  *
  * So the first half is held back for a message that this app moved. The row,
  * which already wears its new label, stays where the reader put it. It goes

@@ -8,6 +8,7 @@
  * No React here, so a test can run it directly.
  */
 
+import { SNOOZE_SETTINGS_KEY } from "@/lib/mail/storage-keys";
 import { mailSay } from "@/lib/mail/i18n-strings";
 import {
   MAX_OPTION_DAYS,
@@ -35,7 +36,6 @@ export const SNOOZE_UNITS = TIMED_UNITS;
 export const MAX_SNOOZE_HOURS = MAX_OPTION_HOURS;
 export const MAX_SNOOZE_DAYS = MAX_OPTION_DAYS;
 
-export const SNOOZE_SETTINGS_KEY = "redd-plan-mail-snooze-options";
 export const SNOOZE_SETTINGS_EVENT = "redd-plan-mail-snooze-options-changed";
 
 export function defaultSnoozeSettings(): SnoozeSetting[] {

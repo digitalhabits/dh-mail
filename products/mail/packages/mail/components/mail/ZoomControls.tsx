@@ -44,8 +44,8 @@ export function ZoomControls({
   return (
     // Its own border and no fill: on the dark theme `bg-white` becomes a
     // card, and this is a pill on the toolbar rather than a thing on it.
-    // `mail-chrome-strip`: the − and + are written as text, so a double
-    // click anywhere near the pill used to select one of them. The pill
+    // `mail-chrome-strip`: the − and + are written as text. Without it, a
+    // double click anywhere near the pill selects one of them. The pill
     // travels — the reader, a draft, the settings panel — and it carries
     // the rule with it. See mail.css.
     <div className="mail-chrome-strip flex shrink-0 items-center gap-0.5 rounded-full border border-[var(--mail-field-border)] px-1.5 py-1">

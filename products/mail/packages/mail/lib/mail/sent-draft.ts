@@ -1,10 +1,9 @@
 /**
  * Did a draft's words already go out?
  *
- * A thread opened on a draft of a reply that had been sent: the reader
- * landed in the composer with the old words in it, and could send them a
- * second time (a tester on a university Exchange, 2026-10-05). Why the draft lived
- * on is not known for certain. This is the net under it: when one of our
+ * A thread can open on a draft of a reply that was already sent. Then the
+ * reader lands in the composer with the old words in it, and can send them
+ * a second time. Why the draft lives on is not known for certain. This is the net under it: when one of our
  * own messages in the thread carries the draft's words, the draft is
  * spent, whatever kept it.
  *

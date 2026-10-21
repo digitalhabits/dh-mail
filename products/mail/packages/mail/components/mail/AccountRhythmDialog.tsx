@@ -85,8 +85,7 @@ export function AccountRhythmDialog({ email, onClose }: { email: string; onClose
   const [step, setStep] = React.useState<1 | 2>(1);
   const [shown, setShown] = React.useState<MailQuietWindow[]>(SHOWN_PRESETS.always);
   const [fetching, setFetching] = React.useState<MailQuietWindow[]>(FETCH_PRESETS.always);
-  // Off to begin with, whatever is set for the other mailboxes (Ulrik,
-  // 2026-10-20). Left off, nothing changes; turned on, it asks for words.
+  // Off to begin with, whatever is set for the other mailboxes. Left off, nothing changes; turned on, it asks for words.
   const [showLock, setShowLock] = React.useState(false);
   const [fetchLock, setFetchLock] = React.useState(false);
 
@@ -165,7 +164,7 @@ export function AccountRhythmDialog({ email, onClose }: { email: string; onClose
 
 /**
  * The mailbox, connected, and which step of two this is. Its picture can be
- * chosen here, as in Settings (2026-10-20): the mark with its pencil opens
+ * chosen here, as in Settings: the mark with its pencil opens
  * the picture menu, and "Choose a picture" goes straight to the file.
  */
 function DialogHeading({ email, step }: { email: string; step: 1 | 2 }) {

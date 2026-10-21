@@ -17,6 +17,7 @@
  * and the window closes when the last conversation has gone.
  */
 
+import { PERSON_WINDOW_PREFIX as KEPT_PREFIX } from "@/lib/mail/storage-keys";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 
@@ -24,6 +25,7 @@ import { TeamLayerHost } from "@/components/mail/team-layer";
 import { PersonPane } from "@/components/mail/PersonPane";
 import { ThreadReaderWindow } from "@/components/mail/ThreadReaderWindow";
 import { useMailZoom } from "@/components/mail/use-mail-layout";
+import { useZoomKeys } from "@/components/mail/use-zoom-keys";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import type { PersonRow } from "@/lib/mail/person-participants";
 import { unpinMailThread } from "@/lib/mail/pins";
@@ -37,8 +39,6 @@ import { threadKey } from "@/lib/mail/thread-copies";
 import { useMailColorMode } from "@/lib/mail/theme";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { closeMailReaderWindow, isNativeShell } from "@/lib/native-shell";
-
-const KEPT_PREFIX = "redd-plan-mail-person-window:";
 
 /** This conversation and every copy the row stood for. */
 function copiesOf(
@@ -81,6 +81,7 @@ export function PersonReaderWindow({
 }) {
   const colorMode = useMailColorMode();
   const [zoom, adjustZoom] = useMailZoom();
+  useZoomKeys(zoom, adjustZoom);
   const kept = KEPT_PREFIX + personKey;
 
   const [row, setRow] = React.useState<PersonRow | null>(() => {

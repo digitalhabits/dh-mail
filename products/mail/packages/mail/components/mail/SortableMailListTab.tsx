@@ -91,8 +91,8 @@ export function SortableMailListTab({
           : t("listTabHint", { name: label })
       }
       className={cn(
-        // An underlined tab, as in To-Do (2026-10-11). They were chips that
-        // could be switched on together, which read as confusing.
+        // An underlined tab, as in To-Do. Not chips: chips that can be
+        // switched on together read as confusing.
         viewTabClass(active),
         "touch-none",
         isDragging && "z-10 cursor-grabbing opacity-80"
@@ -107,7 +107,7 @@ export function SortableMailListTab({
 
 /**
  * A search's hits on a tab, small and quiet after its name: the reader sees
- * which tab their result is on before clicking through (Ulrik, 2026-10-20).
+ * which tab their result is on before clicking through.
  */
 export function TabHits({ hits }: { hits?: number | null }) {
   if (hits == null) return null;

@@ -331,7 +331,7 @@ const LIBRARY_TIME = "06:30";
  * stands for this side, and the list it gives.
  *
  * The switch, not a radio dot: it is the control the title bar has, so
- * the reader meets it here first and knows it there (2026-10-17).
+ * the reader meets it here first and knows it there.
  */
 function StackOption({
   label,
@@ -363,7 +363,7 @@ function StackOption({
       <span className="welcome-stack-option-head">
         <span>{label}</span>
         {/* The switch with its icon and name, as the title bar has it, so
-            the reader knows it there (2026-10-18). */}
+            the reader knows it there. */}
         <span className="welcome-switch-control" aria-hidden="true">
           <GalleryVerticalEnd className="welcome-switch-icon" />
           {switchLabel}
@@ -501,7 +501,7 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
             >
               {/* The tour's steps lie on top of each other, the one shown on
                   top: the card is as tall as the tallest, so Back, the dots
-                  and Next stay in one place from step to step (2026-10-18). */}
+                  and Next stay in one place from step to step. */}
               {step < TOUR_STEPS ? (
                 <div className="welcome-tour-panes">
                   {[

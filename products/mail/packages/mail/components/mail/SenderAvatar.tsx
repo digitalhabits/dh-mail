@@ -94,9 +94,8 @@ export function SenderAvatar({
       {unread ? (
         <span
           className={cn(
-            // One teal in both themes — see --mail-accent. It was a lighter
-            // one on navy, which made the same mark two colours depending
-            // on which theme you had.
+            // One teal in both themes — see --mail-accent. A lighter one on
+            // navy makes the same mark two colours, one for each theme.
             "absolute right-0 top-0 h-2 w-2 rounded-full bg-[var(--mail-accent)] ring-2",
             onNavy ? "ring-brandNavy" : "ring-[#faf8f5]"
           )}

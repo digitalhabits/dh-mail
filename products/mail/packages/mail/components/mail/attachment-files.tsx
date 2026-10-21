@@ -91,10 +91,10 @@ export type AttachmentSourceState = {
 /**
  * The same, with the reason it failed.
  *
- * A URL of null used to mean two different things — still reading, and could
- * not be read — so anything waiting on one waited for ever. A thumbnail can
- * live with that and show its placeholder either way; a window opened on
- * purpose to see the file cannot, and said "Loading…" until it was closed.
+ * A URL of null alone means two different things: still reading, and cannot
+ * be read. So anything that waits on it waits for ever. A thumbnail can show
+ * its placeholder either way. A window opened on purpose to see the file
+ * cannot, and says "Loading…" until it is closed.
  */
 export function useAttachmentSourceState(
   path: string | null
@@ -197,11 +197,11 @@ export function attachmentDownloadProps(input: {
  * the tiles and rows here only say which file they are showing.
  *
  * The pointer resting on the file is the signal to get ready — see
- * `prepareAttachmentDrag`. The pointer going down was the only signal, and
- * a file of a few megabytes was not read by the time the drag began: the
- * drag waited for it, and a reader who let go in that time got nothing
- * (2026-10-17). Resting reads the file for a drag that may never happen;
- * that is the same reading a preview does, once per file.
+ * `prepareAttachmentDrag`. If the pointer going down is the only signal, a
+ * file of a few megabytes is not read by the time the drag begins. The drag
+ * waits for it, and a reader who lets go in that time gets nothing. Resting
+ * reads the file for a drag that can never happen. That is the same reading
+ * that a preview does, once per file.
  */
 export function attachmentDragProps(input: {
   path: string;
@@ -222,9 +222,9 @@ export function attachmentDragProps(input: {
   };
   /*
     A desktop host drags the file itself, as soon as the pointer moves a
-    few pixels with the button down. The page's own drag of a button began
-    only after the button was held for a moment, and Finder took nothing
-    from it (Ulrik, 2026-10-17). A browser keeps the page's drag, which is
+    few pixels with the button down. The page's own drag of a button begins
+    only after the button is held for a moment, and Finder takes nothing
+    from it. A browser keeps the page's drag, which is
     what puts the file on it.
   */
   const native = hostDragsAttachments;

@@ -2,8 +2,8 @@
  * The mail interface's toast: sonner's, with one thing added.
  *
  * A message that says "reconnect" names a mailbox that has lost its grant,
- * and the reader's next question is how. The answer used to be "find it
- * in Settings". Now the toast carries a Reconnect button that starts the
+ * and the reader's next question is how. So the toast carries a Reconnect
+ * button that starts the
  * connect flow for that mailbox, whichever of the forty-odd places raised
  * the toast. The mail page listens for the request and runs it, because
  * it is the one with the connect hook.

@@ -64,8 +64,8 @@ export function useMailSyncStates(): MailSyncState[] {
     /*
       Read every state again when the window gets the focus back, and when
       new mail lands. A reconnect, or a state some other path wrote, sends
-      no state event, so a "sync paused" line stayed after the reader had
-      signed in again and the mailbox was syncing (2026-10-09).
+      no state event. Without this, a "sync paused" line stays after the
+      reader signs in again and the mailbox syncs.
     */
     const reread = () => {
       forgetSyncStates();
@@ -86,8 +86,8 @@ export function useMailSyncStates(): MailSyncState[] {
             const rest = prev.filter(
               (s) => !(s.account === next.account && s.folder === (next.folder ?? ""))
             );
-            // In one order, whatever moved: the mailboxes swapped places
-            // with every batch when the freshest went to the end.
+            // In one order, whatever moved. If not, the mailboxes swap places
+            // with every batch when the freshest goes to the end.
             return sorted([...rest, { ...next, folder: next.folder ?? "" }]);
           });
         })

@@ -3,38 +3,27 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { usePageAccounts, usePageCompose, usePageLayout, usePageList, usePageReader } from "@/components/mail/mail-page-slices";
 import { ComposeView } from "@/components/mail/ComposeView";
 import { ThreadPane } from "@/components/mail/ThreadPane";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 
 /** The floated reply and the floated new message, over everything. */
 export function FloatingCards({
-  m,
   sendFrom,
 }: {
-  m: MailPageModel;
   /** What From offers: every mailbox, the hidden ones too (sendFromAccounts). */
   sendFrom: string[];
 }) {
-  const {
-    adjustZoom,
-    floatingCompose,
-    floatingReply,
-    folders,
-    mailboxScopeEmails,
-    scheduleSentRefreshForAccount,
-    setFloatingCompose,
-    setFloatingReply,
-    setSelected,
-    startCompose,
-    threads,
-    zoom,
-  } = m;
+  const { adjustZoom, zoom } = usePageLayout();
+  const { floatingCompose, floatingReply, setFloatingCompose, setFloatingReply, startCompose } = usePageCompose();
+  const { folders, scheduleSentRefreshForAccount, threads } = usePageList();
+  const { mailboxScopeEmails } = usePageAccounts();
+  const { setSelected } = usePageReader();
   return (
     <>
       {/* The floating reply is the thread pane itself, showing nothing but

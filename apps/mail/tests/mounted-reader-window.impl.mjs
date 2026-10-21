@@ -10,7 +10,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
-import { MAIL_CHANGED_KEY } from "@/lib/mail/reader-window";
+import { MAIL_CHANGED_KEY } from "@/lib/mail/storage-keys";
 import { ThreadReaderWindow } from "@/components/mail/ThreadReaderWindow";
 
 const pass = (line) => console.log(`PASS  ${line}`);

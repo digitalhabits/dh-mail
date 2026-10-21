@@ -45,11 +45,11 @@ export type MailAutoReply = {
    * Why this mailbox has no auto-reply to show, when it has none.
    *
    * A personal Microsoft account is the case this exists for: Graph answers
-   * `/me/mailboxSettings` with 404 for some of them, and the mailbox simply
-   * cannot be told to reply automatically from here. Saying so is better
-   * than a "Set up…" that fails, and far better than what this used to do —
-   * one such account threw, the whole list failed, and every account lost
-   * the out-of-office row.
+   * `/me/mailboxSettings` with 404 for some of them, and the mailbox cannot
+   * be told to reply automatically from here. Saying so is better than a
+   * "Set up…" that fails. It is far better than an error for that account,
+   * because then the whole list fails and every account loses the
+   * out-of-office row.
    */
   unavailable?: string;
 };
@@ -94,7 +94,7 @@ function invalidateAutoReplyCache(): void {
 /**
  * Auto-reply state for every connected account, hidden ones too. Hiding a
  * mailbox keeps its mail off the screen; it is not a reason to stop managing
- * its out-of-office reply (2026-10-08). Accounts whose token predates
+ * its out-of-office reply. Accounts whose token predates
  * the settings scope come back with needsReconnect instead of failing the
  * whole request.
  *
@@ -165,11 +165,11 @@ export async function listMailAutoReplies(
       /**
        * Anything else is this mailbox's problem, and only this mailbox's.
        *
-       * This used to rethrow. One account that could not answer — a personal
-       * Microsoft account, whose mailbox settings Graph refuses with 404 —
-       * failed the whole request, so the page got nothing and every account
-       * lost its out-of-office row. A reader with one such account saw the
-       * feature simply not exist.
+       * It does not rethrow. Some accounts cannot answer, for example a
+       * personal Microsoft account, whose mailbox settings Graph refuses with
+       * 404. If that error is rethrown, the whole request fails. Then the page
+       * gets nothing and every account loses its out-of-office row. A reader
+       * with one such account sees no feature at all.
        */
       console.warn(`[mail] auto-reply for ${a.email}:`, err);
       results.push({

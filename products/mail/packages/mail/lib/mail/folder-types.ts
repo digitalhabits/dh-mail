@@ -131,12 +131,11 @@ export function isImapNamespaceFolder(name: string): boolean {
   return IMAP_NAMESPACE_ROOTS.has(root);
 }
 
-/** Fold the per-account rows into one list, the way the old menu shows them. */
 /**
  * The folders of every mailbox as one list, by name.
  *
  * What each row *is* travels with it. Without that, a list of names cannot
- * tell Inbox from Invoices, and the menu that files a conversation offered
+ * tell Inbox from Invoices. The menu that files a conversation then offers
  * both — Inbox, Sent and Drafts among the folders, under the four places
  * that already name them.
  */

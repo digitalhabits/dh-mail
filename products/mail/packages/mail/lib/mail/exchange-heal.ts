@@ -2,11 +2,11 @@
  * Mend a row of the local copy whose item id the Exchange server no longer
  * knows.
  *
- * Seen on the KU server (2026-09-27): after moves, a row kept an id that
- * `GetItem` answered with `ErrorItemNotFound`, while the message was still
- * in the folder under another id. The folder's sync state said "up to
- * date", so no pass would ever bring the message again, and Show original,
- * its files, and its body failed for good.
+ * Seen on the KU server: after moves, a row can keep an id that `GetItem`
+ * answers with `ErrorItemNotFound`, while the message is still in the folder
+ * under another id. The folder's sync state says "up to date", so no pass
+ * brings the message again. Then Show original, its files, and its body
+ * fail for good.
  *
  * The mend: take the row out, drop the sync state of the folder it was in,
  * and wake the worker. The next pass reads that folder from the start and

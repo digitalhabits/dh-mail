@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  *  on hover once there is no room for the label. */
 /* No light island: Reply and Forward are our own words on our own buttons,
    with no email in them, so they take the theme like the rest of the chrome.
-   As a light island they were two white slabs at the foot of a dark pane.
+   As a light island they are two white slabs at the foot of a dark pane.
 
    Named colours rather than stone classes, because the theme's blanket
    rewrites are what put those white slabs there: `bg-white` inside a light

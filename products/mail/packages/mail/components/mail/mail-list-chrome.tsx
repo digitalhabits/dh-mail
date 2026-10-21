@@ -3,12 +3,11 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
-import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import * as React from "react";
 import { TriageTab } from "@/components/mail/team-layer";
 import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
@@ -19,8 +18,8 @@ import { toast } from "@/lib/mail/toast";
 
 /**
  * A drop on a folder that did not move the mail says why. The rail calls a
- * drop without waiting on it, so an error here was an unhandled rejection
- * in the console and nothing on screen: the drop seemed to do nothing.
+ * drop without waiting on it. Without this, an error here is an unhandled
+ * rejection in the console and nothing on screen: the drop seems to do nothing.
  */
 function dropFailed(err: unknown): void {
   toast.error(err instanceof Error ? err.message : String(err));
@@ -31,7 +30,8 @@ import { draftCountForTabs } from "@/components/mail/draft-opening";
 import { MailCustomListEditor } from "@/components/mail/MailCustomListEditor";
 import { createCustomList, customListTabId, deleteCustomList, parseCustomListTabId, updateCustomList } from "@/lib/mail/custom-lists";
 import type { MailFolder } from "@/lib/mail/folder-types";
-import { mailSay } from "@/lib/mail/i18n";
+import { mailSay, useMailT } from "@/lib/mail/i18n";
+import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
 import type { PauseControls } from "@/components/mail/account-hours-menu";
 import { MailAccountTabs, MailRowButton } from "@/components/mail/MailAccountTabs";
 import { setTabSchedule } from "@/lib/mail/tab-schedules";
@@ -42,33 +42,18 @@ import { MailLayoutMenu } from "@/components/mail/MailListControls";
 import { SortableMailListTab, TabHits, viewTabClass } from "@/components/mail/SortableMailListTab";
 import { threadOnTab } from "@/components/mail/use-list-tabs";
 import { isMailboxScopeAll, MailListTab, MAIL_OFF_TAB_VIEWS, mailBuiltinTabLabels } from "@/components/mail/mail-list-state";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 
-export function FoldersMenu({
-  m,
+export const FoldersMenu = React.memo(function FoldersMenu({
   iconOnly,
 }: {
-  m: MailPageModel;
   iconOnly: boolean;
 }) {
-  const {
-    accountEmails,
-    chromeDark,
-    drafts,
-    mailboxScopeEmails,
-    folderApiAccount,
-    folders,
-    foldersLoading,
-    heldMessages,
-    snoozedCount,
-    moveToFolder,
-    refreshDrafts,
-    refreshFolders,
-    setActiveFolder,
-    setSelected,
-    setSelectedPersonKey,
-    setTab,
-  } = m;
+  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
+  const { chromeDark } = usePageLayout();
+  const { drafts, refreshDrafts } = usePageCompose();
+  const { folderApiAccount, folders, foldersLoading, heldMessages, snoozedCount, refreshFolders, setActiveFolder, setTab } = usePageList();
+  const { moveToFolder } = usePageActions();
+  const { setSelected, setSelectedPersonKey } = usePageReader();
   return (
     <FoldersTabMenu
       onNavy={chromeDark}
@@ -149,41 +134,15 @@ export function FoldersMenu({
       }}
     />
   );
-}
+});
 
-export function FolderRail({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    accountEmails,
-    accountFolders,
-    actOnSelection,
-    activeFolder,
-    drafts,
-    dragCarriesSelection,
-    draggingAccount,
-    foldersLoading,
-    heldMessages,
-    snoozedCount,
-    lastListTabRef,
-    mailboxScopeEmails,
-    moveManyToFolder,
-    moveToFolder,
-    moveToInbox,
-    onReorderAccount,
-    railOnRight,
-    railSystemView,
-    refreshDrafts,
-    refreshFolders,
-    setActiveFolder,
-    setSelected,
-    setSelectedPersonKey,
-    setTab,
-    setThreadJunk,
-    trash,
-  } = m;
+export const FolderRail = React.memo(function FolderRail() {
+  const { accountEmails, mailboxScopeEmails, onReorderAccount } = usePageAccounts();
+  const { accountFolders, activeFolder, draggingAccount, foldersLoading, heldMessages, snoozedCount, lastListTabRef, railSystemView, refreshFolders, setActiveFolder, setTab } = usePageList();
+  const { actOnSelection, dragCarriesSelection, moveManyToFolder, moveToFolder, moveToInbox, setThreadJunk, trash } = usePageActions();
+  const { drafts, refreshDrafts } = usePageCompose();
+  const { railOnRight } = usePageLayout();
+  const { setSelected, setSelectedPersonKey } = usePageReader();
   return (
     <MailFolderRail
       accountFolders={accountFolders}
@@ -284,9 +243,9 @@ export function FolderRail({
           return;
         }
         // Everything the drag was carrying, which is the selection when the
-        // row dragged was part of it. One of them dropped and the other two
-        // stayed where they were, with a toast that named the folder as
-        // though all three had gone.
+        // row dragged was part of it. If only the dragged row moves, the
+        // others stay where they are, and the toast names the folder as
+        // though all of them went.
         const carried = dragCarriesSelection(thread).filter(
           (t) => t.account.toLowerCase() === account.toLowerCase()
         );
@@ -407,7 +366,7 @@ export function FolderRail({
       }}
     />
   );
-}
+});
 
 /**
  * The way to the folders.
@@ -422,17 +381,9 @@ export function FolderRail({
  * would leave a gap in the row and the rail with no way to close it.
  */
 
-export function FoldersButton({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    chromeDark,
-    railShowing,
-    setRailOpen,
-    t,
-  } = m;
+export const FoldersButton = React.memo(function FoldersButton() {
+  const { chromeDark, railShowing, setRailOpen } = usePageLayout();
+  const t = useMailT();
   return (
     <MailRowButton
       icon={Folder}
@@ -456,33 +407,17 @@ export function FoldersButton({
       }}
     />
   );
-}
+});
 
 /**
  * The list tabs, as in To-Do: All, the built-in lists, the reader's own,
- * and New list. One at a time, underlined. They were chips that could be
- * switched on together, behind a funnel, and read as confusing.
+ * and New list. One at a time, underlined. Chips that can be switched on
+ * together, behind a funnel, read as confusing.
  */
 
-export function FilterChips({
-  m,
-}: {
-  m: MailPageModel;
-}) {
-  const {
-    customListById,
-    searchHits,
-    listEditor,
-    setActiveFolder,
-    setListEditor,
-    setTab,
-    setTabOrder,
-    t,
-    tab,
-    tabOrder,
-    tabReorderSensors,
-    tabReorderSuppressClick,
-  } = m;
+export const FilterChips = React.memo(function FilterChips() {
+  const t = useMailT();
+  const { customListById, searchHits, listEditor, setActiveFolder, setListEditor, setTab, setTabOrder, tab, tabOrder, tabReorderSensors, tabReorderSuppressClick } = usePageList();
   const tabIcons = useTabIcons();
   return (
       /* The half-rem of padding, and the same again in negative margin, is
@@ -551,12 +486,12 @@ export function FilterChips({
                     }}
                     // Right-click opens it: a list of your own whole, a
                     // built-in filter at its schedule, which is all there is
-                    // to it. Pressing it again used to, and now takes it off.
+                    // to it. Pressing it again takes it off.
                     onEdit={() => setListEditor(custom ? custom.id : id)}
                   />
                   {/* The organization's build puts its ranked list here,
                       right of Other, once there is one. */}
-                  {id === "other" ? <TriageTab m={m} tabClass={viewTabClass} /> : null}
+                  {id === "other" ? <TriageTab tabClass={viewTabClass} /> : null}
                   </React.Fragment>
                 );
               })}
@@ -649,9 +584,9 @@ export function FilterChips({
                     : "text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
                 )}
               >
-                {/* 2px down: centred on the row it sat on the middle of
-                    the capitals, and read as higher than "Other" beside
-                    it, whose letters are mostly lower case (2026-10-17). */}
+                {/* 2px down: centred on the row it sits on the middle of
+                    the capitals, and reads as higher than "Other" beside
+                    it, whose letters are mostly lower case. */}
                 <span
                   className={cn(
                     "flex h-5 w-5 translate-y-0.5 items-center justify-center rounded",
@@ -668,20 +603,16 @@ export function FilterChips({
         </DndContext>
       </div>
   );
-}
+});
 
 export function FilterRow({
-  m,
   filterChips,
   foldersButton,
 }: {
-  m: MailPageModel;
   filterChips: React.ReactNode;
   foldersButton: React.ReactNode;
 }) {
-  const {
-    filtersShowing,
-  } = m;
+  const { filtersShowing } = usePageList();
   // Here only with one mailbox; with more, before their tabs.
   const ownsFolders = foldersButton != null;
   return (
@@ -705,34 +636,30 @@ export function FilterRow({
 
 /** The mailbox row: All, then one tab per mailbox. */
 
-export function AccountTabs({
-  m,
-  hide,
-}: {
-  m: MailPageModel;
-  /** Hiding mailboxes for a while, and the greyed tabs (use-mailbox-hide). */
-  hide?: MailboxHideControls;
-}) {
+export const AccountTabs = React.memo(function AccountTabs() {
+  const accounts = usePageAccounts();
   const {
     accountEmails,
     accountLabels,
     autoReplyByAccount,
-    chromeDark,
     isOutlookAccount,
     mailboxScopeEmails,
     quietUntilByAccount,
     setAccountEmails,
     setMailboxScopeEmails,
-  } = m;
+    // Hiding mailboxes for a while, and the greyed tabs (use-mailbox-hide).
+    hide,
+  } = accounts;
+  const { chromeDark } = usePageLayout();
   // Pausing, for the tab's menu: hiding and pausing are one menu now.
   const pause: PauseControls = {
-    state: m.pauseState,
-    now: m.pauseNow,
-    pauseUntil: m.pauseMailUntil,
-    resume: m.resumeMail,
-    setQuietHours: m.setMailQuietHours,
-    setFollowAllHours: m.setFollowAllHours,
-    setUnpauseWords: m.setUnpauseWords,
+    state: accounts.pauseState,
+    now: accounts.pauseNow,
+    pauseUntil: accounts.pauseMailUntil,
+    resume: accounts.resumeMail,
+    setQuietHours: accounts.setMailQuietHours,
+    setFollowAllHours: accounts.setFollowAllHours,
+    setUnpauseWords: accounts.setUnpauseWords,
   };
   return (
           <MailAccountTabs
@@ -754,16 +681,14 @@ export function AccountTabs({
             pause={pause}
           />
   );
-}
+});
 
 export function ListTabsOrFolder({
-  m,
   accountTabs,
   filterRow,
   foldersButton,
   accountTabsShowing,
 }: {
-  m: MailPageModel;
   accountTabs: React.ReactNode;
   filterRow: React.ReactNode;
   /** The way to the folders, before the mailbox tabs; null when it stands elsewhere. */
@@ -771,28 +696,10 @@ export function ListTabsOrFolder({
   /** Whether the mailbox row shows: more than one mailbox connected, hidden ones counted. */
   accountTabsShowing: boolean;
 }) {
-  const {
-    accountFolders,
-    activeFolder,
-    chromeDark,
-    debouncedSearch,
-    editingBuiltin,
-    editingList,
-    folders,
-    listEditor,
-    listVertical,
-    setActiveFolder,
-    setListEditor,
-    setSelected,
-    setSelectedPersonKey,
-    setTab,
-    setTabOrder,
-    t,
-    tab,
-    tabOrder,
-    tabSchedules,
-    threads,
-  } = m;
+  const t = useMailT();
+  const { accountFolders, activeFolder, debouncedSearch, editingBuiltin, editingList, folders, listEditor, setActiveFolder, setListEditor, setTab, setTabOrder, tab, tabOrder, tabSchedules, threads } = usePageList();
+  const { chromeDark, listVertical } = usePageLayout();
+  const { setSelected, setSelectedPersonKey } = usePageReader();
   const tabIcons = useTabIcons();
   return (
     activeFolder ? (
@@ -973,27 +880,22 @@ export function ListTabsOrFolder({
 
 /** Display & accounts, with Settings, shortcuts and contact sources in it. */
 
-export function LayoutMenu({
-  m,
-}: {
-  m: MailPageModel;
-}) {
+export const LayoutMenu = React.memo(function LayoutMenu() {
   const {
     accountEmails,
     autoReplies,
-    chromeDark,
-    endAutoReply,
-    loadThreads,
     onMailboxVisibilityChange,
     onOwnIdentityChange,
-    openAutoReply,
     ownIdentity,
-  } = m;
+  } = usePageAccounts();
+  const { endAutoReply, openAutoReply } = usePageCompose();
+  const { loadThreads } = usePageSync();
+  const { chromeDark } = usePageLayout();
   return (
           <MailLayoutMenu
             onNavy={chromeDark}
-            // It opens below the button now rather than off the right edge,
-            // so it lines up with its left side.
+            // It opens below the button, not off the right edge, so it
+            // lines up with its left side.
             align="start"
             knownEmails={accountEmails}
             onVisibilityChange={onMailboxVisibilityChange}
@@ -1007,4 +909,4 @@ export function LayoutMenu({
             onOwnIdentityChange={onOwnIdentityChange}
           />
   );
-}
+});

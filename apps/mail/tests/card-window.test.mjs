@@ -9,6 +9,11 @@
 import { join } from "node:path";
 
 import { cardWindowClass } from "@/lib/mail/card-window";
+import {
+  FLOATING_CARD_CENTRED_SUFFIX,
+  FLOATING_COMPOSE_SIZE_KEY,
+  FLOATING_REPLY_SIZE_KEY,
+} from "@/lib/mail/storage-keys";
 
 import { check, suite } from "./harness.mjs";
 import { composeViewSource, readSource, threadPaneSource } from "./mail-page-source.mjs";
@@ -165,7 +170,8 @@ suite(async () => {
   );
   check(
     "the dialog keeps a size of its own",
-    drag.includes("`${sizeKey}:centred`")
+    drag.includes("`${sizeKey}${FLOATING_CARD_CENTRED_SUFFIX}`") &&
+      FLOATING_CARD_CENTRED_SUFFIX === ":centred"
   );
   check(
     "and is never carried out of the middle",
@@ -225,8 +231,10 @@ suite(async () => {
   }
   check(
     "and the two remember their sizes apart",
-    pane.includes('"dh-mail-floating-reply-size"') &&
-      compose.includes('"dh-mail-floating-compose-size"')
+    pane.includes("FLOATING_REPLY_SIZE_KEY") &&
+      compose.includes("FLOATING_COMPOSE_SIZE_KEY") &&
+      FLOATING_REPLY_SIZE_KEY === "dh-mail-floating-reply-size" &&
+      FLOATING_COMPOSE_SIZE_KEY === "dh-mail-floating-compose-size"
   );
   check(
     "neither heading carries a fourth button back to the pane",

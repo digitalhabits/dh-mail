@@ -84,9 +84,9 @@ export async function exchangeTipMessageId(account: string, threadId: string): P
  */
 export async function snoozeExchangeThread(account: string, threadId: string): Promise<void> {
   const email = normalize(account);
-  // The move is in the same turn as the record. A wake that came while the
-  // move was on its way found nothing in Snoozed, forgot the thread, and the
-  // move then left it there for good (KU, 2026-09-27). Now a wake waits.
+  // The move is in the same turn as the record, so a wake waits. If a wake
+  // comes while the move is on its way, it finds nothing in Snoozed and
+  // forgets the thread. The move then leaves the thread there for good.
   await inTurn(async () => {
     const state = await readState(email);
     const kept = state.folderId && (await exchangeSnoozeFolderId(email));

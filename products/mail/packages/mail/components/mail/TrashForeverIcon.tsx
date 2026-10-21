@@ -4,9 +4,9 @@ import * as React from "react";
 
 /**
  * A red one step softer than the red of an error. The full red (#dc2626)
- * drew the eye to this corner of the toolbar every time the reader opened
- * Trash, for an action they seldom want. A muted brick (#c2665a) went too
- * far the other way: beside the warm grey icons it read as brown, and brown
+ * draws the eye to this corner of the toolbar every time the reader opens
+ * Trash, for an action they seldom want. A muted brick (#c2665a) goes too
+ * far the other way: beside the warm grey icons it reads as brown, and brown
  * is not a warning. This is halfway between the two.
  */
 const WARNING = "#cf4640";

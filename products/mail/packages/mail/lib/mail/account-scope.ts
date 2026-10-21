@@ -61,7 +61,7 @@ export function filterAccountsForScope<
  * Whether a list asks the hidden mailboxes too: Sent does, browsed or
  * searched inside Sent. Hiding a mailbox takes the mail that comes in off
  * the screen, but Sent is where you check that a message went, also from a
- * hidden mailbox (2026-10-19). A search that is not kept inside Sent
+ * hidden mailbox. A search that is not kept inside Sent
  * reaches the inbox, so it does not.
  */
 export function listIncludesHiddenMailboxes(view: {
@@ -77,8 +77,8 @@ export function listIncludesHiddenMailboxes(view: {
 /**
  * The addresses a message can go from: the mailboxes shown, then the hidden
  * ones. Hiding a mailbox takes its mail off the screen, not the address
- * out of From — a reply from it was otherwise impossible until it was
- * shown again.
+ * out of From. Otherwise a reply from it is impossible until the mailbox
+ * is shown again.
  */
 export function sendFromAccounts(shown: string[], hidden: string[] = []): string[] {
   const out = [...shown];

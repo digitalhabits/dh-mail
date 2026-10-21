@@ -17,6 +17,8 @@
  * shortcuts keep theirs.
  */
 
+import { MAIL_ACCOUNT_ORDER_KEY } from "@/lib/mail/storage-keys";
+
 function sameEmail(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
@@ -58,7 +60,7 @@ export type AccountSpan = { account: string; top: number; bottom: number };
  * the list, and everything below the last middle means the end. That matters
  * because a rail has no place above its first mailbox to point at: with the
  * top of the first section as the boundary instead, the one position a
- * reader most often wants was the one position the rail could not be given.
+ * reader most often wants is the one position the rail cannot be given.
  *
  * Spans come in the order the rail lists them, and only their middles are
  * read, so a gap between two of them belongs to one or the other rather than
@@ -82,7 +84,6 @@ export function accountDropPlace(
   return before;
 }
 
-export const MAIL_ACCOUNT_ORDER_KEY = "redd-plan-mail-account-order";
 export const MAIL_ACCOUNT_ORDER_EVENT = "redd-plan-mail-account-order-changed";
 
 /**

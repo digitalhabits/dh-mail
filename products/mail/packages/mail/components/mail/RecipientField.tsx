@@ -4,24 +4,12 @@ import * as React from "react";
 import { Clock, Users, X } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 
-import {
-  CONTACTS_CHANGED_EVENT,
-  openContactSourcesDialog,
-} from "@/components/mail/ContactSourcesDialog";
+import { openContactSourcesDialog } from "@/components/mail/ContactSourcesDialog";
 import { AppleMark } from "@/components/mail/AccountMark";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
-import {
-  emailsOfRecipients,
-  recipientKey,
-  type MailContactList,
-  type MailRecipient,
-} from "@/lib/mail/contact-list-types";
-import {
-  contactSourceBadge,
-  historyEmailedWhen,
-  type MailContactSourceSummary,
-} from "@/lib/mail/contact-suggestion";
+import { emailsOfRecipients, recipientKey, type MailRecipient } from "@/lib/mail/contact-list-types";
+import { contactSourceBadge, historyEmailedWhen } from "@/lib/mail/contact-suggestion";
 import {
   chipSelectionAfterRemoval,
   recipientsToClipboardText,
@@ -31,25 +19,7 @@ import { copyTextToClipboard } from "@/lib/mail/copy-text";
 import { useAddressMenu } from "@/components/mail/AddressMenu";
 import { TypingLine } from "@/components/mail/recipient-typing-line";
 import { cn } from "@/lib/utils";
-import { fieldLayout } from "@/components/mail/recipient-field-layout";
-import { mailApiJson as apiJson } from "@/lib/mail/api";
-import {
-  type ContactSuggestion,
-  HIGHLIGHT_ROW,
-  type MenuItem,
-  avatarTone,
-  filterMenu,
-  formatSearchingFooter,
-  initials,
-  invalidateContactsCache,
-  loadContacts,
-  nameForEmail,
-  parseEmails,
-  provenanceBadgeClass,
-  selfSuggestionsFromAccounts,
-  useContactLists,
-} from "@/components/mail/recipient-suggestions";
-import { useExchangeDirectory } from "@/components/mail/use-exchange-directory";
+import { type ContactSuggestion, HIGHLIGHT_ROW, avatarTone, formatSearchingFooter, initials, nameForEmail, parseEmails, provenanceBadgeClass } from "@/components/mail/recipient-suggestions";
 import {
   EditListButton,
   ListChip,
@@ -58,12 +28,9 @@ import {
   SaveAsListControl,
   listSubtitle,
 } from "@/components/mail/recipient-lists";
-import {
-  RecipientCarryProvider,
-  useRecipientCarry,
-  useRecipientDrop,
-  withRecipient,
-} from "@/components/mail/recipient-carry";
+import { RecipientCarryProvider } from "@/components/mail/recipient-carry";
+import { useRecipientSources, useRecipientMenu, useChipSelection, useRecipientCommit, useRecipientLayout } from "@/components/mail/use-recipient-field";
+
 
 export { RecipientCarryProvider };
 
@@ -130,10 +97,10 @@ function EmailChip({
           aria-selected={selected}
           /* Focusable, so the mouse going down on it moves focus here and
              not out of the field: the input's blur then does nothing, and
-             the mouse coming up hands focus back. The default used to be
-             cancelled instead, which kept the focus but also kept WebKit
-             from starting a drag — a chip could be selected but never
-             carried to another field. */
+             the mouse coming up hands focus back. If the default is
+             cancelled instead, the focus stays but WebKit cannot start a
+             drag. Then a chip can be selected but never carried to another
+             field. */
           tabIndex={-1}
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
@@ -145,8 +112,8 @@ function EmailChip({
           }}
           /* A click selects; the card is for a double-click. The trigger
              would open it on the click as well, and the card takes the
-             focus with it — so a chip picked with the mouse could not be
-             cut or copied, the keys went to the card. Marking the click
+             focus with it. Then a chip picked with the mouse cannot be
+             cut or copied, because the keys go to the card. Marking the click
              handled is what tells the trigger to leave it. */
           onClick={(e) => e.preventDefault()}
           onDoubleClick={(e) => {
@@ -224,22 +191,8 @@ function EmailChip({
   );
 }
 
-/** Editable To/Cc/Bcc field with contacts + saved contact lists. */
-export function RecipientField({
-  label,
-  values,
-  onChange,
-  placeholder,
-  inputRef,
-  variant = "boxed",
-  className,
-  allowSaveList = false,
-  actions,
-  collapseAfter,
-  ownAccounts,
-  onTabOut,
-  directoryAccount,
-}: {
+/** What a recipient field takes. */
+export type RecipientFieldProps = {
   label: string;
   values: MailRecipient[];
   onChange: (next: MailRecipient[]) => void;
@@ -279,517 +232,29 @@ export function RecipientField({
   onTabOut?: () => void;
   /** The sender: an Exchange mailbox's directory is asked as the reader types. */
   directoryAccount?: string;
-}) {
-  const t = useMailT();
-  const [draft, setDraft] = React.useState("");
-  const directory = useExchangeDirectory(directoryAccount, draft);
-  const [contacts, setContacts] = React.useState<ContactSuggestion[]>([]);
-  const [sourceSummaries, setSourceSummaries] = React.useState<
-    MailContactSourceSummary[]
-  >([]);
-  const lists = useContactLists();
-  const [highlight, setHighlight] = React.useState(0);
-  const menuRef = React.useRef<HTMLUListElement>(null);
-  /** Set by the arrow keys: only a key move scrolls the row into view. */
-  const keyMoved = React.useRef(false);
-  React.useEffect(() => {
-    if (!keyMoved.current) return;
-    keyMoved.current = false;
-    const row = menuRef.current?.querySelector('[role="option"][aria-selected="true"]');
-    row?.scrollIntoView({ block: "nearest" });
-  }, [highlight]);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  /** True while the writer is in this field: chips stay whole while editing. */
-  const [writing, setWriting] = React.useState(false);
-  /** Unfolded by hand, and stays unfolded until the field is left. */
-  const [unfolded, setUnfolded] = React.useState(false);
-  /** Indices of selected chips; empty = typing in the draft input. */
-  const [selected, setSelected] = React.useState<Set<number>>(() => new Set());
-  /** Anchor for shift-click / shift-arrow range selection. */
-  const [anchor, setAnchor] = React.useState<number | null>(null);
-  /** Focused chip while navigating with arrows (`null` = draft input). */
-  const [focusIndex, setFocusIndex] = React.useState<number | null>(null);
-  const blurTimer = React.useRef<number | null>(null);
-  const inputElRef = React.useRef<HTMLInputElement | null>(null);
-  const fieldElRef = React.useRef<HTMLDivElement | null>(null);
-  // Keep latest selection in refs so key handlers never see a stale focusIndex
-  // after a chip click in the same tick / before re-render.
-  const chipNavRef = React.useRef({
-    selected,
-    anchor,
-    focusIndex,
-    valuesLength: values.length,
-  });
-  chipNavRef.current = {
-    selected,
-    anchor,
-    focusIndex,
-    valuesLength: values.length,
-  };
+};
 
-  const setInputRef = React.useCallback(
-    (el: HTMLInputElement | null) => {
-      inputElRef.current = el;
-      if (!inputRef) return;
-      if (typeof inputRef === "object") {
-        (inputRef as React.MutableRefObject<HTMLInputElement | null>).current =
-          el;
-      }
-    },
-    [inputRef]
-  );
-
-  const reloadContacts = React.useCallback(() => {
-    invalidateContactsCache();
-    return loadContacts().then((payload) => {
-      setContacts(payload.contacts);
-      setSourceSummaries(payload.sources);
-    });
-  }, []);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void loadContacts().then((payload) => {
-      if (!cancelled) {
-        setContacts(payload.contacts);
-        setSourceSummaries(payload.sources);
-      }
-    });
-    const onChanged = () => {
-      void reloadContacts();
-    };
-    window.addEventListener(CONTACTS_CHANGED_EVENT, onChanged);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(CONTACTS_CHANGED_EVENT, onChanged);
-    };
-  }, [reloadContacts]);
-
-  const hideHistory = async (email: string) => {
-    try {
-      await apiJson("/api/mail/contact-sources", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hideEmail: email }),
-      });
-      await reloadContacts();
-      toast.success(mailSay("removedFromSuggestions"));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't remove");
-    }
-  };
-
-  // Merge shell-provided mailboxes with API contacts (API wins on same email
-  // so a richer name from a contact source is kept when present).
-  const contactsForMenu = React.useMemo(() => {
-    const own = selfSuggestionsFromAccounts(ownAccounts);
-    if (!own.length) return contacts;
-    const byEmail = new Map<string, ContactSuggestion>();
-    for (const row of own) byEmail.set(row.email.toLowerCase(), row);
-    for (const row of contacts) {
-      const key = row.email.toLowerCase();
-      const prev = byEmail.get(key);
-      if (!prev) {
-        byEmail.set(key, row);
-        continue;
-      }
-      // Keep whichever real name there is, and no word standing in for one:
-      // an own mailbox that nothing knows a name for is shown by its
-      // address, the way every other nameless contact is.
-      byEmail.set(key, {
-        ...row,
-        name: row.name || prev.name,
-        recordName: row.recordName || prev.recordName || t("yourMailbox"),
-        source: row.source === "self" || prev.source === "self" ? "self" : row.source,
-      });
-    }
-    return [...byEmail.values()];
-  }, [contacts, ownAccounts, t]);
-
-  // The directory's people after the contacts: a contact wins on its address.
-  const withDirectory = React.useMemo(() => {
-    const have = new Set(contactsForMenu.map((c) => c.email.toLowerCase()));
-    const extra = directory.filter((d) => !have.has(d.email.toLowerCase()));
-    return extra.length ? [...contactsForMenu, ...extra] : contactsForMenu;
-  }, [contactsForMenu, directory]);
-  // Again only when the words or the people change, not on every render.
-  const menu = React.useMemo(() => filterMenu(draft, withDirectory, lists, values), [draft, withDirectory, lists, values]);
-  const showMenu = menuOpen && menu.length > 0;
-
-  React.useEffect(() => {
-    setHighlight(0);
-  }, [draft, values.length]);
-
-  React.useEffect(() => {
-    if (!values.length) {
-      setSelected(new Set());
-      setAnchor(null);
-      setFocusIndex(null);
-      return;
-    }
-    setSelected((prev) => {
-      const next = new Set<number>();
-      for (const i of prev) {
-        if (i >= 0 && i < values.length) next.add(i);
-      }
-      return next.size === prev.size ? prev : next;
-    });
-    setFocusIndex((i) =>
-      i == null || i < values.length ? i : values.length - 1
-    );
-    setAnchor((a) =>
-      a == null || a < values.length ? a : values.length - 1
-    );
-  }, [values.length]);
-
-  const cancelBlurTimer = React.useCallback(() => {
-    if (blurTimer.current != null) {
-      window.clearTimeout(blurTimer.current);
-      blurTimer.current = null;
-    }
-  }, []);
-
-  const focusDraftInput = React.useCallback(() => {
-    cancelBlurTimer();
-    const el = inputElRef.current;
-    if (!el) return;
-    if (document.activeElement !== el) {
-      el.focus({ preventScroll: true });
-    }
-  }, [cancelBlurTimer]);
-
-  const cursorAtDraftStart = React.useCallback(
-    (el: HTMLInputElement | null = inputElRef.current) => {
-      if (!el) return !draft;
-      return el.selectionStart === 0 && el.selectionEnd === 0;
-    },
-    [draft]
-  );
-
-  const clearChipSelection = React.useCallback(() => {
-    setSelected(new Set());
-    setAnchor(null);
-    setFocusIndex(null);
-    chipNavRef.current = {
-      ...chipNavRef.current,
-      selected: new Set(),
-      anchor: null,
-      focusIndex: null,
-    };
-  }, []);
-
-  const selectOnly = React.useCallback((index: number) => {
-    const next = new Set([index]);
-    setSelected(next);
-    setAnchor(index);
-    setFocusIndex(index);
-    setMenuOpen(false);
-    chipNavRef.current = {
-      ...chipNavRef.current,
-      selected: next,
-      anchor: index,
-      focusIndex: index,
-    };
-  }, []);
-
-  const selectRange = React.useCallback((from: number, to: number) => {
-    const lo = Math.min(from, to);
-    const hi = Math.max(from, to);
-    const next = new Set<number>();
-    for (let i = lo; i <= hi; i++) next.add(i);
-    setSelected(next);
-    setFocusIndex(to);
-    setMenuOpen(false);
-    chipNavRef.current = {
-      ...chipNavRef.current,
-      selected: next,
-      focusIndex: to,
-    };
-  }, []);
-
-  const selectAllChips = React.useCallback(() => {
-    if (!values.length) return;
-    const next = new Set<number>();
-    for (let i = 0; i < values.length; i++) next.add(i);
-    setSelected(next);
-    setAnchor(0);
-    setFocusIndex(values.length - 1);
-    setMenuOpen(false);
-    chipNavRef.current = {
-      ...chipNavRef.current,
-      selected: next,
-      anchor: 0,
-      focusIndex: values.length - 1,
-    };
-  }, [values.length]);
-
-  const removeSelectedChips = React.useCallback(() => {
-    const { selected: sel } = chipNavRef.current;
-    if (!sel.size) return;
-    const next = values.filter((_, i) => !sel.has(i));
-    onChange(next);
-    // Where the block began is where the writer was looking.
-    const at = chipSelectionAfterRemoval(Math.min(...sel), next.length);
-    if (at == null) clearChipSelection();
-    else selectOnly(at);
-  }, [values, onChange, clearChipSelection, selectOnly]);
-
-  const handleChipSelect = React.useCallback(
-    (index: number, e: React.MouseEvent) => {
-      const { anchor: currentAnchor } = chipNavRef.current;
-      if (e.shiftKey && currentAnchor != null) {
-        selectRange(currentAnchor, index);
-      } else {
-        selectOnly(index);
-      }
-      // The chip takes focus on mouse-down and hands it back on mouse-up.
-      // Focus the input here too, for a selection made without a mouse.
-      focusDraftInput();
-    },
-    [selectOnly, selectRange, focusDraftInput]
-  );
-
-  /** Arrow / delete navigation among recipient chips (Gmail-style). */
-  const handleChipArrowKey = React.useCallback(
-    (e: React.KeyboardEvent, goingLeft: boolean) => {
-      const nav = chipNavRef.current;
-      const count = nav.valuesLength;
-      if (!count) return false;
-
-      const inChipMode = nav.focusIndex != null;
-      const canEnterChips =
-        !draft &&
-        (inChipMode || (goingLeft && cursorAtDraftStart(inputElRef.current)));
-
-      if (!canEnterChips && !inChipMode) return false;
-
-      if (!inChipMode && goingLeft) {
-        e.preventDefault();
-        selectOnly(count - 1);
-        return true;
-      }
-      if (!inChipMode) return false;
-
-      e.preventDefault();
-      const current = nav.focusIndex ?? 0;
-      const anchorAt = nav.anchor ?? current;
-
-      if (goingLeft) {
-        if (current <= 0) {
-          if (!e.shiftKey) selectOnly(0);
-          return true;
-        }
-        const next = current - 1;
-        if (e.shiftKey) selectRange(anchorAt, next);
-        else selectOnly(next);
-        return true;
-      }
-
-      // ArrowRight
-      if (current >= count - 1) {
-        if (!e.shiftKey) {
-          clearChipSelection();
-        }
-        return true;
-      }
-      const next = current + 1;
-      if (e.shiftKey) selectRange(anchorAt, next);
-      else selectOnly(next);
-      return true;
-    },
-    [draft, cursorAtDraftStart, selectOnly, selectRange, clearChipSelection]
-  );
-
-  const commitDraft = (raw: string) => {
-    const added = parseEmails(raw);
-    if (!added.length) {
-      setDraft("");
-      setMenuOpen(false);
-      return;
-    }
-    const next = [...values];
-    const seen = new Set(emailsOfRecipients(values));
-    for (const email of added) {
-      if (seen.has(email)) continue;
-      seen.add(email);
-      next.push({
-        kind: "email",
-        email,
-        name: nameForEmail(email, contacts),
-      });
-    }
-    onChange(next);
-    setDraft("");
-    setMenuOpen(false);
-    clearChipSelection();
-  };
-
-  const pickItem = (item: MenuItem) => {
-    cancelBlurTimer();
-    clearChipSelection();
-    if (item.kind === "list") {
-      if (values.some((v) => v.kind === "list" && v.listId === item.list.id)) {
-        setDraft("");
-        setMenuOpen(false);
-        return;
-      }
-      onChange([
-        ...values,
-        {
-          kind: "list",
-          listId: item.list.id,
-          name: item.list.name,
-          members: item.list.members,
-        },
-      ]);
-    } else {
-      const email = item.contact.email.trim().toLowerCase();
-      if (!values.some((v) => v.kind === "email" && v.email === email)) {
-        onChange([
-          ...values,
-          {
-            kind: "email",
-            email,
-            name: item.contact.name || undefined,
-          },
-        ]);
-      }
-    }
-    setDraft("");
-    setMenuOpen(false);
-  };
-
-  const emailPeople = values.filter(
-    (v): v is Extract<MailRecipient, { kind: "email" }> => v.kind === "email"
-  );
-  const showSaveList = allowSaveList && emailPeople.length >= 2;
-
-  const listItems = menu.filter((i) => i.kind === "list");
-  const contactItems = menu.filter((i) => i.kind === "contact");
-  /** The list the pencil was pressed on, from wherever it was pressed. */
-  const [editingList, setEditingList] = React.useState<MailContactList | null>(
-    null
-  );
-  const openListEditor = (list: MailContactList) => {
-    cancelBlurTimer();
-    // Whatever was half-typed is not an address, and committing it on the
-    // way out would leave a chip nobody asked for behind the editor.
-    setDraft("");
-    setMenuOpen(false);
-    setEditingList(list);
-  };
-  // A list edited elsewhere, or deleted, must not stay open on the old copy.
-  React.useEffect(() => {
-    if (!editingList) return;
-    const fresh = lists.find((l) => l.id === editingList.id);
-    if (!fresh) setEditingList(null);
-  }, [lists, editingList]);
-
-  /**
-   * How much of the menu there is room for, and which way it opens.
-   *
-   * It hung a fixed height below the field, which is fine in the middle of a
-   * window and runs off the bottom of one anywhere near it — the addresses
-   * furthest down the list were the ones nobody could reach.
-   */
-  const [menuBox, setMenuBox] = React.useState({
-    above: false,
-    maxHeight: 288,
-    /** The whole drop, before the menu's own cap — the editor wants more. */
-    room: 288,
-  });
-  React.useEffect(() => {
-    if (!showMenu && !editingList) return;
-    const measure = () => {
-      const el = fieldElRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const margin = 12;
-      // The room is measured in screen pixels and spent in the field's
-      // own, and the two differ by whatever `zoom` the composer card is
-      // under: at 122% a menu given the room it measured ran a fifth past
-      // the bottom of the window. The field's rect against its offset
-      // height is that zoom, whatever ancestor carries it.
-      const scale = el.offsetHeight ? rect.height / el.offsetHeight : 1;
-      const below = (window.innerHeight - rect.bottom - margin) / scale;
-      const above = (rect.top - margin) / scale;
-      // Downwards by default, which is where a reader expects it. Upwards
-      // only when there is really no room and more of it the other way.
-      const flip = below < 200 && above > below;
-      const drop = flip ? above : below;
-      setMenuBox({
-        above: flip,
-        maxHeight: Math.max(140, Math.min(288, drop)),
-        room: Math.max(140, drop),
-      });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [showMenu, editingList]);
-
-  /**
-   * The chips actually drawn, and how many are folded away.
-   *
-   * Folded only while the field is at rest: typing in it, or unfolding by
-   * hand, shows them all. A chip that cannot be seen cannot be removed, so
-   * this never hides one from somebody working on the list.
-   */
-  const folding =
-    collapseAfter != null &&
-    !writing &&
-    !unfolded &&
-    values.length > collapseAfter;
-  const shownValues = folding ? values.slice(0, collapseAfter) : values;
-  const foldedCount = values.length - shownValues.length;
-
-  /*
-    Carrying somebody from this field to another (recipient-carry.tsx).
-
-    The chip says what it is and how to take it out of here; the place it
-    is dropped on adds it and then calls that. So neither field knows the
-    other exists — which is what lets To, Cc and Bcc trade without a
-    composer standing between them holding all three.
-  */
-  const carry = useRecipientCarry();
-  const fieldId = React.useId();
-  // Already here: the move is only a removal from where it was.
-  const drop = useRecipientDrop(fieldId, (r) => {
-    const next = withRecipient(values, r);
-    if (next !== values) onChange(next);
-  });
-
-  const carryProps = (value: MailRecipient) =>
-    carry
-      ? {
-          onPointerDown: (event: React.PointerEvent) =>
-            carry.lift(
-              event,
-              {
-                fromId: fieldId,
-                recipient: value,
-                takeFromSource: () =>
-                  onChange(
-                    values.filter((v) => recipientKey(v) !== recipientKey(value))
-                  ),
-              },
-              // The mouse going down selected this chip; once it has gone
-              // the ring would fall on the next chip, and a Backspace
-              // would take that one.
-              clearChipSelection
-            ),
-        }
-      : undefined;
-
-  /*
-    A boxed field with nobody in it yet is one row: the label, the place to
-    type, and the lists button, side by side. The place to type takes all
-    the room there is, so the placeholder runs up to the button. It used to
-    keep a fixed 4.5rem free for the other two, which was more than they
-    take, and cut the placeholder short.
-  */
-  const emptyRow = variant === "boxed" && !shownValues.length && !folding;
-  const layout = fieldLayout(variant, emptyRow);
+/** Editable To/Cc/Bcc field with contacts + saved contact lists. */
+export function RecipientField({
+  label,
+  values,
+  onChange,
+  placeholder,
+  inputRef,
+  variant = "boxed",
+  className,
+  allowSaveList = false,
+  actions,
+  collapseAfter,
+  ownAccounts,
+  onTabOut,
+  directoryAccount,
+}: RecipientFieldProps) {
+  const { contacts, directory, draft, highlight, keyMovedRef, lists, menuRef, setContacts, setDraft, setHighlight, setSourceSummaries, sourceSummaries, t } = useRecipientSources({ directoryAccount });
+  const { blurTimerRef, chipNavRef, fieldElRef, hideHistory, inputElRef, menu, selected, setAnchor, setFocusIndex, setInputRef, setMenuOpen, setSelected, setUnfolded, setWriting, showMenu, unfolded, writing } = useRecipientMenu({ contacts, directory, draft, inputRef, lists, ownAccounts, setContacts, setHighlight, setSourceSummaries, t, values });
+  const { cancelBlurTimer, clearChipSelection, focusDraftInput, handleChipArrowKey, handleChipSelect, removeSelectedChips, selectAllChips, selectOnly } = useChipSelection({ blurTimerRef, chipNavRef, draft, inputElRef, onChange, setAnchor, setFocusIndex, setMenuOpen, setSelected, values });
+  const { commitDraft, contactItems, editingList, emailPeople, listItems, menuBox, openListEditor, pickItem, setEditingList, showSaveList } = useRecipientCommit({ allowSaveList, cancelBlurTimer, clearChipSelection, contacts, fieldElRef, lists, menu, onChange, setDraft, setMenuOpen, showMenu, values });
+  const { carryProps, drop, foldedCount, folding, layout, shownValues } = useRecipientLayout({ clearChipSelection, collapseAfter, onChange, unfolded, values, variant, writing });
 
   return (
     <div
@@ -857,7 +322,119 @@ export function RecipientField({
             {label}
           </span>
         ) : null}
-        {shownValues.map((value, index) => {
+        <RecipientChips carryProps={carryProps} clearChipSelection={clearChipSelection} contacts={contacts} focusDraftInput={focusDraftInput} handleChipSelect={handleChipSelect} onChange={onChange} selected={selected} shownValues={shownValues} values={values} variant={variant} />
+        {folding ? (
+          <button
+            type="button"
+            className={cn(
+              "shrink-0 rounded-full px-1.5 py-0.5 text-[13px] font-medium text-teal-700 hover:underline",
+              variant === "boxed" && "mb-1 align-middle"
+            )}
+            onClick={() => {
+              setUnfolded(true);
+              focusDraftInput();
+            }}
+          >
+            {t("andMoreCount", { count: foldedCount })}
+          </button>
+        ) : null}
+        {/* One line for the box and the lists button: see TypingLine. */}
+        <TypingLine inline={variant === "inline"}>
+        <RecipientInput blurTimerRef={blurTimerRef} cancelBlurTimer={cancelBlurTimer} chipNavRef={chipNavRef} clearChipSelection={clearChipSelection} commitDraft={commitDraft} draft={draft} fieldElRef={fieldElRef} folding={folding} handleChipArrowKey={handleChipArrowKey} highlight={highlight} keyMovedRef={keyMovedRef} layout={layout} menu={menu} onChange={onChange} onTabOut={onTabOut} pickItem={pickItem} placeholder={placeholder} removeSelectedChips={removeSelectedChips} selectAllChips={selectAllChips} selectOnly={selectOnly} setDraft={setDraft} setHighlight={setHighlight} setInputRef={setInputRef} setMenuOpen={setMenuOpen} setUnfolded={setUnfolded} setWriting={setWriting} showMenu={showMenu} values={values} variant={variant} />
+        {lists.length ? (
+          <ListsMenu
+            lists={lists}
+            onPick={(list) => pickItem({ kind: "list", list })}
+            onEdit={openListEditor}
+            /* The far right of the field, whichever way the field is laid
+               out. `ml-auto` reaches it in the inline variant, which is a
+               flex row; a boxed field is block flow, where the only way to
+               the right edge is to float — the same way "Save as list…"
+               gets to the corner above it. */
+            className={layout.lists}
+          />
+        ) : null}
+        </TypingLine>
+        {editingList ? (
+          <ListEditorCard
+            list={editingList}
+            contacts={contacts}
+            above={menuBox.above}
+            /*
+              Taller than the suggestions are allowed to be. A name, the
+              people, a box to add one and two buttons come to a little
+              over their 288 — at which the row holding "Done" fell below
+              the fold of a panel nobody expected to scroll.
+            */
+            maxHeight={Math.min(440, menuBox.room)}
+            onClose={() => setEditingList(null)}
+            onSaved={(saved) => {
+              // A list already in this message follows the edit.
+              onChange(
+                values.map((v) =>
+                  v.kind === "list" && v.listId === saved.id
+                    ? { ...v, name: saved.name, members: saved.members }
+                    : v
+                )
+              );
+            }}
+            onDeleted={(listId) => {
+              onChange(
+                values.filter((v) => !(v.kind === "list" && v.listId === listId))
+              );
+            }}
+          />
+        ) : null}
+        <RecipientSuggestions contactItems={contactItems} editingList={editingList} hideHistory={hideHistory} highlight={highlight} listItems={listItems} menu={menu} menuBox={menuBox} menuRef={menuRef} openListEditor={openListEditor} pickItem={pickItem} setHighlight={setHighlight} setMenuOpen={setMenuOpen} showMenu={showMenu} sourceSummaries={sourceSummaries} t={t} variant={variant} />
+      </div>
+      {(showSaveList && variant !== "boxed") || actions ? (
+        /* A column, not a row: "Save as list…" is a thing you do to the
+           addresses above it, and Cc/Bcc are two more fields to open. Side
+           by side they read as three of a kind. */
+        <span className="flex shrink-0 flex-col items-end gap-1 self-start pt-0.5">
+          {showSaveList && variant !== "boxed" ? (
+            <SaveAsListControl
+              className="text-[15px] font-medium"
+              people={emailPeople}
+              contacts={contacts}
+              onSaved={() => {
+                /* recipients stay; list is available next typeahead */
+              }}
+            />
+          ) : null}
+          {actions}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The chips, folded after `collapseAfter` when the field is not being written in. */
+function RecipientChips({
+  carryProps,
+  clearChipSelection,
+  contacts,
+  focusDraftInput,
+  handleChipSelect,
+  onChange,
+  selected,
+  shownValues,
+  values,
+  variant,
+}: {
+  carryProps: ReturnType<typeof useRecipientLayout>["carryProps"];
+  clearChipSelection: ReturnType<typeof useChipSelection>["clearChipSelection"];
+  contacts: ReturnType<typeof useRecipientSources>["contacts"];
+  focusDraftInput: ReturnType<typeof useChipSelection>["focusDraftInput"];
+  handleChipSelect: ReturnType<typeof useChipSelection>["handleChipSelect"];
+  onChange: RecipientFieldProps["onChange"];
+  selected: ReturnType<typeof useRecipientMenu>["selected"];
+  shownValues: ReturnType<typeof useRecipientLayout>["shownValues"];
+  values: RecipientFieldProps["values"];
+  variant: Exclude<RecipientFieldProps["variant"], undefined>;
+}) {
+  return (
+    <>{shownValues.map((value, index) => {
           const isSelected = selected.has(index);
           if (value.kind === "list") {
             return (
@@ -915,25 +492,74 @@ export function RecipientField({
               }}
             />
           );
-        })}
-        {folding ? (
-          <button
-            type="button"
-            className={cn(
-              "shrink-0 rounded-full px-1.5 py-0.5 text-[13px] font-medium text-teal-700 hover:underline",
-              variant === "boxed" && "mb-1 align-middle"
-            )}
-            onClick={() => {
-              setUnfolded(true);
-              focusDraftInput();
-            }}
-          >
-            {t("andMoreCount", { count: foldedCount })}
-          </button>
-        ) : null}
-        {/* One line for the box and the lists button: see TypingLine. */}
-        <TypingLine inline={variant === "inline"}>
-        <input
+        })}</>
+  );
+}
+
+/** The input that new recipients are typed into, and its keys. */
+function RecipientInput({
+  blurTimerRef,
+  cancelBlurTimer,
+  chipNavRef,
+  clearChipSelection,
+  commitDraft,
+  draft,
+  fieldElRef,
+  folding,
+  handleChipArrowKey,
+  highlight,
+  keyMovedRef,
+  layout,
+  menu,
+  onChange,
+  onTabOut,
+  pickItem,
+  placeholder,
+  removeSelectedChips,
+  selectAllChips,
+  selectOnly,
+  setDraft,
+  setHighlight,
+  setInputRef,
+  setMenuOpen,
+  setUnfolded,
+  setWriting,
+  showMenu,
+  values,
+  variant,
+}: {
+  blurTimerRef: ReturnType<typeof useRecipientMenu>["blurTimerRef"];
+  cancelBlurTimer: ReturnType<typeof useChipSelection>["cancelBlurTimer"];
+  chipNavRef: ReturnType<typeof useRecipientMenu>["chipNavRef"];
+  clearChipSelection: ReturnType<typeof useChipSelection>["clearChipSelection"];
+  commitDraft: ReturnType<typeof useRecipientCommit>["commitDraft"];
+  draft: ReturnType<typeof useRecipientSources>["draft"];
+  fieldElRef: ReturnType<typeof useRecipientMenu>["fieldElRef"];
+  folding: ReturnType<typeof useRecipientLayout>["folding"];
+  handleChipArrowKey: ReturnType<typeof useChipSelection>["handleChipArrowKey"];
+  highlight: ReturnType<typeof useRecipientSources>["highlight"];
+  keyMovedRef: ReturnType<typeof useRecipientSources>["keyMovedRef"];
+  layout: ReturnType<typeof useRecipientLayout>["layout"];
+  menu: ReturnType<typeof useRecipientMenu>["menu"];
+  onChange: RecipientFieldProps["onChange"];
+  onTabOut: RecipientFieldProps["onTabOut"];
+  pickItem: ReturnType<typeof useRecipientCommit>["pickItem"];
+  placeholder: RecipientFieldProps["placeholder"];
+  removeSelectedChips: ReturnType<typeof useChipSelection>["removeSelectedChips"];
+  selectAllChips: ReturnType<typeof useChipSelection>["selectAllChips"];
+  selectOnly: ReturnType<typeof useChipSelection>["selectOnly"];
+  setDraft: ReturnType<typeof useRecipientSources>["setDraft"];
+  setHighlight: ReturnType<typeof useRecipientSources>["setHighlight"];
+  setInputRef: ReturnType<typeof useRecipientMenu>["setInputRef"];
+  setMenuOpen: ReturnType<typeof useRecipientMenu>["setMenuOpen"];
+  setUnfolded: ReturnType<typeof useRecipientMenu>["setUnfolded"];
+  setWriting: ReturnType<typeof useRecipientMenu>["setWriting"];
+  showMenu: ReturnType<typeof useRecipientMenu>["showMenu"];
+  values: RecipientFieldProps["values"];
+  variant: Exclude<RecipientFieldProps["variant"], undefined>;
+}) {
+  return (
+    <input
           ref={setInputRef}
           value={draft}
           onChange={(e) => {
@@ -1041,7 +667,7 @@ export function RecipientField({
 
             if (showMenu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
-              keyMoved.current = true;
+              keyMovedRef.current = true;
               setHighlight((h) => {
                 if (e.key === "ArrowDown") return (h + 1) % menu.length;
                 return (h - 1 + menu.length) % menu.length;
@@ -1084,7 +710,7 @@ export function RecipientField({
             if (next && fieldElRef.current?.contains(next)) {
               return;
             }
-            blurTimer.current = window.setTimeout(() => {
+            blurTimerRef.current = window.setTimeout(() => {
               if (draft.trim()) commitDraft(draft);
               setMenuOpen(false);
               clearChipSelection();
@@ -1110,9 +736,9 @@ export function RecipientField({
           /*
             The Mac's own suggestions, switched off in this one box.
 
-            Type "peter" and macOS put up its own bubble — "Peter", with a
-            cross — to capitalise it, and while that bubble was up the down
-            arrow went to it and not to the list underneath. The list is
+            Type "peter" and macOS puts up its own bubble — "Peter", with a
+            cross — to capitalise it. While that bubble is up, the down
+            arrow goes to it and not to the list underneath. The list is
             the suggestion here: this box holds names and addresses, which
             are neither misspelled nor in want of a capital, and the keys
             have to reach the app's list on the first press. Spellcheck and
@@ -1127,51 +753,47 @@ export function RecipientField({
           aria-expanded={showMenu}
           aria-autocomplete="list"
         />
-        {lists.length ? (
-          <ListsMenu
-            lists={lists}
-            onPick={(list) => pickItem({ kind: "list", list })}
-            onEdit={openListEditor}
-            /* The far right of the field, whichever way the field is laid
-               out. `ml-auto` reaches it in the inline variant, which is a
-               flex row; a boxed field is block flow, where the only way to
-               the right edge is to float — the same way "Save as list…"
-               gets to the corner above it. */
-            className={layout.lists}
-          />
-        ) : null}
-        </TypingLine>
-        {editingList ? (
-          <ListEditorCard
-            list={editingList}
-            contacts={contacts}
-            above={menuBox.above}
-            /*
-              Taller than the suggestions are allowed to be. A name, the
-              people, a box to add one and two buttons come to a little
-              over their 288 — at which the row holding "Done" fell below
-              the fold of a panel nobody expected to scroll.
-            */
-            maxHeight={Math.min(440, menuBox.room)}
-            onClose={() => setEditingList(null)}
-            onSaved={(saved) => {
-              // A list already in this message follows the edit.
-              onChange(
-                values.map((v) =>
-                  v.kind === "list" && v.listId === saved.id
-                    ? { ...v, name: saved.name, members: saved.members }
-                    : v
-                )
-              );
-            }}
-            onDeleted={(listId) => {
-              onChange(
-                values.filter((v) => !(v.kind === "list" && v.listId === listId))
-              );
-            }}
-          />
-        ) : null}
-        {showMenu && !editingList ? (
+  );
+}
+
+/** The menu of suggestions under the field. */
+function RecipientSuggestions({
+  contactItems,
+  editingList,
+  hideHistory,
+  highlight,
+  listItems,
+  menu,
+  menuBox,
+  menuRef,
+  openListEditor,
+  pickItem,
+  setHighlight,
+  setMenuOpen,
+  showMenu,
+  sourceSummaries,
+  t,
+  variant,
+}: {
+  contactItems: ReturnType<typeof useRecipientCommit>["contactItems"];
+  editingList: ReturnType<typeof useRecipientCommit>["editingList"];
+  hideHistory: ReturnType<typeof useRecipientMenu>["hideHistory"];
+  highlight: ReturnType<typeof useRecipientSources>["highlight"];
+  listItems: ReturnType<typeof useRecipientCommit>["listItems"];
+  menu: ReturnType<typeof useRecipientMenu>["menu"];
+  menuBox: ReturnType<typeof useRecipientCommit>["menuBox"];
+  menuRef: ReturnType<typeof useRecipientSources>["menuRef"];
+  openListEditor: ReturnType<typeof useRecipientCommit>["openListEditor"];
+  pickItem: ReturnType<typeof useRecipientCommit>["pickItem"];
+  setHighlight: ReturnType<typeof useRecipientSources>["setHighlight"];
+  setMenuOpen: ReturnType<typeof useRecipientMenu>["setMenuOpen"];
+  showMenu: ReturnType<typeof useRecipientMenu>["showMenu"];
+  sourceSummaries: ReturnType<typeof useRecipientSources>["sourceSummaries"];
+  t: ReturnType<typeof useRecipientSources>["t"];
+  variant: Exclude<RecipientFieldProps["variant"], undefined>;
+}) {
+  return (
+    <>{showMenu && !editingList ? (
           <ul
             ref={menuRef}
             role="listbox"
@@ -1197,8 +819,8 @@ export function RecipientField({
                 : cn(
                     /* As wide as the field, and never narrower than a name
                        and its address. In the reply card the Cc field is a
-                       short strip beside Bcc and From, and its list cut
-                       every name off (2026-10-19). Wider, it runs on to
+                       short strip beside Bcc and From. A list only that
+                       wide cuts every name off. Wider, it runs on to
                        the right. */
                     "left-0 right-0 min-w-[18rem] rounded-surface",
                     menuBox.above ? "bottom-full mb-1" : "top-full mt-1"
@@ -1412,27 +1034,8 @@ export function RecipientField({
               </li>
             ) : null}
           </ul>
-        ) : null}
-      </div>
-      {(showSaveList && variant !== "boxed") || actions ? (
-        /* A column, not a row: "Save as list…" is a thing you do to the
-           addresses above it, and Cc/Bcc are two more fields to open. Side
-           by side they read as three of a kind. */
-        <span className="flex shrink-0 flex-col items-end gap-1 self-start pt-0.5">
-          {showSaveList && variant !== "boxed" ? (
-            <SaveAsListControl
-              className="text-[15px] font-medium"
-              people={emailPeople}
-              contacts={contacts}
-              onSaved={() => {
-                /* recipients stay; list is available next typeahead */
-              }}
-            />
-          ) : null}
-          {actions}
-        </span>
-      ) : null}
-    </div>
+        ) : null}</>
   );
 }
+
 

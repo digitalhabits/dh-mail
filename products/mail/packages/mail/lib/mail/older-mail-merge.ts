@@ -35,8 +35,8 @@ export function olderMailBelow(
 /**
  * When to ask the server again: a new search, a new mailbox scope, or a
  * change in which mailboxes are shown. The search runs once for each key.
- * It was keyed on the words alone, so a mailbox shown again after the words
- * were typed (hidden on a schedule, then shown early) was never searched.
+ * If the key is the words alone, a mailbox shown again after the words are
+ * typed (hidden on a schedule, then shown early) is never searched.
  * "" for no search.
  */
 export function olderSearchKey(

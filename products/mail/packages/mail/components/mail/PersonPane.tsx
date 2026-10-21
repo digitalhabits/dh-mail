@@ -184,7 +184,7 @@ export function PersonPane({
     /*
       "Open" is the inbox's word: a thread that is not archived yet. Mail in
       Trash, in Sent, in Archived or in a folder is not "open", and "5 open
-      threads" above deleted mail said the opposite of where it was. Outside
+      threads" above deleted mail says the opposite of where it is. Outside
       the inbox the line names the place.
     */
     place

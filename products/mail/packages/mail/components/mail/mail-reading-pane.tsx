@@ -3,11 +3,13 @@
 /*
  * Part of MailPage's markup, moved out of MailPage.tsx.
  *
- * Each component takes the page's model (`m`, from useMailPage) and reads
- * the names it needs from it. Markup it shares with the rest of the page
+ * Each component reads the page's slices that it needs (see
+ * mail-page-slices.tsx). Markup it shares with the rest of the page
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader } from "@/components/mail/mail-page-slices";
+import { useMailT } from "@/lib/mail/i18n";
 import { ScheduledMessageView, useOpenHeldMessage } from "@/components/mail/ScheduledMessageView";
 import { HiddenMailboxesNotice } from "@/components/mail/mail-thread-list";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
@@ -23,7 +25,6 @@ import { isMailPersonPinned, personOfOpenThread } from "@/lib/mail/person-pins";
 import { PersonPane } from "@/components/mail/PersonPane";
 import type { PersonRow } from "@/lib/mail/person-participants";
 import { patchCachedThreads, isMailboxScopeOne } from "@/components/mail/mail-list-state";
-import type { MailPageModel } from "@/components/mail/use-mail-page";
 import {
   draftsInView,
   landAfterThreadDraftDiscarded,
@@ -45,9 +46,9 @@ import type { MailDraftRow } from "@/lib/mail/types";
 
 /**
  * The person's page, in Stacks — unless a scheduled message was opened
- * over it. With Stacks on a person is nearly always picked, and their page
- * stood in front of the scheduled message: a click on its row in the
- * Scheduled group opened it out of sight (Ulrik, 2026-10-20).
+ * over it. With Stacks on, a person is nearly always picked. If their page
+ * stands in front of the scheduled message, a click on its row in the
+ * Scheduled group opens it out of sight.
  */
 function showsPerson(
   viewMode: string,
@@ -58,89 +59,24 @@ function showsPerson(
 }
 
 export function ReadingPaneContent({
-  m,
   hide,
   sendFrom,
 }: {
-  m: MailPageModel;
   /** Mailboxes hidden for now: with none showing, the pane says so. */
   hide?: MailboxHideControls;
   /** What From offers: every mailbox, the hidden ones too (sendFromAccounts). */
   sendFrom: string[];
 }) {
-  const {
-    accountEmails,
-    actOnSelection,
-    activeFolder,
-    adjustZoom,
-    archive,
-    archivePerson,
-    askDeleteForever,
-    clearMultiSelection,
-    closeCompose,
-    composeSeed,
-    composing,
-    debouncedSearch,
-    drafts,
-    draftsAccount,
-    draftsView,
-    editAsNewFromSource,
-    floatingReply,
-    folders,
-    forwardStarted,
-    hereNow,
-    inJunkView,
-    inTrashView,
-    listCacheKey,
-    listCollapsed,
-    mailboxScopeEmails,
-    markThreadInPeople,
-    markUnread,
-    moveToFolder,
-    moveToInbox,
-    multiSelectedCount,
-    openThread,
-    pendingForward,
-    pendingRowAction,
-    phone,
-    pinKeySet,
-    pins,
-    purgeFrom,
-    refreshDrafts,
-    restoreFromTrash,
-    rowMenuActions,
-    scheduleSentRefreshForAccount,
-    selected,
-    highlightTerms,
-    selectedPerson,
-    personRows,
-    togglePersonPin,
-    selectedRow,
-    selectedThreadsNow,
-    setFloatingCompose,
-    setFloatingReply,
-    setListCollapsed,
-    setPendingRowAction,
-    setSelected,
-    setSelectedPersonKey,
-    setThreadJunk,
-    setThreads,
-    snooze,
-    startCompose,
-    t,
-    tab,
-    threads,
-    togglePin,
-    toggleRead,
-    trash,
-    trashPerson,
-    unsnooze,
-    viewMode,
-    viewerId,
-    zoom,
-  } = m;
+  const t = useMailT();
+  const pageList = usePageList();
+  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
+  const { actOnSelection, archive, archivePerson, askDeleteForever, markThreadInPeople, markUnread, moveToFolder, moveToInbox, purgeFrom, restoreFromTrash, rowMenuActions, togglePersonPin, setThreadJunk, snooze, togglePin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
+  const { activeFolder, clearMultiSelection, debouncedSearch, folders, hereNow, inJunkView, inTrashView, listCacheKey, multiSelectedCount, pinKeySet, pins, scheduleSentRefreshForAccount, highlightTerms, personRows, selectedThreadsNow, setThreads, tab, threads, viewMode, viewerId } = usePageList();
+  const { adjustZoom, listCollapsed, phone, setListCollapsed, zoom } = usePageLayout();
+  const { closeCompose, composeSeed, composing, drafts, draftsAccount, draftsView, editAsNewFromSource, floatingReply, forwardStarted, pendingForward, refreshDrafts, setFloatingCompose, setFloatingReply, startCompose } = usePageCompose();
+  const { openThread, pendingRowAction, selected, selectedPerson, selectedRow, setPendingRowAction, setSelected, setSelectedPersonKey } = usePageReader();
   // A scheduled message opened from the list, while no thread is open.
-  const openHeld = useOpenHeldMessage(m.heldMessages, Boolean(selected), selectedPerson?.key);
+  const openHeld = useOpenHeldMessage(pageList.heldMessages, Boolean(selected), selectedPerson?.key);
   const draftSelection = useDraftSelection();
   // For the Drafts view: a discarded draft opens the next one.
   const draftRows = draftsInView(drafts, draftsAccount, debouncedSearch).filter(
@@ -305,8 +241,8 @@ export function ReadingPaneContent({
               // The provider's draft behind this thread, as the list has it.
               draftRef={draftsView ? providerDraftRefFor(draftRows, selected) : undefined}
               /*
-                In the Drafts view the draft was the reason this pane was
-                open. Once it is gone the pane held either an empty
+                In the Drafts view the draft is the reason this pane is
+                open. Once it is gone the pane holds either an empty
                 conversation — a provider draft has no messages behind it
                 — or a thread the reader never asked to read. So the next
                 draft opens instead, as a delete in the inbox lands on the
@@ -388,9 +324,10 @@ export function ReadingPaneContent({
                   And failing both, any list this viewer has already read.
 
                   A thread older than the page the list has loaded is in
-                  none of them but the cache, so pinning it was refused —
-                  and a thread unpinned from there could not be pinned
-                  again, because the pin's own summary went with the pin.
+                  none of them but the cache. Without the cache, pinning it
+                  is refused. A thread unpinned from there also cannot be
+                  pinned again, because the pin's own summary goes with the
+                  pin.
                 */
                 const row =
                   selectedRow ??
@@ -543,17 +480,17 @@ export function ReadingPaneContent({
             }
           />
         ) : !accountEmails.length ? (
-          <NoMailboxPane m={m} hide={hide} />
+          <NoMailboxPane hide={hide} />
         ) : openHeld ? (
-          <ScheduledMessageView m={m} held={openHeld} />
+          <ScheduledMessageView held={openHeld} />
         ) : (
           /*
             No spinner here while the list loads.
 
             This pane holds the message being read, and nothing is being
-            read yet — so it was spinning about somebody else's wait. Three
-            of them ran at once during a search, and the list is where the
-            wait belongs: it is the list that is filling up. What stands
+            read yet — so a spinner here spins about somebody else's wait.
+            During a search, three of them run at once. The list is where
+            the wait belongs: it is the list that is filling up. What stands
             here instead is the same thing that stands here when nothing is
             open, which is the truth of it.
           */
@@ -565,20 +502,21 @@ export function ReadingPaneContent({
 /**
  * The reading pane with no mailbox showing.
  *
- * Every mailbox can be hidden, by its schedule or by hand. The pane said
- * "No mailbox connected yet" then, which is false: the mailboxes are there,
- * and the reader chose when to see them. With the list folded away this was
- * the only thing on screen. So a hidden mailbox gets the list's own notice,
+ * Every mailbox can be hidden, by its schedule or by hand. Then "No mailbox
+ * connected yet" is false: the mailboxes are there, and the reader chose
+ * when to see them. With the list folded away, this pane is the only thing
+ * on screen. So a hidden mailbox gets the list's own notice,
  * with its way to show one now, and only none at all gets "connect one".
  */
-function NoMailboxPane({ m, hide }: { m: MailPageModel; hide?: MailboxHideControls }) {
-  const { t, hideList } = m;
+function NoMailboxPane({ hide }: { hide?: MailboxHideControls }) {
+  const t = useMailT();
+  const { hideList } = usePageLayout();
   if (hide?.hidden.length) {
-    // The list carries the notice when it is out; said twice, it was two
+    // The list carries the notice when it is out; said twice, it is two
     // sets of the same buttons side by side.
     return hideList ? (
       <div className="flex flex-1 items-center justify-center">
-        <HiddenMailboxesNotice m={m} hide={hide} />
+        <HiddenMailboxesNotice hide={hide} />
       </div>
     ) : (
       <div className="flex flex-1 items-center justify-center px-6 text-center">

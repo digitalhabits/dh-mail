@@ -16,9 +16,9 @@
  * way in — see `downscaleTarget`, which the resting picture uses too.
  */
 
+import { MAIL_ACCOUNT_MARK_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-export const MAIL_ACCOUNT_MARK_KEY = "redd-plan-mail-account-marks";
 export const MAIL_ACCOUNT_MARK_EVENT = "redd-plan-mail-account-marks-changed";
 
 /** The longest edge a chosen picture is stored at. A tab draws it at 16px. */

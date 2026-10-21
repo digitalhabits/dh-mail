@@ -1,11 +1,11 @@
 /**
  * How big the whole app is drawn.
  *
- * The reader could already make a message bigger — that is the zoom in the
- * thread's toolbar — but the message is the one part of this app that was
- * ever adjustable. The folder names, the list, the buttons and every menu
- * stayed at whatever size they were built at, which is no help at all to a
- * reader who wanted them bigger in the first place.
+ * The reader can make a message bigger with the zoom in the thread's
+ * toolbar. Without this, the message is the one part of this app that can
+ * change size. The folder names, the list, the buttons and every menu stay
+ * at whatever size they are built at. That is no help at all to a reader
+ * who wants them bigger.
  *
  * So: one number for everything, kept next to the theme and the language as
  * another way a reader has their own copy of the app. It is applied as
@@ -19,7 +19,8 @@
  * No React in here, so a test can read it.
  */
 
-export const MAIL_UI_SCALE_KEY = "redd-plan-mail-ui-scale";
+import { MAIL_UI_SCALE_KEY } from "@/lib/mail/storage-keys";
+
 export const MAIL_UI_SCALE_EVENT = "redd-plan-mail-ui-scale-changed";
 
 /**

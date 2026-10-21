@@ -13,9 +13,9 @@
  *
  * The form is shown in place, never over something else. Settings shows it
  * as its Accounts page; the start page, with no mailbox yet, shows it in
- * place of its welcome. It was a dialog over Settings first, and Settings is
- * a popover that keeps the keyboard inside itself: nothing typed in the
- * dialog arrived.
+ * place of its welcome. It is not a dialog over Settings. Settings is a
+ * popover that keeps the keyboard inside itself, so nothing typed in such a
+ * dialog arrives.
  *
  * The username and the email address are two fields. At the University of
  * Copenhagen they are often different (section 7.3 of the design note).

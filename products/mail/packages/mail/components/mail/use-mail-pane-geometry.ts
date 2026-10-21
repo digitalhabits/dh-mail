@@ -219,16 +219,16 @@ export function useMailPaneGeometry(input: {
   /**
    * How wide the rows themselves are.
    *
-   * Expanding used to report the old sidebar width. The one-line row
-   * answers this measurement, so it follows the window and the rail.
+   * The one-line row answers this measurement, so it follows the window and
+   * the rail. A measure of the sidebar gives its old width while it expands.
    */
   const threadListRef = React.useRef<HTMLDivElement | null>(null);
   /*
     Whether the list is wide enough for the wide rows, as measured; null
-    before it is. The answer, not the width: kept as a width, every pixel
-    of a drag — the folders' edge, the list's own — set it, and the whole
-    page drew itself twice a pixel, which made the folders' resize
-    sluggish (Ulrik, 2026-10-20). A yes that stays yes draws nothing.
+    before it is. The answer, not the width. If it is kept as a width, every
+    pixel of a drag — the folders' edge, the list's own — sets it. Then the
+    whole page draws itself twice a pixel, and the folders' resize is
+    sluggish. A yes that stays yes draws nothing.
   */
   const [listWideMeasured, setListWideMeasured] = React.useState<boolean | null>(null);
   /**
@@ -311,10 +311,9 @@ export function useMailPaneGeometry(input: {
    *
    * Always something: the list is a fixed width that does not shrink, so
    * a width set on a wide screen is wider than the whole pane once the
-   * window is put on half of one — and what ran off the edge was the
-   * reader, then the right-hand end of the list itself. The divider has
-   * always refused to be dragged past this; resizing the window now
-   * refuses too.
+   * window is put on half of one — and what runs off the edge is the
+   * reader, then the right-hand end of the list itself. The divider refuses
+   * to be dragged past this. Resizing the window refuses too.
    *
    * More than that while a message is open, because a message being read
    * or written needs room to be worth opening.
@@ -328,7 +327,7 @@ export function useMailPaneGeometry(input: {
    *
    * Taking it from the list alone would crush the column being written
    * away from while the folders beside it kept every pixel — at a narrow
-   * window the list went to its floor and the rail never moved. Sharing
+   * window the list goes to its floor and the rail never moves. Sharing
    * it by how much room each has above its own floor takes more from
    * whichever is roomier, and leaves neither one squashed on its own.
    */

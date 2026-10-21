@@ -134,9 +134,9 @@ export function MailRestPanel() {
    *
    * A picture needs room to be restful in; a line of type does not. Shrunk
    * into a narrow pane the picture becomes a postage stamp with a sentence
-   * under it, which is neither the picture nor the rest it was for — and
-   * taking the whole panel away instead left a blank pane, which says
-   * nothing at all.
+   * under it, which is neither the picture nor the rest it is for. Taking
+   * the whole panel away instead leaves a blank pane, which says nothing
+   * at all.
    */
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const [panelWidth, setPanelWidth] = React.useState(0);

@@ -415,9 +415,9 @@ async function collectGmailHistory(
     Paced, so the scan shares the minute.
 
     Five hundred message reads is two and a half thousand units, and
-    Google allows a mailbox six thousand a minute. Read in one go, as it
-    was, the scan took most of the minute's allowance in a few seconds
-    and the inbox behind it was refused. Read thirty at a time with six
+    Google allows a mailbox six thousand a minute. Read in one go, the
+    scan takes most of the minute's allowance in a few seconds, and the
+    inbox behind it is refused. Read thirty at a time with six
     seconds between chunks, it spends fifteen hundred a minute and is
     done inside two minutes — a background job's pace, which is what it
     is. The client's own allowance (see gmail/api) is the hard stop
@@ -781,8 +781,8 @@ export async function listContactSourceStatuses(
       // one. `needsAccess` says which of the two ways out the reader has.
       lastError: granted ? (state?.lastError ?? null) : null,
       // On unless it was turned off, the same as every other source. Whether
-      // macOS allows it is a separate fact, and conflating the two made the
-      // row say "On" and "not allowed" at once.
+      // macOS allows it is a separate fact. If the two are mixed, the row
+      // says "On" and "not allowed" at once.
       enabled: !disabled.has("mac"),
       needsAccess: granted
         ? null
@@ -989,20 +989,21 @@ export async function listMergedMailContacts(
  *
  * The pass that fires from compose is cheap for these mailboxes — one
  * query each — so this is short. It is not zero: a compose opened twice
- * in a minute must not redo the work twice. It was an hour, and a person
- * written to a moment ago was not offered for up to that hour: the reader
- * wrote to somebody, opened a new message to them, and found nobody.
+ * in a minute must not redo the work twice. It is not long either. With
+ * an hour, a person written to a moment ago is not offered for up to that
+ * hour. The reader writes to somebody, opens a new message to them, and
+ * finds nobody.
  */
 const COPY_HISTORY_MAX_AGE_MS = 2 * 60 * 1000;
 
 /**
  * Is there a mailbox whose history the copy can refresh, and has not lately?
  *
- * The pass from compose used to ask one question: has any source never
- * synced? Once every source had synced once, the answer was no for good,
- * and history stopped moving — the rows stayed as old as the last time
- * somebody pressed Sync now. An address written to after that was offered
- * by nothing, and the reader typed it out again every time.
+ * It is not enough to ask whether any source never synced. After every
+ * source synced once, the answer is no for good, and history stops moving.
+ * The rows stay as old as the last time somebody pressed Sync now. An
+ * address written to after that is offered by nothing, and the reader types
+ * it out again every time.
  *
  * Only mailboxes the copy serves count. For the rest, reading sent mail is
  * hundreds of calls to the provider, which is Sync now's work and not

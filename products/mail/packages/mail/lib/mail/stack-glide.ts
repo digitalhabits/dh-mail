@@ -3,8 +3,7 @@
  *
  * The switch changes which rows the list has: on, a sender's threads go
  * under the row of their newest thread; off, they come back out. The
- * timings are Claude Design's handoff (Stacks Animation Spec, option 5a,
- * 2026-10-17):
+ * timings are Claude Design's handoff (Stacks Animation Spec, option 5a):
  *
  *   On   0 ms     the threads that will stack take the tint, lift and a
  *                 shadow. Nothing else changes.
@@ -22,7 +21,7 @@
  *        1200 ms  they settle, and keep the tint where they landed.
  *        1500 ms  the tint fades (900 ms).
  *
- * How: the list changes at once, as before. The places of the rows are
+ * How: the list changes at once. The places of the rows are
  * taken just before (`takeGlidePlaces`), and once the list has drawn again
  * (`glideToNewPlaces`) every row is put back where it was and moved from
  * there: the rows themselves for what stays, copies of the old rows for

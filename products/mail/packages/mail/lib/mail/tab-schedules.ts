@@ -16,6 +16,7 @@
  * this app.
  */
 
+import { MAIL_TAB_SCHEDULE_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import {
@@ -26,7 +27,6 @@ import {
   type MailScheduleDay,
 } from "@/lib/mail/custom-lists";
 
-export const MAIL_TAB_SCHEDULE_KEY = "redd-plan-mail-tab-schedules";
 export const MAIL_TAB_SCHEDULE_EVENT = "redd-plan-mail-tab-schedules-changed";
 
 export type MailTabSchedule = {

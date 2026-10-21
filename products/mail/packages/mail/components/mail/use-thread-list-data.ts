@@ -10,6 +10,11 @@
  */
 
 import {
+  SEARCH_HIDDEN_MAILBOXES_KEY as SEARCH_HIDDEN_KEY,
+  MAIL_POPOUT_SENT_KEY,
+  MAIL_CHANGED_KEY,
+} from "@/lib/mail/storage-keys";
+import {
   newHiddenRows,
   pruneHiddenRows,
   rowIsHidden,
@@ -25,8 +30,6 @@ import { dedupeThreadsByTip, threadKey } from "@/lib/mail/thread-copies";
 import { mailPauseVerdictForAccount } from "@/lib/mail/quiet-hours";
 import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
-import { MAIL_POPOUT_SENT_KEY } from "@/lib/mail/popout";
-import { MAIL_CHANGED_KEY } from "@/lib/mail/reader-window";
 import { listHiddenMailboxes } from "@/lib/mail/mailbox-visibility";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { mailListCacheKey, markMailWarm, readCachedList, writeCachedList } from "@/lib/mail/list-cache";
@@ -41,6 +44,7 @@ import {
 import type { MailListCacheEntry } from "@/lib/mail/list-cache";
 import { withHeldReads } from "@/lib/mail/held-reads";
 import type { MailPauseState } from "@/lib/mail/quiet-hours";
+
 
 /**
  * What a mailbox's refusal means, in words the reader can act on.
@@ -66,9 +70,12 @@ function plainFailure(failure: { email: string; reason: string }): {
   return { email: failure.email, reason: plain.slice(0, 160) };
 }
 
-/** Whether a search reaches the hidden mailboxes: "0" when the reader turned it off. */
-const SEARCH_HIDDEN_KEY = "mail-search-hidden-mailboxes";
+/** Whether two lists hold the same strings in the same order. */
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
 
+/** Whether a search reaches the hidden mailboxes: "0" when the reader turned it off. */
 function readSearchHidden(): boolean {
   try {
     return localStorage.getItem(SEARCH_HIDDEN_KEY) !== "0";
@@ -77,7 +84,8 @@ function readSearchHidden(): boolean {
   }
 }
 
-export function useThreadListData(input: {
+/** What the page hands to useThreadListData. */
+export type ThreadListDataInput = {
   viewerId: string;
   pageSnapKey: string;
   initialList?: (MailListCacheEntry & { key: string }) | null;
@@ -95,7 +103,9 @@ export function useThreadListData(input: {
   mailSurfaceRef: React.RefObject<HTMLDivElement | null>;
   /** Keep the open thread's People flag in sync after a list refresh. */
   reconcileSelection: (threads: MailThreadSummary[]) => void;
-}) {
+};
+
+export function useThreadListData(input: ThreadListDataInput) {
   const {
     viewerId,
     pageSnapKey,
@@ -112,15 +122,70 @@ export function useThreadListData(input: {
     mailSurfaceRef,
     reconcileSelection,
   } = input;
+  const { listCacheKey, listCursor, loadingList, loadingMore, setListCursor, setLoadingList, setLoadingMore, setSnoozedCount, setThreads, snoozedCount, threads, threadsKeyRef } = useListRowsState({ accountCount, accountEmails, activeFolder, debouncedSearch, folder, initialList, pageSnapKey, searchScopeKey, viewerId });
+  const { hiddenOnlyEmails, listEmails, listError, pastPause, pauseStateRef, pausedRef, refreshing, resultsQuery, searchHidden, sentHiddenEmails, setListError, setRefreshing, setResultsQuery, setSearchHidden, setUnreadable, unreadable } = useListReach({ accountEmails, activeFolder, debouncedSearch, folder, noneFetching, pauseState });
+  const { appendListParams, hiddenRowsRef, inFlightRef, listQueryRef, listViewIdRef, loadAbortRef, loadGenRef, loadThreadsRef, loadingListRef, refreshingRef, reloadAfterRef, searchDeleted, setSearchDeleted, threadsRef } = useListRefs({ accountEmails, activeFolder, debouncedSearch, folder, hiddenOnlyEmails, loadingList, mailboxScopeEmails, refreshing, searchHidden, searchScopeKey, threads });
+  const { loadThreads } = useListLoad({ activeFolder, appendListParams, debouncedSearch, folder, hiddenRowsRef, inFlightRef, listEmails, listQueryRef, listViewIdRef, loadAbortRef, loadGenRef, loadThreadsRef, pastPause, pauseStateRef, reconcileSelection, reloadAfterRef, searchScopeKey, setListCursor, setListError, setLoadingList, setRefreshing, setResultsQuery, setSnoozedCount, setThreads, setUnreadable, threadsKeyRef, threadsRef, viewerId });
+  const { loadMoreThreads, refreshSentForAccount, scheduleSentRefreshForAccount, shownListCursor } = useListMore({ accountEmails, activeFolder, appendListParams, folder, listCacheKey, listCursor, listQueryRef, loadingList, loadingMore, mailboxScopeEmails, refreshing, setListCursor, setLoadingMore, setSnoozedCount, setThreads, viewerId });
+  useListPolls({ debouncedSearch, loadThreads, loadingListRef, mailSurfaceRef, pausedRef, refreshingRef, scheduleSentRefreshForAccount });
 
+  return {
+    listCacheKey,
+    threads,
+    setThreads,
+    threadsRef,
+    threadsKeyRef,
+    hiddenRowsRef,
+    listViewIdRef,
+    listCursor: shownListCursor,
+    setListCursor,
+    loadingList,
+    setLoadingList,
+    loadingMore,
+    loadMoreThreads,
+    refreshing,
+    listError,
+    unreadable,
+    resultsQuery,
+    snoozedCount,
+    setSnoozedCount,
+    searchDeleted,
+    /** For the search menu: how many mailboxes are hidden, and whether a search reaches them. */
+    hiddenSearch: {
+      emails: hiddenOnlyEmails,
+      count: hiddenOnlyEmails.length,
+      on: searchHidden,
+      set: setSearchHidden,
+      /** Accounts are hidden and a search leaves them out: the box must not say "all mail". */
+      leftOut: hiddenOnlyEmails.length > 0 && !searchHidden,
+    },
+    setSearchDeleted,
+    loadThreads,
+    refreshSentForAccount,
+    scheduleSentRefreshForAccount,
+    loadAbortRef,
+    sentHiddenEmails,
+  };
+}
+
+/** The rows on screen, their cursor and loading state, and what paints them first. */
+export function useListRowsState({
+  accountCount,
+  accountEmails,
+  activeFolder,
+  debouncedSearch,
+  folder,
+  initialList,
+  pageSnapKey,
+  searchScopeKey,
+  viewerId,
+}: Pick<ThreadListDataInput, "accountCount" | "accountEmails" | "activeFolder" | "debouncedSearch" | "folder" | "initialList" | "pageSnapKey" | "searchScopeKey" | "viewerId">) {
   const listCacheKey = mailListCacheKey(
     activeFolder ? `label:${folderViewToken(activeFolder)}` : folder,
     debouncedSearch ? `${debouncedSearch}|${searchScopeKey}` : ""
   );
-
   /** null until first count fetch — Snoozed tab only when > 0. */
   const [snoozedCount, setSnoozedCount] = React.useState<number | null>(null);
-
   // Soft-nav / InstantTabPaint: seed from prop. Hard refresh: keep the first
   // client render identical to SSR (empty + loading), then fill from cache in
   // useLayoutEffect before paint — peeking localStorage in useState mismatches.
@@ -153,7 +218,17 @@ export function useThreadListData(input: {
   const [loadingList, setLoadingList] = React.useState(
     () => Boolean(accountCount) && !initialList?.threads.length
   );
-
+  /**
+   * Which list the rows on screen answer.
+   *
+   * Rows are kept while a new fetch runs, so the list does not blank on every
+   * refresh. That is only right while the view is the same one. Make a folder
+   * and open it and the rows kept over were the inbox's — shown under the new
+   * folder's name, as though the mail had moved into it.
+   */
+  const threadsKeyRef = React.useRef(
+    initialList?.threads.length ? initialList.key : ""
+  );
   React.useLayoutEffect(() => {
     if (!accountEmails.length) {
       setLoadingList(false);
@@ -178,7 +253,6 @@ export function useThreadListData(input: {
     // Only on mount — listCacheKey/threads intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewerId]);
-
   React.useEffect(() => {
     if (!accountEmails.length) {
       setThreads([]);
@@ -186,7 +260,6 @@ export function useThreadListData(input: {
       setLoadingList(false);
     }
   }, [accountEmails.length, setThreads]);
-
   // Persist for InstantTabPaint — never clobber a warm snapshot with an empty
   // remount (SSR/hydrate starts with threads=[] before cache/fetch lands).
   React.useLayoutEffect(() => {
@@ -209,24 +282,34 @@ export function useThreadListData(input: {
       listCursor,
     });
   }, [accountEmails, threads, listCacheKey, listCursor, pageSnapKey, viewerId]);
+  return { listCacheKey, listCursor, loadingList, loadingMore, setListCursor, setLoadingList, setLoadingMore, setSnoozedCount, setThreads, snoozedCount, threads, threadsKeyRef };
+}
 
+/** Which mailboxes the list asks, whether it is paused, and what the last read said. */
+export function useListReach({
+  accountEmails,
+  activeFolder,
+  debouncedSearch,
+  folder,
+  noneFetching,
+  pauseState,
+}: Pick<ThreadListDataInput, "accountEmails" | "activeFolder" | "debouncedSearch" | "folder" | "noneFetching" | "pauseState">) {
   // Sent is fetched while the mail is paused: see listShowsSentOnly.
   const sentOnly = listShowsSentOnly(folder, activeFolder);
   /*
     A search reaches a paused mailbox too. A pause holds back the mail
     that comes in; a search is the reader asking for mail they know is
-    there, and finding nothing in a paused mailbox read as the mail being
-    gone (Ulrik, 2026-10-20).
+    there, and finding nothing in a paused mailbox reads as the mail being
+    gone.
   */
   const searching = Boolean(debouncedSearch);
   const pastPause = sentOnly || searching;
   const pausedRef = React.useRef(noneFetching && !pastPause);
   pausedRef.current = noneFetching && !pastPause;
-
   /**
    * Whether a search also looks in the hidden mailboxes. On unless the
    * reader turned it off, and kept: hiding a mailbox takes the mail that
-   * comes in off the screen, not out of reach (Ulrik, 2026-10-20). The
+   * comes in off the screen, not out of reach. The
    * search menu offers it while a mailbox is hidden.
    */
   const [searchHidden, setSearchHiddenState] = React.useState(readSearchHidden);
@@ -239,11 +322,10 @@ export function useThreadListData(input: {
     }
   }, []);
   const reachHidden = sentOnly || (searching && searchHidden);
-
   /*
     Sent asks the hidden mailboxes too: hiding one takes the mail that
     comes in off the screen, but Sent is where you check that a message
-    went (2026-10-19). So does a search, unless the reader said not to.
+    went. So does a search, unless the reader said not to.
     Read when the list opens, and again when a mailbox is hidden or shown;
     the search menu needs it too, to offer the choice.
   */
@@ -253,7 +335,10 @@ export function useThreadListData(input: {
     let alive = true;
     void listHiddenMailboxes()
       .then((list) => {
-        if (alive) setHiddenMailboxes(list);
+        // Keep the same array when the list did not change. A new array
+        // makes a new `loadThreads`, and the effect that syncs on open then
+        // runs again and cancels a Sync that the reader pressed.
+        if (alive) setHiddenMailboxes((prev) => (sameList(prev, list) ? prev : list));
       })
       .catch(() => undefined);
     return () => {
@@ -277,9 +362,7 @@ export function useThreadListData(input: {
   );
   const pauseStateRef = React.useRef(pauseState);
   pauseStateRef.current = pauseState;
-
   const [refreshing, setRefreshing] = React.useState(false);
-
   /**
    * The query the rows on screen were fetched for. "" while browsing.
    *
@@ -288,33 +371,38 @@ export function useThreadListData(input: {
    * does not make the list look stale.
    */
   const [resultsQuery, setResultsQuery] = React.useState("");
-
   const [listError, setListError] = React.useState<string | null>(null);
   /**
    * The mailboxes the last load could not read, and why, in plain words.
    *
-   * Shown at the top of the list. A mailbox that fails used to be left out
-   * with nothing said: the rows that did come back looked like the whole
-   * answer, and a search that missed a mailbox looked like a search with
-   * no hits. Empty once every mailbox has answered.
+   * Shown at the top of the list. If a mailbox that fails is left out with
+   * nothing said, the rows that come back look like the whole answer. A
+   * search that misses a mailbox then looks like a search with no hits. Empty once every mailbox has answered.
    */
   const [unreadable, setUnreadable] = React.useState<
     { email: string; reason: string }[]
   >([]);
+  return { hiddenOnlyEmails, listEmails, listError, pastPause, pauseStateRef, pausedRef, refreshing, resultsQuery, searchHidden, sentHiddenEmails, setListError, setRefreshing, setResultsQuery, setSearchHidden, setUnreadable, unreadable };
+}
 
+/** The refs that the loads read, and the query each one sends. */
+export function useListRefs({
+  accountEmails,
+  activeFolder,
+  debouncedSearch,
+  folder,
+  hiddenOnlyEmails,
+  loadingList,
+  mailboxScopeEmails,
+  refreshing,
+  searchHidden,
+  searchScopeKey,
+  threads,
+}: Pick<ReturnType<typeof useListRowsState>, "loadingList" | "threads"> &
+  Pick<ReturnType<typeof useListReach>, "hiddenOnlyEmails" | "refreshing" | "searchHidden"> &
+  Pick<ThreadListDataInput, "accountEmails" | "activeFolder" | "debouncedSearch" | "folder" | "mailboxScopeEmails" | "searchScopeKey">) {
   const threadsRef = React.useRef(threads);
   threadsRef.current = threads;
-  /**
-   * Which list the rows on screen answer.
-   *
-   * Rows are kept while a new fetch runs, so the list does not blank on every
-   * refresh. That is only right while the view is the same one. Make a folder
-   * and open it and the rows kept over were the inbox's — shown under the new
-   * folder's name, as though the mail had moved into it.
-   */
-  const threadsKeyRef = React.useRef(
-    initialList?.threads.length ? initialList.key : ""
-  );
   /**
    * Soft-hide keys until `until` ms, for rows removed here before the
    * provider agrees they are gone. A quiet poll that started before the
@@ -356,7 +444,6 @@ export function useThreadListData(input: {
     searchScopeKey,
     activeFolderName: folderViewToken(activeFolder),
   };
-
   /**
    * Whether a search also looks in Trash and Junk.
    *
@@ -368,7 +455,6 @@ export function useThreadListData(input: {
    * one is running.
    */
   const [searchDeleted, setSearchDeleted] = React.useState(false);
-
   /**
    * Browse/search params for the API. List paint filters by mailbox scope
    * client-side. Search never uses folderScoped — a query covers every folder
@@ -404,11 +490,10 @@ export function useThreadListData(input: {
       /**
        * The view narrows the search, the way the tabs beside it already do.
        *
-       * A search used to reach every folder whatever was open, which left
-       * Sent lit and underlined above results that were not sent mail —
-       * the reader had picked a view and watched the same list come back.
-       * That argument was already settled for All / In Contacts / Other,
-       * and Sent, Trash, Junk and the folders were the exception.
+       * If a search reaches every folder whatever is open, Sent stays lit
+       * and underlined above results that are not sent mail. The reader
+       * picks a view and the same list comes back. Sent, Trash, Junk and the
+       * folders narrow the search as All / In Contacts / Other do.
        *
        * `folderScoped` is how the list is told to keep the folder query
        * alongside the words; a named label keeps it either way.
@@ -444,7 +529,43 @@ export function useThreadListData(input: {
       hiddenOnlyEmails,
     ]
   );
+  return { appendListParams, hiddenRowsRef, inFlightRef, listQueryRef, listViewIdRef, loadAbortRef, loadGenRef, loadThreadsRef, loadingListRef, refreshingRef, reloadAfterRef, searchDeleted, setSearchDeleted, threadsRef };
+}
 
+/** One read of the list: the fetch, the merge, the caches and the errors. */
+export function useListLoad({
+  activeFolder,
+  appendListParams,
+  debouncedSearch,
+  folder,
+  hiddenRowsRef,
+  inFlightRef,
+  listEmails,
+  listQueryRef,
+  listViewIdRef,
+  loadAbortRef,
+  loadGenRef,
+  loadThreadsRef,
+  pastPause,
+  pauseStateRef,
+  reconcileSelection,
+  reloadAfterRef,
+  searchScopeKey,
+  setListCursor,
+  setListError,
+  setLoadingList,
+  setRefreshing,
+  setResultsQuery,
+  setSnoozedCount,
+  setThreads,
+  setUnreadable,
+  threadsKeyRef,
+  threadsRef,
+  viewerId,
+}: Pick<ReturnType<typeof useListRowsState>, "setListCursor" | "setLoadingList" | "setSnoozedCount" | "setThreads" | "threadsKeyRef"> &
+  Pick<ReturnType<typeof useListReach>, "listEmails" | "pastPause" | "pauseStateRef" | "setListError" | "setRefreshing" | "setResultsQuery" | "setUnreadable"> &
+  Pick<ReturnType<typeof useListRefs>, "appendListParams" | "hiddenRowsRef" | "inFlightRef" | "listQueryRef" | "listViewIdRef" | "loadAbortRef" | "loadGenRef" | "loadThreadsRef" | "reloadAfterRef" | "threadsRef"> &
+  Pick<ThreadListDataInput, "activeFolder" | "debouncedSearch" | "folder" | "reconcileSelection" | "searchScopeKey" | "viewerId">) {
   const loadThreads = React.useCallback(
     async (options?: {
       fresh?: boolean;
@@ -578,7 +699,7 @@ export function useThreadListData(input: {
 
       /**
        * Every mailbox asked on its own, and merged into the list as each
-       * answer lands: one slow mailbox no longer holds back the others.
+       * answer lands, so one slow mailbox does not hold back the others.
        * Throws when none answered and some failed, as the single read does.
        */
       const loadEachMailbox = async (params: URLSearchParams): Promise<boolean> => {
@@ -655,9 +776,9 @@ export function useThreadListData(input: {
             setResultsQuery(debouncedSearch);
           } catch (err) {
             if (firstError == null) firstError = err;
-            // Which one, and what it answered. This used to go only to the
-            // console, where the toast could not reach it and nobody
-            // reading a server's log would ever find it.
+            // Which one, and what it answered. If this goes only to the
+            // console, the toast cannot reach it, and nobody who reads a
+            // server's log finds it.
             const aborted =
               err instanceof DOMException && err.name === "AbortError";
             failures.push({
@@ -709,10 +830,9 @@ export function useThreadListData(input: {
         /*
           Only the mailboxes that actually failed.
 
-          Counting instead — fewer successes than mailboxes — reported the
-          reader's own typing as an error: an answer that arrived too late
-          to be wanted leaves the count short without anything having gone
-          wrong. Named at the top of the list rather than in a toast: a
+          A count of successes against mailboxes reports the reader's own
+          typing as an error. An answer that arrives too late to be wanted
+          leaves the count short, and nothing went wrong. Named at the top of the list rather than in a toast: a
           toast is gone in seconds, and the rows that did come back go on
           looking like the whole answer for as long as the list is open.
         */
@@ -764,7 +884,7 @@ export function useThreadListData(input: {
         }
 
         // Multi-account browse/search: one request per mailbox, merged into
-        // the list as each response lands — one slow mailbox no longer holds
+        // the list as each response lands. One slow mailbox does not hold
         // back the others, and rows drop in as they arrive.
         if (
           !snoozedView &&
@@ -865,11 +985,34 @@ export function useThreadListData(input: {
       viewerId,
     ]
   );
-
   React.useEffect(() => {
     loadThreadsRef.current = loadThreads;
-  }, [loadThreads]);
+  }, [loadThreads, loadThreadsRef]);
+  return { loadThreads };
+}
 
+/** The after-send Sent refresh, and the next page of rows. */
+export function useListMore({
+  accountEmails,
+  activeFolder,
+  appendListParams,
+  folder,
+  listCacheKey,
+  listCursor,
+  listQueryRef,
+  loadingList,
+  loadingMore,
+  mailboxScopeEmails,
+  refreshing,
+  setListCursor,
+  setLoadingMore,
+  setSnoozedCount,
+  setThreads,
+  viewerId,
+}: Pick<ReturnType<typeof useListRowsState>, "listCacheKey" | "listCursor" | "loadingList" | "loadingMore" | "setListCursor" | "setLoadingMore" | "setSnoozedCount" | "setThreads"> &
+  Pick<ReturnType<typeof useListReach>, "refreshing"> &
+  Pick<ReturnType<typeof useListRefs>, "appendListParams" | "listQueryRef"> &
+  Pick<ThreadListDataInput, "accountEmails" | "activeFolder" | "folder" | "mailboxScopeEmails" | "viewerId">) {
   /**
    * After a send, refresh only that mailbox's Sent list (not every account).
    * Updates the Sent cache always; merges into the live list when Sent is open.
@@ -925,9 +1068,8 @@ export function useThreadListData(input: {
         /* quiet — the next poll still catches up */
       }
     },
-    [setThreads, viewerId]
+    [setThreads, viewerId, listQueryRef]
   );
-
   /** Provider Sent indexing lags; two quiet beats for one mailbox only. */
   const scheduleSentRefreshForAccount = React.useCallback(
     (accountEmail: string) => {
@@ -941,7 +1083,6 @@ export function useThreadListData(input: {
     },
     [refreshSentForAccount]
   );
-
   // Cheap count so the Snoozed tab can appear without loading the full list.
   // All-accounts count — the account menu filters the snoozed list client-side.
   // Defer so threads + folder names claim the first network slots.
@@ -963,15 +1104,13 @@ export function useThreadListData(input: {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, []);
-
+  }, [setSnoozedCount]);
   // What "Load more" offers: the pages of the mailboxes in the tab only
   // (see cursorForMailboxScope). The whole cursor still goes with it.
   const shownListCursor = React.useMemo(
     () => cursorForMailboxScope(listCursor, mailboxScopeEmails, accountEmails),
     [listCursor, mailboxScopeEmails, accountEmails]
   );
-
   const loadMoreThreads = React.useCallback(async () => {
     if (!listCursor || loadingMore || loadingList || refreshing) return;
     if (!activeFolder && folder === "snoozed") return;
@@ -999,8 +1138,7 @@ export function useThreadListData(input: {
     } finally {
       setLoadingMore(false);
     }
-  }, [
-    appendListParams,
+  }, [appendListParams,
     folder,
     activeFolder,
     listCacheKey,
@@ -1009,16 +1147,31 @@ export function useThreadListData(input: {
     loadingMore,
     refreshing,
     setThreads,
-    viewerId,
-  ]);
+    viewerId, setListCursor, setLoadingMore]);
+  return { loadMoreThreads, refreshSentForAccount, scheduleSentRefreshForAccount, shownListCursor };
+}
 
+/** When the list reads again: on open, on new contacts, on the poll, and on signals from other windows. */
+export function useListPolls({
+  debouncedSearch,
+  loadThreads,
+  loadingListRef,
+  mailSurfaceRef,
+  pausedRef,
+  refreshingRef,
+  scheduleSentRefreshForAccount,
+}: Pick<ReturnType<typeof useListReach>, "pausedRef"> &
+  Pick<ReturnType<typeof useListRefs>, "loadingListRef" | "refreshingRef"> &
+  Pick<ReturnType<typeof useListLoad>, "loadThreads"> &
+  Pick<ReturnType<typeof useListMore>, "scheduleSentRefreshForAccount"> &
+  Pick<ThreadListDataInput, "debouncedSearch" | "mailSurfaceRef">) {
   /**
    * Opening the app is a sync.
    *
    * The first load answers from the store, which is the mailbox as it was
-   * when the app last ran — old mail, drawn fast. Nothing then asked the
-   * provider until the poll's first tick, a minute out, so the inbox sat
-   * out of date until Sync was pressed by hand. The rows paint from the
+   * when the app last ran — old mail, drawn fast. If nothing asks the
+   * provider until the poll's first tick, a minute out, the inbox stays out
+   * of date until the reader presses Sync. So the rows paint from the
    * store first, and the provider poll follows at once — the same call the
    * Sync button makes, once per open rather than once per view.
    */
@@ -1040,8 +1193,7 @@ export function useThreadListData(input: {
       if (pausedRef.current) return;
       void loadThreads({ fresh: true, incremental: true, quiet: true });
     });
-  }, [loadThreads]);
-
+  }, [loadThreads, pausedRef]);
   /*
    * The address book changed, so the split between In Contacts and Other
    * may be wrong for rows already on screen. On a first run the inbox loads
@@ -1057,7 +1209,6 @@ export function useThreadListData(input: {
     return () =>
       window.removeEventListener(CONTACTS_CHANGED_EVENT, onContactsChanged);
   }, [loadThreads]);
-
   // Focus-aware inbox poll: while the window is visible, quietly refresh so
   // new mail shows up without a manual refresh. Pause when hidden; back off
   // on errors so we don't melt Gmail during outages. Always incremental —
@@ -1151,8 +1302,7 @@ export function useThreadListData(input: {
       clear();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [loadThreads, debouncedSearch, mailSurfaceRef]);
-
+  }, [loadThreads, debouncedSearch, mailSurfaceRef, loadingListRef, pausedRef, refreshingRef]);
   // A chat popout window sent mail: refresh that mailbox's Sent soon
   // (staggered — the provider needs a beat to index the sent copy).
   // Browsers signal via the storage event; desktop shells via Tauri.
@@ -1215,7 +1365,6 @@ export function useThreadListData(input: {
       unlisten?.();
     };
   }, [loadThreads, scheduleSentRefreshForAccount]);
-
   // A reader window archived, deleted or moved a thread: drop the row now,
   // not at the next poll. Twice, because the provider can take a moment to
   // leave the change out of its own listing. The same two channels as the
@@ -1280,42 +1429,4 @@ export function useThreadListData(input: {
       for (const timer of timers) window.clearTimeout(timer);
     };
   }, [loadThreads]);
-
-  return {
-    listCacheKey,
-    threads,
-    setThreads,
-    threadsRef,
-    threadsKeyRef,
-    hiddenRowsRef,
-    listViewIdRef,
-    listCursor: shownListCursor,
-    setListCursor,
-    loadingList,
-    setLoadingList,
-    loadingMore,
-    loadMoreThreads,
-    refreshing,
-    listError,
-    unreadable,
-    resultsQuery,
-    snoozedCount,
-    setSnoozedCount,
-    searchDeleted,
-    /** For the search menu: how many mailboxes are hidden, and whether a search reaches them. */
-    hiddenSearch: {
-      emails: hiddenOnlyEmails,
-      count: hiddenOnlyEmails.length,
-      on: searchHidden,
-      set: setSearchHidden,
-      /** Accounts are hidden and a search leaves them out: the box must not say "all mail". */
-      leftOut: hiddenOnlyEmails.length > 0 && !searchHidden,
-    },
-    setSearchDeleted,
-    loadThreads,
-    refreshSentForAccount,
-    scheduleSentRefreshForAccount,
-    loadAbortRef,
-    sentHiddenEmails,
-  };
 }

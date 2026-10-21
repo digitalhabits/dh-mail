@@ -25,9 +25,9 @@ let pending: Promise<Set<string>> | null = null;
 
 /*
   The Exchange (EWS) mailboxes, known the same way, so that a place which
-  picks between "Outlook" and "Gmail" can say Exchange instead. Before this,
-  every mailbox that was not Outlook was taken for Gmail: a reconnect went
-  to Google's sign-in, and a toast said "Gmail". Internal flavor only.
+  picks between "Outlook" and "Gmail" can say Exchange instead. Without
+  this, every mailbox that is not Outlook is taken for Gmail: a reconnect
+  goes to Google's sign-in, and a toast says "Gmail". Internal flavor only.
 */
 let exchangePending: Promise<Set<string>> | null = null;
 let exchangeKnown = new Set<string>();
@@ -52,9 +52,9 @@ const listeners = new Set<() => void>();
 
 /**
  * Forget both lists, after a mailbox was connected or removed, and have
- * every hook read them again. Before, the hooks read them once, when the
- * window opened: a mailbox connected later was taken for Gmail, with the
- * Gmail mark, until the app was started again (2026-09-29).
+ * every hook read them again. If the hooks read them only once, when the
+ * window opens, a mailbox connected later is taken for Gmail. It then shows
+ * the Gmail mark until the app starts again.
  */
 export function forgetMailProviderLists(): void {
   pending = null;

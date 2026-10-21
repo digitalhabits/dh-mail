@@ -9,10 +9,13 @@
  * Each change sends an event, so every bubble on screen follows it at once.
  */
 
+import {
+  READER_LINES_KEY as LINES_KEY,
+  READER_SIZE_KEY as SIZE_KEY,
+  READER_WIDTH_KEY as WIDTH_KEY,
+} from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-const LINES_KEY = "redd-plan-mail-reader-lines";
-const SIZE_KEY = "redd-plan-mail-reader-size";
 const CHANGED_EVENT = "redd-plan-mail-reader-changed";
 
 /** The default line count: a message longer than this gets the button. */
@@ -91,7 +94,6 @@ export function useReaderTextSize(): [number, (next: number) => void] {
   return [value, update];
 }
 
-const WIDTH_KEY = "redd-plan-mail-reader-width";
 /** The Reader's column, in CSS pixels before the pane's zoom. */
 export const READER_WIDTH_DEFAULT = 680;
 export const READER_WIDTH_MIN = 360;

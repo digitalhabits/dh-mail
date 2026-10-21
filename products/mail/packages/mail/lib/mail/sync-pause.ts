@@ -3,8 +3,9 @@
  *
  * The worker writes its reason for a developer — "the token request failed:
  * error sending request for url (https://oauth2.googleapis.com/token)" — and
- * the list used to show it as it was. Nobody who read that knew whether
- * something was wrong with their account, or whether they had to do anything.
+ * a list that shows it as it is helps nobody. A reader of it does not know
+ * whether something is wrong with their account, or whether they must do
+ * anything.
  *
  * Three answers cover it:
  *
@@ -17,8 +18,8 @@
  *   kept for whoever is asked to look.
  *
  * "reconnecting", which the worker adds after network drops that keep
- * happening, is not "needs reconnect". The list used to read it as one, and
- * offered Reconnect for a dropped Wi-Fi connection.
+ * happening, is not "needs reconnect". If the list reads it as one, it
+ * offers Reconnect for a dropped Wi-Fi connection.
  */
 
 export type SyncPauseKind = "offline" | "signIn" | "other";

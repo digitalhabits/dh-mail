@@ -29,6 +29,7 @@ import { mailHasTeamAssist } from "@/lib/mail/product-flavor";
 import { mailApiFetch } from "@/lib/mail/api";
 import type { MailProvider } from "@/lib/mail/types";
 
+
 /** Mirror of the server's MailAutoReply (lib/mail/inbox.ts). */
 export type AutoReplyDto = {
   account: string;
@@ -47,7 +48,7 @@ export type AutoReplyDto = {
 };
 
 /**
- * The "All" tab: one reply for every mailbox (2026-09-29). Editing it sets
+ * The "All" tab: one reply for every mailbox. Editing it sets
  * the same reply on each; a mailbox's own tab can still override it.
  */
 const ALL = "__all__";
@@ -135,13 +136,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <SettingsHeading className="mb-0 mt-0">{children}</SettingsHeading>;
 }
 
-export function AutoReplyDialog({
-  open,
-  initialAccount,
-  onClose,
-  onBack,
-  onSaved,
-}: {
+/** What the auto-reply dialog takes. */
+export type AutoReplyDialogProps = {
   open: boolean;
   /** Back to the Settings page that opened the dialog, when one did. */
   onBack?: () => void;
@@ -150,293 +146,16 @@ export function AutoReplyDialog({
   onClose: () => void;
   /** Fired with the fresh server state after a successful save. */
   onSaved: (updated: AutoReplyDto) => void;
-}) {
-  const t = useMailT();
-  const [items, setItems] = React.useState<AutoReplyDto[] | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [active, setActive] = React.useState<string | null>(null);
-  const [forms, setForms] = React.useState<Record<string, FormState>>({});
-  /*
-    The dialog saves itself — there is no Save button to press.
+};
 
-    A switch that only took effect on Save looked ignored: the dots kept
-    reporting the responder still on, because it still was. Now every
-    change is written on its own — the switch, the dates and the contacts
-    checkbox almost at once, the words after a moment's pause in the
-    typing — and the footer says where the writing stands. One guard
-    holds: a responder switched on with nothing written waits, and says
-    what it is waiting for, rather than answering people with an empty
-    message.
-  */
-  const [saveStatus, setSaveStatus] = React.useState<
-    Record<string, "pending" | "saving" | "saved" | "held" | "error">
-  >({});
-  const formsRef = React.useRef(forms);
-  formsRef.current = forms;
-  const itemsRef = React.useRef(items);
-  itemsRef.current = items;
-  const saveTimersRef = React.useRef(new Map<string, number>());
-  /*
-    One save for each mailbox at a time. KU's Exchange refused a save that
-    started while the one before was still on its way (2026-09-29): the
-    switch, then the dates 3 seconds later. A change made during a save
-    waits for it, and then the latest state is saved once.
-  */
-  const savingRef = React.useRef(new Set<string>());
-  const saveAgainRef = React.useRef(new Set<string>());
-  // Remounts the rich text editors (uncontrolled) when fresh content arrives.
-  const [loadStamp, setLoadStamp] = React.useState(0);
-  /* The tabs name each mailbox the way the mail list does: the reader's own
-     picture where they set one, and the shortest name that tells it apart. */
-  const marks = useAccountMarks();
-  const order = useAccountOrder();
-  /** For the toolbar, which reaches the editor through it. */
-  const editorHandle = React.useRef<RichTextEditorHandle | null>(null);
-  /*
-    And in the reader's own order, which is the one thing a row of mailboxes
-    must never disagree about. They arrange it by dragging — on the folder
-    rail, or on the tabs over the list — and a second row in the order the
-    server happened to answer in is a row they have to read twice.
-  */
-  const tabs = React.useMemo(() => {
-    if (!items) return [];
-    const byAccount = new Map(items.map((a) => [a.account, a]));
-    return sortAccountsByOrder(
-      items.map((a) => a.account),
-      order
-    )
-      .map((account) => byAccount.get(account))
-      .filter((a): a is AutoReplyDto => a !== undefined);
-  }, [items, order]);
-  const tabLabels = React.useMemo(
-    () => accountChipLabels(tabs.map((a) => a.account)),
-    [tabs]
-  );
-  /** The mailboxes the All tab writes to: those with a reply to manage. */
-  const editable = React.useMemo(
-    () => tabs.filter((a) => !a.unavailable && !a.needsReconnect),
-    [tabs]
-  );
-  const showAll = editable.length > 1;
-  /** The mailboxes' replies differ now: the All tab says so. */
-  const repliesDiffer = React.useMemo(() => {
-    const withSubject = editable.every((a) => a.subjectSupported !== false);
-    const saved = editable.map((a) => forms[a.account]).filter(Boolean);
-    return saved.some((f) => !sameReply(f, saved[0], withSubject));
-  }, [editable, forms]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setItems(null);
-    setLoadError(null);
-    setSaveStatus({});
-    for (const timer of saveTimersRef.current.values()) {
-      window.clearTimeout(timer);
-    }
-    saveTimersRef.current.clear();
-    setActive(initialAccount ?? null);
-    (async () => {
-      try {
-        const res = await mailApiFetch("/api/mail/autoreply");
-        const json = (await res.json()) as {
-          autoReplies?: AutoReplyDto[];
-          error?: string;
-        };
-        if (!res.ok || !json.autoReplies) {
-          throw new Error(json.error || t("couldNotLoadAutoReply"));
-        }
-        if (cancelled) return;
-        setItems(json.autoReplies);
-        // The leading tab, not whichever mailbox the server answered with
-        // first — the dialog opens on the tab the reader sees on the left.
-        const ordered = sortAccountsByOrder(
-          (json.autoReplies ?? []).map((a) => a.account),
-          readAccountOrder()
-        );
-        const byAccount = new Map(json.autoReplies.map((a) => [a.account, a]));
-        const writable = ordered.filter((e) => {
-          const a = byAccount.get(e);
-          return a && !a.unavailable && !a.needsReconnect;
-        });
-        const perAccount = Object.fromEntries(json.autoReplies.map((a) => [a.account, toFormState(a)]));
-        // All starts from the leading mailbox's reply.
-        const allForm = writable[0] ? perAccount[writable[0]] : undefined;
-        setForms(allForm ? { ...perAccount, [ALL]: { ...allForm } } : perAccount);
-        // With several mailboxes, the leading tab is All, as over the list.
-        const first = writable.length > 1 ? ALL : ordered[0];
-        setActive((current) => current ?? first ?? null);
-        setLoadStamp((n) => n + 1);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(
-            err instanceof Error
-              ? err.message
-              : t("couldNotLoadAutoReply")
-          );
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // `t` is not in the list. This effect loads the forms, and a run for a
-    // new language removes what the reader typed. `t` is read only for the
-    // text of an error.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialAccount]);
-
-  const updateForm = (account: string, patch: Partial<FormState>) => {
-    if (account === ALL) {
-      updateAll(patch);
-      return;
-    }
-    setForms((prev) => {
-      const next = { ...prev[account], ...patch };
-      // A last day before the first day is not a range anyone means. Move it
-      // up to the first day rather than refuse the edit. Both dates are
-      // yyyy-mm-dd, so they compare as strings. An empty last day means "no
-      // end date" and must stay empty.
-      if (next.firstDay && next.lastDay && next.lastDay < next.firstDay) {
-        next.lastDay = next.firstDay;
-      }
-      return { ...prev, [account]: next };
-    });
-    /*
-      Writing follows the change on its own, at two paces. The switch, the
-      dates and the contacts checkbox are single decisions — they go almost
-      at once. The words go after a pause in the typing, long enough that a
-      sentence being written is not posted clause by clause: these writes
-      land on the provider's own settings, and a polite client coalesces
-      them. Closing the dialog sends whatever is still waiting.
-    */
-    const textual = "subject" in patch || "bodyHtml" in patch;
-    scheduleSave(account, textual ? 2_500 : 300);
-  };
-
-  /** All: the same reply, whole, on every mailbox, each saved on its own. */
-  const updateAll = (patch: Partial<FormState>) => {
-    const current = formsRef.current[ALL];
-    if (!current) return;
-    const next = { ...current, ...patch };
-    if (next.firstDay && next.lastDay && next.lastDay < next.firstDay) {
-      next.lastDay = next.firstDay;
-    }
-    const accounts = editable.map((a) => a.account);
-    const written: Record<string, FormState> = { ...formsRef.current, [ALL]: next };
-    for (const account of accounts) written[account] = { ...next };
-    // At once, so a save wound below reads what stands now.
-    formsRef.current = written;
-    setForms(written);
-    const textual = "subject" in patch || "bodyHtml" in patch;
-    for (const account of accounts) scheduleSave(account, textual ? 2_500 : 300);
-  };
-
-  const scheduleSave = (account: string, delayMs: number) => {
-    const timers = saveTimersRef.current;
-    const standing = timers.get(account);
-    if (standing != null) window.clearTimeout(standing);
-    setSaveStatus((prev) => ({ ...prev, [account]: "pending" }));
-    timers.set(
-      account,
-      window.setTimeout(() => {
-        timers.delete(account);
-        void save(account);
-      }, delayMs)
-    );
-  };
-
-  /** Send whatever is still waiting — the dialog closing, a tab left. */
-  const flushPendingSaves = () => {
-    const timers = saveTimersRef.current;
-    for (const [account, timer] of timers) {
-      window.clearTimeout(timer);
-      void save(account);
-    }
-    timers.clear();
-  };
-
-  const save = async (account: string) => {
-    if (savingRef.current.has(account)) {
-      saveAgainRef.current.add(account);
-      return;
-    }
-    savingRef.current.add(account);
-    try {
-      await saveNow(account);
-    } finally {
-      savingRef.current.delete(account);
-      if (saveAgainRef.current.delete(account)) void save(account);
-    }
-  };
-
-  const saveNow = async (account: string) => {
-    // Read through the refs: a debounced call must send what stands now,
-    // not what stood when the timer was wound.
-    const form = formsRef.current[account];
-    if (!form) return;
-    const saved = itemsRef.current?.find((a) => a.account === account);
-    // Nothing actually differs from what the provider holds — post nothing.
-    if (
-      saved &&
-      JSON.stringify(toFormState(saved)) === JSON.stringify(form)
-    ) {
-      setSaveStatus((prev) => ({ ...prev, [account]: "saved" }));
-      return;
-    }
-    const plainBody = form.bodyHtml.replace(/<[^>]*>/g, "").trim();
-    if (form.enabled && !plainBody) {
-      // Switched on with nothing written: wait, and say what for, rather
-      // than answering people with an empty message.
-      setSaveStatus((prev) => ({ ...prev, [account]: "held" }));
-      return;
-    }
-    setSaveStatus((prev) => ({ ...prev, [account]: "saving" }));
-    try {
-      const res = await mailApiFetch("/api/mail/autoreply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          account,
-          enabled: form.enabled,
-          subject: form.subject,
-          bodyHtml: form.bodyHtml,
-          restrictToContacts: form.restrictToContacts,
-          startTime: form.firstDay ? dateInputToMs(form.firstDay) : null,
-          // Exclusive end: midnight after the chosen last day.
-          endTime: form.lastDay ? dateInputToMs(form.lastDay, 1) : null,
-        }),
-      });
-      const json = (await res.json()) as { autoReply?: AutoReplyDto; error?: string };
-      if (!res.ok || !json.autoReply) {
-        throw new Error(json.error || t("couldNotSaveAutoReply"));
-      }
-      // Announced only when the responder itself turned on or off — the
-      // decision worth a word. Text finding its way to the server is the
-      // footer's quiet business.
-      const wasEnabled = saved?.enabled ?? false;
-      const withSaved = (prev: AutoReplyDto[] | null) =>
-        prev?.map((a) => (a.account === account ? json.autoReply! : a)) ?? prev;
-      // At once, not at the next render: a save waiting behind this one
-      // compares with what the server holds now.
-      itemsRef.current = withSaved(itemsRef.current);
-      setItems(withSaved);
-      onSaved(json.autoReply);
-      setSaveStatus((prev) => ({ ...prev, [account]: "saved" }));
-      if (json.autoReply.enabled !== wasEnabled) {
-        toast.success(
-          json.autoReply.enabled
-            ? `Auto-reply on for ${account}`
-            : `Auto-reply off for ${account}`
-        );
-      }
-    } catch (err) {
-      setSaveStatus((prev) => ({ ...prev, [account]: "error" }));
-      toast.error(
-        err instanceof Error ? err.message : t("couldNotSaveAutoReply")
-      );
-    }
-  };
+export function AutoReplyDialog({
+  open,
+  initialAccount,
+  onClose,
+  onBack,
+  onSaved,
+}: AutoReplyDialogProps) {
+  const { active, editable, editorHandle, flushPendingSaves, forms, items, loadError, loadStamp, marks, repliesDiffer, saveStatus, setActive, setLoadStamp, showAll, t, tabLabels, tabs, updateForm } = useAutoReplyDialogState({ initialAccount, onSaved, open });
 
   if (!open) return null;
 
@@ -580,7 +299,45 @@ export function AutoReplyDialog({
         ) : null
       }
     >
-        {items === null ? (
+        <AutoReplyBody active={active} activeItem={activeItem} editable={editable} editorHandle={editorHandle} form={form} forms={forms} items={items} loadError={loadError} loadStamp={loadStamp} onAll={onAll} repliesDiffer={repliesDiffer} setLoadStamp={setLoadStamp} t={t} updateForm={updateForm} />
+    </SettingsDialog>
+  );
+}
+
+/** The dialog's body: the reply of the mailbox chosen, or of all of them. */
+function AutoReplyBody({
+  active,
+  activeItem,
+  editable,
+  editorHandle,
+  form,
+  forms,
+  items,
+  loadError,
+  loadStamp,
+  onAll,
+  repliesDiffer,
+  setLoadStamp,
+  t,
+  updateForm,
+}: {
+  active: ReturnType<typeof useAutoReplyDialogState>["active"];
+  activeItem: AutoReplyDto | null;
+  editable: ReturnType<typeof useAutoReplyDialogState>["editable"];
+  editorHandle: ReturnType<typeof useAutoReplyDialogState>["editorHandle"];
+  form: FormState | undefined;
+  forms: ReturnType<typeof useAutoReplyDialogState>["forms"];
+  items: ReturnType<typeof useAutoReplyDialogState>["items"];
+  loadError: ReturnType<typeof useAutoReplyDialogState>["loadError"];
+  loadStamp: ReturnType<typeof useAutoReplyDialogState>["loadStamp"];
+  onAll: boolean;
+  repliesDiffer: ReturnType<typeof useAutoReplyDialogState>["repliesDiffer"];
+  setLoadStamp: ReturnType<typeof useAutoReplyDialogState>["setLoadStamp"];
+  t: ReturnType<typeof useAutoReplyDialogState>["t"];
+  updateForm: ReturnType<typeof useAutoReplyDialogState>["updateForm"];
+}) {
+  return (
+    <>{items === null ? (
           <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
             {loadError ?? (
               <>
@@ -740,7 +497,295 @@ export function AutoReplyDialog({
               </div>
             ) : null}
           </>
-        )}
-    </SettingsDialog>
+        )}</>
   );
+}
+
+
+/** The dialog's state: the mailboxes and their replies, the forms, the tabs, and saving. */
+export function useAutoReplyDialogState({
+  initialAccount,
+  onSaved,
+  open,
+}: { initialAccount: AutoReplyDialogProps["initialAccount"]; onSaved: AutoReplyDialogProps["onSaved"]; open: AutoReplyDialogProps["open"] }) {
+  const t = useMailT();
+  const [items, setItems] = React.useState<AutoReplyDto[] | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [active, setActive] = React.useState<string | null>(null);
+  const [forms, setForms] = React.useState<Record<string, FormState>>({});
+  /*
+    The dialog saves itself — there is no Save button to press.
+
+    A switch that takes effect only on Save looks ignored: the dots keep
+    reporting the responder still on, because it still is. So every
+    change is written on its own — the switch, the dates and the contacts
+    checkbox almost at once, the words after a moment's pause in the
+    typing — and the footer says where the writing stands. One guard
+    holds: a responder switched on with nothing written waits, and says
+    what it is waiting for, rather than answering people with an empty
+    message.
+  */
+  const [saveStatus, setSaveStatus] = React.useState<
+    Record<string, "pending" | "saving" | "saved" | "held" | "error">
+  >({});
+  const formsRef = React.useRef(forms);
+  formsRef.current = forms;
+  const itemsRef = React.useRef(items);
+  itemsRef.current = items;
+  const saveTimersRef = React.useRef(new Map<string, number>());
+  /*
+    One save for each mailbox at a time. KU's Exchange refuses a save that
+    starts while the one before is still on its way: for example the
+    switch, then the dates 3 seconds later. A change made during a save
+    waits for it, and then the latest state is saved once.
+  */
+  const savingRef = React.useRef(new Set<string>());
+  const saveAgainRef = React.useRef(new Set<string>());
+  // Remounts the rich text editors (uncontrolled) when fresh content arrives.
+  const [loadStamp, setLoadStamp] = React.useState(0);
+  /* The tabs name each mailbox the way the mail list does: the reader's own
+     picture where they set one, and the shortest name that tells it apart. */
+  const marks = useAccountMarks();
+  const order = useAccountOrder();
+  /** For the toolbar, which reaches the editor through it. */
+  const editorHandle = React.useRef<RichTextEditorHandle | null>(null);
+  /*
+    And in the reader's own order, which is the one thing a row of mailboxes
+    must never disagree about. They arrange it by dragging — on the folder
+    rail, or on the tabs over the list — and a second row in the order the
+    server happened to answer in is a row they have to read twice.
+  */
+  const tabs = React.useMemo(() => {
+    if (!items) return [];
+    const byAccount = new Map(items.map((a) => [a.account, a]));
+    return sortAccountsByOrder(
+      items.map((a) => a.account),
+      order
+    )
+      .map((account) => byAccount.get(account))
+      .filter((a): a is AutoReplyDto => a !== undefined);
+  }, [items, order]);
+  const tabLabels = React.useMemo(
+    () => accountChipLabels(tabs.map((a) => a.account)),
+    [tabs]
+  );
+  /** The mailboxes the All tab writes to: those with a reply to manage. */
+  const editable = React.useMemo(
+    () => tabs.filter((a) => !a.unavailable && !a.needsReconnect),
+    [tabs]
+  );
+  const showAll = editable.length > 1;
+  /** The mailboxes' replies differ now: the All tab says so. */
+  const repliesDiffer = React.useMemo(() => {
+    const withSubject = editable.every((a) => a.subjectSupported !== false);
+    const saved = editable.map((a) => forms[a.account]).filter(Boolean);
+    return saved.some((f) => !sameReply(f, saved[0], withSubject));
+  }, [editable, forms]);
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setItems(null);
+    setLoadError(null);
+    setSaveStatus({});
+    for (const timer of saveTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    saveTimersRef.current.clear();
+    setActive(initialAccount ?? null);
+    (async () => {
+      try {
+        const res = await mailApiFetch("/api/mail/autoreply");
+        const json = (await res.json()) as {
+          autoReplies?: AutoReplyDto[];
+          error?: string;
+        };
+        if (!res.ok || !json.autoReplies) {
+          throw new Error(json.error || t("couldNotLoadAutoReply"));
+        }
+        if (cancelled) return;
+        setItems(json.autoReplies);
+        // The leading tab, not whichever mailbox the server answered with
+        // first — the dialog opens on the tab the reader sees on the left.
+        const ordered = sortAccountsByOrder(
+          (json.autoReplies ?? []).map((a) => a.account),
+          readAccountOrder()
+        );
+        const byAccount = new Map(json.autoReplies.map((a) => [a.account, a]));
+        const writable = ordered.filter((e) => {
+          const a = byAccount.get(e);
+          return a && !a.unavailable && !a.needsReconnect;
+        });
+        const perAccount = Object.fromEntries(json.autoReplies.map((a) => [a.account, toFormState(a)]));
+        // All starts from the leading mailbox's reply.
+        const allForm = writable[0] ? perAccount[writable[0]] : undefined;
+        setForms(allForm ? { ...perAccount, [ALL]: { ...allForm } } : perAccount);
+        // With several mailboxes, the leading tab is All, as over the list.
+        const first = writable.length > 1 ? ALL : ordered[0];
+        setActive((current) => current ?? first ?? null);
+        setLoadStamp((n) => n + 1);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error
+              ? err.message
+              : t("couldNotLoadAutoReply")
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `t` is not in the list. This effect loads the forms, and a run for a
+    // new language removes what the reader typed. `t` is read only for the
+    // text of an error.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialAccount]);
+  const updateForm = (account: string, patch: Partial<FormState>) => {
+    if (account === ALL) {
+      updateAll(patch);
+      return;
+    }
+    setForms((prev) => {
+      const next = { ...prev[account], ...patch };
+      // A last day before the first day is not a range anyone means. Move it
+      // up to the first day rather than refuse the edit. Both dates are
+      // yyyy-mm-dd, so they compare as strings. An empty last day means "no
+      // end date" and must stay empty.
+      if (next.firstDay && next.lastDay && next.lastDay < next.firstDay) {
+        next.lastDay = next.firstDay;
+      }
+      return { ...prev, [account]: next };
+    });
+    /*
+      Writing follows the change on its own, at two paces. The switch, the
+      dates and the contacts checkbox are single decisions — they go almost
+      at once. The words go after a pause in the typing, long enough that a
+      sentence being written is not posted clause by clause: these writes
+      land on the provider's own settings, and a polite client coalesces
+      them. Closing the dialog sends whatever is still waiting.
+    */
+    const textual = "subject" in patch || "bodyHtml" in patch;
+    scheduleSave(account, textual ? 2_500 : 300);
+  };
+  /** All: the same reply, whole, on every mailbox, each saved on its own. */
+  const updateAll = (patch: Partial<FormState>) => {
+    const current = formsRef.current[ALL];
+    if (!current) return;
+    const next = { ...current, ...patch };
+    if (next.firstDay && next.lastDay && next.lastDay < next.firstDay) {
+      next.lastDay = next.firstDay;
+    }
+    const accounts = editable.map((a) => a.account);
+    const written: Record<string, FormState> = { ...formsRef.current, [ALL]: next };
+    for (const account of accounts) written[account] = { ...next };
+    // At once, so a save wound below reads what stands now.
+    formsRef.current = written;
+    setForms(written);
+    const textual = "subject" in patch || "bodyHtml" in patch;
+    for (const account of accounts) scheduleSave(account, textual ? 2_500 : 300);
+  };
+  const scheduleSave = (account: string, delayMs: number) => {
+    const timers = saveTimersRef.current;
+    const standing = timers.get(account);
+    if (standing != null) window.clearTimeout(standing);
+    setSaveStatus((prev) => ({ ...prev, [account]: "pending" }));
+    timers.set(
+      account,
+      window.setTimeout(() => {
+        timers.delete(account);
+        void save(account);
+      }, delayMs)
+    );
+  };
+  /** Send whatever is still waiting — the dialog closing, a tab left. */
+  const flushPendingSaves = () => {
+    const timers = saveTimersRef.current;
+    for (const [account, timer] of timers) {
+      window.clearTimeout(timer);
+      void save(account);
+    }
+    timers.clear();
+  };
+  const save = async (account: string) => {
+    if (savingRef.current.has(account)) {
+      saveAgainRef.current.add(account);
+      return;
+    }
+    savingRef.current.add(account);
+    try {
+      await saveNow(account);
+    } finally {
+      savingRef.current.delete(account);
+      if (saveAgainRef.current.delete(account)) void save(account);
+    }
+  };
+  const saveNow = async (account: string) => {
+    // Read through the refs: a debounced call must send what stands now,
+    // not what stood when the timer was wound.
+    const form = formsRef.current[account];
+    if (!form) return;
+    const saved = itemsRef.current?.find((a) => a.account === account);
+    // Nothing actually differs from what the provider holds — post nothing.
+    if (
+      saved &&
+      JSON.stringify(toFormState(saved)) === JSON.stringify(form)
+    ) {
+      setSaveStatus((prev) => ({ ...prev, [account]: "saved" }));
+      return;
+    }
+    const plainBody = form.bodyHtml.replace(/<[^>]*>/g, "").trim();
+    if (form.enabled && !plainBody) {
+      // Switched on with nothing written: wait, and say what for, rather
+      // than answering people with an empty message.
+      setSaveStatus((prev) => ({ ...prev, [account]: "held" }));
+      return;
+    }
+    setSaveStatus((prev) => ({ ...prev, [account]: "saving" }));
+    try {
+      const res = await mailApiFetch("/api/mail/autoreply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account,
+          enabled: form.enabled,
+          subject: form.subject,
+          bodyHtml: form.bodyHtml,
+          restrictToContacts: form.restrictToContacts,
+          startTime: form.firstDay ? dateInputToMs(form.firstDay) : null,
+          // Exclusive end: midnight after the chosen last day.
+          endTime: form.lastDay ? dateInputToMs(form.lastDay, 1) : null,
+        }),
+      });
+      const json = (await res.json()) as { autoReply?: AutoReplyDto; error?: string };
+      if (!res.ok || !json.autoReply) {
+        throw new Error(json.error || t("couldNotSaveAutoReply"));
+      }
+      // Announced only when the responder itself turned on or off — the
+      // decision worth a word. Text finding its way to the server is the
+      // footer's quiet business.
+      const wasEnabled = saved?.enabled ?? false;
+      const withSaved = (prev: AutoReplyDto[] | null) =>
+        prev?.map((a) => (a.account === account ? json.autoReply! : a)) ?? prev;
+      // At once, not at the next render: a save waiting behind this one
+      // compares with what the server holds now.
+      itemsRef.current = withSaved(itemsRef.current);
+      setItems(withSaved);
+      onSaved(json.autoReply);
+      setSaveStatus((prev) => ({ ...prev, [account]: "saved" }));
+      if (json.autoReply.enabled !== wasEnabled) {
+        toast.success(
+          json.autoReply.enabled
+            ? `Auto-reply on for ${account}`
+            : `Auto-reply off for ${account}`
+        );
+      }
+    } catch (err) {
+      setSaveStatus((prev) => ({ ...prev, [account]: "error" }));
+      toast.error(
+        err instanceof Error ? err.message : t("couldNotSaveAutoReply")
+      );
+    }
+  };
+  return { active, editable, editorHandle, flushPendingSaves, forms, items, loadError, loadStamp, marks, repliesDiffer, saveStatus, setActive, setLoadStamp, showAll, t, tabLabels, tabs, updateForm };
 }

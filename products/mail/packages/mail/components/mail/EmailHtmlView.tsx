@@ -94,13 +94,13 @@ function roomAtRest(column: HTMLElement, chrome: number): number {
 /**
  * What the bubble puts around the frame: borders and padding, added up.
  *
- * Not the difference between the column's width and the frame's, which is
- * what this was first. That is the border only when the mail happens to
- * fill the column; for anything narrower it is the empty space beside the
- * message, which is hundreds of pixels, and which moves when the mail is
- * resized. Used as the chrome it made the room look far too small, so a
- * mail with a whole pane to spread into was scaled down anyway — and since
- * it moved with the answer it fed, it never settled.
+ * Not the difference between the column's width and the frame's. That is
+ * the border only when the mail happens to fill the column. For anything
+ * narrower it is the empty space beside the message, which is hundreds of
+ * pixels, and which moves when the mail is resized. Used as the chrome, it
+ * makes the room look far too small. Then a mail with a whole pane to spread
+ * into is scaled down anyway. It also moves with the answer that it feeds,
+ * so it never settles.
  *
  * Borders and padding do not move. They are also already in the column's
  * own pixels, zoom or no zoom: a 1px border computes as 1px whatever it is

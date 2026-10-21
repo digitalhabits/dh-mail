@@ -59,15 +59,14 @@ const RETRY_WAITS_MS = [400, 900, 2000];
 /*
   A mailbox over its minute is left alone for the minute.
 
-  The per-minute budget used to be met with retries: each refused request
-  waited and asked again, three times over. A refresh asks for a hundred
-  threads, eight at a time, and Live polls add more — so a mailbox that
-  had gone over the line was asked a few hundred more times inside the
-  same minute, and the budget never had a quiet minute to come back in.
-  The reader saw every mailbox call fail for an hour, opening a message
-  included, with the console full of 403s.
+  Retries do not work against the per-minute budget. A refresh asks for a
+  hundred threads, eight at a time, and Live polls add more. If each refused
+  request waits and asks again, a mailbox over the line is asked a few
+  hundred more times inside the same minute. Then the budget never gets a
+  quiet minute to come back in. Every mailbox call fails for an hour,
+  opening a message included, with the console full of 403s.
 
-  Now the first per-minute refusal mutes the mailbox: every request for it
+  So the first per-minute refusal mutes the mailbox: every request for it
   in the next minute is refused here, at once, without going to Google,
   with the same error the callers already know. The list says which
   mailbox is over its limit and that it clears within a minute, the next
@@ -84,10 +83,11 @@ const mutedUntilByToken = new Map<string, number>();
   Google charges each call in units and allows so many per mailbox per
   minute — 6,000 on this project since Google lowered it from 15,000.
   A refresh of a hundred threads is a thousand, a search another, the
-  sent-mail scan for contacts two and a half thousand on its own. Spent
-  without looking, the minute ran out and everything after it was refused.
+  sent-mail scan for contacts two and a half thousand on its own. If it is
+  spent without looking, the minute runs out and everything after it is
+  refused.
 
-  Every call now declares what it costs, and a call that would take the
+  Every call declares what it costs, and a call that would take the
   mailbox past this minute's allowance waits for the next minute instead
   of being sent. The allowance sits under Google's so that a unit counted
   differently on their side does not tip it over. A caller sees a slower
@@ -1185,13 +1185,13 @@ export function extractAttachments(
        * A part the sender marked as an attachment is one, whatever else is
        * true of it.
        *
-       * Without this, a picture that carries a Content-ID — which a mail
-       * client gives every image it sends, referenced or not — was dropped
-       * as an inline image whenever the same id appeared anywhere in the
-       * HTML. A forward quotes the message it forwards, so the quoted
-       * history carried the cid and swallowed the file: the list said the
-       * thread had attachments, because it applies this test without a body
-       * to check against, and the reader showed none.
+       * Without this, a picture that carries a Content-ID is dropped as an
+       * inline image if the same id is anywhere in the HTML. A mail client
+       * gives every image it sends a Content-ID, referenced or not. A
+       * forward quotes the message it forwards, so the quoted history
+       * carries the cid and swallows the file. Then the list says that the
+       * thread has attachments, and the reader shows none. The list applies
+       * this test without a body to check against.
        */
       const attached = disposition.includes("attachment");
       const inlineImage =

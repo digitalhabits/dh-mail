@@ -197,10 +197,10 @@ export function ComposeView(props: ComposeViewProps) {
         title={subject.trim() || t("newEmail")}
         onClose={onClose}
       />
-      {/* Half the padding above, full below. The zoom pill used to float
-          over the card and the space above it was the card's own margin.
-          With the pill in the flow that space sat above the pill instead,
-          which pushed the card down the pane. */}
+      {/* Half the padding above, full below. The zoom pill is in the
+          flow, not over the card. If the card keeps its own margin above,
+          that space sits above the pill and pushes the card down the
+          pane. */}
       <div
         className={cn(
           floating
@@ -267,9 +267,9 @@ export function ComposeView(props: ComposeViewProps) {
             className={cn(
               // The card is app chrome and goes dark with the rest of it.
               // Only the sheet you write on stays white — see the body
-              // below. The whole card used to be the light island, which
-              // on the dark theme put a white page the size of the window
-              // in front of somebody who had asked for no white pages.
+              // below. If the whole card is the light island, the dark
+              // theme puts a white page the size of the window in front of
+              // somebody who asked for no white pages.
               "mail-composer-card relative mx-auto flex min-h-0 flex-col rounded-surface border border-stone-200 bg-white shadow-sm",
               (floating || cardH != null) && "overflow-hidden",
               // In the corner the card is the card: it takes the room it is
@@ -291,7 +291,197 @@ export function ComposeView(props: ComposeViewProps) {
             {...attachPasteHandlers}
           >
             <ComposerDropOverlay visible={attachDragging} />
+            <ComposeHeader floatCompose={floatCompose} floating={floating} focusMode={focusMode} onFloat={onFloat} onSubjectKeyDown={onSubjectKeyDown} onToggleFocus={onToggleFocus} setSubject={setSubject} shortcuts={shortcuts} subject={subject} subjectInputRef={subjectInputRef} t={t} />
+
+            <div className={rowClass}>
+              <span className={labelClass}>{t("fieldFrom")}</span>
+              {accounts.length > 1 ? (
+                <FromAccountMenu
+                  ref={fromSelectRef}
+                  variant="row"
+                  value={from}
+                  accounts={accounts}
+                  onChange={(account) => {
+                    setFrom(account);
+                    fromSettledRef.current = true;
+                    if (rememberFrom) writeComposeFrom(account);
+                  }}
+                  label={t("fieldFrom")}
+                  remember={{
+                    checked: rememberFrom,
+                    onChange: setRememberFrom,
+                    label: t("rememberFromForNewMessages"),
+                  }}
+                />
+              ) : (
+                <span className="text-stone-800">
+                  <SendAsAddress account={from} />
+                </span>
+              )}
+            </div>
+
+            <ComposeRecipients accounts={accounts} bccInputRef={bccInputRef} bccList={bccList} ccInputRef={ccInputRef} ccList={ccList} focusBody={focusBody} focusSoon={focusSoon} from={from} labelClass={labelClass} rowClass={rowClass} setBccList={setBccList} setCcList={setCcList} setShowBcc={setShowBcc} setShowCc={setShowCc} setToList={setToList} showBcc={showBcc} showCc={showCc} t={t} toInputRef={toInputRef} toList={toList} />
+            {/* Where the words go. No light island: a message is shown in
+                the thread on a dark bubble now, so writing it on a white one
+                would be the odd half of the pair. */}
             <div
+              className={cn(
+                "min-h-0",
+                floating || cardH != null
+                  ? "flex flex-1 flex-col overflow-y-auto"
+                  : undefined
+              )}
+            >
+              {draftNotes || draftWorking ? (
+                <DraftAssistNotes
+                  purpose="compose"
+                  result={draftNotes}
+                  working={draftWorking}
+                  onStop={stopDraft}
+                  onRestoreBrief={(brief) => {
+                    setBody(plainTextToEditorHtml(brief));
+                    setEditorKey((k) => k + 1);
+                    setDraftNotes(null);
+                  }}
+                  onDismiss={() => setDraftNotes(null)}
+                />
+              ) : null}
+              {/* The box writes in the account's default font and size,
+                  which mail.css reads from these. */}
+              <div className="contents" style={textStyleVars(textDefaults)}>
+              <RichTextEditor
+                key={editorKey}
+                className="mail-message-editor"
+                toolbarId="mail-compose-toolbar"
+                handleRef={editorHandle}
+                defaultValue={body}
+                onChange={setBody}
+                placeholder={t("writeYourMessage")}
+                /* Enough to write in, not so much that the signature sits a
+                   screen below the first line. The box grows with the words,
+                   and the panel scrolls once it outgrows the window. */
+                minHeight={120}
+              />
+              </div>
+              {includeSignature && sigSettings?.signature ? (
+                <EditableSignature
+                  saved={sigSettings.signature}
+                  copy={signatureHtml}
+                  onChange={setSignatureHtml}
+                  editorKey={editorKey}
+                  bodyHandle={editorHandle}
+                />
+              ) : null}
+            </div>
+
+            <ComposeFoot addAttachFiles={addAttachFiles} armedSendAt={armedSendAt} attachItems={attachItems} bodyText={bodyText} canOpenInOutlook={canOpenInOutlook} canSend={canSend} canSendLater={canSendLater} discardCompose={discardCompose} editorHandle={editorHandle} from={from} handingOver={handingOver} hasRecipient={hasRecipient} openInOutlook={openInOutlook} outlookElsewhere={outlookElsewhere} outlookTarget={outlookTarget} removeAttach={removeAttach} send={send} sending={sending} setArmedSendAt={setArmedSendAt} setDraftPreviewId={setDraftPreviewId} setShowPreview={setShowPreview} shortcuts={shortcuts} t={t} />
+          {/* Edge / corner handles for resizing the card. None in the
+              corner: the card is the size of the card, and a handle that
+              cannot move reads as broken. */}
+          {floating ? null : <CardResizeHandles start={startCardResize} />}
+          </div>
+          <EditingScheduledNote original={editingScheduled} width={cardW * zoom} />
+          {/* Under the box, outside the card — where a reply keeps them.
+              A signature to write is about the message, not about typing
+              it. Preview and Outlook sit on the Send chevron. */}
+          <ComposeMetaRow
+            width={cardW * zoom}
+            account={from}
+            signature={sigSettings?.signature}
+            includeSignature={includeSignature}
+            onAddSignature={() => {
+              sigTouchedRef.current = true;
+              if (sigSettings?.signature) setIncludeSignature(true);
+              else setSigDialogOpen(true);
+            }}
+            onEditSignature={() => setSigDialogOpen(true)}
+            onRemoveSignature={() => {
+              sigTouchedRef.current = true;
+              setIncludeSignature(false);
+            }}
+            drafting={draftingReply}
+            sending={sending}
+            onDraft={(hint) => void draftComposeWithAssist(hint)}
+            onStopDraft={stopDraft}
+          />
+        </div>
+
+        {showPreview ? (
+          <SentPreview
+            from={from}
+            to={flatTo.emails}
+            cc={flatCc.emails}
+            subject={subject.trim()}
+            bodyHtml={bodyToEmailHtml(body)}
+            hasBody={Boolean(bodyText.trim())}
+            includeSignature={Boolean(
+              includeSignature && sigSettings?.signature
+            )}
+            signatureCopy={signatureHtml}
+            zoom={zoom}
+            recipientName={
+              toList[0]?.kind === "list"
+                ? toList[0].name
+                : toList[0]?.kind === "email"
+                  ? toList[0].name || toList[0].email
+                  : "the recipient"
+            }
+            sending={sending}
+            canSend={canSend}
+            onSend={() => void send()}
+            onBack={() => setShowPreview(false)}
+          />
+        ) : null}
+
+        <DraftAttachmentPreviewDialog
+          items={attachItems}
+          previewId={draftPreviewId}
+          onSelect={setDraftPreviewId}
+          onClose={() => setDraftPreviewId(null)}
+        />
+
+        <SignatureDialog
+          open={sigDialogOpen}
+          accounts={accounts}
+          initialAccount={from}
+          onClose={() => setSigDialogOpen(false)}
+          onSaved={(savedAccount, settings) => {
+            if (savedAccount === from) setSigSettings(settings);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The composer's head: its title, and the buttons to float, focus and close it. */
+function ComposeHeader({
+  floatCompose,
+  floating,
+  focusMode,
+  onFloat,
+  onSubjectKeyDown,
+  onToggleFocus,
+  setSubject,
+  shortcuts,
+  subject,
+  subjectInputRef,
+  t,
+}: {
+  floatCompose: ReturnType<typeof useComposeView>["floatCompose"];
+  floating: ReturnType<typeof useComposeView>["floating"];
+  focusMode: ReturnType<typeof useComposeView>["focusMode"];
+  onFloat: ReturnType<typeof useComposeView>["onFloat"];
+  onSubjectKeyDown: ReturnType<typeof useComposeView>["onSubjectKeyDown"];
+  onToggleFocus: ReturnType<typeof useComposeView>["onToggleFocus"];
+  setSubject: ReturnType<typeof useComposeView>["setSubject"];
+  shortcuts: ReturnType<typeof useComposeView>["shortcuts"];
+  subject: ReturnType<typeof useComposeView>["subject"];
+  subjectInputRef: ReturnType<typeof useComposeView>["subjectInputRef"];
+  t: ReturnType<typeof useComposeView>["t"];
+}) {
+  return (
+    <div
               className="flex shrink-0 items-center gap-3 border-b border-stone-200 px-5 py-3.5"
               onDoubleClick={(e) => {
                 if (isInteractiveDoubleClickTarget(e.target)) return;
@@ -367,35 +557,55 @@ export function ComposeView(props: ComposeViewProps) {
                 </button>
               ) : null}
             </div>
+  );
+}
 
-            <div className={rowClass}>
-              <span className={labelClass}>{t("fieldFrom")}</span>
-              {accounts.length > 1 ? (
-                <FromAccountMenu
-                  ref={fromSelectRef}
-                  variant="row"
-                  value={from}
-                  accounts={accounts}
-                  onChange={(account) => {
-                    setFrom(account);
-                    fromSettledRef.current = true;
-                    if (rememberFrom) writeComposeFrom(account);
-                  }}
-                  label={t("fieldFrom")}
-                  remember={{
-                    checked: rememberFrom,
-                    onChange: setRememberFrom,
-                    label: t("rememberFromForNewMessages"),
-                  }}
-                />
-              ) : (
-                <span className="text-stone-800">
-                  <SendAsAddress account={from} />
-                </span>
-              )}
-            </div>
-
-            <RecipientCarryProvider>
+/** The From, To, Cc and Bcc rows, and the subject. */
+function ComposeRecipients({
+  accounts,
+  bccInputRef,
+  bccList,
+  ccInputRef,
+  ccList,
+  focusBody,
+  focusSoon,
+  from,
+  labelClass,
+  rowClass,
+  setBccList,
+  setCcList,
+  setShowBcc,
+  setShowCc,
+  setToList,
+  showBcc,
+  showCc,
+  t,
+  toInputRef,
+  toList,
+}: {
+  accounts: ReturnType<typeof useComposeView>["accounts"];
+  bccInputRef: RefObject<HTMLInputElement | null>;
+  bccList: ReturnType<typeof useComposeView>["bccList"];
+  ccInputRef: ReturnType<typeof useComposeView>["ccInputRef"];
+  ccList: ReturnType<typeof useComposeView>["ccList"];
+  focusBody: ReturnType<typeof useComposeView>["focusBody"];
+  focusSoon: (ref: RefObject<HTMLInputElement | null>) => number;
+  from: ReturnType<typeof useComposeView>["from"];
+  labelClass: ReturnType<typeof useComposeView>["labelClass"];
+  rowClass: ReturnType<typeof useComposeView>["rowClass"];
+  setBccList: ReturnType<typeof useComposeView>["setBccList"];
+  setCcList: ReturnType<typeof useComposeView>["setCcList"];
+  setShowBcc: ReturnType<typeof useComposeView>["setShowBcc"];
+  setShowCc: ReturnType<typeof useComposeView>["setShowCc"];
+  setToList: ReturnType<typeof useComposeView>["setToList"];
+  showBcc: ReturnType<typeof useComposeView>["showBcc"];
+  showCc: ReturnType<typeof useComposeView>["showCc"];
+  t: ReturnType<typeof useComposeView>["t"];
+  toInputRef: ReturnType<typeof useComposeView>["toInputRef"];
+  toList: ReturnType<typeof useComposeView>["toList"];
+}) {
+  return (
+    <RecipientCarryProvider>
               <div className={rowClass}>
                 <span className={labelClass}>{t("fieldTo")}</span>
                 <RecipientField
@@ -491,60 +701,61 @@ export function ComposeView(props: ComposeViewProps) {
                 </div>
               ) : null}
             </RecipientCarryProvider>
-            {/* Where the words go. No light island: a message is shown in
-                the thread on a dark bubble now, so writing it on a white one
-                would be the odd half of the pair. */}
-            <div
-              className={cn(
-                "min-h-0",
-                floating || cardH != null
-                  ? "flex flex-1 flex-col overflow-y-auto"
-                  : undefined
-              )}
-            >
-              {draftNotes || draftWorking ? (
-                <DraftAssistNotes
-                  purpose="compose"
-                  result={draftNotes}
-                  working={draftWorking}
-                  onStop={stopDraft}
-                  onRestoreBrief={(brief) => {
-                    setBody(plainTextToEditorHtml(brief));
-                    setEditorKey((k) => k + 1);
-                    setDraftNotes(null);
-                  }}
-                  onDismiss={() => setDraftNotes(null)}
-                />
-              ) : null}
-              {/* The box writes in the account's default font and size,
-                  which mail.css reads from these. */}
-              <div className="contents" style={textStyleVars(textDefaults)}>
-              <RichTextEditor
-                key={editorKey}
-                className="mail-message-editor"
-                toolbarId="mail-compose-toolbar"
-                handleRef={editorHandle}
-                defaultValue={body}
-                onChange={setBody}
-                placeholder={t("writeYourMessage")}
-                /* Enough to write in, not so much that the signature sits a
-                   screen below the first line. The box grows with the words,
-                   and the panel scrolls once it outgrows the window. */
-                minHeight={120}
-              />
-              </div>
-              {includeSignature && sigSettings?.signature ? (
-                <EditableSignature
-                  saved={sigSettings.signature}
-                  copy={signatureHtml}
-                  onChange={setSignatureHtml}
-                  editorKey={editorKey}
-                  bodyHandle={editorHandle}
-                />
-              ) : null}
-            </div>
+  );
+}
 
-            <div className="flex shrink-0 flex-col gap-1.5 border-t border-stone-200 px-4 py-3">
+/** The composer's foot: the files, Send and its menu, and the tools. */
+function ComposeFoot({
+  addAttachFiles,
+  armedSendAt,
+  attachItems,
+  bodyText,
+  canOpenInOutlook,
+  canSend,
+  canSendLater,
+  discardCompose,
+  editorHandle,
+  from,
+  handingOver,
+  hasRecipient,
+  openInOutlook,
+  outlookElsewhere,
+  outlookTarget,
+  removeAttach,
+  send,
+  sending,
+  setArmedSendAt,
+  setDraftPreviewId,
+  setShowPreview,
+  shortcuts,
+  t,
+}: {
+  addAttachFiles: ReturnType<typeof useComposeView>["addAttachFiles"];
+  armedSendAt: ReturnType<typeof useComposeView>["armedSendAt"];
+  attachItems: ReturnType<typeof useComposeView>["attachItems"];
+  bodyText: ReturnType<typeof useComposeView>["bodyText"];
+  canOpenInOutlook: ReturnType<typeof useComposeView>["canOpenInOutlook"];
+  canSend: ReturnType<typeof useComposeView>["canSend"];
+  canSendLater: ReturnType<typeof useComposeView>["canSendLater"];
+  discardCompose: ReturnType<typeof useComposeView>["discardCompose"];
+  editorHandle: ReturnType<typeof useComposeView>["editorHandle"];
+  from: ReturnType<typeof useComposeView>["from"];
+  handingOver: ReturnType<typeof useComposeView>["handingOver"];
+  hasRecipient: ReturnType<typeof useComposeView>["hasRecipient"];
+  openInOutlook: ReturnType<typeof useComposeView>["openInOutlook"];
+  outlookElsewhere: ReturnType<typeof useComposeView>["outlookElsewhere"];
+  outlookTarget: ReturnType<typeof useComposeView>["outlookTarget"];
+  removeAttach: ReturnType<typeof useComposeView>["removeAttach"];
+  send: ReturnType<typeof useComposeView>["send"];
+  sending: ReturnType<typeof useComposeView>["sending"];
+  setArmedSendAt: ReturnType<typeof useComposeView>["setArmedSendAt"];
+  setDraftPreviewId: ReturnType<typeof useComposeView>["setDraftPreviewId"];
+  setShowPreview: ReturnType<typeof useComposeView>["setShowPreview"];
+  shortcuts: ReturnType<typeof useComposeView>["shortcuts"];
+  t: ReturnType<typeof useComposeView>["t"];
+}) {
+  return (
+    <div className="flex shrink-0 flex-col gap-1.5 border-t border-stone-200 px-4 py-3">
               {/* The files, docked here above Send, as in the reply box. */}
               <DraftAttachmentChips
                 docked
@@ -639,84 +850,9 @@ export function ComposeView(props: ComposeViewProps) {
                 </span>
               </div>
             </div>
-          {/* Edge / corner handles for resizing the card. None in the
-              corner: the card is the size of the card, and a handle that
-              cannot move reads as broken. */}
-          {floating ? null : <CardResizeHandles start={startCardResize} />}
-          </div>
-          <EditingScheduledNote original={editingScheduled} width={cardW * zoom} />
-          {/* Under the box, outside the card — where a reply keeps them.
-              A signature to write is about the message, not about typing
-              it. Preview and Outlook sit on the Send chevron. */}
-          <ComposeMetaRow
-            width={cardW * zoom}
-            account={from}
-            signature={sigSettings?.signature}
-            includeSignature={includeSignature}
-            onAddSignature={() => {
-              sigTouchedRef.current = true;
-              if (sigSettings?.signature) setIncludeSignature(true);
-              else setSigDialogOpen(true);
-            }}
-            onEditSignature={() => setSigDialogOpen(true)}
-            onRemoveSignature={() => {
-              sigTouchedRef.current = true;
-              setIncludeSignature(false);
-            }}
-            drafting={draftingReply}
-            sending={sending}
-            onDraft={(hint) => void draftComposeWithAssist(hint)}
-            onStopDraft={stopDraft}
-          />
-        </div>
-
-        {showPreview ? (
-          <SentPreview
-            from={from}
-            to={flatTo.emails}
-            cc={flatCc.emails}
-            subject={subject.trim()}
-            bodyHtml={bodyToEmailHtml(body)}
-            hasBody={Boolean(bodyText.trim())}
-            includeSignature={Boolean(
-              includeSignature && sigSettings?.signature
-            )}
-            signatureCopy={signatureHtml}
-            zoom={zoom}
-            recipientName={
-              toList[0]?.kind === "list"
-                ? toList[0].name
-                : toList[0]?.kind === "email"
-                  ? toList[0].name || toList[0].email
-                  : "the recipient"
-            }
-            sending={sending}
-            canSend={canSend}
-            onSend={() => void send()}
-            onBack={() => setShowPreview(false)}
-          />
-        ) : null}
-
-        <DraftAttachmentPreviewDialog
-          items={attachItems}
-          previewId={draftPreviewId}
-          onSelect={setDraftPreviewId}
-          onClose={() => setDraftPreviewId(null)}
-        />
-
-        <SignatureDialog
-          open={sigDialogOpen}
-          accounts={accounts}
-          initialAccount={from}
-          onClose={() => setSigDialogOpen(false)}
-          onSaved={(savedAccount, settings) => {
-            if (savedAccount === from) setSigSettings(settings);
-          }}
-        />
-      </div>
-    </div>
   );
 }
+
 
 /**
  * The handles on the card's right edge, bottom edge and corner, which

@@ -1,3 +1,10 @@
+import {
+  MAIL_POPOUT_SENT_KEY,
+  MAIL_FORWARD_REQUEST_KEY,
+  MAIL_EDIT_AS_NEW_REQUEST_KEY,
+  POPOUT_SEED_PREFIX as SEED_PREFIX,
+  POPOUT_OPEN_KEY,
+} from "@/lib/mail/storage-keys";
 import { loadCachedMailThread } from "@/lib/mail/thread-cache";
 import type { MailThreadDetail } from "@/lib/mail/types";
 import {
@@ -14,8 +21,6 @@ import {
  * shells additionally broadcast a Tauri event, since WKWebView is unreliable
  * about cross-window storage events. MailPage listens to both.
  */
-export const MAIL_POPOUT_SENT_KEY = "redd-plan-mail-popout-sent";
-
 export function signalPopoutSend(account: string, threadId: string): void {
   try {
     window.localStorage.setItem(
@@ -34,8 +39,6 @@ export function signalPopoutSend(account: string, threadId: string): void {
  * as the sent signal above: localStorage for browsers, a Tauri event for the
  * desktop shells, where cross-window storage events are unreliable.
  */
-export const MAIL_FORWARD_REQUEST_KEY = "redd-plan-mail-forward-request";
-
 export type MailForwardRequest = {
   account: string;
   threadId: string;
@@ -148,9 +151,6 @@ export function readComposeSeed(raw: unknown): MailComposeSeed | null {
  * Same reason as a forward: the chat popout has no subject line and no
  * recipient picker, so the window that does is asked. The same two channels.
  */
-export const MAIL_EDIT_AS_NEW_REQUEST_KEY =
-  "redd-plan-mail-edit-as-new-request";
-
 export type MailEditAsNewRequest = MailForwardRequest;
 
 export function signalEditAsNewRequest(request: MailEditAsNewRequest): void {
@@ -186,7 +186,6 @@ export const CHAT_POPOUT_COLLAPSED_HEIGHT = 56;
  * that's open in the reader paints instantly instead of showing "Loading…".
  * The popout deletes the key after reading and refetches in the background.
  */
-const SEED_PREFIX = "redd-plan-chat-popout-seed:";
 const SEED_TTL_MS = 60_000;
 
 export function popoutSeedKey(account: string, threadId: string): string {
@@ -345,8 +344,6 @@ export async function openMailChatPopout(input: {
  * screen, and shared with the reader's other tabs the same way the sent
  * signal is.
  */
-const POPOUT_OPEN_KEY = "redd-plan-mail-popout-open";
-
 export function popoutThreadKey(account: string, threadId: string): string {
   return `${account}|${threadId}`;
 }

@@ -9,6 +9,7 @@
  * No React here, so a test can run it directly.
  */
 
+import { PAUSE_OPTIONS_KEY } from "@/lib/mail/storage-keys";
 import { mailSay } from "@/lib/mail/i18n-strings";
 import {
   readStoredOptions,
@@ -39,7 +40,7 @@ export function defaultPauseOptions(
 
 /** The pause list's place in storage. */
 export const PAUSE_OPTIONS: TimedOptionStore = {
-  key: "redd-plan-mail-pause-options",
+  key: PAUSE_OPTIONS_KEY,
   event: "redd-plan-mail-pause-options-changed",
   defaults: () => defaultPauseOptions(),
 };

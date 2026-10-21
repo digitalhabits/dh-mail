@@ -102,11 +102,11 @@ export function useRowOpening({
       /*
         A moment after the open, not at it. The thread opens on the first
         of its new, unread messages, and it can only see which those are
-        while they are still unread in the copy. Marked read at the click,
-        the store had cleared them before the thread was read, and a long
-        thread with three new messages opened on the newest of them (a KU
-        tester, 2026-10-10). The row is not bold from the click on: only
-        the word to the store waits.
+        while they are still unread in the copy. If they are marked read at
+        the click, the store clears them before the thread reads them. Then
+        a long thread with three new messages opens on the newest of them.
+        The row is not bold from the click on: only the word to the store
+        waits.
       */
       window.setTimeout(() => {
         // Marked unread again in the meantime: that is the reader's last
@@ -150,8 +150,8 @@ export function useRowOpening({
 
   /*
     The next thread after a delete, an archive or a move is opened by
-    setting the selection, not through `openThread`. It showed, and its
-    row kept the unread dot until it was clicked. So any thread that
+    setting the selection, not through `openThread`. It shows, but without
+    this its row keeps the unread dot until it is clicked. So any thread that
     becomes the open one is marked read here, once, when it becomes open.
     Only on a change of thread: "Mark as unread" on the open thread keeps
     the selection, and must stay unread. A row already marked by
@@ -220,9 +220,9 @@ export function useRowOpening({
    * Two clicks on a thread row: read it in a window of its own.
    *
    * The whole reader — header, actions, reply box — under the system's own
-   * title bar, the way Outlook opens a message. It used to put the list
-   * away instead, which the expand button on the reader still does. The
-   * first click has already opened the thread here; what travels with the
+   * title bar, the way Outlook opens a message. The expand button on the
+   * reader puts the list away instead. The first click opened the thread
+   * here already. What travels with the
    * window is what the list knows and the window cannot learn — the copies
    * the row stands for, so an archive over there takes what an archive
    * here would, and the snooze for its button.

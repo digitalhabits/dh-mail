@@ -45,10 +45,9 @@ import {
  * One file on a message: always the same tile.
  *
  * A picture fills it, a document shows the badge for its kind. That is the
- * whole difference. Before this a photograph was a card, a PDF was a wide
- * row, and several pictures were packed into a collage — three shapes at
- * three sizes down one message, which read as a mess rather than as a set
- * of files.
+ * whole difference. If a photograph is a card, a PDF a wide row, and several
+ * pictures a collage, one message shows three shapes at three sizes. That
+ * reads as a mess rather than as a set of files.
  */
 /**
  * How big a PDF may be before its first page is not drawn.
@@ -240,8 +239,8 @@ function AttachmentTile({
             src={src}
             alt=""
             /* The tile is what is dragged, as a file. A picture is
-               draggable by itself, and its drag held macOS's one drag
-               at a time, so the file's could not start (2026-10-17). */
+               draggable by itself, and its drag holds macOS's one drag
+               at a time, so the drag of the file cannot start. */
             draggable={false}
             className="absolute inset-0 h-full w-full object-cover"
             onError={(e) => {
@@ -551,7 +550,7 @@ export function ThreadAttachmentsRollup({
 /**
  * One file in the thread's file list: the same picture as its tile in the
  * message, and the three things its right-click menu offers — Preview,
- * Open and Download — as buttons (Ulrik, 2026-10-17). A click on the row
+ * Open and Download — as buttons. A click on the row
  * previews it, as a click on the tile does.
  */
 function ThreadFileRow({

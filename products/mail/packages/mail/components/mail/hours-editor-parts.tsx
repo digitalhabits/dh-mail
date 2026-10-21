@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Parts of the hours editors (pause-panels.tsx), drawn as in the design of
- * 2026-10-18:
+ * Parts of the hours editors (pause-panels.tsx):
  *
  * - `WeekChart`: the week at a glance, a row a day, the hours on as solid
  *   bars and the hours a change adds hatched.

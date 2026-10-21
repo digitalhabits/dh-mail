@@ -7,8 +7,8 @@
  *
  * A closed eye, then when it is shown again: "Shown again at 07:00" today,
  * "Shown again tomorrow 07:00", "Shown again Mon 08:00". Not "Outside its
- * hours": the eye says it is hidden, and the time is what the reader wants
- * (Ulrik, 2026-10-20). Hidden by hand, it waits for the reader.
+ * hours": the eye says it is hidden, and the time is what the reader wants.
+ * Hidden by hand, it waits for the reader.
  */
 
 import { EyeOff } from "lucide-react";

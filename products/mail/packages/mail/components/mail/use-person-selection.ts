@@ -42,8 +42,8 @@ export function usePersonSelection({
   /**
    * The open thread names the person row, on this paint.
    *
-   * An effect was a frame late: the last person key still sat in state,
-   * so the list marked somebody else while the reader kept the thread.
+   * An effect is a frame late: the last person key still sits in state,
+   * so the list marks somebody else while the reader keeps the thread.
    * When a thread is open, the row that holds it is the selected person.
    */
   const personKeyFromOpenThread =
@@ -64,8 +64,8 @@ export function usePersonSelection({
   /**
    * The person who was open has no mail left: open the next one.
    *
-   * Archiving or deleting a whole person moves the selection on itself, and
-   * always has. Doing it a thread at a time did not: the last conversation
+   * Archiving or deleting a whole person moves the selection on itself.
+   * Doing it a thread at a time does not: the last conversation
    * with somebody leaves their row with nothing in it, the row goes, and the
    * key in hand names nobody — so the pane empties and the reader is left
    * looking at nothing, mid-pass, with no way to tell whether the last act

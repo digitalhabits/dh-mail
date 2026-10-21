@@ -1,13 +1,10 @@
-//! Handing a draft to another mail program.
+//! Handing a draft to Outlook.
 //!
-//! Only bringing it to the front. The draft itself is made in the mailbox,
-//! over the provider's own API, because the alternative — writing a message
-//! file and opening it — gives Outlook a message to look at rather than one
-//! to write. Outlook for Mac previews such a file read-only, whatever the
-//! `X-Unsent` header asks for.
-//!
-//! So the app's part is small: the draft is already in Drafts by the time
-//! this runs, and this is the step that puts the reader in front of it.
+//! In a mailbox this app holds, the draft is made over the provider's own
+//! API, and this file only brings Outlook to the front. In a mailbox only
+//! Outlook holds, Outlook is asked to make the draft itself, by AppleScript
+//! (`outlook_draft`). Not by a message file: Outlook for Mac previews such a
+//! file read-only, whatever the `X-Unsent` header asks for.
 
 /// Open a new Outlook message on this mailto: URL.
 ///
@@ -282,13 +279,11 @@ end run
   }
 }
 
-/// A reply to finish in Outlook, as a reply to Outlook's own copy of the
-/// message: see `outlook_reply`.
+/// The message a reply answers, so Outlook can find its own copy of it.
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OutlookReply {
-  /// The Message-ID of the message replied to, angle brackets included.
-  /// Empty when it has none.
+pub struct OutlookReplyTo {
+  /// The Message-ID, angle brackets included. Empty when it has none.
   pub message_id: String,
   /// Its subject, as it came.
   pub subject: String,
@@ -296,30 +291,61 @@ pub struct OutlookReply {
   pub from: String,
   /// When it was sent, in epoch milliseconds.
   pub sent_at_ms: i64,
-  /// What the reader wrote, as HTML. It goes above Outlook's own quote.
-  pub html: String,
-  pub to: Vec<String>,
-  pub cc: Vec<String>,
 }
 
-/// Make the reply in Outlook, as a reply to its own copy of the message.
+/// A file to attach to the draft.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlookFile {
+  pub filename: String,
+  pub content_base64: String,
+}
+
+/// A message to put in Outlook's Drafts: see `outlook_draft`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlookDraft {
+  /// The message it answers. None for a new message or a forward.
+  pub reply: Option<OutlookReplyTo>,
+  pub subject: String,
+  /// What the reader wrote, as HTML, without our signature: Outlook adds
+  /// the signature of the mailbox the draft is in.
+  pub html: String,
+  /// The history under the words, as HTML. Only used when the draft is a
+  /// new message: a reply gets Outlook's own quote.
+  pub history_html: String,
+  /// The address it is written from. A new message is made in the Outlook
+  /// account with this address, if Outlook has one; else in its default.
+  pub from: String,
+  pub to: Vec<String>,
+  pub cc: Vec<String>,
+  pub bcc: Vec<String>,
+  pub files: Vec<OutlookFile>,
+}
+
+/// Make the message as a draft in Outlook, and do not open it.
 ///
-/// A mailto: opens a new message: no quote, and no place in the
-/// conversation. So Outlook is asked to find the message and reply to it
-/// with its own command. The reply then has Outlook's quote and sits in
-/// the conversation, and the reader's words go above the quote. Its To and
-/// Cc are the composer's.
+/// A reply is made with Outlook's own Reply on its copy of the message, so
+/// it has Outlook's quote and sits in the conversation, in the mailbox
+/// that holds the conversation. Outlook keeps a reply it did not open in a
+/// hidden Temporary Items folder, so it is moved to that account's Drafts.
+/// A new message is made in Drafts already. Outlook's copy is found by its Message-ID,
+/// or else by the same sender and subject, sent within two minutes. The
+/// second is needed for mail that reaches this app through a forwarding
+/// rule: the rule sends a new message, with a new Message-ID.
 ///
-/// Outlook's copy is found by its Message-ID, or else by the same sender
-/// and subject, sent within two minutes. The second is needed for mail
-/// that reaches this app through a forwarding rule: the rule sends a new
-/// message, with a new Message-ID (2026-10-19).
+/// When there is nothing to reply to, or Outlook does not have the message,
+/// it is a new message with the history under the words.
 ///
-/// `Ok(false)` when Outlook has no such message, or cannot be scripted
-/// this way (the new Outlook): the caller then opens a new message, as
-/// before.
+/// The files are written to a folder of their own in the temporary folder
+/// and attached from there. Not to Downloads: saving there shows each file
+/// in Finder, and here nobody needs to find them.
+///
+/// `Ok(Some("reply"))` or `Ok(Some("new"))`: what was made. `Ok(None)` when
+/// Outlook cannot be scripted this way (the new Outlook, or not a Mac): the
+/// caller then opens a new message, as before.
 #[tauri::command]
-pub async fn outlook_reply(reply: OutlookReply) -> Result<bool, String> {
+pub async fn outlook_draft(draft: OutlookDraft) -> Result<Option<String>, String> {
   #[cfg(target_os = "macos")]
   {
     const SCRIPT: &str = r#"
@@ -335,110 +361,218 @@ on bodyStart(c)
   return i + j
 end bodyStart
 
-on run argv
-  set theId to item 1 of argv
-  set theSubject to item 2 of argv
-  set theSender to item 3 of argv
-  set sentAt to (current date) - ((item 4 of argv) as integer)
-  set theHtml to item 5 of argv
-  set toList to paragraphs of (item 6 of argv)
-  set ccList to paragraphs of (item 7 of argv)
+on addPeople(r, toList, ccList, bccList)
   tell application "Microsoft Outlook"
-    set found to (every message whose subject is theSubject and time sent > (sentAt - 2 * days))
-  end tell
-  set byId to missing value
-  set byLook to missing value
-  repeat with m in found
-    set m to contents of m
-    tell application "Microsoft Outlook"
-      set h to (headers of m) as string
-      set ts to time sent of m
-      set a to ""
-      try
-        set s to sender of m
-        set a to address of s
-      end try
-    end tell
-    if theId is not "" and my findIn(h, theId) > 0 then
-      set byId to m
-      exit repeat
-    end if
-    set gap to ts - sentAt
-    if gap < 0 then set gap to -gap
-    if byLook is missing value and gap ≤ 120 and a is theSender then set byLook to m
-  end repeat
-  set target to byId
-  if target is missing value then set target to byLook
-  if target is missing value then return ""
-  tell application "Microsoft Outlook"
-    set r to reply to target without opening window
-    delete every recipient of r
     repeat with x in toList
       if (contents of x) is not "" then make new to recipient at r with properties {email address:{address:(contents of x)}}
     end repeat
     repeat with x in ccList
       if (contents of x) is not "" then make new cc recipient at r with properties {email address:{address:(contents of x)}}
     end repeat
-    set c to content of r
+    repeat with x in bccList
+      if (contents of x) is not "" then make new bcc recipient at r with properties {email address:{address:(contents of x)}}
+    end repeat
   end tell
-  set k to my bodyStart(c)
-  if k > 1 then
-    set newContent to (text 1 thru (k - 1) of c) & theHtml & (text k thru -1 of c)
-  else
-    set newContent to theHtml & c
+end addPeople
+
+on addFiles(r, fileList)
+  repeat with p in fileList
+    if (contents of p) is not "" then
+      set f to POSIX file (contents of p)
+      tell application "Microsoft Outlook" to make new attachment at r with properties {file:f}
+    end if
+  end repeat
+end addFiles
+
+on run argv
+  set theId to item 1 of argv
+  set theSubject to item 2 of argv
+  set theSender to item 3 of argv
+  set secondsAgo to item 4 of argv
+  set theHtml to item 5 of argv
+  set historyHtml to item 6 of argv
+  set newSubject to item 7 of argv
+  set fromAddress to item 8 of argv
+  set toList to paragraphs of (item 9 of argv)
+  set ccList to paragraphs of (item 10 of argv)
+  set bccList to paragraphs of (item 11 of argv)
+  set fileList to paragraphs of (item 12 of argv)
+
+  set target to missing value
+  if secondsAgo is not "" then
+    set sentAt to (current date) - (secondsAgo as integer)
+    tell application "Microsoft Outlook"
+      set found to (every message whose subject is theSubject and time sent > (sentAt - 2 * days))
+    end tell
+    set byLook to missing value
+    repeat with m in found
+      set m to contents of m
+      tell application "Microsoft Outlook"
+        set h to (headers of m) as string
+        set ts to time sent of m
+        set a to ""
+        try
+          set s to sender of m
+          set a to address of s
+        end try
+      end tell
+      if theId is not "" and my findIn(h, theId) > 0 then
+        set target to m
+        exit repeat
+      end if
+      set gap to ts - sentAt
+      if gap < 0 then set gap to -gap
+      if byLook is missing value and gap ≤ 120 and a is theSender then set byLook to m
+    end repeat
+    if target is missing value then set target to byLook
   end if
+
+  if target is not missing value then
+    tell application "Microsoft Outlook"
+      set r to reply to target without opening window
+      delete every recipient of r
+    end tell
+    my addPeople(r, toList, ccList, bccList)
+    tell application "Microsoft Outlook" to set c to content of r
+    set k to my bodyStart(c)
+    if k > 1 then
+      set newContent to (text 1 thru (k - 1) of c) & theHtml & (text k thru -1 of c)
+    else
+      set newContent to theHtml & c
+    end if
+    tell application "Microsoft Outlook" to set content of r to newContent
+    my addFiles(r, fileList)
+    -- A reply that is never opened stays in a hidden Temporary Items
+    -- folder. It goes to the Drafts of the account that holds the message.
+    tell application "Microsoft Outlook"
+      try
+        set d to drafts of (account of target)
+      on error
+        set d to drafts
+      end try
+      move r to d
+    end tell
+    return "reply"
+  end if
+
   tell application "Microsoft Outlook"
-    set content of r to newContent
-    open r
-    activate
-    return subject of r
+    set acc to missing value
+    if fromAddress is not "" then
+      try
+        set acc to first exchange account whose email address is fromAddress
+      end try
+      if acc is missing value then
+        try
+          set acc to first imap account whose email address is fromAddress
+        end try
+      end if
+    end if
+    if acc is missing value then
+      set r to make new outgoing message with properties {subject:newSubject, content:(theHtml & historyHtml)}
+    else
+      set r to make new outgoing message with properties {subject:newSubject, content:(theHtml & historyHtml), account:acc}
+    end if
   end tell
+  my addPeople(r, toList, ccList, bccList)
+  my addFiles(r, fileList)
+  return "new"
 end run
 "#;
-    let args = outlook_reply_args(&reply, now_ms());
-    let was_running = outlook_is_running();
+    let paths = write_draft_files(&draft.files)?;
+    let args = outlook_draft_args(&draft, &paths, now_ms());
     let out = tauri::async_runtime::spawn_blocking(move || {
       std::process::Command::new("/usr/bin/osascript").arg("-e").arg(SCRIPT).args(&args).output()
     })
     .await
-    .map_err(|e| format!("Couldn't run the Outlook reply: {e}"))?
-    .map_err(|e| format!("Couldn't ask Outlook for the reply: {e}"))?;
+    .map_err(|e| format!("Couldn't run the Outlook draft: {e}"))?
+    .map_err(|e| format!("Couldn't ask Outlook for the draft: {e}"))?;
     if !out.status.success() {
-      // The new Outlook, or a message it would not reply to: the caller
-      // opens a new message instead.
-      log::warn!("[mail] Outlook could not make the reply: {}", String::from_utf8_lossy(&out.stderr).trim());
-      return Ok(false);
+      // The new Outlook, or a message it would not make: the caller opens
+      // a new message instead.
+      log::warn!("[mail] Outlook could not make the draft: {}", String::from_utf8_lossy(&out.stderr).trim());
+      return Ok(None);
     }
-    let subject = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if subject.is_empty() {
-      return Ok(false);
-    }
-    std::thread::spawn(move || keep_message_in_front(&subject, !was_running));
-    Ok(true)
+    let made = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok(matches!(made.as_str(), "reply" | "new").then_some(made))
   }
 
   #[cfg(not(target_os = "macos"))]
   {
-    let _ = reply;
-    Ok(false)
+    let _ = draft;
+    Ok(None)
   }
 }
 
-/// The script's arguments: the id, subject, sender, seconds since it was
-/// sent, the words, then To and Cc one per line.
-fn outlook_reply_args(reply: &OutlookReply, now_ms: i64) -> Vec<String> {
-  let seconds_ago = ((now_ms - reply.sent_at_ms) / 1000).max(0);
+/// Write the files to a new folder in the temporary folder, and answer
+/// their paths. A name keeps only its last part, so it cannot point
+/// outside the folder.
+#[cfg(target_os = "macos")]
+fn write_draft_files(files: &[OutlookFile]) -> Result<Vec<String>, String> {
+  use base64::Engine as _;
+  if files.is_empty() {
+    return Ok(Vec::new());
+  }
+  let dir = std::env::temp_dir().join(format!("dh-mail-outlook-{}", now_ms()));
+  std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't make a folder for the files: {e}"))?;
+  let mut paths = Vec::new();
+  for (i, file) in files.iter().enumerate() {
+    let name = draft_file_name(&file.filename, i);
+    let bytes = base64::engine::general_purpose::STANDARD
+      .decode(file.content_base64.trim())
+      .map_err(|e| format!("A file to attach could not be read: {e}"))?;
+    // A folder of its own per file, so two files of one name both go.
+    let sub = dir.join(i.to_string());
+    std::fs::create_dir_all(&sub).map_err(|e| format!("Couldn't make a folder for the files: {e}"))?;
+    let path = sub.join(name);
+    std::fs::write(&path, bytes).map_err(|e| format!("Couldn't write a file to attach: {e}"))?;
+    paths.push(path.to_string_lossy().to_string());
+  }
+  Ok(paths)
+}
+
+/// The last part of a name, with no line breaks (the script reads one path
+/// per line); "attachment-<n>" when nothing is left.
+fn draft_file_name(name: &str, index: usize) -> String {
+  let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+  let clean: String = last.chars().filter(|c| !c.is_control()).collect();
+  let clean = clean.trim();
+  if clean.is_empty() || clean == "." || clean == ".." {
+    format!("attachment-{}", index + 1)
+  } else {
+    clean.to_string()
+  }
+}
+
+/// The script's arguments: the reply's id, subject, sender and seconds
+/// since it was sent ("" for each with no reply), the words, the history,
+/// the subject, the From address, then To, Cc, Bcc and the files one per
+/// line.
+fn outlook_draft_args(draft: &OutlookDraft, paths: &[String], now_ms: i64) -> Vec<String> {
   let lines = |list: &[String]| {
-    list.iter().map(|a| a.trim()).filter(|a| !a.is_empty()).collect::<Vec<_>>().join("\n")
+    list.iter().map(|a| a.trim()).filter(|a| !a.is_empty() && !a.contains(['\n', '\r'])).collect::<Vec<_>>().join("\n")
+  };
+  let (id, subject, from, seconds_ago) = match &draft.reply {
+    Some(reply) => (
+      reply.message_id.trim().to_string(),
+      reply.subject.clone(),
+      reply.from.trim().to_string(),
+      ((now_ms - reply.sent_at_ms) / 1000).max(0).to_string(),
+    ),
+    None => (String::new(), String::new(), String::new(), String::new()),
   };
   vec![
-    reply.message_id.trim().to_string(),
-    reply.subject.clone(),
-    reply.from.trim().to_string(),
-    seconds_ago.to_string(),
-    reply.html.clone(),
-    lines(&reply.to),
-    lines(&reply.cc),
+    id,
+    subject,
+    from,
+    seconds_ago,
+    draft.html.clone(),
+    draft.history_html.clone(),
+    draft.subject.clone(),
+    draft.from.trim().to_string(),
+    lines(&draft.to),
+    lines(&draft.cc),
+    lines(&draft.bcc),
+    lines(paths),
   ]
 }
 
@@ -465,20 +599,62 @@ mod tests {
     assert_eq!(mailto_subject("mailto:a%40b.org?subject=%20"), None);
   }
 
+  fn draft(reply: Option<super::OutlookReplyTo>) -> super::OutlookDraft {
+    super::OutlookDraft {
+      reply,
+      subject: "Re: Plans".into(),
+      html: "<p>Hi</p>".into(),
+      history_html: "<blockquote>Old</blockquote>".into(),
+      from: " me@c.test ".into(),
+      to: vec!["ann@b.test".into(), " ".into()],
+      cc: vec!["me@c.test".into(), "bo@d.test".into()],
+      bcc: vec!["x@y.test\nz@w.test".into(), "cy@d.test".into()],
+      files: vec![],
+    }
+  }
+
   #[test]
-  fn the_reply_script_gets_its_arguments_in_order() {
-    let reply = super::OutlookReply {
+  fn a_reply_draft_gets_its_arguments_in_order() {
+    let reply = super::OutlookReplyTo {
       message_id: " <a@b.test> ".into(),
       subject: "FW: Plans".into(),
       from: "ann@b.test".into(),
       sent_at_ms: 1_000_000,
-      html: "<p>Hi</p>".into(),
-      to: vec!["ann@b.test".into(), " ".into()],
-      cc: vec!["me@c.test".into(), "bo@d.test".into()],
     };
-    let args = super::outlook_reply_args(&reply, 1_090_500);
-    assert_eq!(args, vec!["<a@b.test>", "FW: Plans", "ann@b.test", "90", "<p>Hi</p>", "ann@b.test", "me@c.test\nbo@d.test"]);
-    // A clock behind the message is not a negative wait.
-    assert_eq!(super::outlook_reply_args(&reply, 0)[3], "0");
+    let args = super::outlook_draft_args(&draft(Some(reply)), &["/tmp/a/0/f.pdf".into()], 1_090_500);
+    assert_eq!(
+      args,
+      vec![
+        "<a@b.test>",
+        "FW: Plans",
+        "ann@b.test",
+        "90",
+        "<p>Hi</p>",
+        "<blockquote>Old</blockquote>",
+        "Re: Plans",
+        "me@c.test",
+        "ann@b.test",
+        "me@c.test\nbo@d.test",
+        // An address with a line break in it would be two lines to the script.
+        "cy@d.test",
+        "/tmp/a/0/f.pdf",
+      ]
+    );
+  }
+
+  #[test]
+  fn a_new_draft_has_no_reply_to_look_for() {
+    let args = super::outlook_draft_args(&draft(None), &[], 1_090_500);
+    assert_eq!(&args[..4], &["", "", "", ""]);
+    assert_eq!(args[11], "");
+  }
+
+  #[test]
+  fn a_file_name_cannot_leave_its_folder() {
+    assert_eq!(super::draft_file_name("../../etc/passwd", 0), "passwd");
+    assert_eq!(super::draft_file_name("a\\b\\report.pdf", 0), "report.pdf");
+    assert_eq!(super::draft_file_name("bad\nname.txt", 0), "badname.txt");
+    assert_eq!(super::draft_file_name("..", 2), "attachment-3");
+    assert_eq!(super::draft_file_name("", 0), "attachment-1");
   }
 }

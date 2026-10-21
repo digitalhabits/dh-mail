@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  MAIL_VIEW_MODE_KEY,
+  MAIL_LIST_DENSITY_KEY,
+  MAIL_TAB_KEY,
+  MAIL_TAB_ORDER_KEY,
+} from "@/lib/mail/storage-keys";
 import type { MailFolder, MailFolderRole } from "@/lib/mail/folder-types";
 
 /*
@@ -112,18 +118,11 @@ export function useMailPersonPins(): MailPersonPin[] {
 
 /** How the left list is organised: one row per thread, or one per person. */
 
-const MAIL_VIEW_MODE_KEY = "redd-plan-mail-view-mode";
-
-const MAIL_LIST_DENSITY_KEY = "redd-plan-mail-list-density";
-
 /**
  * Builtin list tabs, or `custom:<id>` for user-defined people filters.
  * Snoozed is ephemeral (only when something is snoozed) and not reordered.
  */
 export type MailListTab = MailTab | "all" | "sent" | "snoozed" | string;
-
-const MAIL_TAB_KEY = "redd-plan-mail-tab";
-const MAIL_TAB_ORDER_KEY = "redd-plan-mail-tab-order";
 
 /**
  * Builtin tabs that always exist (custom lists append after these by default).
@@ -144,7 +143,7 @@ export const MAIL_OFF_TAB_VIEWS = [
   "archived",
   "snoozed",
   // What is on its way out. A place in the folder rail while it holds
-  // anything, not a chip among the filters (2026-09-29).
+  // anything, not a chip among the filters.
   "outbox",
 ];
 
@@ -173,10 +172,8 @@ export function mailBuiltinTabLabels(t: MailT): Record<string, string> {
 /**
  * What the search box offers to search, which is whatever is open.
  *
- * The field used to name the mailboxes — "Search all mail", "Search in
- * this mailbox · gmail" — and say nothing about the view, back when a search
- * ignored the view entirely. Now that a search stays inside it, this is the
- * half that changes and the mailboxes are named by the menu beside it.
+ * A search stays inside the view, so the field names the view. The menu
+ * beside the field names the mailboxes.
  */
 export function mailSearchPlaceholder(input: {
   folderName: string | null;
@@ -252,10 +249,9 @@ export function useMailCustomLists(): MailCustomList[] {
  * Which filter the list opens on.
  *
  * All, unless the reader last left it somewhere else or a list is
- * scheduled to take over. It used to be In contacts, which is a filter —
- * a first run, or a reader who has never touched the row, was shown part
- * of their mail with nothing to say that the rest was being held back.
- * A mail app opens on the mail.
+ * scheduled to take over. In contacts is a filter. If the list opens on it,
+ * a first run, or a reader who never touched the row, sees part of their
+ * mail. Nothing says that the rest is held back. A mail app opens on the mail.
  */
 function readStoredMailListTab(customLists: MailCustomList[]): MailListTab {
   if (typeof window === "undefined") return "all";
@@ -399,8 +395,7 @@ const MAIL_VIEW_MODE_EVENT = "redd-plan-mail-view-mode-changed";
 /**
  * Whether threads from the same sender stack into one row ("people") or
  * each thread is a row of its own ("threads"). A setting in Settings >
- * Reading since 2026-09-29, on by default; it was a pair of buttons in the
- * title bar before. Shared through an event, so the list follows the
+ * Reading, on by default. Shared through an event, so the list follows the
  * setting the moment it is flipped.
  */
 function readMailViewMode(): MailViewMode {
@@ -543,8 +538,8 @@ export function accountPassesMailboxScope(
     /*
       All means every mailbox that is shown, not every mailbox in the copy.
       The list is loaded for every connected mailbox, so a hidden one's
-      threads were still in it, and passed here: a Gmail hidden from Mail
-      stayed in the All tab (2026-10-14). A thread with no account, or a
+      threads are still in it. Without this check, a Gmail hidden from Mail
+      stays in the All tab. A thread with no account, or a
       page that has not read its mailboxes yet, is kept.
     */
     if (!key || accounts.length === 0) return true;
@@ -614,8 +609,7 @@ export function mailboxScopeApiAccount(
  * The folder the list is showing.
  *
  * `account` is the mailbox it was opened from, or null for every mailbox at
- * once — which is what the old merged folder menu has always meant, and
- * still means.
+ * once. That is what the merged folder menu means.
  */
 export type ActiveMailFolder = MailFolder & {
   account: string | null;
@@ -636,7 +630,7 @@ export type ActiveMailFolder = MailFolder & {
  *
  * A pause does not hold these back. A pause stops new mail from coming in,
  * and sent mail is not new mail: Sent is where you check that a message
- * went, also from a paused mailbox (a tester, 2026-10-19).
+ * went, also from a paused mailbox.
  */
 export function listShowsSentOnly(folder: string, activeFolder: ActiveMailFolder | null): boolean {
   if (activeFolder) return activeFolder.role === "sent";

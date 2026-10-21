@@ -5,9 +5,9 @@
  * bubbles, day headings and reply bar, and a quiet bar on top in place of
  * the toolbar and the subject.
  *
- * It was a second drawing of the thread (the Reader with every message),
- * and that read as another app (Ulrik, 2026-10-11). The Reader is now for
- * one long message; this is for the whole thread.
+ * It is not a second drawing of the thread (the Reader with every message),
+ * because that reads as another app. The Reader is for one long message.
+ * This is for the whole thread.
  *
  * The state outlives one thread pane: the pane is mounted again for each
  * thread, and stepping to a person's next thread (the arrows in the person

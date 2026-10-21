@@ -154,7 +154,7 @@ export function ChoosePictureLink({ account, className }: { account: string; cla
  * A mailbox's mark, as a button that changes it.
  *
  * Click for the menu — choose a picture, or go back to the provider's. The
- * tab's menu does not offer it (2026-10-20): the picture is set in Settings
+ * tab's menu does not offer it: the picture is set in Settings
  * and when the mailbox is connected.
  *
  * `large`: a tile with a pencil on its corner, as in Settings and the setup

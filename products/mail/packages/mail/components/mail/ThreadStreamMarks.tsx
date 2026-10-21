@@ -6,17 +6,17 @@ import { useMailT } from "@/lib/mail/i18n";
 /**
  * The day, once, over the messages that belong to it.
  *
- * Every message used to carry its own full date. With that line gone, the
- * time in the corner of a bubble says 15:06 and nothing says which 15:06 —
- * so the day is said once, where it changes, the way a chat says it.
+ * A message does not carry its own full date. The time in the corner of a
+ * bubble says 15:06 and nothing says which 15:06. So the day is said once,
+ * where it changes, the way a chat says it.
  */
 export function DayHeading({ iso }: { iso: string | null }) {
   const t = useMailT();
   if (!iso) return null;
   return (
     /* The same small capitals the mail list puts over TODAY and
-       YESTERDAY. Both are one day naming the things under it, and they
-       were two different marks for that.
+       YESTERDAY. Both are one day that names the things under it, so
+       they use one mark.
 
        Centred, unlike the list's: over a column of bubbles this is a
        seam across the conversation, where in a list of rows it is a
@@ -28,8 +28,8 @@ export function DayHeading({ iso }: { iso: string | null }) {
          needs. It keeps the padding whenever something does come first,
          such as the button that fetches older messages. */
       /* `-mb-2` takes back half the stream's 16px gap below it: a day
-         names the message under it, and the full gap left it floating
-         between the two (Ulrik, 2026-10-11). */
+         names the message under it, and the full gap leaves it floating
+         between the two. */
       className="-mb-2 pt-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)] first:pt-0"
     >
       {chatDayLabel(iso, t)}

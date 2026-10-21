@@ -13,9 +13,8 @@
  *   (portals), so the pointer on one of those does not count as leaving.
  */
 
+import { MAIL_LIST_HIDDEN_KEY as KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
-
-const KEY = "redd-plan-mail-list-hidden";
 
 export function useListHidden(): [boolean, React.Dispatch<React.SetStateAction<boolean>>] {
   const [hidden, setHidden] = React.useState(() => {
@@ -88,8 +87,8 @@ export type ListPeek = {
  * How far past what came out the pointer may stray and keep it out.
  *
  * Its edge is where it is sized from, and the reader reaching for the edge
- * overshoots it: the list went away under the pointer before the drag could
- * start. A margin beside it, as wide as a fingertip's slip, forgives that.
+ * overshoots it. Then the list goes away under the pointer before the drag
+ * can start. A margin beside it, as wide as a fingertip's slip, forgives that.
  */
 const PEEK_MARGIN_PX = 24;
 
@@ -173,8 +172,8 @@ export function useListPeek(hidden: boolean): ListPeek {
 
 /*
   Pinned from the edge: the list is already out, over the reader, so it
-  takes its place in the row without a slide. It used to slide in from
-  nothing, having been on screen a moment before: put away, then out again.
+  takes its place in the row without a slide. A slide brings it in from
+  nothing, though it was on screen a moment before: put away, then out again.
   Set by the pin; the list's sweep reads it once (use-mail-pane-geometry).
 */
 let pinnedInPlace = false;

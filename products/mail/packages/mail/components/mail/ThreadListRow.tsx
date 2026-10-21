@@ -99,9 +99,9 @@ function PoppedOutBadge({ className }: { className?: string }) {
  *
  * Everything the reader's own action strip offers, in the same order and
  * the same three groups — answer it, settle it, file it — with archive and
- * delete held back to the end, because those two are the ones you cannot
- * take back with the next click and a menu should not open under the
- * pointer with them where "reply" used to be.
+ * delete held back to the end. Those two are the ones you cannot take back
+ * with the next click. A menu must not open with them under the pointer,
+ * where the reader expects "reply".
  *
  * Five of them need the messages, which a row does not hold: those open the
  * thread and are done there. See `MailThreadAction`.

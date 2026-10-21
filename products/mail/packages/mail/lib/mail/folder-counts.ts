@@ -12,10 +12,9 @@
  * from that number, because by then the provider's answer takes our change
  * into account — and anything else that happened since, which ours does not.
  *
- * This works in both directions. An earlier version kept a sticky only while
- * it was higher than the provider's number, which was right for filing a mail
- * in a folder and wrong for taking one out: the badge stayed at 2 with one
- * row on the list.
+ * This works in both directions. A sticky that holds only while it is higher
+ * than the provider's number is right for filing a mail in a folder. It is
+ * wrong for taking one out: the badge stays at 2 with one row on the list.
  */
 
 import type { MailAccountFolder } from "@/lib/mail/folder-types";

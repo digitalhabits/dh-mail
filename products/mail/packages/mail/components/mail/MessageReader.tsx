@@ -57,8 +57,8 @@ import { useReaderReplyAll, type ReaderEntry } from "@/components/mail/reader-th
 /** The serif the Reader sets text in, inside and outside a frame. */
 /*
   The Reader looks like the thread, larger: the same sans-serif type and
-  the same bubbles. It had serif type and no bubbles, and read as another
-  app (Ulrik, 2026-10-11).
+  the same bubbles. With serif type and no bubbles, it reads as another
+  app.
 */
 const READER_LINE_HEIGHT = 1.6;
 

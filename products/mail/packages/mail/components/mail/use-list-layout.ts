@@ -49,9 +49,9 @@ export function useListLayout({
   /**
    * Side by side and expanded: one column, controls over the rows.
    *
-   * Splitting here used to pin the controls at the list's old width and
-   * send the rows right, which left a column of buttons and empty space.
-   * Stacked (top / bottom) still splits, because the list is a strip and
+   * A split here pins the controls at the list's width before it expands,
+   * and sends the rows right. That leaves a column of buttons and empty
+   * space. Stacked (top / bottom) splits, because the list is a strip and
    * the controls need a column of their own.
    */
   const listSplit = listVertical;

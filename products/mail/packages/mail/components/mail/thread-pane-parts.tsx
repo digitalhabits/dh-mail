@@ -205,15 +205,15 @@ export function ReplyButtons({
       {!mode && !popoutOpen ? (
         /**
          * One row, whatever the pane is doing, floating over the end of the
-         * thread in a frosted tray. It was a band across the whole pane,
-         * which took its height from the mail being read. The thread keeps
+         * thread in a frosted tray. It is not a band across the whole pane,
+         * because a band takes its height from the mail being read. The thread keeps
          * room at its end (`REPLY_TRAY_ROOM`) so the tray never covers the
          * last lines. It can be dragged anywhere over the thread
          * (reply-tray-drag).
          *
-         * Four words and their icons need about 480px, and below that they
-         * used to wrap — a second row of buttons appearing under the first
-         * and pushing itself off the bottom of the pane.
+         * Four words and their icons need about 480px. Below that they wrap:
+         * a second row of buttons appears under the first and pushes itself
+         * off the bottom of the pane.
          *
          * What goes is the words on the other three. Reply is the one
          * pressed nearly every time, so it keeps its own: an icon on its
@@ -236,10 +236,9 @@ export function ReplyButtons({
           <button
             type="button"
             title={`${t("actionReply")} (${formatShortcut(shortcuts.reply)})`}
-            /* The same class as its neighbours, which is what it was
-               written out to be — with `mail-light-surface`, and that is
-               what kept it a white slab on a dark pane while Reply all and
-               Forward beside it took the theme. There is no email in this
+            /* The same class as its neighbours. With `mail-light-surface`
+               written out, it stays a white slab on a dark pane while Reply
+               all and Forward beside it take the theme. There is no email in this
                button; it is our own word on our own chrome. */
             className={threadActionClass}
             onClick={() => startReply(false)}
@@ -359,12 +358,12 @@ export function ThreadMessages({
            bottom of the stream rather than under it — a row of its own
            would push the composer down every time somebody scrolled.
 
-           Mounted through reply focus, not re-created after it. It used to
-           unmount while the composer had the pane, and the remade stream
-           came back scrolled to wherever a fresh one lands — the reader
-           left writing at the end of the thread and came back to the top
-           of it. While the composer has the pane the stream stands out of
-           the flow instead, absolute at the same rect, covered and
+           Mounted through reply focus, not re-created after it. If it
+           unmounts while the composer has the pane, the remade stream
+           comes back scrolled to wherever a fresh one lands. The reader
+           leaves writing at the end of the thread and comes back to the
+           top of it. So while the composer has the pane the stream stands
+           out of the flow, absolute at the same rect, covered and
            untouched — so the scroll is not restored, because it was never
            lost. */
         <div
@@ -1359,10 +1358,9 @@ function ThreadStripEnd({
             A meeting mail carries the same event twice: once as the
             `text/calendar` part the mail is, and once as the
             `invite.ics` file attached to it. Both are calendar
-            attachments, so a single acceptance counted as two
-            invitations up here — while the message below it drew one
-            card, because the card takes the first and ignores the
-            rest. This counts what the reader can actually show.
+            attachments, so a plain count takes a single invitation as
+            two up here. The message below it draws one card, because
+            the card takes the first and ignores the rest. This counts what the reader can actually show.
           */
           oneInvitePerMessage(m.attachments).map((attachment) => ({
             messageId: m.id,

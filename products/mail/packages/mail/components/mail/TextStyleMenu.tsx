@@ -4,12 +4,12 @@
  * Font, size, colour, highlight, lists and the marks in between, behind
  * one button.
  *
- * Lists used to sit on the toolbar. They wrapped the row off the pane
- * long before the other marks ran out of room, so they live here with the
- * rest of the less-clicked formats. B, I, U and the link stay on the row.
+ * On the toolbar, lists wrap the row off the pane long before the other
+ * marks run out of room. So they live here with the rest of the
+ * less-clicked formats. B, I, U and the link stay on the row.
  *
  * Laid out as labelled rows rather than a column of sections: five headings
- * with their options stacked underneath made a menu taller than the composer
+ * with their options stacked underneath make a menu taller than the composer
  * it belongs to. A row says the same thing in one line.
  *
  * The controls do not use Quill's own pickers. Quill binds its toolbar from

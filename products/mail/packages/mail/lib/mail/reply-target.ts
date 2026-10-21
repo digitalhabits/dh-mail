@@ -6,12 +6,12 @@
  * yourself. So the question is only ever: did this message go out from the
  * mailbox I am reading it in?
  *
- * "From an address of mine" is not the same question, and answering that one
- * instead is what broke a thread between two of the reader's own mailboxes.
- * Mail sent from their Gmail to their Outlook, read in the Outlook mailbox,
- * counted as sent-by-us because Gmail is theirs — so the reply was addressed
- * to the Outlook mailbox it was already sitting in, and writing back to
- * yourself was the only thing you could do.
+ * "From an address of mine" is not the same question. That question breaks
+ * a thread between two of the reader's own mailboxes. Take mail sent from
+ * their Gmail to their Outlook, read in the Outlook mailbox. It counts as
+ * sent-by-us because Gmail is theirs. So the reply goes to the Outlook
+ * mailbox that it is already in, and writing back to yourself is the only
+ * thing you can do.
  *
  * No React and no network in here, so a test can read it.
  */
@@ -57,10 +57,10 @@ export function sentFromThisMailbox(input: {
  * Who a reply-all goes to, from the newest message's sender, To and Cc.
  *
  * Every address of the reader's own is taken off — the mailbox it leaves
- * from, and their other mailboxes and aliases too. Before, only the sending
- * mailbox came off, so a reply-all from one address of yours to a thread
- * that had also reached another of yours put that one in To, and the
- * reply went to yourself as well as to everyone else.
+ * from, and their other mailboxes and aliases too. If only the sending
+ * mailbox comes off, a reply-all can go to yourself as well as to everyone
+ * else. That occurs when the thread also reached another address of yours:
+ * that address goes in To.
  *
  * Two cases keep an address of yours on purpose:
  *

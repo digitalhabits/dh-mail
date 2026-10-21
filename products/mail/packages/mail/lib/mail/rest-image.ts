@@ -16,6 +16,7 @@
  * No React here, so a suite can read it.
  */
 
+import { MAIL_REST_KEY as STORAGE_KEY } from "@/lib/mail/storage-keys";
 import { MAIL_LANGS, mailSay, makeMailT } from "@/lib/mail/i18n-strings";
 
 export type MailRestFilter = "none" | "grayscale" | "warm" | "soft";
@@ -82,7 +83,6 @@ export const DEFAULT_MAIL_REST: MailRestState = {
   crop: { x: 0, y: 0, zoom: 1 },
 };
 
-const STORAGE_KEY = "redd-plan-mail-rest";
 export const MAIL_REST_EVENT = "redd-plan-mail-rest-changed";
 
 export function clampWidth(value: number): number {

@@ -300,8 +300,8 @@ const GMAIL_VIEW_ROWS: {
   { name: "Drafts", count: 0, role: "drafts", virtual: true },
   { name: "Junk", count: 0, role: "junk", virtual: true },
   // "Trash", not Gmail's own word for it. The rail says Trash at its head
-  // and the move menu says Trash, and one list calling it a bin was the
-  // app saying two things about one place.
+  // and the move menu says Trash. If one list calls it a bin, the app says
+  // two things about one place.
   { name: "Trash", count: 0, role: "trash", virtual: true },
 ];
 
@@ -349,7 +349,7 @@ async function listMailFoldersUncached(options: {
  *
  * Not merged by name. Two accounts with an Archive have two Archives, and a
  * conversation files into the one on its own account — so the rail shows
- * them apart, and anything that wants the old single list folds them
+ * them apart, and anything that wants a single list folds them
  * together with `mergeFoldersByName`.
  *
  * Warm process cache holds the counted list for a few minutes.

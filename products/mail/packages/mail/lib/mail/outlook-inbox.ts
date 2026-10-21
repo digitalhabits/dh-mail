@@ -422,10 +422,10 @@ async function readOutlookWindow(
  * Opening a thread marks it read — all of it, not just its newest message.
  *
  * Graph has no conversation-level read flag, and the list here calls a
- * conversation unread when any message in it is. Marking only the newest
- * one read therefore looked right until the next sync, which read the rest
- * of the conversation and put the row back in bold. It was never that the
- * read state failed to reach Outlook; it was that most of it was never sent.
+ * conversation unread when any message in it is. If only the newest one is
+ * marked read, it looks right until the next sync. That sync reads the rest
+ * of the conversation and puts the row back in bold. So every message in it
+ * is sent as read, not only the newest.
  */
 function markOpenedConversationRead(
   token: string,

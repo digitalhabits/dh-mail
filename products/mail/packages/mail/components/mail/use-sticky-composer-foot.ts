@@ -3,11 +3,10 @@
 /**
  * Send, and the links under the box, held at the bottom of the reply band.
  *
- * The band scrolls when the reply is taller than it, and Send used to scroll
- * with it: at the end of a long reply it was below the edge, and the
- * recipient line stayed at the top instead. Now the recipient line scrolls
- * away and the row with Send on it, and the links under the card, stick to
- * the bottom edge (`position: sticky`, in ThreadComposerBand).
+ * The band scrolls when the reply is taller than it. If Send scrolls with
+ * it, Send is below the edge at the end of a long reply. So the recipient
+ * line scrolls away, and the row with Send on it and the links under the
+ * card stick to the bottom edge (`position: sticky`, in ThreadComposerBand).
  *
  * Two things CSS cannot know are worked out here, on the column that
  * scrolls:
@@ -55,12 +54,11 @@ export function useStickyComposerFoot(
       Typing grows the card before any observer has a frame to say so.
 
       The padding is set at once. The shadow waits for the next frame. This
-      listener runs before React reads the same `input` event, and a state
-      change here drew the composer again first: a controlled box (To, Cc,
-      the subject) then got its old text back, and React saw no change.
-      The letter was lost. It was the letter typed just after the
-      suggestions opened, because that is when the shadow came on (Ulrik,
-      2026-10-11).
+      listener runs before React reads the same `input` event. A state
+      change here draws the composer again first. A controlled box (To, Cc,
+      the subject) then gets its old text back, and React sees no change,
+      so the letter is lost. It is the letter typed just after the
+      suggestions open, because that is when the shadow comes on.
     */
     let frame = 0;
     const onInput = () => {

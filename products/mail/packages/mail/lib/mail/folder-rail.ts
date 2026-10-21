@@ -7,14 +7,14 @@
  * unfolded eighty folders again each time, would be a rail nobody pins.
  */
 
+import {
+  FOLDER_RAIL_OPEN_KEY as OPEN_KEY,
+  FOLDER_RAIL_COLLAPSED_KEY as COLLAPSED_KEY,
+  FOLDER_RAIL_COLLAPSED_ACCOUNTS_KEY as COLLAPSED_ACCOUNTS_KEY,
+  FOLDER_RAIL_WIDTH_KEY as WIDTH_KEY,
+} from "@/lib/mail/storage-keys";
 import * as React from "react";
 import { startPointerDrag } from "@/lib/pointer-drag";
-
-const OPEN_KEY = "redd-plan-mail-folder-rail-open-v1";
-const COLLAPSED_KEY = "redd-plan-mail-folder-rail-collapsed-v1";
-const COLLAPSED_ACCOUNTS_KEY =
-  "redd-plan-mail-folder-rail-collapsed-accounts-v1";
-const WIDTH_KEY = "redd-plan-mail-folder-rail-width-v1";
 
 /**
  * How wide the rail is, and how wide it is allowed to be.

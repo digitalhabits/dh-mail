@@ -1,9 +1,9 @@
 /**
  * Where Download puts a file, as the reader chose it.
  *
- * Every attachment went to Downloads, and a reader who files posters in a
- * project folder moved each one by hand (Ulrik, 2026-10-20). Now Download
- * saves to the folder that is ticked in its menu; the menu lists Downloads,
+ * If every attachment goes to Downloads, a reader who files posters in a
+ * project folder moves each one by hand. So Download saves to the folder
+ * that is ticked in its menu; the menu lists Downloads,
  * the Desktop and the last few folders a file was saved to, and picking
  * one saves there and makes it the folder from then on. "Always ask" shows
  * the Mac's Save dialog each time; so does Save as…, or Download with ⌥.
@@ -11,9 +11,12 @@
  * Kept on this computer: a folder is a place on this disk.
  */
 
-const FOLDER_KEY = "mail-download-folder";
-const RECENT_KEY = "mail-download-recent";
-const ASK_KEY = "mail-download-always-ask";
+import {
+  DOWNLOAD_FOLDER_KEY as FOLDER_KEY,
+  DOWNLOAD_RECENT_KEY as RECENT_KEY,
+  DOWNLOAD_ALWAYS_ASK_KEY as ASK_KEY,
+} from "@/lib/mail/storage-keys";
+
 /** How many folders the menu remembers beyond Downloads and the Desktop. */
 const RECENT_MAX = 3;
 

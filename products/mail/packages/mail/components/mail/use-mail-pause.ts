@@ -1,5 +1,6 @@
 "use client";
 
+import { MAIL_PAUSE_KEY as KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
 import {
@@ -29,8 +30,6 @@ import { normaliseUnpauseWords } from "@/lib/mail/unpause-friction";
  * All is the default scope. A mailbox can hold a pause of its own, and
  * hours of its own, on top of that.
  */
-const KEY = "redd-plan-mail-pause";
-export const MAIL_PAUSE_KEY = KEY;
 export const MAIL_PAUSE_EVENT = "redd-plan-mail-pause-changed";
 
 function read(): MailPauseState {

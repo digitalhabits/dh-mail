@@ -39,7 +39,7 @@ export function useAutoReply({ t }: { t: ReturnType<typeof useMailT> }) {
   const [autoReplies, setAutoReplies] = React.useState<AutoReplyDto[]>([]);
   /*
     Opened from Settings > Accounts. Then the dialog has a way back to that
-    page, not only the cross, which shuts everything (2026-10-08).
+    page, not only the cross, which shuts everything.
   */
   const [autoReplyFromSettings, setAutoReplyFromSettings] = React.useState(false);
 

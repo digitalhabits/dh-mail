@@ -8,7 +8,7 @@
  *
  * The Sync mark, not a tray with an arrow: nothing is downloaded, mail is
  * fetched, and Sync is the button that does it. Light on the bright tile:
- * dark on it read poorly (Ulrik, 2026-10-17).
+ * dark on it reads poorly.
  */
 
 import { Eye, RefreshCw } from "lucide-react";

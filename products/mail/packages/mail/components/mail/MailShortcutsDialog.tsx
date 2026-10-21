@@ -85,9 +85,9 @@ const SHORTCUT_ICONS: Partial<
 /**
  * The shortcut list, for the settings popover.
  *
- * It used to be a second dialog in the middle of the window. Same surface,
- * different place, so the panel looked as if it had jumped. The list did
- * not need a new place — only a new panel in the same popover.
+ * Not a second dialog in the middle of the window. That is the same
+ * surface in a different place, so the panel looks as if it jumped. The
+ * list needs no new place, only a new panel in the same popover.
  */
 export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
   const t = useMailT();

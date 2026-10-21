@@ -95,9 +95,8 @@ function withSenderName(people: PersonParticipant[], t: MailThreadSummary): Pers
 
 /**
  * A name that is more than the address. Outlook writes an address it has
- * no name for as its own display name ("Sam.Okafor@example.ac.uk"), and
- * that read as a name, so the sender's real one was never put in its
- * place (2026-10-17).
+ * no name for as its own display name ("Sam.Okafor@example.ac.uk"). If
+ * that reads as a name, the sender's real one is never put in its place.
  */
 function hasRealName(p: PersonParticipant): boolean {
   const name = p.name?.trim().toLowerCase() ?? "";
@@ -107,9 +106,8 @@ function hasRealName(p: PersonParticipant): boolean {
 /**
  * Who a thread is with, as its row names it: the other person, or the
  * first two of a group and a +N. The same words whether Stacks is on or
- * off. With Stacks off a row named only whoever sent the newest mail, so
- * a thread's name changed when Stacks was switched though it was in no
- * stack (Ulrik, 2026-10-17).
+ * off. If a row with Stacks off names only whoever sent the newest mail, a
+ * thread's name changes when Stacks is switched, though it is in no stack.
  */
 export function threadPeopleLabel(t: MailThreadSummary): string {
   const { isGroup, named, lead } = threadPeople(t);

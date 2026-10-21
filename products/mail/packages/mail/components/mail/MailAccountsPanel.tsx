@@ -236,7 +236,7 @@ function SortableAccountRow({
           )}
         >
           {/* A problem first; otherwise, hidden or not, and its hours shown.
-              The mark says the provider (2026-10-20). */}
+              The mark says the provider. */}
           {account.lastSyncError ? (
             t("errorPrefix", { message: account.lastSyncError })
           ) : needsSignIn ? (
@@ -276,8 +276,8 @@ function SortableAccountRow({
             {t("autoReplyButton")}
           </Button>
         ) : null}
-        {/* Nothing while all is well (2026-10-20): "Connected" on every row
-            said nothing a row does not. Reconnect only when the sign-in has
+        {/* Nothing while all is well: "Connected" on every row says
+            nothing a row does not. Reconnect only when the sign-in has
             stopped working, and the line under the address says why. (In
             words, not the circling arrows, which are Sync's in the
             toolbar.) */}
@@ -903,10 +903,9 @@ export function MailAccountsPanel({
     The account leaves the list at once, but nothing is removed for ten
     seconds: its sign-in, its password and its copy of the mail all stay
     until the time is up. Undo in that time puts it back as it was, with no
-    new sign-in and no new sync. It used to remove everything at once and
-    undo by saving the sign-in again, which an Exchange mailbox could not
-    do (its password is not kept for that), and which threw away the copy
-    every time.
+    new sign-in and no new sync. Undo does not save the sign-in again. An
+    Exchange mailbox cannot do that (its password is not kept for that),
+    and it throws away the copy every time.
   */
   const disconnect = (account: MailAccountRow) => {
     if (disconnectingEmail || leaving.has(account.email)) return;

@@ -3,7 +3,8 @@
  *
  * A reply draft kept here can outlive its conversation: the thread is
  * deleted, or emptied, in Gmail or Outlook. Opening the draft then asks for a
- * thread that is not there, and the pane showed the provider's raw answer.
+ * thread that is not there. Without this, the pane shows the provider's raw
+ * answer.
  * Gmail says 404 and "notFound"; Graph says 404 and "ErrorItemNotFound".
  */
 export function isThreadGoneError(error: string | null | undefined): boolean {
@@ -15,9 +16,9 @@ export function isThreadGoneError(error: string | null | undefined): boolean {
  * Whether a thread failed to open because its mailbox is not connected here.
  *
  * A reply draft keeps the mailbox it was written in. When that mailbox is
- * later removed from Mail, the draft stays in the list, and opening it asked
- * for a mailbox that is not there: the pane showed "No connected mailbox for
- * …" and nothing to do about it.
+ * later removed from Mail, the draft stays in the list. Opening it asks for
+ * a mailbox that is not there. Without this, the pane shows "No connected
+ * mailbox for …" and nothing to do about it.
  */
 export function isMailboxNotConnectedError(error: string | null | undefined): boolean {
   if (!error) return false;

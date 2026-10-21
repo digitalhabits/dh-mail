@@ -1,10 +1,10 @@
 /**
  * The empty reply box names who the reply goes to.
  *
- * It used to name the first person on the thread who was not you, whatever
- * was in the To and Cc fields. On a reply-all that read as a reply to one
- * person. Now the names come from the recipients themselves, so the
- * placeholder and the "Replying to" line above it agree.
+ * The names come from the recipients in the To and Cc fields, not from the
+ * first person on the thread who is not you. On a reply-all, one name reads
+ * as a reply to one person. The placeholder and the "Replying to" line
+ * above it then agree.
  *
  * No React in here, so a test can read it.
  */

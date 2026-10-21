@@ -2,7 +2,8 @@
  * The welcome screen ("Private by design"), accepted once on this device.
  * The usage count waits for it; accepting fires EULA_ACCEPTED_EVENT.
  */
-export const EULA_KEY = "mail_eula";
+import { EULA_KEY } from "@/lib/mail/storage-keys";
+
 export const EULA_REVISION = 1;
 export const EULA_ACCEPTED_EVENT = "mail-eula-accepted";
 
