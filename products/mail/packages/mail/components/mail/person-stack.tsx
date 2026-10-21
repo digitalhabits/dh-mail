@@ -87,11 +87,11 @@ export function StackThreadRow({
           : undefined
       }
       className={cn(
-        // On the stack's line, which the open one's bar covers.
-        "-ml-[2px] flex w-full items-start gap-3 rounded-r-md border-l-2 py-1.5 pl-4 pr-2 text-left",
+        // No line and no bar: the open one is a card, as an open row is.
+        "flex w-full items-start gap-3 rounded-control py-1.5 pl-4 pr-2 text-left",
         active
-          ? "border-[var(--mail-accent)] bg-[var(--mail-row-selected)]"
-          : "border-transparent hover:bg-[var(--mail-chrome-hover)]"
+          ? "bg-[var(--mail-row-selected)] shadow-[var(--mail-row-card-shadow)]"
+          : "hover:bg-[var(--mail-chrome-hover)]"
       )}
     >
       <span className="min-w-0 flex-1">
@@ -127,7 +127,7 @@ export function StackThreadRow({
 
 /**
  * An open stack's threads, newest first, under the person's row: in from
- * the left as far as the name, on a line that ties them to it.
+ * the left as far as the name.
  */
 export function StackThreads({
   threads,
@@ -147,7 +147,9 @@ export function StackThreads({
   withYear: boolean;
 }) {
   return (
-    <div className="mb-1 ml-[66px] mr-[18px] border-l-2 border-[var(--mail-chrome-border)]">
+    // The words start where the person's name does: the row's padding, the
+    // 36px face and its 12px gap, less the thread row's own 16px.
+    <div className="mb-1 ml-[60px] mr-[18px]">
       {threads.map((th) => (
         <StackThreadRow
           key={`${th.account}|${th.threadId}`}

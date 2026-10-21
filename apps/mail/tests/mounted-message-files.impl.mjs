@@ -73,6 +73,9 @@ async function main() {
     await sleep(150);
     assert.equal(dialog()?.getAttribute("aria-label"), "choir-plan.zip", "the preview names the file");
     assert(text().includes("2 / 3"), "and says it is the second of three");
+    // On the body, over everything: inside the reader, the list's resize
+    // handle stood over the document as a grey line.
+    assert.equal(dialog()?.parentElement, document.body, "the preview is on the page's body");
     pass("a click on a tile opens its preview, which names the file and where it stands");
 
     document.querySelector('button[aria-label="Next file"]').click();

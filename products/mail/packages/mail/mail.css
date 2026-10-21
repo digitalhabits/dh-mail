@@ -480,27 +480,31 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 .mail-shell {
   /* The way back to a person's threads, and the steps through them. */
   --mail-nav-tint: #ffffff;
-  --mail-nav-tint-border: rgb(214 211 209);
-  --mail-nav-tint-fg: #1c1917;
-  --mail-nav-step: rgb(231 229 228);
-  --mail-nav-avatar: rgb(231 229 228);
-  --mail-nav-avatar-fg: rgb(68 64 60);
-  --mail-chrome: #faf8f5;
-  --mail-chrome-border: rgb(231 229 228);
-  --mail-chrome-fg: #1c1917;
-  --mail-chrome-muted: rgb(87 83 78);
-  --mail-chrome-faint: rgb(168 162 158);
-  --mail-chrome-hover: rgb(244 241 236);
-  --mail-chrome-selected: var(--cream-section);
-  --mail-chrome-chip-border: rgb(214 211 209);
-  --mail-chrome-chip-active-bg: var(--cream-section);
-  --mail-chrome-chip-active-fg: #1c1917;
+  --mail-nav-tint-border: #d2d4d0;
+  --mail-nav-tint-fg: #1b3d4a;
+  --mail-nav-step: #dbdbd7;
+  --mail-nav-avatar: #dbdbd7;
+  --mail-nav-avatar-fg: #47616a;
+  /* The app's cream: `cream` in the Centre for Digital Habits design
+     system (Claude Design), the newer website's page background. Selected
+     is the system's `sand`, and hover stands between the two, so both show.
+     Ulrik, 2026-10-21. */
+  --mail-chrome: #f5f1ea;
+  --mail-chrome-border: #dbdbd7;
+  --mail-chrome-fg: #1b3d4a; /* ink, as all text (tailwind.config.ts) */
+  --mail-chrome-muted: #47616a;
+  --mail-chrome-faint: #9ea9aa;
+  --mail-chrome-hover: #efeae2;
+  --mail-chrome-selected: #e9e4da;
+  --mail-chrome-chip-border: #d2d4d0;
+  --mail-chrome-chip-active-bg: #e9e4da;
+  --mail-chrome-chip-active-fg: #1b3d4a;
   /* A chrome control that is switched on and stays on — the folder rail's
      toggle. Navy on the cream chrome, and the other way round on the navy
      chrome below, because "on" has to be the thing the bar is not. */
   --mail-chrome-pinned: #1a2735;
   --mail-chrome-pinned-fg: #faf8f5;
-  --mail-tab-active: #1c1917;
+  --mail-tab-active: #1b3d4a;
   --mail-pane: #ffffff;
   /*
    * The reader is a room; a message is a sheet of paper in it.
@@ -511,9 +515,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * put the brightest surface behind the message and a tint on the message,
    * and read as though the paper were the thing that had been colored in.
    */
-  --mail-thread: #faf8f5;
-  --mail-thread-fg: #1c1917;
-  --mail-thread-muted: rgb(120 113 108);
+  --mail-thread: #f5f1ea;
+  --mail-thread-fg: #1b3d4a;
+  --mail-thread-muted: #586f77;
   /*
    * The line under the subject: who the thread is with, how many messages,
    * when, and which mailbox took them in.
@@ -524,24 +528,28 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * navy the muted colour is already easy to read, and the same step there
    * would make this as loud as the subject above it.
    */
-  --mail-thread-meta: #3f3a36;
+  --mail-thread-meta: #314f5a;
   /* The chrome, which is what the mailbox list is painted in — see the
      dark block, which says the same thing in its own colours. */
   --mail-thread-chrome: var(--mail-chrome);
-  --mail-thread-chrome-line: rgb(231 229 228);
+  --mail-thread-chrome-line: #dbdbd7;
   --mail-bubble-other: #ffffff;
-  --mail-bubble-other-border: rgb(231 229 228);
-  --mail-bubble-own: #f0fdfa;
-  /* A desaturated mint: darker than the fill but nowhere near teal. The
-     saturated edge read as an outline drawn round the words, and a shade of
-     the fill alone was too faint to hold the shape at all. */
-  --mail-bubble-own-border: rgb(183 222 211);
+  --mail-bubble-other-border: #dbdbd7;
+  /* Your own messages: the design system's blue (the hue of `mist` and
+     `haze`), made as the old teal was, so it stands out as that did: very
+     light but clearly coloured, with an edge of the same hue a good step
+     deeper (Ulrik, 2026-10-21). */
+  --mail-bubble-own: #eef8fc;
+  /* The system's `mist`: a step deeper than the fill, of the same blue. A saturated edge
+     read as an outline drawn round the words, and a shade of the fill alone
+     was too faint to hold the shape at all. */
+  --mail-bubble-own-border: #b4d3df;
   /* The box you type into, a paler cast of the bubble the words become. It
-     is not white and it is barely teal: enough to lift the box off the card
+     is not white and only just blue: enough to lift the box off the card
      and to say the message being written is yours. */
-  --mail-compose-surface: #f7fefd;
-  --mail-fade-from: #faf8f5;
-  --mail-title-search-ring: rgb(214 211 209);
+  --mail-compose-surface: #f9fcfd;
+  --mail-fade-from: #f5f1ea;
+  --mail-title-search-ring: #d2d4d0;
   /*
    * The buttons that do the thing: New mail, and Reply / Reply all /
    * Forward under a thread.
@@ -552,9 +560,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * the chrome instead of punching a hole in it.
    */
   --mail-action: #ffffff;
-  --mail-action-border: rgb(231 229 228);
-  --mail-action-fg: #1c1917;
-  --mail-action-hover: #fafaf9;
+  --mail-action-border: #dbdbd7;
+  --mail-action-fg: #1b3d4a;
+  --mail-action-hover: #f8f6f1;
   /*
    * The second rank: Forward beside Reply, and the buttons that are only
    * an icon. Light has always drawn these the same as the first rank; it
@@ -562,15 +570,15 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * leaving the second an outline.
    */
   --mail-action-2: #ffffff;
-  --mail-action-2-border: rgb(231 229 228);
-  --mail-action-2-fg: #1c1917;
-  --mail-action-2-icon: rgb(120 113 108);
-  --mail-action-2-hover: #fafaf9;
+  --mail-action-2-border: #dbdbd7;
+  --mail-action-2-fg: #1b3d4a;
+  --mail-action-2-icon: #586f77;
+  --mail-action-2-hover: #f8f6f1;
 
   /* A row of choices where one is on: the mailbox tabs, the mail/people
      switch in the title bar. */
-  --mail-segment-track: var(--cream-section);
-  --mail-segment-track-strong: var(--cream-section);
+  --mail-segment-track: rgba(27, 61, 74, 0.08);
+  --mail-segment-track-strong: rgba(27, 61, 74, 0.1);
   /* A mailbox's hours: shown (the eye) and new mail arriving (Sync),
      in their row icons, the week's bars and its key. */
   --mail-shown-tile: #d3ebe6;
@@ -600,40 +608,47 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      opposite ends of it, and the badge is small enough that a weak pair is
      no arrow at all. */
   --mail-autoreply-fg: #ffffff;
-  --mail-segment-active-fg: #1c1917;
+  --mail-segment-active-fg: #1b3d4a;
   /* The open folder in the folder rail: a fill, and a bold name with its
      icon in the name's colour. Its own hover, a step quieter. */
   /* A row that moved when Stacks was switched, for a moment. */
   --mail-stack-tint: #e3efec;
   /* A switch that is on, in the chrome (Stacks): the slate of a chosen
      folder, not the accent, so "on" reads as "chosen" (2026-10-17). */
-  --mail-switch-on: #2a3d52;
+  --mail-switch-on: #005d53;
   --mail-folder-active: var(--mail-segment-active);
   --mail-folder-active-fg: var(--mail-segment-active-fg);
   --mail-folder-active-icon: var(--mail-segment-active-fg);
   --mail-folder-hover: var(--mail-chrome-hover);
-  --mail-segment-fg: rgb(87 83 78);
+  --mail-segment-fg: #47616a;
 
   /* Boxes that hold something rather than do something. */
-  --mail-field-border: rgb(214 211 209);
-  --mail-field-border-soft: rgb(231 229 228);
+  --mail-field-border: #d2d4d0;
+  --mail-field-border-soft: #dbdbd7;
   --mail-field-bg: #ffffff;
-  --mail-placeholder: rgb(168 162 158);
+  --mail-placeholder: #7d8e92;
 
   /* The one colour that is the same in both themes, and the link text,
      which is not: on navy the same teal is too dark to read. */
-  --mail-accent: #2a9d8f;
-  --mail-link: #2a9d8f;
+  /* The design system's green (see apps/mail/tailwind.config.ts). */
+  --mail-accent: #005d53;
+  --mail-link: #005d53;
   --mail-row-selected: #ffffff;
   --mail-row-selected-solid: #ffffff;
+  /* The open row is a card lifted off the cream list (list-row-marks.tsx). */
+  /* A white card on cream: 1px ink/8% edge and shadow-card. */
+  --mail-row-card-shadow: 0 0 0 1px rgba(27, 61, 74, 0.08), 0 1px 2px rgba(27, 61, 74, 0.04);
   /* The chrome's hover, so a row in the list and a row in the folders can
      never drift apart. They are the same colour on this theme already. */
   --mail-row-hover: var(--mail-chrome-hover);
+  /* The faint line between two conversations, edge to edge, as Gmail
+     draws it: rows read as separate without the list looking ruled. */
+  --mail-row-line: rgba(27, 61, 74, 0.07);
 
   /* A person or a list, as a chip in an address field. */
-  --mail-chip: var(--cream-section);
-  --mail-chip-fg: #1c1917;
-  --mail-chip-muted: rgb(120 113 108);
+  --mail-chip: #e9e4da;
+  --mail-chip-fg: #1b3d4a;
+  --mail-chip-muted: #586f77;
 }
 
 .mail-shell[data-theme="dark"] {
@@ -763,10 +778,13 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-link: #5fc2b4;
   /* Colour marks the open thread, grey marks the one under the pointer, so
      the two are never mistaken for each other. */
-  --mail-row-selected: rgba(42, 157, 143, 0.1);
-  /* The same tint as a solid colour, for a ring drawn over the row. */
-  --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 10%, #1a2735);
+  /* Solid: the open row is a card over the list (list-row-marks.tsx). */
+  --mail-row-selected: color-mix(in srgb, #2a9d8f 14%, #1e2d3e);
+  /* The same, for a ring drawn over the row. */
+  --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 14%, #1e2d3e);
+  --mail-row-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --mail-row-hover: var(--mail-chrome-hover);
+  --mail-row-line: rgba(255, 255, 255, 0.06);
 
   /*
    * A chip in an address field.
@@ -1611,4 +1629,15 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 :root[data-send-later-open] [data-send-main] {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/*
+ * Headings: Georgia at 500 with tight tracking, as the Centre for Digital
+ * Habits design system sets them, never bold. Mail marks a heading with
+ * `font-serif`, often beside a `font-bold` written before the system came.
+ */
+.mail-shell .font-serif,
+.mail-shell.font-serif {
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }

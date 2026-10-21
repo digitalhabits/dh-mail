@@ -1,5 +1,6 @@
 "use client";
 
+import { OPEN_ROW_CARD } from "@/components/mail/list-row-marks";
 import * as React from "react";
 
 import { rowTime } from "@/lib/mail/date-format";
@@ -194,7 +195,7 @@ export function MailDraftsList({
               className={cn(
                 "relative flex w-full flex-col gap-0.5 px-5 py-2 text-left",
                 open
-                  ? "bg-[var(--mail-row-selected)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                  ? OPEN_ROW_CARD
                   : "hover:bg-[var(--mail-chrome-hover)]"
               )}
             >

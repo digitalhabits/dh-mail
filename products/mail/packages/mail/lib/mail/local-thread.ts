@@ -49,15 +49,24 @@ const MAX_COPIES = 4;
  * Message-ID cannot be matched, so it is not merged.
  */
 async function withCopies(account: string, rows: StoredWithBody[]): Promise<StoredWithBody[]> {
+  const ids = rows.filter((r) => !r.isDraft).map((r) => r.rfcMessageId);
+  return [...rows, ...(await copyRows(account, ids))];
+}
+
+/**
+ * The messages of the copies in other mailboxes that these Message-IDs do
+ * not name: what `withCopies` adds. Empty when there are no copies.
+ */
+async function copyRows(account: string, rfcIds: (string | null | undefined)[]): Promise<StoredWithBody[]> {
   const store = mailStore();
-  if (!store.messages.copies) return rows;
+  if (!store.messages.copies) return [];
   const key = (id: string | null | undefined) => (id ?? "").trim();
-  const ids = rows.filter((r) => !r.isDraft && key(r.rfcMessageId)).map((r) => key(r.rfcMessageId));
-  if (!ids.length) return rows;
+  const ids = rfcIds.map(key).filter(Boolean);
+  if (!ids.length) return [];
   const copies = await store.messages.copies(account, ids).catch(() => []);
-  if (!copies.length) return rows;
+  if (!copies.length) return [];
   const seen = new Set(ids);
-  const out = [...rows];
+  const out: StoredWithBody[] = [];
   for (const copy of copies.slice(0, MAX_COPIES)) {
     const theirs = await store.messages.thread(copy.account, copy.threadId).catch(() => []);
     for (const row of theirs) {
@@ -68,6 +77,53 @@ async function withCopies(account: string, rows: StoredWithBody[]): Promise<Stor
     }
   }
   return out;
+}
+
+/**
+ * The same for a thread read from the provider instead of the copy: an
+ * Outlook mailbox over Graph, or Gmail over its API. Without this, a reply
+ * the reader sent from another mailbox was missing from the conversation
+ * whenever the list's row was the copy in such a mailbox.
+ *
+ * Only the newest window, or the whole thread: a page of older messages
+ * would show again what the first window added. And only from the oldest
+ * message shown onward, so the newest window does not gain old messages.
+ */
+export async function withLocalCopies(
+  detail: MailThreadDetail,
+  options?: { before?: string; after?: string; around?: string }
+): Promise<MailThreadDetail> {
+  if (options?.before || options?.after || options?.around || !detail.messages.length) return detail;
+  const ids = detail.messages.map((m) => m.rfcMessageId);
+  let extra = await copyRows(detail.account, ids).catch(() => []);
+  const from = detail.hasOlder
+    ? Math.min(...detail.messages.map((m) => (m.sentAt ? Date.parse(m.sentAt) : Infinity)))
+    : -Infinity;
+  const shown = (rows: StoredWithBody[]) => rows.filter((r) => r.sentAt >= from);
+  extra = shown(extra);
+  if (!extra.length) return detail;
+  // Bodies the copies lack, from their own mailboxes, as the copy path does.
+  const lacking = extra.filter((r) => !r.body);
+  if (lacking.length) {
+    for (const other of new Set(lacking.map((r) => r.copy!.account))) {
+      const missing = lacking.filter((r) => r.copy?.account === other).map((r) => r.messageId);
+      await resolveMailProvider(other)
+        .then((provider) => fetchMissingBodies(other, provider, missing))
+        .catch(() => false);
+    }
+    extra = shown(await copyRows(detail.account, ids).catch(() => extra));
+  }
+  const messages = dedupeMessagesByRfcId(
+    [...detail.messages, ...extra.map((r) => toMailMessage(r, detail.account))].sort(
+      (a, b) => (a.sentAt ? Date.parse(a.sentAt) : 0) - (b.sentAt ? Date.parse(b.sentAt) : 0)
+    )
+  );
+  const added = messages.length - detail.messages.length;
+  return {
+    ...detail,
+    messages,
+    ...(detail.totalMessageCount != null ? { totalMessageCount: detail.totalMessageCount + added } : null),
+  };
 }
 
 /** The mailbox a row is in. */

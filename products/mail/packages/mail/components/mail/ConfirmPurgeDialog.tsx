@@ -81,7 +81,7 @@ export function ConfirmPurgeDialog({
   if (typeof document === "undefined") return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-[#1b3d4a]/20 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}

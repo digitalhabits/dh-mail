@@ -114,7 +114,9 @@ export function PointerMenu({
 
   return createPortal(
     <>
-    {backdrop ? <div aria-hidden className="fixed inset-0 z-[69] bg-black/45" /> : null}
+    {/* A light veil of ink, as the design system has no black: the menu is
+        the thing in front, and the mail behind it stays readable. */}
+    {backdrop ? <div aria-hidden className="fixed inset-0 z-[69] bg-[#1b3d4a]/20" /> : null}
     <div
       ref={ref}
       role="menu"

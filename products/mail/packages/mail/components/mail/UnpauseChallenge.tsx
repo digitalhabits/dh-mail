@@ -81,7 +81,7 @@ export function UnpauseChallengeHost() {
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[2200] bg-stone-900/30" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[2200] bg-[#1b3d4a]/20" />
         <DialogPrimitive.Content
           // The shell's colours, which the portal on <body> leaves behind: as MenuShell.
           data-theme={colorMode}

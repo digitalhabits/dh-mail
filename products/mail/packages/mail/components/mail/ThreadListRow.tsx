@@ -11,6 +11,7 @@ import {
   MenuShell as RowMenuShell,
 } from "@/components/mail/MenuShell";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
+import { dotOnFace, OPEN_ROW_CARD, ROW_LINE, ROW_PAD_LEFT, RowUnreadDot } from "@/components/mail/list-row-marks";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { MessageSquare, Archive, ArchiveRestore, Trash2, Calendar, Clock, FolderInput, Forward, Paperclip, MessagesSquare, Pin, Printer, Reply, ReplyAll, RotateCwFadingClock, ShieldCheck, SquarePen } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
@@ -519,6 +520,7 @@ function threadRowClass({
 }): string {
   return cn(
     "group relative flex cursor-grab transition-colors active:cursor-grabbing",
+    ROW_LINE,
     // No ring of the browser's own. A row is focusable so the arrow keys
     // can carry focus with the selection, and the selection is already
     // painted — the ring drew a second, louder marker over the top of it,
@@ -547,11 +549,10 @@ function threadRowClass({
     // fill, so the discs look cut out of it. The open row's fill in dark
     // is a tint you can see through, and a ring has to be solid — see
     // --mail-row-selected-solid.
+    // The open row is a card lifted off the list; see list-row-marks.
     selected
-      ? "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)]"
-      : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]",
-    selected &&
-      "before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+      ? OPEN_ROW_CARD
+      : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]"
   );
 }
 
@@ -743,7 +744,7 @@ export function ThreadListRow({
   };
   // 2px less on the right than the left: the times at the end of a row
   // read as too far in from the pane's edge with the full 20.
-  const padX = inCard ? "px-4" : "pl-5 pr-[18px]";
+  const padX = inCard ? "px-4" : cn(ROW_PAD_LEFT, "pr-[18px]");
   const draftKeys = useThreadDraftKeys();
   const hasDraft = draftKeys.has(threadDraftKey(t.account, t.threadId));
   // A one-to-one keeps the face it always had. Only a group is a pile.
@@ -879,13 +880,16 @@ export function ThreadListRow({
       className={threadRowClass({ narrow, wide, compact, padX, selected })}
     >
       {swipeX !== 0 ? <SwipeUnder swipeX={swipeX} /> : null}
+      {/* Unread: a dot in the gutter, level with the face. Narrow, or in a
+          person's card, there is no gutter, and the dot stays on the face. */}
+      <RowUnreadDot unread={t.unread} narrow={narrow} inCard={inCard} compact={compact} wide={wide} />
       {/* Everybody on the thread, as the person view draws them: one face
           for a one-to-one, a pile for a group. */}
       <PeopleAvatar
         people={people}
         logoEmail={t.fromEmail}
         logoUrl={t.crmLogoUrl}
-        unread={t.unread}
+        unread={dotOnFace(narrow, inCard) && t.unread}
         onNavy={onNavy}
         size={!narrow && !wide && compact ? 28 : 36}
       />
@@ -910,7 +914,8 @@ export function ThreadListRow({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <p
               className={cn(
-                "max-w-[34%] shrink-0 truncate text-sm font-semibold",
+                "max-w-[34%] shrink-0 truncate text-sm",
+                t.unread && "font-semibold",
                 onNavy ? "text-white" : "text-stone-900"
               )}
             >
@@ -1097,7 +1102,8 @@ function StackedRowBody({
         <div className="flex min-w-0 items-center gap-1.5">
           <p
             className={cn(
-              "min-w-0 truncate text-sm font-semibold",
+              "min-w-0 truncate text-sm",
+              t.unread && "font-semibold",
               onNavy ? "text-white" : "text-stone-900"
             )}
           >
@@ -1166,7 +1172,7 @@ function StackedRowBody({
               "inline-flex max-w-[55%] shrink-0 items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
               onNavy
                 ? "border-white/15 bg-white/10 text-white/70"
-                : "border-stone-200 bg-[#f4f1ec] text-stone-600"
+                : "border-stone-200 bg-[#ede8df] text-stone-600"
             )}
             title={t.calendarInviteWhen || "Calendar invite"}
           >
@@ -1293,7 +1299,7 @@ function WideRowBody({
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="flex min-w-0 items-baseline gap-1.5 text-sm">
-            <span className={cn("min-w-0 shrink truncate font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+            <span className={cn("min-w-0 shrink truncate", t.unread && "font-semibold", onNavy ? "text-white" : "text-stone-900")}>
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </span>
             <span className={cn("min-w-0 max-w-[40%] shrink-0 truncate", onNavy ? "text-white/60" : "text-stone-500")}>
@@ -1321,7 +1327,7 @@ function WideRowBody({
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex w-[10rem] shrink-0 items-center gap-1.5">
-          <p className={cn("min-w-0 truncate text-sm font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+          <p className={cn("min-w-0 truncate text-sm", t.unread && "font-semibold", onNavy ? "text-white" : "text-stone-900")}>
             <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />

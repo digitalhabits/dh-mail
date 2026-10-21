@@ -1,3 +1,25 @@
+/*
+ * Schibsted Grotesk, the Centre for Digital Habits' text face (the design
+ * system in Claude Design). Bundled, not fetched: Mail opens offline. The
+ * two weights the website ships; 500 falls to 400, as the browser does.
+ * Beside this file, not in public/ (which the public mirror never takes),
+ * so Vite bundles them. SIL Open Font License: src/fonts/OFL.txt.
+ */
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("./fonts/SchibstedGrotesk-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("./fonts/SchibstedGrotesk-SemiBold.woff") format("woff");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Window chrome for the standalone app. Tailwind and the brand variables come
    from styles/globals.css, which this build imports too. What is left is the
    full-height frame that a host shell would otherwise provide. */
@@ -123,8 +145,8 @@ html[data-dh-os="windows"] [data-dh-scrolling] {
    The same two values as the dark chrome in products/mail/.../mail.css.
    `main.tsx` keeps `data-theme` on <html> in step with the setting. */
 .dh-window-controls {
-  --mail-chrome-fg: #1c1917;
-  --mail-chrome-hover: rgb(244 241 236);
+  --mail-chrome-fg: #1b3d4a;
+  --mail-chrome-hover: #efeae2;
   --mail-chrome-active: rgb(231 229 228);
 }
 

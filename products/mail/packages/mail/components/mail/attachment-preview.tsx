@@ -6,12 +6,14 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import { MAIL_PINCH_SCALE_EVENT, readMailPinch } from "@/lib/mail/pinch";
 import { canRenderPdf, mountPdfViewer } from "@/lib/mail/attachment-text";
 import type { PdfViewerHandle } from "@/lib/mail/pdf-viewer-types";
 import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { useMailT } from "@/lib/mail/i18n";
+import { useMailColorMode } from "@/lib/mail/theme";
 import { cn } from "@/lib/utils";
 import type { MailAttachment } from "@/lib/mail/types";
 import { DownloadSplitButton } from "@/components/mail/download-split-button";
@@ -254,6 +256,7 @@ function AttachmentPreviewBody({
   onClose: () => void;
 }) {
   const t = useMailT();
+  const colorMode = useMailColorMode();
   const sourceState = useAttachmentSourceState(
     localSrc ? null : attachmentUrl({ account, messageId, attachment })
   );
@@ -455,9 +458,20 @@ function AttachmentPreviewBody({
     </div>
   ) : null;
 
-  return (
+  /*
+    On the page's body, not in the reader.
+
+    The reader is a layer of its own, under the handle that resizes the
+    list beside it, and z-[80] only counts inside that layer. So the handle
+    stood over the document as a grey line down the middle of the page,
+    with its "Drag to resize" tip. `mail-shell` and the theme come along,
+    as on the other menus that live on the body.
+  */
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-[80] bg-stone-900/70"
+      className="mail-shell fixed inset-0 z-[80] bg-stone-900/70"
+      data-theme={colorMode}
       role="dialog"
       aria-modal="true"
       aria-label={attachment.filename}
@@ -581,6 +595,7 @@ function AttachmentPreviewBody({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

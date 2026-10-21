@@ -522,7 +522,7 @@ export function ThreadMessages({
                 undo count says: this has not gone anywhere yet. */}
             {scheduled.map((held) => (
               <div key={held.id} className="flex flex-col items-end gap-1 py-1">
-                <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-3.5 py-2.5">
+                <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)]/60 px-3.5 py-2.5">
                   <p className="whitespace-pre-wrap break-words text-sm text-stone-600">
                     {held.bodyText}
                   </p>
@@ -889,10 +889,17 @@ function ThreadTitleBlock({
     t,
   } = m;
   return (
-    <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-2 pl-10 pr-8 pt-2.5">
-      <div className="flex items-center gap-4">
+    // 8px over the row and 8.5px under it: the line under the subject
+    // meets the line under the list's filters (both end 138px down in the
+    // demo).
+    <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-[8.5px] pl-10 pr-8 pt-2">
+      {/* The subject and the people share a baseline, and the row is set so
+          that baseline is the one the list's filter labels (All, Other and
+          the rest) stand on beside it: 126px down in the demo. */}
+      <div className="flex translate-y-[5px] items-baseline gap-4">
         <h2
-          className="min-w-0 flex-1 truncate font-serif text-lg font-bold text-stone-900"
+          // The one bold heading: the subject is what the reader is reading.
+          className="min-w-0 flex-1 truncate font-serif text-[26px] !font-bold leading-8 text-stone-900"
           title={headerTitle}
         >
           {headerTitle}
@@ -1020,12 +1027,15 @@ function ThreadActionStrip({
   // Off for a mailbox whose owner keeps it private (Settings → Accounts).
   const assistOn = useAccountAssist(account);
   return (
-    <div className="mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-1.5">
+    // 5px over a 38px row: the buttons stand 2px above the account tabs'
+    // middle, and the line under them meets the foot of the tabs' track
+    // (measured in the demo: track 52-88px, line now 87-88px).
+    <div className="mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-[5px]">
       <div
         ref={setToolbarRowNode}
         data-tight={tightToolbar ? "" : undefined}
         className={cn(
-          "group/toolbar flex h-10 w-full min-w-0 items-center overflow-hidden pl-7 pr-5",
+          "group/toolbar flex h-[38px] w-full min-w-0 items-center overflow-hidden pl-7 pr-5",
           tightToolbar ? "gap-0" : "gap-1"
         )}
       >

@@ -198,7 +198,7 @@ export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
       </div>
       <div className="flex flex-col items-end gap-1.5 px-8 py-6">
         <p className="max-w-[85%] self-end truncate text-xs text-stone-500">{people.join(" · ")}</p>
-        <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-teal-300 bg-[var(--mail-bubble-own)]/60 px-4 py-3">
+        <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)]/60 px-4 py-3">
           {html ? (
             /*
               In the frame the messages are read in, re-lit in the dark as

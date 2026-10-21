@@ -17,7 +17,14 @@ import { TabIcon } from "@/lib/mail/tab-icons";
  */
 export function viewTabClass(active: boolean): string {
   return cn(
-    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 pb-1 pt-1 text-[14px]",
+    // 2px over the words and 6px under them: the words stand 2px higher
+    // than an even 4px and 4px put them, and the tab keeps its height, so
+    // its underline and the line under the row stay where they are.
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 pb-[6px] pt-[2px] text-[14px]",
+    // A fill under the pointer, down to the underline and a little wider
+    // than the words. Drawn behind the tab, so the tab and its underline
+    // keep the width of the words.
+    "relative isolate before:absolute before:-inset-x-2 before:inset-y-0 before:-z-10 before:rounded-t-control before:transition-colors hover:before:bg-[var(--mail-chrome-hover)]",
     // The one on screen in its weight, on a teal line; the rest lighter,
     // as in To-Do.
     active

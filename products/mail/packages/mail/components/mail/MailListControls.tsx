@@ -413,7 +413,7 @@ export function MailLayoutMenu({
         ? createPortal(
             // The same wash the settings dialogs already use, so opening
             // Contact sources from here does not change the shade.
-            <div className="fixed inset-0 z-40 bg-black/20" aria-hidden />,
+            <div className="fixed inset-0 z-40 bg-[#1b3d4a]/20" aria-hidden />,
             document.body
           )
         : null}

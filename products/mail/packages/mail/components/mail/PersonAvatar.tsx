@@ -10,10 +10,13 @@ import { cn } from "@/lib/utils";
 
 export function PersonAvatar({
   row,
+  unreadDot = true,
   onNavy = false,
   size = 36,
 }: {
   row: PersonRow;
+  /** The unread dot on the face. Off where the row has a gutter for it. */
+  unreadDot?: boolean;
   onNavy?: boolean;
   /** Side of the square, in px. Layouts below are for 36. */
   size?: number;
@@ -38,7 +41,7 @@ export function PersonAvatar({
       count={row.participantCount || people.length}
       logoEmail={row.email || withLogo?.fromEmail || ""}
       logoUrl={row.crmLogoUrl ?? withLogo?.crmLogoUrl}
-      unread={row.unread}
+      unread={unreadDot && row.unread}
       onNavy={onNavy}
       size={size}
     />
@@ -158,7 +161,7 @@ export function PeopleAvatar({
         <span
           className={cn(
             "absolute h-2 w-2 rounded-full bg-[var(--mail-accent)] ring-2",
-            onNavy ? "ring-brandNavy" : "ring-[#faf8f5]"
+            onNavy ? "ring-brandNavy" : "ring-[#f5f1ea]"
           )}
           style={{ top: 0, left: size - 8 }}
         />

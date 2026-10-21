@@ -8,6 +8,14 @@
  * mail-page-slices.tsx). The JSX is the list's own, word for word.
  */
 
+import {
+  OPEN_ROW_CARD,
+  ROW_LINE,
+  ROW_PAD_LEFT,
+  FACE_DOT_TOP,
+  UnreadGutterDot,
+  WIDE_FACE_DOT_TOP,
+} from "@/components/mail/list-row-marks";
 import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
 import { isMailboxScopeAll } from "@/components/mail/mail-list-state";
 import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
@@ -544,21 +552,22 @@ function PersonListRow({
                 className={cn(
                   // Relative: the hover actions float over its right end.
                   "group relative flex w-full transition-colors",
+                  ROW_LINE,
                   listNarrow
                     ? "items-center justify-center px-1 py-1.5"
                     : listRowWide && listDensity !== "compact"
-                      ? "items-start pl-5 pr-[18px] py-2"
+                      ? cn("items-start pr-[18px] py-2", ROW_PAD_LEFT)
                     : listRowWide
-                      ? "items-center pl-5 pr-[18px] py-1.5"
+                      ? cn("items-center pr-[18px] py-1.5", ROW_PAD_LEFT)
                     : listDensity !== "compact"
-                      ? "items-start pl-5 pr-[18px] py-2.5"
-                      : "items-center pl-5 pr-[18px] py-1.5",
+                      ? cn("items-start pr-[18px] py-2.5", ROW_PAD_LEFT)
+                      : cn("items-center pr-[18px] py-1.5", ROW_PAD_LEFT),
                   /* No fill for a stack only because it is open. A fill
                      reads as selected beside the row that is selected.
                      The open threads under it say it is open. */
                   !listExpanded && (painted || multiKeys.has(row.key))
-                    ? // The open person, marked as an open thread is: fill and bar.
-                      "bg-[var(--mail-row-selected)] [--mail-person-stack-ring:var(--mail-row-selected-solid)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                    ? // The open person, marked as an open thread is: a card.
+                      OPEN_ROW_CARD
                     : "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
                 )}
               >
@@ -581,8 +590,16 @@ function PersonListRow({
                         : "items-center gap-2.5"
                 )}
               >
+                {/* Unread in the gutter, as on a thread row; narrow, on the face. */}
+                {listNarrow ? null : (
+                  <UnreadGutterDot
+                    unread={row.unread}
+                    top={listDensity === "compact" ? undefined : listRowWide ? WIDE_FACE_DOT_TOP : FACE_DOT_TOP}
+                  />
+                )}
                 <PersonAvatar
                   row={row}
+                  unreadDot={listNarrow}
                   onNavy={chromeDark}
                   size={
                     listNarrow
@@ -613,7 +630,7 @@ function PersonListRow({
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="flex w-[14rem] shrink-0 items-center gap-2">
-                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
+                      <span className={cn("min-w-0 truncate text-sm text-[var(--mail-chrome-fg)]", row.unread && "font-semibold")}>
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                     </span>
@@ -668,7 +685,7 @@ function PersonListRow({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="min-w-0 truncate text-sm font-semibold text-[var(--mail-chrome-fg)]">
+                      <span className={cn("min-w-0 truncate text-sm text-[var(--mail-chrome-fg)]", row.unread && "font-semibold")}>
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       <PersonCount threads={row.threads} open={stackOpen} />
@@ -1030,12 +1047,12 @@ export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
                   type="button"
                   className={cn(
                     "relative flex w-full items-center gap-3 py-2 pl-5 pr-[18px] text-left",
-                    // Open in the reader: marked as an open thread is, fill and bar.
+                    // Open in the reader: marked as an open thread is, a card.
                     openHeld?.id === held.id && openHeld.account === held.account
-                      ? "bg-[var(--mail-row-selected)] before:absolute before:inset-y-0 before:left-0 before:w-[4px] before:rounded-r-[1px] before:bg-[var(--mail-accent)]"
+                      ? OPEN_ROW_CARD
                       : chromeDark
                         ? "hover:bg-white/5"
-                        : "hover:bg-[#f4f1ec]"
+                        : "hover:bg-[var(--mail-chrome-hover)]"
                   )}
                   title={held.status === "failed" ? held.error : undefined}
                   onClick={() => open(held)}

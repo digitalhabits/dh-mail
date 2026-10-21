@@ -201,7 +201,16 @@ export function TimeField({
         onChange={(e) => {
           setText(e.target.value);
           const hm = readClock(e.target.value);
-          if (hm && hm !== value) onChange(hm);
+          if (hm && hm !== value) {
+            /*
+              Marked as seen, so it does not come back as a value from
+              outside. Taking the 9 out of "09:00" leaves "0:00", which
+              is a time; it went up, came back as "00:00", replaced the
+              words being typed and put the caret at the end.
+            */
+            setShown(hm);
+            onChange(hm);
+          }
         }}
         onClick={() => setOpen(true)}
         onBlur={close}

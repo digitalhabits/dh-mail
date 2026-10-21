@@ -9,7 +9,7 @@
 import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
-import { threadFromLocalStore } from "@/lib/mail/local-thread";
+import { threadFromLocalStore, withLocalCopies } from "@/lib/mail/local-thread";
 import { extractAttachments, extractBodyHtml, extractBodyText, getMessageFull, getThreadFull, getThreadMinimal, headerValue, modifyThreadLabels, parseAddressList, resolveInlineImages, type GmailMessage } from "@/lib/gmail/api";
 import { mailStore } from "@/lib/mail/store";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
@@ -104,7 +104,7 @@ export async function getMailThread(
 ): Promise<MailThreadDetail> {
   const provider = await resolveMailProvider(account);
   if (provider === "outlook") {
-    return getOutlookMailThread(account, threadId, options);
+    return withLocalCopies(await getOutlookMailThread(account, threadId, options), options);
   }
   const stored = await threadFromLocalStore(account, threadId, options);
   if (stored) return stored;
@@ -113,7 +113,7 @@ export async function getMailThread(
   if (provider === "exchange") return emptyThreadDetail(account, threadId);
   if (await isAppPasswordGmail(account)) return emptyThreadDetail(account, threadId);
 
-  return getGmailApiThread(account, threadId, options);
+  return withLocalCopies(await getGmailApiThread(account, threadId, options), options);
 }
 
 /**

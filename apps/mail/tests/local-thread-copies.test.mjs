@@ -8,7 +8,7 @@
  * copies are read too, and merged by Message-ID. Invented addresses.
  */
 
-import { threadFromLocalStore } from "@/lib/mail/local-thread";
+import { threadFromLocalStore, withLocalCopies } from "@/lib/mail/local-thread";
 import { setMailStore } from "@/lib/mail/store";
 import { replyFields } from "@/lib/mail/thread-composer-state";
 
@@ -16,6 +16,7 @@ import { check, suite } from "./harness.mjs";
 
 const gmail = "tester@gmail.example";
 const work = "tester@work.example";
+const outlook = "tester@outlook.example";
 const ann = { name: "Ann Sender", email: "ann@partner.example" };
 
 function row(id, threadId, at, from, extra = {}) {
@@ -76,7 +77,9 @@ function install(newestOnlyAtWork) {
       thread: async (account, threadId) => threads[`${account}|${threadId}`] ?? [],
       copies: async (account, rfcIds) => {
         copiesAsked.push({ account, rfcIds });
-        return account === gmail && rfcIds.includes("<m1@x.test>") ? [{ account: work, threadId: "k" }] : [];
+        return (account === gmail || account === outlook) && rfcIds.includes("<m1@x.test>")
+          ? [{ account: work, threadId: "k" }]
+          : [];
       },
       setUnread: async (account, threadId, unread) => {
         marks.push({ account, threadId, unread });
@@ -108,4 +111,33 @@ suite(async () => {
   check("Reply opens with that mailbox as From", fields.fromAccount === work && fields.toList.map((r) => r.email).join(",") === ann.email, JSON.stringify(fields));
   check("with no other mailbox to go from, From is left as it is", !("fromAccount" in replyFields(detail.reply, true)));
   check("and reply-all leaves this mailbox out too", !later.reply.allTo.includes(gmail) && later.reply.allTo.includes(ann.email), later.reply.allTo);
+
+  // A thread read from the provider, not the copy: Outlook over Graph.
+  install(false);
+  const fromGraph = (messages, hasOlder = false) => ({
+    account: outlook,
+    threadId: "o",
+    subject: "Plans",
+    participants: [],
+    messages,
+    hasOlder,
+    hasNewer: false,
+    totalMessageCount: messages.length,
+    reply: { inReplyTo: "<m3@x.test>", references: "", to: [ann.email], cc: [], allTo: [], allCc: [] },
+  });
+  const graphMessage = (id, at) => ({
+    id: `o-${id}`,
+    rfcMessageId: `<${id}@x.test>`,
+    fromName: ann.name,
+    fromEmail: ann.email,
+    sentAt: new Date(at).toISOString(),
+  });
+  const live = await withLocalCopies(fromGraph([graphMessage("m1", 1_000), graphMessage("m3", 3_000)]));
+  const liveIds = live.messages.map((m) => m.rfcMessageId).join(",");
+  check("a thread read from Outlook gains the reply only the work mailbox has", liveIds === "<m1@x.test>,<m2@x.test>,<m3@x.test>", liveIds);
+  check("in its place in time, and counted", live.totalMessageCount === 3, live.totalMessageCount);
+  const older = await withLocalCopies(fromGraph([graphMessage("m3", 3_000)], true));
+  check("a window of the newest messages gains nothing older than it shows", older.messages.length === 1, older.messages.map((m) => m.rfcMessageId).join(","));
+  const page = await withLocalCopies(fromGraph([graphMessage("m1", 1_000)]), { before: "o-m3" });
+  check("a page of older messages is left as it came", page.messages.length === 1);
 });

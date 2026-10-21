@@ -4,7 +4,7 @@
     "windows": [
       {
         "title": "Digital Habits: Mail",
-        "backgroundColor": "#faf8f5",
+        "backgroundColor": "#f5f1ea",
         "userAgent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 dh-mail-native/0.1 dh-mail-mobile/android"
       }
     ]

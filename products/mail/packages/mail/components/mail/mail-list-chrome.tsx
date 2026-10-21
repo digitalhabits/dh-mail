@@ -578,7 +578,9 @@ export const FilterChips = React.memo(function FilterChips() {
                   // on the tab scroller would clip a ring's top edge). The
                   // matching space above is what puts the square level with
                   // the words beside it rather than over them.
-                  "flex shrink-0 items-center border-b-2 border-transparent pb-1 pt-1",
+                  // As a tab's: 2px over, 6px under, and the same fill under
+                  // the pointer (viewTabClass).
+                  "flex shrink-0 items-center border-b-2 border-transparent pb-[6px] pt-[2px] relative isolate before:absolute before:-inset-x-2 before:inset-y-0 before:-z-10 before:rounded-t-control before:transition-colors hover:before:bg-[var(--mail-chrome-hover)]",
                   listEditor != null
                     ? "text-teal-700"
                     : "text-[var(--mail-chrome-muted)] hover:text-[var(--mail-chrome-fg)]"
@@ -626,9 +628,9 @@ export function FilterRow({
       {filtersShowing ? filterChips : null}
       {/* Its glyph level with the times at the end of the rows. Level
           with the tab words: a tab is 30px from its underline up, with
-          the words' middle 16px above the line, which is this button's
-          middle. */}
-      {ownsFolders ? <div className="-mr-[11px] ml-auto shrink-0">{foldersButton}</div> : null}
+          the words' middle 18px above the line, so this button's middle
+          goes 2px up from where the row's foot puts it. */}
+      {ownsFolders ? <div className="-mr-[11px] ml-auto shrink-0 -translate-y-[2px]">{foldersButton}</div> : null}
     </div>
   )
   );
