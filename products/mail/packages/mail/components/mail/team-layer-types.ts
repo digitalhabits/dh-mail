@@ -50,3 +50,25 @@ export type TeamSendAnswer = {
   };
   crmProposal?: unknown;
 };
+
+/**
+ * A request another program left in the drafts folder (use-drafts-inbox):
+ * a file with a `"request"` field rather than a draft. The organization's
+ * build answers it; a build without the team layer says it does not.
+ */
+export type DraftsFolderRequest = {
+  /** The file's name, which the answer is written under. */
+  name: string;
+  request: Record<string, unknown>;
+  /** The files the request names in `"attachments"`, read. */
+  attachmentFiles: { filename: string; mimeType: string; contentBase64: string }[];
+};
+
+export type DraftsFolderRequestHost = {
+  /** Every mailbox connected here, hidden ones too. */
+  accounts: readonly string[];
+  /** Write the answer to `answers/<name>`. */
+  answer: (body: Record<string, unknown>) => Promise<void>;
+  /** The Drafts list read again after a change. */
+  refreshDrafts: () => void;
+};

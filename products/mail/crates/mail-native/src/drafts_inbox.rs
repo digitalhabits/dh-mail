@@ -23,6 +23,17 @@
   so the draft goes out with them. A path that is missing, not a file, or
   over 25 MB keeps the whole draft back, in `not-made` with the reason: a
   draft without the file it was written to carry is worse than none.
+
+  What Mail writes back, beside the drafts:
+  - `made/<file name>`: a receipt for each draft made, with the draft's key,
+    the account and the subject, so the program can find its draft again.
+  - `answers/<file name>`: the answer to a request (a file with a
+    `"request"` field), for a build of Mail that takes requests.
+
+  Looking: a thread here checks the folder every second and a half and
+  wakes the page when something waits. The page's own timer slows to a
+  crawl while its window is in the background, so a draft left then waited
+  until the window came forward.
 */
 
 use std::fs;
@@ -36,6 +47,14 @@ use tauri::Manager;
 const SUBDIR: &str = "drafts-inbox";
 /// Inside the drafts folder: what could not be made, and why.
 const NOT_MADE: &str = "not-made";
+/// Inside the drafts folder: receipts for the drafts made.
+const MADE: &str = "made";
+/// Inside the drafts folder: answers to requests.
+const ANSWERS: &str = "answers";
+/// How often the watch thread looks.
+const WATCH_EVERY: std::time::Duration = std::time::Duration::from_millis(1500);
+/// What the watch thread tells the page.
+pub const WAITING_EVENT: &str = "drafts-inbox-waiting";
 /// A draft larger than this is not a draft somebody wrote.
 const MAX_BYTES: u64 = 2 * 1024 * 1024;
 /// One attachment: what Gmail and Outlook take in a message, and a little less.
@@ -136,6 +155,16 @@ pub fn take_waiting(app_data: &Path) -> Vec<Waiting> {
   let mut out = Vec::new();
   for path in paths {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // Taken by renaming it first: a program that takes its file back does
+    // so by renaming too, so the file is the program's or Mail's, never
+    // both. A request to send must not run after the program said it did not.
+    let path = {
+      let taking = dir.join(format!("{name}.taking"));
+      if fs::rename(&path, &taking).is_err() {
+        continue;
+      }
+      taking
+    };
     let too_big = fs::metadata(&path).map(|m| m.len() > MAX_BYTES).unwrap_or(false);
     let read = if too_big { Err("the file is larger than 2 MB".to_string()) } else {
       fs::read(&path)
@@ -158,21 +187,67 @@ pub fn take_waiting(app_data: &Path) -> Vec<Waiting> {
   out
 }
 
-/// Keep a draft that could not be made, with the reason, for whoever wrote it.
-pub fn write_not_made(app_data: &Path, name: &str, draft: &serde_json::Value, reason: &str) -> std::io::Result<PathBuf> {
-  let dir = folder_in(app_data).join(NOT_MADE);
-  fs::create_dir_all(&dir)?;
-  // The name as written, made safe: nothing that leaves this folder.
+/// The name as written, made safe: nothing that leaves its folder.
+fn safe_name(name: &str) -> String {
   let safe: String = name
     .chars()
     .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
     .collect();
   let safe = safe.trim_start_matches('.');
-  let base = if safe.is_empty() { "draft.json" } else { safe };
-  let path = dir.join(base);
+  if safe.is_empty() { "draft.json".to_string() } else { safe.to_string() }
+}
+
+/// Keep a draft that could not be made, with the reason, for whoever wrote it.
+pub fn write_not_made(app_data: &Path, name: &str, draft: &serde_json::Value, reason: &str) -> std::io::Result<PathBuf> {
+  let dir = folder_in(app_data).join(NOT_MADE);
+  fs::create_dir_all(&dir)?;
+  let path = dir.join(safe_name(name));
   let body = serde_json::json!({ "reason": reason, "draft": draft });
   fs::write(&path, serde_json::to_vec_pretty(&body).map_err(std::io::Error::other)?)?;
   Ok(path)
+}
+
+/// A receipt (`made`) or an answer (`answers`), under the name of the file
+/// it answers. Written under another name and renamed, so a reader never
+/// sees half of it.
+pub fn write_note(app_data: &Path, kind: &str, name: &str, body: &serde_json::Value) -> Result<PathBuf, String> {
+  let sub = match kind {
+    "made" => MADE,
+    "answers" => ANSWERS,
+    _ => return Err(format!("no such note: {kind}")),
+  };
+  let dir = folder_in(app_data).join(sub);
+  fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  let path = dir.join(safe_name(name));
+  let part = dir.join(format!("{}.part", safe_name(name)));
+  let bytes = serde_json::to_vec_pretty(body).map_err(|e| e.to_string())?;
+  fs::write(&part, bytes).map_err(|e| e.to_string())?;
+  fs::rename(&part, &path).map_err(|e| e.to_string())?;
+  Ok(path)
+}
+
+/// Whether a draft or a request waits in the folder.
+pub fn has_waiting(app_data: &Path) -> bool {
+  fs::read_dir(folder_in(app_data))
+    .map(|entries| {
+      entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .any(|p| p.is_file() && p.extension().is_some_and(|e| e == "json"))
+    })
+    .unwrap_or(false)
+}
+
+/// Look at the folder from here, not only from the page, and wake the page
+/// when something waits (see the note at the top).
+pub fn start_watch(app: tauri::AppHandle) {
+  use tauri::Emitter;
+  let Ok(data) = app.path().app_data_dir() else { return };
+  std::thread::spawn(move || loop {
+    std::thread::sleep(WATCH_EVERY);
+    if has_waiting(&data) {
+      let _ = app.emit(WAITING_EVENT, ());
+    }
+  });
 }
 
 /// Drafts waiting in the folder, for the page to make. Empty when none.
@@ -189,6 +264,22 @@ pub fn take_drafts_inbox(app: tauri::AppHandle) -> Vec<Waiting> {
 pub fn reject_drafts_inbox(app: tauri::AppHandle, name: String, draft: serde_json::Value, reason: String) -> Result<(), String> {
   let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
   write_not_made(&data, &name, &draft, &reason).map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// A receipt or an answer for whoever wrote a file (see `write_note`). An
+/// answer that says a message was sent is logged with who sent it and the
+/// outbox id, and nothing more: never a subject or an address.
+#[tauri::command]
+pub fn note_drafts_inbox(app: tauri::AppHandle, kind: String, name: String, body: serde_json::Value) -> Result<(), String> {
+  let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+  if let Some(sent) = body.get("sent") {
+    log::info!(
+      "drafts-inbox: sent by {} (outbox {})",
+      sent.get("actor").and_then(|v| v.as_str()).unwrap_or("an agent"),
+      sent.get("outboxId").and_then(|v| v.as_str()).unwrap_or("-")
+    );
+  }
+  write_note(&data, &kind, &name, &body).map(|_| ())
 }
 
 /// Where the folder is, for Settings to show and copy.
@@ -231,6 +322,27 @@ mod tests {
     assert_eq!(got[0].draft["subject"], "One");
     assert!(take_waiting(&data).is_empty(), "taken once");
     assert!(dir.join("3-writing.json.part").exists(), "a file still being written is left alone");
+  }
+
+  #[test]
+  fn notes_are_written_whole_under_a_safe_name() {
+    let data = temp();
+    let path = write_note(&data, "made", "../a draft.json", &serde_json::json!({ "key": "compose:1" })).unwrap();
+    assert_eq!(path, folder_in(&data).join(MADE).join("_a_draft.json"));
+    assert!(fs::read_to_string(&path).unwrap().contains("compose:1"));
+    assert!(!folder_in(&data).join(MADE).join("_a_draft.json.part").exists());
+    assert!(write_note(&data, "elsewhere", "x.json", &serde_json::json!({})).is_err());
+  }
+
+  #[test]
+  fn sees_a_waiting_file_and_not_a_half_written_one() {
+    let data = temp();
+    let dir = folder_in(&data);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("writing.json.part"), b"{").unwrap();
+    assert!(!has_waiting(&data));
+    fs::write(dir.join("ready.json"), b"{}").unwrap();
+    assert!(has_waiting(&data));
   }
 
   #[test]

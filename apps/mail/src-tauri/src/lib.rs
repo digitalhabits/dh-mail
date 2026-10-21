@@ -201,6 +201,7 @@ macro_rules! mail_commands {
       mail_native::drafts_inbox::take_drafts_inbox,
       mail_native::drafts_inbox::reject_drafts_inbox,
       mail_native::drafts_inbox::drafts_inbox_path,
+      mail_native::drafts_inbox::note_drafts_inbox,
       mail_native::commands::mail_store_call,
       mail_native::pending::set_pending_mail_writes,
       mail_native::commands::mail_import_snapshot,
@@ -513,6 +514,9 @@ pub fn run() {
 
       // A message another app left before Mail was running.
       mail_native::handoff::deliver_waiting(app.handle());
+      // Drafts another program leaves: looked for from here as well as from
+      // the page, which slows down in the background (drafts_inbox.rs).
+      mail_native::drafts_inbox::start_watch(app.handle().clone());
 
       // New versions, for a team build.
       #[cfg(feature = "team-updater")]

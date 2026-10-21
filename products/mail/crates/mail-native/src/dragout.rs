@@ -23,8 +23,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use drag::{DragItem, DragMode, Image, Options};
-use objc2_app_kit::{NSEvent, NSWorkspace};
-use objc2_foundation::NSString;
+use objc2::AllocAnyThread;
+use objc2_app_kit::{NSEvent, NSImage, NSWorkspace};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use crate::downloads::{decode_base64, safe_file_name, unique_path};
 
@@ -155,15 +156,33 @@ pub fn drag_files(window: tauri::Window, paths: Vec<String>) -> Result<(), Strin
   }
 }
 
+/// How big the icon under the pointer is, in points: Finder's own size for
+/// a dragged file.
+const DRAG_ICON_POINTS: f64 = 64.0;
+
 /// What the pointer carries: the icon Finder would show for this file.
 ///
 /// As bytes, because the drag crate builds its own `NSImage` and panics on one
 /// it cannot make — so a picture that will not draw has to fail here, with
 /// something to read, rather than there.
+///
+/// Drawn small first. The workspace's icon holds every size up to 512
+/// points, and the drag crate sizes the drag by the image it reads back, so
+/// the whole icon came along: a Word file the size of the window
+/// (Mikkel, 2026-10-21).
 fn file_icon(path: &Path) -> Result<Vec<u8>, String> {
   let workspace = NSWorkspace::sharedWorkspace();
   let icon = workspace.iconForFile(&NSString::from_str(&path.to_string_lossy()));
-  icon
+  let size = NSSize::new(DRAG_ICON_POINTS, DRAG_ICON_POINTS);
+  let small = NSImage::initWithSize(NSImage::alloc(), size);
+  #[allow(deprecated)]
+  {
+    // lockFocus draws at the screen's scale, so it stays sharp on Retina.
+    small.lockFocus();
+    icon.drawInRect(NSRect::new(NSPoint::new(0.0, 0.0), size));
+    small.unlockFocus();
+  }
+  small
     .TIFFRepresentation()
     .map(|data| data.to_vec())
     .ok_or_else(|| "Couldn't draw the file's icon".to_string())
@@ -172,6 +191,17 @@ fn file_icon(path: &Path) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn the_icon_under_the_pointer_is_finders_drag_size() {
+    let file = scratch("icon").join("plan.docx");
+    std::fs::write(&file, b"x").unwrap();
+    let bytes = file_icon(&file).unwrap();
+    let data = objc2_foundation::NSData::with_bytes(&bytes);
+    let image = NSImage::initWithData(NSImage::alloc(), &data).unwrap();
+    let size = image.size();
+    assert_eq!((size.width, size.height), (DRAG_ICON_POINTS, DRAG_ICON_POINTS));
+  }
 
   /// A folder of this test's own, so two runs cannot see each other's files.
   fn scratch(name: &str) -> PathBuf {

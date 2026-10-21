@@ -11,6 +11,8 @@
  */
 
 import type {
+  DraftsFolderRequest,
+  DraftsFolderRequestHost,
   DraftAssistResult,
   DraftAssistWorking,
   ReadableThreadAttachment,
@@ -187,4 +189,12 @@ export function TriageListPane(): null {
 /** Over an open thread. Nothing here. */
 export function TriageBanner(_props: { account: string; threadId: string }): null {
   return null;
+}
+
+/** A request in the drafts folder: this Mail takes drafts only. */
+export async function handleDraftsFolderRequest(
+  _item: DraftsFolderRequest,
+  host: DraftsFolderRequestHost
+): Promise<void> {
+  await host.answer({ ok: false, error: "This Mail takes drafts only, not requests." });
 }

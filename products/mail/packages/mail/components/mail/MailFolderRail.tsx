@@ -129,7 +129,9 @@ export function MailFolderRail(props: FolderRailProps) {
         what *this* account holds.
       */}
       {/* Two columns, each filled on its own, so Snoozed and Outbox can
-          come and go under the inbox without shifting the other column. */}
+          come and go under the inbox without shifting the other column.
+          Drafts sit under Sent, the mail you write, and Archived at the
+          head of the other column (Ulrik, 2026-10-21). */}
       <div
         className={cn(
           "grid shrink-0 gap-x-2",
@@ -140,7 +142,7 @@ export function MailFolderRail(props: FolderRailProps) {
           <>
             <div className="flex min-w-0 flex-col">
               {snoozedRow}
-              {draftsRow}
+              {archivedRow}
               {junkRow}
               {trashRow}
             </div>
@@ -148,7 +150,7 @@ export function MailFolderRail(props: FolderRailProps) {
               {inboxRow}
               {outboxRow}
               {sentRow}
-              {archivedRow}
+              {draftsRow}
             </div>
           </>
         ) : (
@@ -157,8 +159,8 @@ export function MailFolderRail(props: FolderRailProps) {
             {snoozedRow}
             {outboxRow}
             {sentRow}
-            {archivedRow}
             {draftsRow}
+            {archivedRow}
             {junkRow}
             {trashRow}
           </>

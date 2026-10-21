@@ -172,7 +172,7 @@ export function useComposeStart({
 }
 
 export function useComposeRequests({
-  accountEmails,
+  ownerId,
   closeCompose,
   refreshDrafts,
   setActiveFolder,
@@ -184,12 +184,17 @@ export function useComposeRequests({
   t,
 }: Pick<ReturnType<typeof usePageSetup>, "t"> &
   Pick<ReturnType<typeof useListTabsAndPins>, "setTab"> &
-  Pick<ReturnType<typeof useAccountsState>, "accountEmails"> &
   Pick<ReturnType<typeof useDraftsList>, "refreshDrafts"> &
   Pick<ReturnType<typeof useReaderState>, "setSelected" | "setSelectedPersonKey"> &
   Pick<ReturnType<typeof useListQuery>, "setActiveFolder"> &
   Pick<ReturnType<typeof useComposeState>, "closeCompose" | "setComposing"> &
-  Pick<ReturnType<typeof useComposeStart>, "startCompose">) {
+  Pick<ReturnType<typeof useComposeStart>, "startCompose"> & {
+    /**
+     * Whose mailboxes the drafts folder reads from the store: every one
+     * connected, hidden ones too (use-drafts-inbox).
+     */
+    ownerId: string;
+  }) {
   const { editAsNewFromSource, editAsNewMessage, editAsNewMessageRef } =
     useEditAsNew({ startCompose, t });
   /**
@@ -207,7 +212,8 @@ export function useComposeRequests({
   }, []);
   // Drafts another program left in the drafts folder (use-drafts-inbox).
   // The toast's button opens Drafts, and the draft itself when it was one.
-  useDraftsInbox(accountEmails, (made) => {
+  // For any connected mailbox, a hidden one too: hiding is about reading.
+  useDraftsInbox(ownerId, (made) => {
     setActiveFolder(null);
     setSelectedPersonKey(null);
     setTab("drafts");
@@ -222,7 +228,7 @@ export function useComposeRequests({
       setSelected(null);
       startCompose({ to: made.to, subject: made.subject, continuedFromLabel: "", draftKey: made.key });
     }
-  });
+  }, refreshDrafts);
   const { pendingForward, forwardStarted } = useWindowRequests({
     setComposing,
     setSelectedPersonKey,

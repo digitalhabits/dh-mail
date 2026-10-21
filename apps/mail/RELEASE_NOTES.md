@@ -13,7 +13,12 @@
 - The subject of a conversation is larger and in bold. A long subject is set smaller, and wraps onto two lines when it must, so it is not cut off. The reader that fills the window shows the subject the same way.
 - The files of a conversation follow its number of messages and its dates at the top.
 
+**Folders and drafts**
+- In the folder list, Drafts is under Sent, and Archived is at the top of the other column.
+- The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
+
 **Fixes**
+- When you drag a file from Mail to the desktop, its icon is the usual size. Before, the icon was very large.
 - In a time box (Snooze, Send later, hours), you can delete one digit and type another in its place. Before, the box changed the time to 00:00 and moved the cursor to the end.
 - A file that is open in Mail no longer shows a grey line down the middle of the page.
 - The hint in an empty search field is no longer cut off before the end of the field.

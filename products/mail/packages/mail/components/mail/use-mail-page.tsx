@@ -94,7 +94,7 @@ export function useMailPage(props: MailPageProps) {
   usePageKeys({ ...pageSetup, ...listTabsAndPins, ...displaySettings, ...readerState, ...listQuery, ...draftsView, ...listView, ...listSpace, ...listGeometry, ...visibleRows, ...actionsCore, ...composeStart });
   const syncPress = useSyncPress({ ...readerState, ...listData });
   const outbox = useOutbox({ ...listTabsAndPins, ...listData });
-  const composeRequests = useComposeRequests({ ...pageSetup, ...listTabsAndPins, ...accountsState, ...draftsList, ...readerState, ...listQuery, ...composeState, ...composeStart });
+  const composeRequests = useComposeRequests({ ...pageSetup, ...listTabsAndPins, ...accountsState, ...draftsList, ...readerState, ...listQuery, ...composeState, ...composeStart, ownerId: props.viewerId });
   const listRowsPart = useListRowsPart({ ...listTabsAndPins, ...accountsState, ...listQuery, ...listData, ...visibleRows });
   const connection = useConnection();
   const firstReadState = useFirstReadState(props);
