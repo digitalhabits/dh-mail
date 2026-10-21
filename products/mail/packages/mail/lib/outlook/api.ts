@@ -301,6 +301,50 @@ async function conversationWindow(
   return { messages: batch.slice(0, options.top), more: batch.length > options.top };
 }
 
+/** What an outline reads of each message: no bodies. */
+const CONVERSATION_OUTLINE_SELECT =
+  "id,from,receivedDateTime,sentDateTime,isRead,hasAttachments,bodyPreview,internetMessageId,isDraft";
+
+/**
+ * Every message of a conversation, oldest first, with what an outline shows
+ * and no bodies. Walked backward a hundred at a time, the one direction
+ * Graph answers exactly (see conversationWindow); stops at `maxSteps`.
+ */
+export async function listConversationOutline(
+  accessToken: string,
+  conversationId: string,
+  maxSteps = 20
+): Promise<GraphMessage[]> {
+  const escaped = conversationId.replace(/'/g, "''");
+  const seen = new Set<string>();
+  const out: GraphMessage[] = [];
+  let lt: string | undefined;
+  for (let step = 0; step < maxSteps; step++) {
+    const filters = [`conversationId eq '${escaped}'`];
+    if (lt) filters.push(`receivedDateTime lt ${lt.replace(/'/g, "")}`);
+    const params = new URLSearchParams({
+      $filter: filters.join(" and "),
+      $select: CONVERSATION_OUTLINE_SELECT,
+      $top: "100",
+    });
+    const data = await graphFetch<{ value?: GraphMessage[] }>(
+      accessToken,
+      `/me/messages?${params.toString()}`
+    );
+    const batch = data.value ?? [];
+    for (const m of batch) {
+      if (m.isDraft || seen.has(m.id)) continue;
+      seen.add(m.id);
+      out.push(m);
+    }
+    if (batch.length < 100) break;
+    const oldest = batch.reduce((a, b) => (messageSortTime(b) < messageSortTime(a) ? b : a));
+    lt = oldest.receivedDateTime || oldest.sentDateTime || undefined;
+    if (!lt) break;
+  }
+  return out.sort((a, b) => messageSortTime(a) - messageSortTime(b));
+}
+
 /** How far forward paging will walk before it gives up. 100 per step. */
 const FORWARD_WALK_STEPS = 20;
 

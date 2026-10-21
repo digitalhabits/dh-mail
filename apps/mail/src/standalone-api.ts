@@ -9,6 +9,7 @@
  * calls the same strings on every host, and only the transport differs.
  */
 
+import { getMailThreadOutline } from "@/lib/mail/thread-outline";
 import {
   deleteExchangeAccount,
   listExchangeAccounts,
@@ -249,6 +250,15 @@ async function thread({ q }: RouteContext): Promise<Response> {
       Number.isFinite(count) && count > 0 ? count : undefined,
   });
   return ok({ success: true, thread });
+}
+
+/** Every message of a thread, light, for its outline (lib/mail/thread-outline). */
+async function threadOutline({ q }: RouteContext): Promise<Response> {
+  const account = q.get("account");
+  const id = q.get("id");
+  if (!account || !id) return failed("account and id are required", 400);
+  const items = await getMailThreadOutline(account, id);
+  return ok({ success: true, items });
 }
 
 /** Messages the provider is holding for a thread, and the two ways out. */
@@ -1014,6 +1024,7 @@ export const STANDALONE_MAIL_ROUTES: Record<string, Route> = {
   "/api/mail/threads": threads,
   "/api/mail/threads/older": olderThreads,
   "/api/mail/thread": thread,
+  "/api/mail/thread-outline": threadOutline,
   "/api/mail/scheduled": scheduled,
   "/api/mail/folders": folders,
   "/api/mail/drafts": drafts,
@@ -1070,6 +1081,7 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/threads",
   "/api/mail/threads/older",
   "/api/mail/thread",
+  "/api/mail/thread-outline",
   "/api/mail/folders",
   "/api/mail/drafts",
   "/api/mail/junk",

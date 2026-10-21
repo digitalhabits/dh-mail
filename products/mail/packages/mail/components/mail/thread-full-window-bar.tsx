@@ -12,12 +12,27 @@
  * buttons on Windows (`.mail-reader-topbar` in mail.css).
  */
 
+import { fitTitle, type TitleFit } from "@/components/mail/title-fit";
 import * as React from "react";
 import { Archive, Minimize2, Trash2 } from "lucide-react";
 
 import { ReaderTextSize } from "@/components/mail/MessageReader";
 import { ThreadAction } from "@/components/mail/ThreadAction";
 import { useMailT } from "@/lib/mail/i18n";
+
+/** The subject's size in the bar: measured against the 48vw it may take. */
+function useBarTitleFit(title: string): TitleFit {
+  const [room, setRoom] = React.useState(() =>
+    typeof window === "undefined" ? 0 : window.innerWidth * 0.48
+  );
+  React.useEffect(() => {
+    const read = () => setRoom(window.innerWidth * 0.48);
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+  // Two lines do not fit the bar: the smallest size, cut off at its end.
+  return React.useMemo(() => (room > 0 ? fitTitle(title, room) : { size: 26, lines: 1 }), [title, room]);
+}
 
 export function ThreadFullWindowBar({
   lead,
@@ -36,6 +51,7 @@ export function ThreadFullWindowBar({
   onExit: () => void;
 }) {
   const t = useMailT();
+  const fit = useBarTitleFit(title);
   return (
     <div
       data-tauri-drag-region="deep"
@@ -44,7 +60,12 @@ export function ThreadFullWindowBar({
       style={{ paddingRight: "var(--mail-titlebar-right, 1.25rem)" }}
     >
       <div className="flex min-w-0 items-center">{lead}</div>
-      <h2 className="max-w-[48vw] truncate text-center font-serif text-[17px] font-bold text-[var(--mail-thread-fg)]">
+      {/* As the thread's own header sets the subject: Georgia, bold, 26px
+          when it fits, then 20 and 17px (title-fit). One line here. */}
+      <h2
+        className="max-w-[48vw] truncate text-center font-serif !font-bold text-[var(--mail-thread-fg)]"
+        style={{ fontSize: fit.size, lineHeight: 1.25 }}
+      >
         {title}
       </h2>
       <div className="flex min-w-0 items-center justify-end gap-1">

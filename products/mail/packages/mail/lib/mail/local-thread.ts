@@ -17,7 +17,7 @@ import { mailStore } from "@/lib/mail/store";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { fetchExchangeBodies } from "@/lib/mail/exchange-native";
 import type { MailStoredBody, MailStoredMessage } from "@/lib/mail/store/types";
-import type { MailAttachment, MailMessage, MailThreadDetail } from "@/lib/mail/types";
+import type { MailAttachment, MailMessage, MailOutlineItem, MailThreadDetail } from "@/lib/mail/types";
 import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
 import { replyTargets } from "@/lib/mail/reply-target";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
@@ -157,6 +157,42 @@ async function fetchMissingBodies(account: string, provider: string, missing: st
   if (!invoke || provider !== "gmail") return false;
   await invoke("mail_sync_fetch_bodies", { account, messageIds: missing });
   return true;
+}
+
+/**
+ * A thread's outline from the copy: every message, headers and first words
+ * only, no bodies. Null where the copy does not serve this mailbox's
+ * threads, by the same rule `threadFromLocalStore` keeps.
+ */
+export async function outlineFromLocalStore(
+  account: string,
+  threadId: string
+): Promise<MailOutlineItem[] | null> {
+  if (!(await localStoreComplete(account))) {
+    const early = await resolveMailProvider(account).catch(() => null);
+    if (early !== "exchange" && !(early === "gmail" && (await isAppPasswordGmail(account)))) {
+      return null;
+    }
+  }
+  const rows = await withCopies(account, await mailStore().messages.thread(account, threadId));
+  if (!rows.length) return null;
+  return rows
+    .filter((r) => !r.isDraft)
+    .sort((a, b) => a.sentAt - b.sentAt)
+    .map((r) => {
+      const owner = rowAccount(r, account);
+      return {
+        id: r.messageId,
+        sentAt: r.sentAt ? new Date(r.sentAt).toISOString() : null,
+        own: normalizeEmail(r.fromEmail) === normalizeEmail(owner) || isOwnOrgAddress(r.fromEmail),
+        ...(r.unread ? { unread: true as const } : null),
+        fromName: r.fromName || r.fromEmail,
+        fromEmail: r.fromEmail,
+        firstLine: (r.snippet ?? "").slice(0, 160),
+        ...(r.hasAttachments ? { hasAttachments: true as const } : null),
+        rfcMessageId: r.rfcMessageId ?? null,
+      };
+    });
 }
 
 /**

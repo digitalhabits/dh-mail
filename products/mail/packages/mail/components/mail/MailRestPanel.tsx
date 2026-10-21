@@ -261,7 +261,7 @@ export function MailRestPanel() {
           style={{ width: rest.width, maxWidth: "100%" }}
         >
           <div
-            className="group/img relative w-full overflow-hidden rounded-surface bg-stone-100 shadow-[0_18px_40px_-24px_rgba(28,25,23,0.45)]"
+            className="group/img relative w-full overflow-hidden rounded-[10px] bg-stone-100 shadow-[0_18px_40px_-24px_rgba(28,25,23,0.45)]"
             style={{ height: frameHeight }}
           >
             {shownImage ? (

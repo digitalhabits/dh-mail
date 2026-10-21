@@ -983,6 +983,8 @@ export const da: Record<keyof typeof en, string> = {
   threadStarted: "Se, hvordan samtalen begyndte",
   threadFirstMessage: "Første besked",
   threadYou: "Dig",
+  threadOutlineShow: "Vis en oversigt over samtalen",
+  threadOutlineHide: "Skjul oversigten over samtalen",
   close: "Luk",
   goToLatest: "Gå til den nyeste meddelelse",
   loadingMessage: "Henter meddelelsen…",

@@ -244,7 +244,8 @@ export function MailAccountTabs({
   const tab = (active: boolean) =>
     cn(
       // `relative`: the out-of-office badge sits on the tab's own corner.
-      "relative flex shrink-0 items-center gap-1.5 rounded-control px-2.5 py-1 text-[13px] transition-colors",
+      // 8px, 2px rounder than a control, as New email and the search field.
+      "relative flex shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-[13px] transition-colors",
       active
         ? "bg-[var(--mail-segment-active)] font-semibold text-[var(--mail-segment-active-fg)] shadow-sm"
         : "text-[var(--mail-segment-fg)] hover:text-[var(--mail-segment-active-fg)]"
@@ -397,7 +398,8 @@ export function MailAccountTabs({
           they fit, and no wider than the column when they do not. */}
       <div
         className={cn(
-          "w-fit max-w-full overflow-x-auto rounded-surface bg-[var(--mail-segment-track)] p-1 [scrollbar-width:thin]"
+          // The tabs' 8px plus 2px: their track stays around them evenly.
+          "w-fit max-w-full overflow-x-auto rounded-[10px] bg-[var(--mail-segment-track)] p-1 [scrollbar-width:thin]"
         )}
       >
         <div className="flex w-max items-center gap-1">

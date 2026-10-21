@@ -119,6 +119,21 @@ export function useThreadStart(
   );
 
   /**
+   * The thread's newest message, remembered while the window is elsewhere.
+   *
+   * A window around an older message (a search hit, a row in the outline)
+   * ends before the thread does, so its last message is not the newest.
+   * The header's date range and the outline both need the thread's own
+   * end, which is known whenever a window reaches it.
+   */
+  const [newest, setNewest] = React.useState<{ threadId: string; id: string; sentAt: string | null } | null>(null);
+  const tip = thread && !thread.hasNewer ? thread.messages.at(-1) : undefined;
+  React.useEffect(() => {
+    if (tip) setNewest({ threadId, id: tip.id, sentAt: tip.sentAt });
+  }, [threadId, tip?.id, tip?.sentAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const newestKnown = newest?.threadId === threadId ? newest : null;
+
+  /**
    * The provider thread holding this conversation's beginning.
    *
    * A rotated conversation keeps its first message in part one, which is a
@@ -269,8 +284,40 @@ export function useThreadStart(
     skipOpenPinRef,
   ]);
 
+  /**
+   * Any message of this thread, loaded or not: the window around it is
+   * fetched, as a search hit's is, and it is brought to the top. The
+   * thread's outline uses this for a message the reader has not loaded.
+   */
+  const goToMessage = React.useCallback(
+    async (id: string) => {
+      if (!account) return;
+      skipOpenPinRef.current = true;
+      try {
+        const params = new URLSearchParams({
+          account,
+          id: threadId,
+          around: id,
+          markRead: "0",
+        });
+        const json = await apiJson<{ thread: MailThreadDetail }>(
+          `/api/mail/thread?${params.toString()}`
+        );
+        setOlderParts([]);
+        setThread(json.thread);
+        await scrollToMessage(id);
+      } catch (err) {
+        skipOpenPinRef.current = false;
+        toast.error(err instanceof Error ? err.message : "Couldn't open that message");
+      }
+    },
+    [account, threadId, scrollToMessage, setOlderParts, setThread, skipOpenPinRef]
+  );
+
   return {
     threadOverflows,
+    newestKnown,
+    goToMessage,
     firstPeekOpen,
     setFirstPeekOpen,
     firstMessage,

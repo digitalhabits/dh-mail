@@ -88,9 +88,12 @@ export function StackThreadRow({
       }
       className={cn(
         // No line and no bar: the open one is a card, as an open row is.
-        "flex w-full items-start gap-3 rounded-control py-1.5 pl-4 pr-2 text-left",
+        "relative flex w-full items-start gap-3 rounded-control py-1.5 pl-4 pr-2 text-left",
+        // The faint line between two conversations, as between rows of the
+        // list, but starting where the subject does. None under the last.
+        "after:pointer-events-none after:absolute after:bottom-0 after:left-4 after:right-0 after:h-px after:bg-[var(--mail-row-line)] last:after:hidden",
         active
-          ? "bg-[var(--mail-row-selected)] shadow-[var(--mail-row-card-shadow)]"
+          ? "bg-[var(--mail-row-selected)] shadow-[var(--mail-row-card-shadow)] after:hidden"
           : "hover:bg-[var(--mail-chrome-hover)]"
       )}
     >

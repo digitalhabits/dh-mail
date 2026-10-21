@@ -255,7 +255,7 @@ function EveryoneCard({
           type="button"
           aria-expanded={open}
           // The heading's own line colour: a quiet pill in both themes.
-          className="rounded-full bg-[var(--mail-thread-chrome-line)] px-2 py-0.5 font-medium hover:underline"
+          className="rounded-full bg-[var(--mail-chrome-selected)] px-2 py-0.5 font-medium hover:underline"
           onMouseEnter={hoverOpen}
           onMouseLeave={hoverClose}
           onClick={(e) => {

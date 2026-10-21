@@ -257,6 +257,26 @@ export type MailScheduledMessage = {
   cancellable?: boolean;
 };
 
+/**
+ * One message of a thread as its outline shows it (thread-outline.tsx):
+ * who, when, the first words, and nothing that needs a body. Read for the
+ * whole thread at once, so the outline can show a long thread's messages
+ * before the reader has loaded them.
+ */
+export type MailOutlineItem = {
+  id: string;
+  sentAt: string | null;
+  own: boolean;
+  unread?: true;
+  fromName: string;
+  fromEmail: string;
+  /** The first words, as the provider gives them. */
+  firstLine: string;
+  hasAttachments?: true;
+  /** For matching a provider's copy of the same message (Sent and Inbox). */
+  rfcMessageId?: string | null;
+};
+
 export type MailThreadDetail = {
   account: string;
   threadId: string;

@@ -75,6 +75,22 @@ function mailboxOfMessage(
   return thread?.messages.find((m) => m.id === messageId)?.account ?? account;
 }
 
+/**
+ * "12 Aug – 14 Aug": from the thread's first message to its newest, not the
+ * loaded window's. A window around an older message (a search hit, a row
+ * in the outline) neither starts nor ends where the thread does.
+ */
+function threadDateRange(
+  m: { firstMessage: { sentAt: string | null } | null; newestKnown: { sentAt: string | null } | null },
+  thread: { messages: { sentAt: string | null }[] }
+): string {
+  const from = (m.firstMessage ?? thread.messages[0])?.sentAt ?? null;
+  const to = (m.newestKnown ?? thread.messages.at(-1))?.sentAt ?? null;
+  return from && to && shortDate(from) !== shortDate(to)
+    ? `${shortDate(from)} – ${shortDate(to)}`
+    : shortDate(to);
+}
+
 /** Reply all reaches more people than Reply. */
 function replyAllReachesMore(reply: { allTo: string[]; allCc: string[] } | undefined): boolean {
   return (
@@ -187,8 +203,7 @@ export function ThreadPane(props: ThreadPaneProps) {
       </div>
     );
   }
-  const first = thread.messages[0];
-  const last = thread.messages[thread.messages.length - 1];
+
   /* Everyone on the thread but us — who a saved list would hold. Plainly,
      not memoized: this sits after the early returns above, where a hook
      would change the order React counts. */
@@ -198,10 +213,7 @@ export function ThreadPane(props: ThreadPaneProps) {
   const heading = headingWithHeld(
     {
       subject: thread.subject,
-      dateRange:
-        first?.sentAt && last?.sentAt && shortDate(first.sentAt) !== shortDate(last.sentAt)
-          ? `${shortDate(first.sentAt)} – ${shortDate(last.sentAt)}`
-          : shortDate(last?.sentAt ?? null),
+      dateRange: threadDateRange(m, thread),
       // The thread's own total when the provider gave one, so the header
       // does not undercount a thread that is only partly loaded. Older parts
       // still count what is on hand — their totals are not known here.

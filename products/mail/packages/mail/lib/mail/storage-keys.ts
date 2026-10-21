@@ -235,6 +235,8 @@ export const MAIL_EDIT_AS_NEW_REQUEST_KEY = "redd-plan-mail-edit-as-new-request"
 export const MAIL_CHANGED_KEY = "redd-plan-mail-thread-changed";
 /** The threads that are open in a chat popout. Local. */
 export const POPOUT_OPEN_KEY = "redd-plan-mail-popout-open";
+/** Whether a long thread shows its outline rail ("0" when turned off). Local. */
+export const THREAD_OUTLINE_KEY = "redd-plan-mail-thread-outline";
 /**
  * The seed of a chat popout. Prefix, per thread: the code adds
  * "account|threadId". Local. Read once, then removed.

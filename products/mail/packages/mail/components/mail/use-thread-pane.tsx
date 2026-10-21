@@ -239,7 +239,7 @@ export function useThreadPane(props: ThreadPaneProps) {
   const { bandFills, card, compactComposer, compactThreadActions, fullWidthComposer, hidden, setPaneNode, setToolbarRowNode, showOverflowMenu, tightToolbar } = useThreadChrome({ floating, inJunk, inTrash, mode, olderParts, onTogglePin, onUnfloatReply, pinchRef, props, replyFocus, thread });
   const { adoptStoredDraft, bringBackPopout, cardHadComposer, chatStyleBusy, closeDiaryProposal, closeFloatingCardRef, diaryBusy, diaryProposal, discardComposer, dismissDraftNotes, draftNotes, draftReplyWithAssist, draftWorking, draftingReply, floatReply, forwardMessage, popOutThread, popoutOpen, printThread, proposeDiaryFromThread, replyQuoting, replyText, requestDiscard, restoreDraftBrief, setChatStyle, signsReply, startReply, stopDraft, updateRecordsFromThread } = useReplyFlow({ account, attachItems, beginForwardFiles, ccList, closeComposer, composerSnapshotRef, confirmDiscard, counterpartEmail, counterpartName, discardedKeyRef, draftRef, floating, focusReply, handOverComposer, importedDraftRef, importedForThreadRef, inPeople, loadImagesByDefault, mode, olderParts, onChatPromoted, onDraftDiscarded, onFloatReply, onUnfloatReply, openComposer, readableAttachments, recipientInputRef, replaceWords, reply, replyEditorHandle, replyFloating, restoreComposer, setCcList, setConfirmDiscard, setShowCc, setThread, setToList, sigSettings, thread, threadId, toList, updatingRecords });
   const { armedSendAt, clearForgottenAttachment, confirmingIds, dropSettledOutboxRows, earlierBySender, editOutboxSend, editingScheduled, forgottenAttachment, forwardSource, forwardSubject, handingOver, historyAppendix, metaById, newDayIds, openInOutlook, outbox, outgoingSubject, quoteFromMessage, quotePayload, quotedForReply, recipientName, replyBoxPlaceholder, replySubject, resetOutbox, retryOutboxSend, send, sendForward, sendQuickReply, senderName, sending, setArmedSendAt, setReplacesScheduled, startForward } = useThreadSending({ account, attachItems, attachmentPayload, attachmentsReady, beginForwardFiles, ccList, closeComposer, closeFloatingCardRef, composer, discardComposer, editRecipients, error, floating, focusReply, forwardFiles, forwarding, fromAccount, fromDrafts, importedDraftRef, inTrash, includeSignature, loadScheduled, mode, olderParts, onArchive, onChatPromoted, onChatThreadChanged, onDeleteForever, onSent, onToggleFocus, onTogglePin, onToggleUnread, onTrash, openComposer, outlookElsewhere, outlookTarget, popOutThread, printThread, quoteMessageId, readableAttachments, recipientInputRef, recordsChanged, reply, replyText, requestDiscard, restoreComposer, restoreForwardBoxes, setMoveMenuSignal, setSnoozeMenuSignal, setThread, shortcuts, showCc, sigSettings, signsReply, startReply, subjectDraft, thread, threadId, toList, updateRecordsAfterSend });
-  const { bubbleActions, editScheduled, find, firstMessage, firstPeekAllowImages, firstPeekHtml, firstPeekOpen, goToFirstMessage, latestId, loadingToStart, setFirstPeekOpen, threadOverflows } = useThreadPaneLate({ account, adoptStoredDraft, dropSettledOutboxRows, floatReply, floating, focusReply, forwardMessage, forwardMessageId, forwarding, inPeople, loadImagesByDefault, mode, olderParts, onChatThreadChanged, onEditAsNew, onForwardStarted, onPendingActionDone, onUnfloatReply, openComposer, pendingAction, pinchRef, popOutThread, printThread, quoteFromMessage, replyQuoting, resetOutbox, scrollRef, send, sendForward, sendQuickReply, setOriginalOf, setQuoteMessageId, setReplacesScheduled, setReplyFocus, shortcuts, skipOpenPinRef, startForward, startReply, stream, thread, threadId });
+  const { bubbleActions, editScheduled, find, firstMessage, firstPeekAllowImages, firstPeekHtml, firstPeekOpen, goToFirstMessage, goToMessage, latestId, newestKnown, loadingToStart, setFirstPeekOpen, threadOverflows } = useThreadPaneLate({ account, adoptStoredDraft, dropSettledOutboxRows, floatReply, floating, focusReply, forwardMessage, forwardMessageId, forwarding, inPeople, loadImagesByDefault, mode, olderParts, onChatThreadChanged, onEditAsNew, onForwardStarted, onPendingActionDone, onUnfloatReply, openComposer, pendingAction, pinchRef, popOutThread, printThread, quoteFromMessage, replyQuoting, resetOutbox, scrollRef, send, sendForward, sendQuickReply, setOriginalOf, setQuoteMessageId, setReplacesScheduled, setReplyFocus, shortcuts, skipOpenPinRef, startForward, startReply, stream, thread, threadId });
 
   return {
     account,
@@ -313,6 +313,8 @@ export function useThreadPane(props: ThreadPaneProps) {
     fromDrafts,
     fullWidthComposer,
     goToFirstMessage,
+    goToMessage,
+    newestKnown,
     goToLatestMessage,
     handingOver,
     headHasOlderInPart,
@@ -437,6 +439,7 @@ export function useThreadPane(props: ThreadPaneProps) {
     t,
     thread,
     threadId,
+    streamNode,
     threadOverflows,
     tightToolbar,
     toList,

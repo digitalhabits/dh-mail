@@ -350,6 +350,8 @@ export function useThreadPaneLate({
     firstPeekAllowImages,
     loadingToStart,
     goToFirstMessage,
+    goToMessage,
+    newestKnown,
   } = useThreadStart(stream, {
     account,
     threadId,
@@ -383,5 +385,5 @@ export function useThreadPaneLate({
     setReplyFocus,
     shortcuts,
   });
-  return { bubbleActions, editScheduled, find, firstMessage, firstPeekAllowImages, firstPeekHtml, firstPeekOpen, goToFirstMessage, latestId, loadingToStart, setFirstPeekOpen, threadOverflows };
+  return { bubbleActions, editScheduled, find, firstMessage, firstPeekAllowImages, firstPeekHtml, firstPeekOpen, goToFirstMessage, goToMessage, latestId, newestKnown, loadingToStart, setFirstPeekOpen, threadOverflows };
 }

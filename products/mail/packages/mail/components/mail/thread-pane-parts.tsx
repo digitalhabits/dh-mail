@@ -8,6 +8,16 @@
  * returns come in as props. The JSX is ThreadPane's own, word for word.
  */
 
+import { titleBoxStyle, useTitleFit } from "@/components/mail/title-fit";
+import {
+  OUTLINE_READER_ROOM,
+  ThreadOutline,
+  ThreadOutlineToggle,
+  mergeOutline,
+  outlineWanted,
+  useOutlineItems,
+  useThreadOutlineShown,
+} from "@/components/mail/thread-outline";
 import { ChangeTimeMenu } from "@/components/mail/ScheduledMessageView";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import * as React from "react";
@@ -351,6 +361,33 @@ export function ThreadMessages({
     t,
     zoom,
   } = m;
+  // The outline rail, for a thread that does not fit (thread-outline.tsx).
+  // It shows the whole thread: when more exists than is loaded, its list
+  // comes from a light request of its own, merged with what is loaded.
+  const loadedMessages = React.useMemo(
+    () => [...olderParts.flatMap((part) => part.messages), ...thread.messages],
+    [olderParts, thread.messages]
+  );
+  const moreThanLoaded =
+    thread.hasOlder ||
+    Boolean(olderParts[0]?.hasOlder) ||
+    thread.hasNewer ||
+    (thread.totalMessageCount ?? 0) > loadedMessages.length;
+  const outlineItems = useOutlineItems(
+    thread.account,
+    thread.threadId,
+    // The thread's newest, not the window's: a jump into older mail must
+    // not count as a new message and read the outline again.
+    m.newestKnown?.id ?? thread.messages.at(-1)?.id,
+    moreThanLoaded
+  );
+  const outlineMessages = React.useMemo(
+    () => mergeOutline(loadedMessages, outlineItems),
+    [loadedMessages, outlineItems]
+  );
+  const outlineShown = useThreadOutlineShown(
+    outlineWanted(m.threadOverflows, outlineMessages.length)
+  );
   return (
     <>
       {!floating ? (
@@ -382,7 +419,8 @@ export function ThreadMessages({
              together left a hole under the subject. */
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-none bg-[var(--mail-thread)] px-4 pt-2",
-            !m.mode && !m.popoutOpen ? REPLY_TRAY_ROOM : COMPOSER_ROOM
+            !m.mode && !m.popoutOpen ? REPLY_TRAY_ROOM : COMPOSER_ROOM,
+            outlineShown && OUTLINE_READER_ROOM
           )}
         >
           <div className="mail-thread-column flex flex-col gap-4" style={{ zoom }}>
@@ -592,6 +630,12 @@ export function ThreadMessages({
             ) : null}
           </div>
         </div>
+        <ThreadOutline
+          node={m.streamNode}
+          messages={outlineMessages}
+          shown={outlineShown}
+          onLoad={(id) => void m.goToMessage(id)}
+        />
         <button
           type="button"
           aria-label={t("goToLatest")}
@@ -888,18 +932,32 @@ function ThreadTitleBlock({
     setPartMenuOpen,
     t,
   } = m;
+  // The subject's size: large when it fits, smaller, then two lines.
+  const titleRef = React.useRef<HTMLHeadingElement | null>(null);
+  const titleFit = useTitleFit(titleRef, headerTitle);
+  const twoLines = titleFit.lines === 2;
   return (
+    // 14px at the right, as the strip above: the people end where the
+    // strip's last button does, over the outline rail's blue ticks.
     // 8px over the row and 8.5px under it: the line under the subject
     // meets the line under the list's filters (both end 138px down in the
     // demo).
-    <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-[8.5px] pl-10 pr-8 pt-2">
+    <div className="mail-thread-header relative z-10 -ml-2 w-[calc(100%+0.5rem)] min-w-0 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pb-[8.5px] pl-10 pr-[14px] pt-2">
       {/* The subject and the people share a baseline, and the row is set so
           that baseline is the one the list's filter labels (All, Other and
           the rest) stand on beside it: 126px down in the demo. */}
-      <div className="flex translate-y-[5px] items-baseline gap-4">
+      {/* Two lines of subject fill the band themselves, so they are not
+          moved down to the filters' line. */}
+      <div className={cn("flex items-baseline gap-4", twoLines ? "translate-y-0" : "translate-y-[5px]")}>
         <h2
+          ref={titleRef}
           // The one bold heading: the subject is what the reader is reading.
-          className="min-w-0 flex-1 truncate font-serif text-[26px] !font-bold leading-8 text-stone-900"
+          // Its size comes from title-fit: 26, 20 or 17px, or two lines.
+          className={cn(
+            "min-w-0 flex-1 font-serif !font-bold text-stone-900",
+            twoLines ? "line-clamp-2 break-words" : "truncate"
+          )}
+          style={titleBoxStyle(titleFit)}
           title={headerTitle}
         >
           {headerTitle}
@@ -1035,7 +1093,9 @@ function ThreadActionStrip({
         ref={setToolbarRowNode}
         data-tight={tightToolbar ? "" : undefined}
         className={cn(
-          "group/toolbar flex h-[38px] w-full min-w-0 items-center overflow-hidden pl-7 pr-5",
+          // 14px at the right: the last button ends over the outline
+          // rail's blue ticks (thread-outline), as the people below do.
+          "group/toolbar flex h-[38px] w-full min-w-0 items-center overflow-hidden pl-7 pr-[14px]",
           tightToolbar ? "gap-0" : "gap-1"
         )}
       >
@@ -1380,6 +1440,14 @@ function ThreadStripEnd({
         onPreview={(messageId, attachment) => {
           setAttachmentPreview({ messageId, attachment });
         }}
+      />
+      {/* Last in the strip, after the files: the people below end where
+          it does. */}
+      <ThreadOutlineToggle
+        overflows={outlineWanted(
+          m.threadOverflows,
+          olderParts.reduce((n, part) => n + part.messages.length, 0) + thread.messages.length
+        )}
       />
     </div>
   );

@@ -641,6 +641,12 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   /* The chrome's hover, so a row in the list and a row in the folders can
      never drift apart. They are the same colour on this theme already. */
   --mail-row-hover: var(--mail-chrome-hover);
+  /* A long thread's outline rail (thread-outline.tsx): one tick a message,
+     theirs grey, yours in the blue of your bubbles, the ones on screen in
+     ink. "You" in the outline's rows is that blue, deepened. */
+  --mail-tick-other: #cdc6bd;
+  --mail-tick-own: #a9c8ec;
+  --mail-own-ink: #2f6680;
   /* The faint line between two conversations, edge to edge, as Gmail
      draws it: rows read as separate without the list looking ruled. */
   --mail-row-line: rgba(27, 61, 74, 0.07);
@@ -785,6 +791,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-row-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --mail-row-hover: var(--mail-chrome-hover);
   --mail-row-line: rgba(255, 255, 255, 0.06);
+  --mail-tick-other: rgba(255, 255, 255, 0.24);
+  --mail-tick-own: #5f8fb8;
+  --mail-own-ink: #9cc6e0;
 
   /*
    * A chip in an address field.

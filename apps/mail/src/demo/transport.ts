@@ -133,6 +133,20 @@ function demoAutoReply(account: string, enabled = true) {
  */
 const purged = new Set<string>();
 
+/** A demo thread's outline: every message, as the outline route answers. */
+function demoOutline(threadId: string | null) {
+  return (demoThreadDetail(threadId ?? "")?.messages ?? []).map((m) => ({
+    id: m.id,
+    sentAt: m.sentAt,
+    own: m.own,
+    ...(m.unread ? { unread: true as const } : null),
+    fromName: m.fromName,
+    fromEmail: m.fromEmail,
+    firstLine: (m.bodyText ?? "").split("\n").find((l) => l.trim())?.trim() ?? "",
+    ...(m.attachments?.length ? { hasAttachments: true as const } : null),
+  }));
+}
+
 /** What the reader sent to Trash in this session: out of the inbox, into Trash. */
 const trashed = new Set<string>();
 
@@ -198,6 +212,10 @@ export async function handleDemoMailApi(
       if (!thread) return json({ error: "No such thread" });
       return json({ success: true, thread });
     }
+
+    // The outline of a demo thread: its own messages, all of them loaded.
+    case "/api/mail/thread-outline":
+      return json({ success: true, items: demoOutline(q.get("id")) });
 
     case "/api/mail/attachment": {
       return attachmentBody(

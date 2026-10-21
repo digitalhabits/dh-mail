@@ -88,7 +88,9 @@ export function MailTitleBar({
             title={t("newEmail")}
             aria-label={t("newEmail")}
             className={cn(
-              "flex h-7 shrink-0 items-center gap-1.5 rounded-control border px-3 text-[13px] font-semibold",
+              // 2px rounder than a control: the bar's two big objects, New
+              // email and the search field, and the mailbox tabs below them.
+              "flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] border px-3 text-[13px] font-semibold",
               chromeDark
                 ? "border-[var(--mail-action-border)] bg-[var(--mail-action)] text-[var(--mail-action-fg)] hover:bg-[var(--mail-action-hover)]"
                 : "border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] text-[var(--mail-chrome-fg)] shadow-sm hover:bg-[var(--mail-chrome-hover)]"
@@ -107,7 +109,7 @@ export function MailTitleBar({
               // Its own colours, not stone: on the dark theme the blanket
               // rewrite made this the same shade as the bar it sits in, so
               // the box a reader types into had no edges.
-              "relative flex h-7 min-w-0 flex-1 items-center rounded-control border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
+              "relative flex h-7 min-w-0 flex-1 items-center rounded-[8px] border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
               "focus-within:ring-2 focus-within:ring-[var(--mail-title-search-ring)]"
             )}
           >
@@ -156,8 +158,11 @@ export function MailTitleBar({
               }
               className={cn(
                 "h-full min-w-0 flex-1 border-0 bg-transparent py-1 pl-2 text-[13px] text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-placeholder)] shadow-none [&::-webkit-search-cancel-button]:hidden",
-                // Room for the clear button, and for the hidden chip beside it.
-                chipShown ? "pr-36" : "pr-8"
+                // Room for the clear button, and for the hidden chip beside
+                // it, only when they are there. An empty box kept 32px for a
+                // clear button it does not show, and cut its hint off in
+                // front of the empty space.
+                chipShown ? "pr-36" : search ? "pr-8" : "pr-2"
               )}
             />
             {chipShown ? (

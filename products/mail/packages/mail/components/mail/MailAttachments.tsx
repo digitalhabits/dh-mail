@@ -480,13 +480,20 @@ export function ThreadAttachmentsRollup({
       ? t("attachmentCountOne")
       : t("attachmentCountMany", { count: items.length });
   return (
+    <>
+    {/* After the dates, as one more thing said about the thread: "76
+        messages · 12 Aug – 14 Aug · (clip) 5". A ghost button, with a fill
+        only under the pointer. */}
+    <span aria-hidden className="text-xs text-[var(--mail-thread-meta)]">
+      ·
+    </span>
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           title={chipLabel}
           aria-label={chipLabel}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] px-1.5 py-1 text-xs font-medium text-[var(--mail-thread-meta)] transition-colors hover:bg-[var(--mail-chrome-hover)]"
         >
           {calendarOnly ? (
             <Calendar className="h-3.5 w-3.5 stroke-[1.5] text-teal-700/90" />
@@ -544,6 +551,7 @@ export function ThreadAttachmentsRollup({
       </MailPopoverContent>
       {attachmentMenu}
     </Popover>
+    </>
   );
 }
 

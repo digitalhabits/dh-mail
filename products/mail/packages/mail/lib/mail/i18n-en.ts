@@ -992,6 +992,8 @@ export const en = {
   threadStarted: "See how this thread started",
   threadFirstMessage: "First message",
   threadYou: "You",
+  threadOutlineShow: "Show an outline of the conversation",
+  threadOutlineHide: "Hide the outline of the conversation",
   close: "Close",
   goToLatest: "Go to the latest message",
   loadingMessage: "Loading message…",
