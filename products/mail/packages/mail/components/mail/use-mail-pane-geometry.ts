@@ -18,6 +18,7 @@ import {
   PANE_SLIDE_GRACE_MS as RAIL_SLIDE_GRACE_MS,
 } from "@/lib/mail/pane-slide";
 import { usePaneSweep } from "@/lib/mail/use-pane-sweep";
+import { useUiScale, windowChromeScale } from "@/lib/mail/use-ui-scale";
 import { takePinnedInPlace } from "@/components/mail/use-list-peek";
 import {
   MIN_LIST_WIDTH,
@@ -241,6 +242,7 @@ export function useMailPaneGeometry(input: {
    * well.
    */
   const [paneLeft, setPaneLeft] = React.useState(0);
+  const [uiScale] = useUiScale();
   React.useLayoutEffect(() => {
     const el = paneRowRef.current;
     if (!el) return;
@@ -468,7 +470,9 @@ export function useMailPaneGeometry(input: {
    */
   /** The list's button (28px) and the gap after it, which the row keeps clear of. */
   const LIST_TOGGLE_ROOM = 36;
-  const lightsFloor = Math.max(0, TRAFFIC_LIGHTS_RIGHT - paneLeft) + 4;
+  // The lights stay put on the screen while the app is drawn smaller or
+  // larger (Settings > Text size): at 80% the button ran into them.
+  const lightsFloor = Math.max(0, TRAFFIC_LIGHTS_RIGHT / windowChromeScale(uiScale) - paneLeft) + 4;
   // Past the folders' button, which stands first in the tab row, so New
   // email is over the first mailbox tab (28px and its 4px gap).
   const titlebarLeft = `var(--mail-titlebar-left, max(${listControlsLeft + 32}px, ${lightsFloor + LIST_TOGGLE_ROOM}px))`;

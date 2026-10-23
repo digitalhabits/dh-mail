@@ -18,6 +18,7 @@ pub mod clipboard;
 pub mod contacts;
 pub mod fonts;
 pub mod actions;
+pub mod answer_links;
 pub mod account_exchange;
 pub mod db;
 #[cfg(test)]

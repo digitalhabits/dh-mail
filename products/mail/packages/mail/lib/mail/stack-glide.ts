@@ -21,25 +21,35 @@
  *        1200 ms  they settle, and keep the tint where they landed.
  *        1500 ms  the tint fades (900 ms).
  *
+ * The 90 ms steps stop at 200 ms, so that a big stack does not keep the
+ * last threads moving long after the rest: all land by 1050 ms.
+ *
  * How: the list changes at once. The places of the rows are
  * taken just before (`takeGlidePlaces`), and once the list has drawn again
  * (`glideToNewPlaces`) every row is put back where it was and moved from
- * there: the rows themselves for what stays, copies of the old rows for
- * the threads that go into a stack. Rows say which threads they hold with
- * `data-glide-keys`, newest first.
+ * there: the rows themselves for what stays, and copies over the list for
+ * the threads that go into a stack or come out of one. A thread that comes
+ * out keeps its real row hidden until its copy lands. Rows say which
+ * threads they hold with `data-glide-keys`, newest first.
  *
  * The open thread, or else the top row on screen, stays where it is: the
  * list is scrolled to keep it. A thread whose way runs off the screen is
  * counted, and the count shows at that edge for a moment ("2 moved
- * below"). A second press while it runs stops it where it is and runs the
- * other way. With Reduce Motion nothing moves: the rows cross-fade, and
- * the tint alone shows what changed.
+ * below"). A thread far off the screen does not move. A second press
+ * while it runs stops it where it is and runs the other way. With Reduce Motion nothing moves: the rows
+ * cross-fade, and the tint alone shows what changed.
  */
 
 const ATTR = "data-glide-keys";
+/** On a copy: the thread it moves for, so a second press can find it. */
+const COPY_ATTR = "data-glide-copy";
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const LIFT_SHADOW = "0 10px 24px rgba(30,45,62,.18)";
 const TINT = "var(--mail-stack-tint)";
+/** The latest start of a thread after the first, in ms. */
+const STAGGER_MAX = 200;
+/** Ways that stay further than this off the screen do not move. */
+const OFF_SCREEN = 400;
 
 export type GlideWords = {
   movedAbove: (count: number) => string;
@@ -59,9 +69,11 @@ type Taken = {
   words: GlideWords;
 };
 
+type Run = { animations: Animation[]; added: HTMLElement[] };
+
 let taken: Taken | null = null;
 /** What a run left going, so a second press can stop it. */
-let running: { timers: number[]; animations: Animation[]; added: HTMLElement[]; raised: HTMLElement[] } | null = null;
+let running: Run | null = null;
 
 function keysOf(el: Element): string[] {
   return (el.getAttribute(ATTR) ?? "").split(" ").filter(Boolean);
@@ -71,16 +83,25 @@ function lessMotion(): boolean {
   return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 }
 
-/** Stop a run where it is: the rows stand where the list has them. */
+/** How far along EASE is when `t` (0 to 1) of its time has gone. */
+function eased(t: number): number {
+  // EASE has no simple inverse, so its point at time t is found by halving.
+  const bez = (s: number, a: number, b: number) => 3 * a * s * (1 - s) ** 2 + 3 * b * s * s * (1 - s) + s ** 3;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (bez(mid, 0.3, 0.2) < t) lo = mid;
+    else hi = mid;
+  }
+  return bez(lo, 0.7, 1);
+}
+
+/** Stop a run: its copies go, and the rows stand where the list has them. */
 function stopRunning() {
   if (!running) return;
-  for (const id of running.timers) window.clearTimeout(id);
   for (const a of running.animations) a.cancel();
   for (const el of running.added) el.remove();
-  for (const el of running.raised) {
-    el.style.zIndex = "";
-    el.style.position = "";
-  }
   running = null;
 }
 
@@ -96,20 +117,33 @@ export function takeGlidePlaces(
   words: GlideWords,
   openKey?: string | null
 ): void {
-  stopRunning();
   taken = null;
-  if (!root) return;
+  if (!root) return stopRunning();
+  // Take the places where a running glide shows them now, then stop it.
   const frame = root.getBoundingClientRect();
+  const copyRects = new Map<string, DOMRect>();
+  for (const el of root.parentElement?.querySelectorAll<HTMLElement>(`[${COPY_ATTR}]`) ?? []) {
+    copyRects.set(el.getAttribute(COPY_ATTR) ?? "", el.getBoundingClientRect());
+  }
   const byKey = new Map<string, Place>();
   const places: Place[] = [];
   let firstOnScreen: Place | null = null;
   for (const el of root.querySelectorAll<HTMLElement>(`[${ATTR}]`)) {
-    const rect = el.getBoundingClientRect();
-    const place = { rect, keys: keysOf(el), copy: el.cloneNode(true) as HTMLElement };
+    const keys = keysOf(el);
+    // A thread on its way out of a stack shows as its copy: its row is hidden.
+    const rect = (keys.length === 1 && copyRects.get(keys[0])) || el.getBoundingClientRect();
+    const place = { rect, keys, copy: el.cloneNode(true) as HTMLElement };
     places.push(place);
     for (const key of place.keys) if (!byKey.has(key)) byKey.set(key, place);
     if (!firstOnScreen && rect.bottom > frame.top + 1) firstOnScreen = place;
   }
+  // A thread on its way into a stack is already in the stack's row, but
+  // shows where its copy is.
+  for (const [key, rect] of copyRects) {
+    const place = byKey.get(key);
+    if (place && place.keys.length > 1) byKey.set(key, { rect, keys: [key], copy: place.copy });
+  }
+  stopRunning();
   const open = openKey ? byKey.get(openKey) : undefined;
   const anchorPlace = open && open.rect.bottom > frame.top && open.rect.top < frame.bottom ? open : firstOnScreen;
   taken = {
@@ -132,6 +166,9 @@ export function glideToNewPlaces(root: HTMLElement | null): void {
   const rows = [...root.querySelectorAll<HTMLElement>(`[${ATTR}]`)];
   const rowByKey = new Map<string, HTMLElement>();
   for (const el of rows) for (const key of keysOf(el)) if (!rowByKey.has(key)) rowByKey.set(key, el);
+  // The colors to fade back to, read before any animation can tint them.
+  const base = new Map<HTMLElement, string>();
+  for (const el of rows) base.set(el, getComputedStyle(el).backgroundColor);
 
   // The anchor stays where it was on screen.
   if (before.anchor) {
@@ -139,17 +176,13 @@ export function glideToNewPlaces(root: HTMLElement | null): void {
     if (el) root.scrollTop += el.getBoundingClientRect().top - before.anchor.top;
   }
 
-  const run = { timers: [] as number[], animations: [] as Animation[], added: [] as HTMLElement[], raised: [] as HTMLElement[] };
+  const run: Run = { animations: [], added: [] };
   running = run;
-  const at = (ms: number, fn: () => void) => run.timers.push(window.setTimeout(fn, ms));
   const play = (el: HTMLElement, frames: Keyframe[], options: KeyframeAnimationOptions) => {
     const a = el.animate(frames, options);
     run.animations.push(a);
     return a;
   };
-  at(3000, () => {
-    if (running === run) running = null;
-  });
 
   if (lessMotion()) {
     // Nothing moves: the rows cross-fade, and the tint shows what changed.
@@ -157,26 +190,25 @@ export function glideToNewPlaces(root: HTMLElement | null): void {
     for (const el of rows) {
       const keys = keysOf(el);
       const changed = before.stacking ? keys.length > 1 : before.byKey.get(keys[0])?.keys.length !== 1;
-      if (changed) tintThenFade(el, play, 0, 900);
+      if (changed) tintThenFade(el, base.get(el), play, 0, 900);
     }
-    return;
+  } else {
+    const frame = root.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const nowTop = new Map<HTMLElement, number>();
+    for (const el of rows) nowTop.set(el, el.getBoundingClientRect().top);
+    if (before.stacking) stackOn(before, rows, frame, hostRect, nowTop, base, host, play, run);
+    else stackOff(before, rows, frame, hostRect, nowTop, base, host, play, run);
   }
 
-  const frame = root.getBoundingClientRect();
-  const hostRect = host.getBoundingClientRect();
-  const nowTop = new Map<HTMLElement, number>();
-  for (const el of rows) nowTop.set(el, el.getBoundingClientRect().top);
-
-  if (before.stacking) stackOn(before, rows, frame, hostRect, nowTop, host, play, at, run);
-  else stackOff(before, rows, frame, hostRect, nowTop, host, play, at, run);
+  // The run ends with its last animation. A stopped run rejects: it is already cleared.
+  Promise.all(run.animations.map((a) => a.finished)).then(() => running === run && stopRunning(), () => {});
 }
 
 type Play = (el: HTMLElement, frames: Keyframe[], options: KeyframeAnimationOptions) => Animation;
-type At = (ms: number, fn: () => void) => void;
 
-/** The tint from `from` ms, held, then faded over `fade` ms. */
-function tintThenFade(el: HTMLElement, play: Play, from: number, holdUntil: number, fade = 900) {
-  const base = getComputedStyle(el).backgroundColor;
+/** The tint from `from` ms, held, then faded over `fade` ms to `base`. */
+function tintThenFade(el: HTMLElement, base: string | undefined, play: Play, from: number, holdUntil: number, fade = 900) {
   const total = holdUntil - from + fade;
   play(
     el,
@@ -196,10 +228,10 @@ function stackOn(
   frame: DOMRect,
   hostRect: DOMRect,
   nowTop: Map<HTMLElement, number>,
+  base: Map<HTMLElement, string>,
   host: HTMLElement,
   play: Play,
-  at: At,
-  run: { added: HTMLElement[] }
+  run: Run
 ) {
   // Every row starts where its newest thread's row was, and goes to its
   // place as the gaps close, at 1050 ms.
@@ -224,7 +256,7 @@ function stackOn(
       // threads are under it.
       const count = el.querySelector<HTMLElement>("[data-stack-count]");
       if (count) play(count, [{ opacity: 0 }, { opacity: 1 }], { duration: 250, delay: 1050, fill: "backwards" });
-      tintThenFade(el, play, 1050, 1800);
+      tintThenFade(el, base.get(el), play, 1050, 1800);
     }
   }
   // The threads that go under a row: copies of their old rows, lifted,
@@ -243,24 +275,25 @@ function stackOn(
     const endTop = headFrom.rect.top;
     if (startTop > frame.bottom || endTop > frame.bottom) below += 1;
     if (startTop + place.rect.height < frame.top) above += 1;
-    if (startTop > frame.bottom + 400 || startTop + place.rect.height < frame.top - 400) continue;
-    const copy = floatCopy(place, hostRect, host, run);
-    const delay = n * 90;
+    if (startTop > frame.bottom + OFF_SCREEN || startTop + place.rect.height < frame.top - OFF_SCREEN) continue;
+    const copy = floatCopy(place.copy, lead, place.rect, hostRect, host, run);
+    const delay = Math.min(n * 90, STAGGER_MAX);
     n += 1;
     play(copy, [
       { backgroundColor: getComputedStyle(copy).backgroundColor, transform: "scale(1)", boxShadow: "none" },
       { backgroundColor: TINT, transform: "scale(1.015)", boxShadow: LIFT_SHADOW },
     ], { duration: 200, fill: "forwards" });
+    // Landed on the row by 1050 ms at the latest: under it, and gone.
     play(copy, [
       { transform: "translateY(0) scale(1.015)" },
       { transform: `translateY(${endTop - startTop}px) scale(1.015)` },
-    ], { duration: 600, delay: 250 + delay, easing: EASE, fill: "forwards" });
-    // Under the row, and gone.
-    at(1050, () => {
+    ], { duration: 600, delay: 250 + delay, easing: EASE, fill: "forwards" }).finished.then(() => {
       copy.style.zIndex = "0";
-    });
-    play(copy, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, delay: 1050, fill: "forwards" });
-    at(1300, () => copy.remove());
+    }, () => {});
+    play(copy, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, delay: 1050, fill: "forwards" }).finished.then(
+      () => copy.remove(),
+      () => {}
+    );
   }
   movedNote(above, below, before.words, host, play, run);
 }
@@ -272,10 +305,10 @@ function stackOff(
   frame: DOMRect,
   hostRect: DOMRect,
   nowTop: Map<HTMLElement, number>,
+  base: Map<HTMLElement, string>,
   host: HTMLElement,
   play: Play,
-  at: At,
-  run: { added: HTMLElement[]; raised: HTMLElement[] }
+  run: Run
 ) {
   let n = 0;
   let above = 0;
@@ -288,9 +321,7 @@ function stackOff(
       play(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 400 });
       continue;
     }
-    const wasStack = from.keys.length > 1;
-    const isLead = from.keys[0] === key;
-    if (isLead) {
+    if (from.keys[0] === key) {
       // The stack's row (or any other row): to its place as the gaps open.
       const dy = from.rect.top - top;
       if (Math.abs(dy) >= 1) {
@@ -299,52 +330,55 @@ function stackOff(
           easing: EASE,
         });
       }
-      if (wasStack) tintThenFade(el, play, 0, 1500);
+      if (from.keys.length > 1) tintThenFade(el, base.get(el), play, 0, 1500);
       continue;
     }
-    // A thread from under a stack: hidden under the stack's row, then
-    // lifted out of it into its gap.
+    // A thread from under a stack: it starts where the gliding stack's row is then.
     const head = rows.find((r) => keysOf(r)[0] === from.keys[0]);
-    const headTop = head ? nowTop.get(head) ?? from.rect.top : from.rect.top;
-    if (top > frame.bottom || headTop > frame.bottom) below += 1;
-    if (top + el.offsetHeight < frame.top) above += 1;
-    const delay = 250 + n * 90;
+    const headNow = head ? nowTop.get(head) ?? from.rect.top : from.rect.top;
+    const delay = 250 + Math.min(n * 90, STAGGER_MAX);
+    const startTop = from.rect.top + (headNow - from.rect.top) * eased(delay / 400);
+    const rect = el.getBoundingClientRect();
+    if (top > frame.bottom || startTop > frame.bottom) below += 1;
+    if (top + rect.height < frame.top) above += 1;
+    const near = (y: number) => y + rect.height > frame.top - OFF_SCREEN && y < frame.bottom + OFF_SCREEN;
+    if (!near(startTop) && !near(top)) {
+      // Far off the screen: in its place at once, with the tint.
+      tintThenFade(el, base.get(el), play, 0, 1500);
+      continue;
+    }
     n += 1;
-    const dy = headTop - top;
-    el.style.zIndex = "3";
-    el.style.position = "relative";
-    run.raised.push(el);
-    play(el, [
-      { transform: `translateY(${dy}px) scale(1.015)`, opacity: 0, boxShadow: LIFT_SHADOW, backgroundColor: TINT, offset: 0 },
-      { transform: `translateY(${dy}px) scale(1.015)`, opacity: 1, boxShadow: LIFT_SHADOW, backgroundColor: TINT, offset: 0.05 },
-      { transform: "translateY(0) scale(1.015)", opacity: 1, boxShadow: LIFT_SHADOW, backgroundColor: TINT, offset: 1 },
-    ], { duration: 600, delay, easing: EASE, fill: "backwards" });
-    // Settled at 1200 ms, tinted until 1500, faded by 2400.
-    const settleFrom = delay + 600;
+    // Its copy lifts out and slides into the gap. The real row stays hidden until it lands.
+    const landAt = delay + 600;
+    const startRect = new DOMRect(rect.left, startTop, rect.width, rect.height);
+    const copy = floatCopy(el.cloneNode(true) as HTMLElement, key, startRect, hostRect, host, run);
+    play(copy, [
+      { transform: "translateY(0) scale(1.015)", opacity: 0, boxShadow: LIFT_SHADOW, backgroundColor: TINT, offset: 0 },
+      { opacity: 1, offset: 0.1 },
+      { transform: `translateY(${top - startTop}px) scale(1.015)`, opacity: 1, boxShadow: LIFT_SHADOW, backgroundColor: TINT, offset: 1 },
+    ], { duration: 600, delay, easing: EASE, fill: "both" }).finished.then(() => copy.remove(), () => {});
+    play(el, [{ opacity: 0 }, { opacity: 0 }], { duration: landAt });
+    // Settled by 1200 ms, tinted until 1500, faded by 2400.
     play(el, [
       { transform: "scale(1.015)", boxShadow: LIFT_SHADOW },
       { transform: "scale(1)", boxShadow: "none" },
-    ], { duration: Math.max(150, 1200 - settleFrom), delay: settleFrom, easing: "ease" });
-    tintThenFade(el, play, settleFrom, Math.max(settleFrom, 1500));
-    at(2500, () => {
-      el.style.zIndex = "";
-      el.style.position = "";
-    });
+    ], { duration: Math.max(150, 1200 - landAt), delay: landAt, easing: "ease" });
+    tintThenFade(el, base.get(el), play, landAt, 1500);
   }
   movedNote(above, below, before.words, host, play, run);
 }
 
-/** A copy of an old row, standing where the row stood, over the list. */
-function floatCopy(place: Place, hostRect: DOMRect, host: HTMLElement, run: { added: HTMLElement[] }): HTMLElement {
-  const copy = place.copy;
+/** A copy of a row over the list, standing at `rect`, for thread `key`. */
+function floatCopy(copy: HTMLElement, key: string, rect: DOMRect, hostRect: DOMRect, host: HTMLElement, run: Run): HTMLElement {
   copy.removeAttribute(ATTR);
+  copy.setAttribute(COPY_ATTR, key);
   copy.setAttribute("aria-hidden", "true");
   Object.assign(copy.style, {
     position: "absolute",
-    left: `${place.rect.left - hostRect.left}px`,
-    top: `${place.rect.top - hostRect.top}px`,
-    width: `${place.rect.width}px`,
-    height: `${place.rect.height}px`,
+    left: `${rect.left - hostRect.left}px`,
+    top: `${rect.top - hostRect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
     margin: "0",
     pointerEvents: "none",
     zIndex: "5",
@@ -356,7 +390,7 @@ function floatCopy(place: Place, hostRect: DOMRect, host: HTMLElement, run: { ad
 }
 
 /** "N moved below" / "N moved above", at that edge, for a moment. */
-function movedNote(above: number, below: number, words: GlideWords, host: HTMLElement, play: Play, run: { added: HTMLElement[] }) {
+function movedNote(above: number, below: number, words: GlideWords, host: HTMLElement, play: Play, run: Run) {
   const note = (text: string, edge: "top" | "bottom") => {
     const el = document.createElement("div");
     el.textContent = text;

@@ -77,7 +77,7 @@ export function useThreadKeys({
     const onKeyDown = (event: KeyboardEvent) => {
       const action = actionForEvent(event, shortcuts);
       if (!action) return;
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       // A key pressed inside a modal dialog belongs to the dialog.
       if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
       const typing = Boolean(

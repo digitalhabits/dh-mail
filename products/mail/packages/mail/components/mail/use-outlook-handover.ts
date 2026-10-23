@@ -39,6 +39,7 @@ import { messageStamp } from "@/lib/mail/date-format";
 import { markDraftHandedOver, threadDraftKey } from "@/lib/mail/local-drafts";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
+import { formatShortcut } from "@/lib/mail/shortcuts";
 
 /** What the toast says, by how the message reached Outlook. */
 const OPENED_SAYS = {
@@ -249,7 +250,7 @@ export function useOutlookHandover(input: {
         const filesInDraft = opened === "replyDraft" || opened === "draft";
         const savedFiles = filesInDraft ? 0 : await saveAttachmentsForHandover(travelling);
         toast.success(
-          mailSay(OPENED_SAYS[opened]),
+          mailSay(OPENED_SAYS[opened], { key: formatShortcut({ key: "v", meta: true }) }),
           {
             ...(travelling.length && !filesInDraft
               ? {

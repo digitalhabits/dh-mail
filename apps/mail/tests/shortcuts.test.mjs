@@ -365,4 +365,40 @@ suite(async () => {
     WRITING_SHORTCUTS.every((row) => en[row.label] && da[row.label]),
     WRITING_SHORTCUTS.filter((row) => !en[row.label] || !da[row.label]).map((row) => row.label)
   );
+
+  // --- On Windows, Ctrl does Cmd's job --------------------------------
+
+  globalThis.document = { documentElement: { dataset: { dhOs: "windows" } } };
+  try {
+    check(
+      "on Windows, Ctrl+Shift+A archives, the Windows key does not",
+      actionForEvent(press("a", { ctrl: true, shift: true }), d) === "archive" &&
+        actionForEvent(press("a", { meta: true, shift: true }), d) === null
+    );
+    check(
+      "on Windows, Polish AltGr+L types \"ł\", it does not expand the list",
+      shortcutMatchesEvent({ ...press("l", { ctrl: true, alt: true }), code: "KeyL" }, d.expandList) &&
+        !shortcutMatchesEvent({ ...press("ł", { ctrl: true, alt: true }), code: "KeyL" }, d.expandList)
+    );
+    check(
+      "on Windows, a binding is written Ctrl+Shift+A",
+      formatShortcut(d.archive) === "Ctrl+Shift+A" && formatShortcut(d.delete) === "Backspace",
+      [formatShortcut(d.archive), formatShortcut(d.delete)]
+    );
+    check(
+      "on Windows, Cmd+K and Ctrl+K clash, and the defaults do not",
+      sameShortcut({ key: "k", meta: true }, { key: "k", ctrl: true }) && conflictingActions(d).size === 0
+    );
+    check(
+      "on Windows, Ctrl+M is free, and a writing key cannot take Ctrl+Y",
+      reservedReason({ key: "m", meta: true }) === null &&
+        editorReservedReason({ key: "y", meta: true }) === "reservedEditorKey"
+    );
+  } finally {
+    delete globalThis.document;
+  }
+  check(
+    "on a Mac, Ctrl+Shift+A does not archive",
+    actionForEvent(press("a", { ctrl: true, shift: true }), d) === null
+  );
 });

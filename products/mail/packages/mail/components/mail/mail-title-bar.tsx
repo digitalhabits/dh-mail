@@ -46,12 +46,14 @@ export function MailTitleBar({
   return (
     <>
       {/* Overlay title bar — same height as the Mac traffic-light strip
-          (matches .dh-titlebar / NativeTitleDragStrip h-11). Search sits in
+          (matches .dh-titlebar / NativeTitleDragStrip h-11), on the
+          screen: at another Text size it is 44 screen pixels still, so the
+          controls stay level with the lights. Search sits in
           this row like Outlook, not in a second toolbar underneath.
           `deep` makes empty chrome draggable; inputs stay interactive. */}
       <div
         data-tauri-drag-region="deep"
-        className="mail-titlebar mail-chrome-strip relative flex h-11 shrink-0 items-center gap-3 border-b bg-[var(--mail-chrome)] transition-[padding-left] ease-out motion-reduce:transition-none"
+        className="mail-titlebar mail-chrome-strip relative flex h-[calc(44px/var(--mail-window-scale,1))] shrink-0 items-center gap-3 border-b bg-[var(--mail-chrome)] transition-[padding-left] ease-out motion-reduce:transition-none"
         style={{
           borderColor: "var(--mail-chrome-border)",
           // Where the row stops. A shell that puts window buttons at the

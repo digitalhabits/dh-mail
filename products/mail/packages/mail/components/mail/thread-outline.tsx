@@ -286,7 +286,9 @@ export function ThreadOutline({
                 background: message.unread
                   ? "var(--mail-accent)"
                   : seen
-                    ? "var(--mail-chrome-fg)"
+                    ? message.own
+                      ? "var(--mail-tick-seen-own)"
+                      : "var(--mail-tick-seen-other)"
                     : message.own
                       ? "var(--mail-tick-own)"
                       : "var(--mail-tick-other)",

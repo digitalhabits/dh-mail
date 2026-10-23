@@ -32,7 +32,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'sha256-pt3sKmwnZcIp4/Hkl0wYill7JkJ0h7QNC7NLoq5GwJk='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: dhmail: http://dhmail.localhost https://plan.digitalhabits.org; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost dhmail: http://dhmail.localhost https://gmail.googleapis.com https://www.googleapis.com https://docs.googleapis.com https://people.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://graph.microsoft.com https://login.microsoftonline.com https://plan.digitalhabits.org; object-src 'none'; base-uri 'self'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self' 'sha256-b1hAp7sApX9H80zxtHRmPW+brJCvwL51ZyGGiHB1n9I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: dhmail: http://dhmail.localhost https://plan.digitalhabits.org; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost dhmail: http://dhmail.localhost https://gmail.googleapis.com https://www.googleapis.com https://docs.googleapis.com https://people.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://graph.microsoft.com https://login.microsoftonline.com https://plan.digitalhabits.org; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
   "bundle": {

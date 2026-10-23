@@ -10,6 +10,8 @@
  */
 
 import { getMailThreadOutline } from "@/lib/mail/thread-outline";
+import { getAnswerLinks } from "@/lib/mail/answer-links";
+import { ownMailIdentity } from "@/lib/own-addresses";
 import {
   deleteExchangeAccount,
   listExchangeAccounts,
@@ -259,6 +261,20 @@ async function threadOutline({ q }: RouteContext): Promise<Response> {
   if (!account || !id) return failed("account and id are required", 400);
   const items = await getMailThreadOutline(account, id);
   return ok({ success: true, items });
+}
+
+/**
+ * The thread a reply here answers, and the replies elsewhere that answer this
+ * one, when the provider keeps them apart. Own addresses: the saved ones and
+ * the connected mailboxes the page has set.
+ */
+async function answerLinks({ q }: RouteContext): Promise<Response> {
+  const account = q.get("account");
+  const id = q.get("id");
+  if (!account || !id) return failed("account and id are required", 400);
+  const own = [...(await getOwnIdentity()).addresses, ...ownMailIdentity().addresses];
+  const links = await getAnswerLinks(account, id, own);
+  return ok({ success: true, links });
 }
 
 /** Messages the provider is holding for a thread, and the two ways out. */
@@ -1025,6 +1041,7 @@ export const STANDALONE_MAIL_ROUTES: Record<string, Route> = {
   "/api/mail/threads/older": olderThreads,
   "/api/mail/thread": thread,
   "/api/mail/thread-outline": threadOutline,
+  "/api/mail/answer-links": answerLinks,
   "/api/mail/scheduled": scheduled,
   "/api/mail/folders": folders,
   "/api/mail/drafts": drafts,
@@ -1082,6 +1099,7 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/threads/older",
   "/api/mail/thread",
   "/api/mail/thread-outline",
+  "/api/mail/answer-links",
   "/api/mail/folders",
   "/api/mail/drafts",
   "/api/mail/junk",

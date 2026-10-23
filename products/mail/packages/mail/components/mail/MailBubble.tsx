@@ -1193,7 +1193,8 @@ export function useBubbleMeta({
    */
   const timeCornerClass = cn(
     "select-none text-[10px] leading-none tabular-nums",
-    message.own ? "text-teal-800/60" : "text-stone-400"
+    // Yours in the blue of your bubble, held back: it is a timestamp.
+    message.own ? "text-[color:var(--mail-own-ink)] opacity-70" : "text-stone-400"
   );
   const timeCorner = timeLabel ? (
     <span className={cn("float-right ml-2 mt-1", timeCornerClass)}>

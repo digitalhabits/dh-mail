@@ -526,6 +526,19 @@ export type MailStoredView =
   | "label";
 
 /** One message's headers, as the sync worker wrote them. Times are ms since the epoch. */
+/** A thread linked to the open one: a reply and the mail it answers. */
+export type MailAnswerLink = {
+  /** "answers": this thread holds the reply. "answeredBy": the other one does. */
+  direction: "answers" | "answeredBy";
+  threadId: string;
+  subject: string;
+  /** The message in the other thread: the one answered, or the reply. */
+  fromName: string;
+  fromEmail: string;
+  /** Milliseconds since the epoch. */
+  sentAt: number;
+};
+
 export type MailStoredMessage = {
   messageId: string;
   threadId: string;
@@ -638,6 +651,13 @@ export type MailMessageStore = {
    * Optional: a store without it shows each mailbox's copy alone.
    */
   copies?(account: string, rfcIds: string[]): Promise<{ account: string; threadId: string }[]>;
+
+  /**
+   * The thread a reply here answers, and the replies elsewhere that answer
+   * this thread, when the provider keeps them apart (answer_links.rs).
+   * `own` is every address of the reader's. Optional: without it, no links.
+   */
+  answerLinks?(account: string, threadId: string, own: string[]): Promise<MailAnswerLink[]>;
 
   /**
    * Full-text search over the copy. Threads, newest first; inside one view

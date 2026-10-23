@@ -53,6 +53,7 @@ import {
   type MailShortcut,
   type MailShortcutAction,
 } from "@/lib/mail/shortcuts";
+import { isWindowsHost } from "@/lib/mail/host-os";
 import { useMailT } from "@/lib/mail/i18n";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import { cn } from "@/lib/utils";
@@ -110,6 +111,9 @@ export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
       }
       // Wait for the key the modifiers belong to.
       if (MODIFIER_KEYS.has(event.key)) return;
+      // On Windows Ctrl is stored as Cmd, and the Windows key is the system's.
+      const win = isWindowsHost();
+      if (win && event.metaKey) return;
 
       const next: MailShortcut = {
         // With Option held the Mac types a mark for the letter (⌥V is "◊"),
@@ -118,10 +122,10 @@ export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
           event.altKey && /^Key[A-Z]$/.test(event.code)
             ? event.code.slice(3).toLowerCase()
             : event.key.toLowerCase(),
-        meta: event.metaKey,
+        meta: win ? event.ctrlKey : event.metaKey,
         shift: event.shiftKey,
         alt: event.altKey,
-        ctrl: event.ctrlKey,
+        ctrl: !win && event.ctrlKey,
       };
       const reserved =
         reservedReason(next) ??

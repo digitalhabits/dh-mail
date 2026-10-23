@@ -544,6 +544,10 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      read as an outline drawn round the words, and a shade of the fill alone
      was too faint to hold the shape at all. */
   --mail-bubble-own-border: #b4d3df;
+  /* The edge of the reply box: the edge your message will have once sent,
+     and a step deeper while you are typing in it. Not teal any more. */
+  --mail-compose-edge: var(--mail-bubble-own-border);
+  --mail-compose-edge-focus: #7eaabd;
   /* The box you type into, a paler cast of the bubble the words become. It
      is not white and only just blue: enough to lift the box off the card
      and to say the message being written is yours. */
@@ -646,6 +650,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      ink. "You" in the outline's rows is that blue, deepened. */
   --mail-tick-other: #cdc6bd;
   --mail-tick-own: #a9c8ec;
+  /* The ticks of the messages on screen: ink on cream. */
+  --mail-tick-seen-other: var(--mail-chrome-fg);
+  --mail-tick-seen-own: var(--mail-chrome-fg);
   --mail-own-ink: #2f6680;
   /* The faint line between two conversations, edge to edge, as Gmail
      draws it: rows read as separate without the list looking ruled. */
@@ -725,12 +732,19 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * bubbles carry `.mail-bubble-surface`, which puts the light values back
    * (below) — so the sheet is the message, and the pane around it is dark.
    */
-  --mail-bubble-other: #293a4d;
-  --mail-bubble-other-border: #3c5066;
-  /* Teal-tinted, and a different hue from the navy card, so "mine" is still
-     said by the fill and not only by which side the bubble is on. */
-  --mail-bubble-own: #1b3a35;
-  --mail-bubble-own-border: rgba(45, 212, 191, 0.35);
+  /* As the light theme has it, in the dark: what others wrote is the
+     paper — a quiet slate a step off the page, with a hairline — and what
+     you wrote is the design system's blue. Here the blue is a step
+     lighter than the paper, because on a dark page the lighter thing is
+     the nearer one; the page is navy already, so hue alone did not carry
+     it (Ulrik, 2026-10-21, after mockup 8c). Leans a little further to
+     blue than the light theme's mist, which on dark read as teal. */
+  --mail-bubble-other: #26303c;
+  --mail-bubble-other-border: #364253;
+  --mail-bubble-own: #33495a;
+  --mail-bubble-own-border: #4d6a80;
+  --mail-compose-edge: var(--mail-bubble-own-border);
+  --mail-compose-edge-focus: #7096b0;
   /* Dark keeps the surface the rest of the chrome uses: a pale tint here
      would glare, and the bubbles stay light for the mail inside them. */
   --mail-compose-surface: #1e2d3e;
@@ -793,6 +807,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-row-line: rgba(255, 255, 255, 0.06);
   --mail-tick-other: rgba(255, 255, 255, 0.24);
   --mail-tick-own: #5f8fb8;
+  /* On screen: a step up from the rest, not the text's white, which was
+     the brightest thing in the window (Ulrik, 2026-10-21). Yours keep
+     their blue, lit. */
+  --mail-tick-seen-other: rgba(255, 255, 255, 0.75);
+  --mail-tick-seen-own: #bcd5e9;
   --mail-own-ink: #9cc6e0;
 
   /*
@@ -900,8 +919,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 .mail-shell[data-theme="dark"] .mail-bubble-surface {
   --mail-bubble-other: #faf8f5;
   --mail-bubble-other-border: rgb(231 229 228);
-  --mail-bubble-own: #ccfbf1;
-  --mail-bubble-own-border: rgb(183 222 211);
+  /* The light theme's own blue, as everything on this sheet is light. */
+  --mail-bubble-own: #eef8fc;
+  --mail-bubble-own-border: #b4d3df;
 }
 
 /* Backgrounds */

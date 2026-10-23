@@ -8,7 +8,8 @@
  * message goes through this script, as a postMessage:
  *
  *   frame → page   open-url, size, key, pinch-wheel, pinch-scale, dblclick,
- *                  press, link-menu, message-menu, find-result, find-shown
+ *                  press, reader-input, link-menu, message-menu,
+ *                  find-result, find-shown
  *   page → frame   config, zoom, terms, find, find-show, find-clear
  *
  * Each message carries `source: "dh-mail"`. The page accepts a message only
@@ -96,4 +97,4 @@ export const MAIL_LINK_BRIDGE_JS =
 
 /** sha256-base64 of MAIL_LINK_BRIDGE_JS (CSP script-src). */
 export const MAIL_LINK_BRIDGE_CSP_HASH =
-  "sha256-pt3sKmwnZcIp4/Hkl0wYill7JkJ0h7QNC7NLoq5GwJk=";
+  "sha256-b1hAp7sApX9H80zxtHRmPW+brJCvwL51ZyGGiHB1n9I=";

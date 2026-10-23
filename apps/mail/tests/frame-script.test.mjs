@@ -194,6 +194,23 @@ suite(async () => {
     check("two quick clicks beside the words are one double click", f.of("dblclick").length === 1);
   }
 
+  // --- The reader moving the thread ------------------------------------------------
+
+  {
+    const f = frame("<p>Two bits of good news.</p>");
+    const wheel = (init) => {
+      const event = new f.win.WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 40 });
+      // happy-dom drops the modifier keys from a WheelEvent's init.
+      Object.defineProperty(event, "ctrlKey", { value: init.ctrlKey === true });
+      f.doc.body.dispatchEvent(event);
+      return event;
+    };
+    const plain = wheel({});
+    check("a wheel tells the page the reader moved, and still scrolls", f.of("reader-input").length === 1 && !plain.defaultPrevented);
+    const pinch = wheel({ ctrlKey: true });
+    check("a pinch is a pinch, not the reader moving", pinch.defaultPrevented && f.of("reader-input").length === 1 && f.of("pinch-wheel").length === 1);
+  }
+
   // --- Dark mode -----------------------------------------------------------------
 
   const lightness = (css) => {

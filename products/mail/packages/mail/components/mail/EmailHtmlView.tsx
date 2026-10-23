@@ -365,6 +365,9 @@ export function EmailHtmlView({
         case "key":
           forwardFrameKey(frame, data);
           return;
+        case "reader-input":
+          frame.dispatchEvent(new CustomEvent("mail-frame-reader-input", { bubbles: true }));
+          return;
         case "pinch-wheel":
         case "pinch-scale":
           forwardFramePinch(frame, data);

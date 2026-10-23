@@ -69,6 +69,10 @@ export function useApplyUiScale(scale: number): void {
     const root = document.documentElement;
 
     if (invoke) {
+      // What the window's own chrome needs to stay clear of: the traffic
+      // lights are drawn by the system at a fixed place on the screen, and
+      // the zoom does not move them (windowChromeScale).
+      root.style.setProperty("--mail-window-scale", String(scale));
       // The window's own zoom. It survives until the app is quit, so 100%
       // is set explicitly rather than left, and it is put back on the way
       // out for whatever page follows this one.
@@ -82,6 +86,7 @@ export function useApplyUiScale(scale: number): void {
         void invoke("plugin:webview|set_webview_zoom", { value: 1 }).catch(
           () => {}
         );
+        root.style.removeProperty("--mail-window-scale");
         clearCssZoom(root);
       };
     }
@@ -129,6 +134,18 @@ export function useApplyUiScale(scale: number): void {
       root.style.removeProperty("--mail-viewport-h");
     };
   }, [scale]);
+}
+
+/**
+ * How much the page is zoomed against the window's own chrome.
+ *
+ * In the desktop app the traffic lights are drawn by the system at a fixed
+ * place on the screen, whatever the app's size. A length that keeps clear
+ * of them is a length on the screen, so the app's pixels are divided by
+ * this. In a browser there is no such chrome: 1.
+ */
+export function windowChromeScale(scale: number): number {
+  return tauriInvoke() ? scale : 1;
 }
 
 function applyCssZoom(root: HTMLElement, scale: number): void {

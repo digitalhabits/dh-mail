@@ -762,7 +762,7 @@ export const da: Record<keyof typeof en, string> = {
   pickDateAndTimeTitle: "Vælg dato og tid",
   downloadOptions: "Valg for download",
   saveAs: "Gem som…",
-  optionClick: "⌥-klik",
+  optionClick: "{key}-klik",
   saveTo: "Gem i",
   downloadsFolder: "Overførsler",
   desktopFolder: "Skrivebord",
@@ -991,6 +991,9 @@ export const da: Record<keyof typeof en, string> = {
   goingToFirst: "Går til den første meddelelse…",
   loadEarlier: "Hent tidligere meddelelser",
   loadNewer: "Hent nyere meddelelser",
+  answerLinkAnswers: "Dit svar på {name}s mail fra {date}",
+  answerLinkAnsweredBy: "Du svarede fra {address} den {date}",
+  answerLinkOpen: "Åbn",
   sendNow: "Send nu",
   outbox: "Udbakke",
   keptInOutbox: "Den ligger i Udbakken øverst i listen, hvor du kan prøve igen eller slette den.",
@@ -1182,7 +1185,7 @@ export const da: Record<keyof typeof en, string> = {
   outlookNewMessage: "En ny Outlook-besked (sæt den ind)",
   outlookDraftIn: "En kladde i {account}",
   openInOutlookPaste: "Åbn en ny Outlook-besked og sæt denne ind i den",
-  outlookIsOpenPaste: "Outlook er åben på en ny besked — tryk ⌘V for at sætte den ind",
+  outlookIsOpenPaste: "Outlook er åben på en ny besked — tryk {key} for at sætte den ind",
   outlookFilesInDownloads:
     "Outlook kan ikke tage filer denne vej — {count} ligger i Overførsler, klar til at trække ind",
   outlookFilesLeftBehind:

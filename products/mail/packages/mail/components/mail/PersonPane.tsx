@@ -113,7 +113,7 @@ export function PersonPane({
    */
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (target?.closest(TYPING_TARGET)) return;
       // A key pressed inside the page's modal dialog belongs to the dialog.
       if (target?.closest('[role="dialog"][aria-modal="true"]')) return;

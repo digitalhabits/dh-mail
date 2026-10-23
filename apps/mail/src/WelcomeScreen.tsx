@@ -18,7 +18,6 @@ import { Folder, GalleryVerticalEnd, PanelLeft, Users } from "lucide-react";
 import { useMailViewMode } from "@/components/mail/mail-list-state";
 import { useMailLang, type MailLang } from "@/lib/mail/i18n";
 import { useMailColorMode } from "@/lib/mail/theme";
-import { openExternalUrl } from "@/lib/native-shell";
 
 import { FetchTile, ShownTile } from "@/components/mail/hours-icons";
 
@@ -159,19 +158,10 @@ const COPY: Record<MailLang, Record<string, string>> = {
   },
 };
 
-/** A link that opens in the system browser: the webview ignores target=_blank. */
+/** A link that opens in the system browser. The shell opens every target=_blank link. */
 function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="legal-onboarding-link"
-      onClick={(e) => {
-        e.preventDefault();
-        void openExternalUrl(href);
-      }}
-    >
+    <a href={href} target="_blank" rel="noopener noreferrer" className="legal-onboarding-link">
       {children}
     </a>
   );

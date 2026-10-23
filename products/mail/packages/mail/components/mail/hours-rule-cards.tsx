@@ -13,6 +13,7 @@
 import { X } from "lucide-react";
 
 import { TimeField } from "@/components/mail/date-time-pick";
+import { SwitchTrack } from "@/components/mail/settings-ui";
 import { ALWAYS_RULE, isAllDay } from "@/lib/mail/account-rhythm";
 import { SCHEDULE_DAY_LABELS, WEEKDAY_DAYS, type MailScheduleDay } from "@/lib/mail/custom-lists";
 import { useMailT } from "@/lib/mail/i18n";
@@ -109,14 +110,7 @@ export function SmallSwitch({ label, on, onChange }: { label: string; on: boolea
       onClick={() => onChange(!on)}
     >
       {label}
-      <span className={cn("relative block h-4 w-7 rounded-full transition-colors", on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300")}>
-        <span
-          className={cn(
-            "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left]",
-            on ? "left-3.5" : "left-0.5"
-          )}
-        />
-      </span>
+      <SwitchTrack small on={on} className={on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300"} />
     </button>
   );
 }

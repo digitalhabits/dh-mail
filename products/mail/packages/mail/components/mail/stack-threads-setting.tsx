@@ -14,6 +14,7 @@
 import { GalleryVerticalEnd } from "lucide-react";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
+import { SwitchTrack } from "@/components/mail/settings-ui";
 import { takeGlidePlaces } from "@/lib/mail/stack-glide";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
@@ -60,20 +61,11 @@ export function StacksSwitch({
     >
       <GalleryVerticalEnd className="h-3.5 w-3.5" aria-hidden />
       {t("stacksSwitch")}
-      <span
-        aria-hidden
-        className={cn(
-          "relative ml-0.5 block h-4 w-7 shrink-0 rounded-full transition-colors",
-          on ? "bg-[var(--mail-switch-on)]" : onDark ? "bg-white/25" : "bg-stone-300"
-        )}
-      >
-        <span
-          className={cn(
-            "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-[left]",
-            on ? "left-3.5" : "left-0.5"
-          )}
-        />
-      </span>
+      <SwitchTrack
+        small
+        on={on}
+        className={cn("ml-0.5", on ? "bg-[var(--mail-switch-on)]" : onDark ? "bg-white/25" : "bg-stone-300")}
+      />
     </button>
   );
 }

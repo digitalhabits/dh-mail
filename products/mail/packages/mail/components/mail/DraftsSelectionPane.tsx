@@ -32,7 +32,7 @@ export function DraftsSelectionPane({
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (target?.closest(TYPING_TARGET)) return;
       if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
       if (event.key === "Escape") {

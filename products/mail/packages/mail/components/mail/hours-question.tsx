@@ -18,6 +18,7 @@
 import { Lock } from "lucide-react";
 
 import { HoursRuleCards } from "@/components/mail/hours-rule-cards";
+import { SwitchTrack } from "@/components/mail/settings-ui";
 import { HoursWeekEditor } from "@/components/mail/hours-week-editor";
 import { sameWeek } from "@/lib/mail/account-rhythm";
 import { useMailT } from "@/lib/mail/i18n";
@@ -192,17 +193,9 @@ function LockRow({ on, set, title, what }: { on: boolean; set: (on: boolean) => 
         aria-checked={on}
         aria-label={title}
         onClick={() => set(!on)}
-        className={cn(
-          "relative block h-5 w-9 shrink-0 rounded-full transition-colors",
-          on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300"
-        )}
+        className="block shrink-0 rounded-full"
       >
-        <span
-          className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-[left]",
-            on ? "left-[18px]" : "left-0.5"
-          )}
-        />
+        <SwitchTrack on={on} className={on ? "bg-[var(--mail-switch-on)]" : "bg-stone-300"} />
       </button>
     </div>
   );

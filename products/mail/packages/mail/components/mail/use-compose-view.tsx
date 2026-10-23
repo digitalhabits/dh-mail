@@ -14,7 +14,7 @@ import { FLOATING_COMPOSE_SIZE_KEY } from "@/lib/mail/storage-keys";
 import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled } from "@/lib/mail/scheduled-events";
 import * as React from "react";
-import { sendsFromHere, shortcutMatchesEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
+import { formatShortcut, sendsFromHere, shortcutMatchesEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import { toast } from "@/lib/mail/toast";
 
@@ -1136,7 +1136,7 @@ export function useComposeSend({
         */
         const savedFiles = await saveAttachmentsForHandover(attachments);
         toast.success(
-          opened === "url" ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste"),
+          opened === "url" ? mailSay("outlookIsOpen") : mailSay("outlookIsOpenPaste", { key: formatShortcut({ key: "v", meta: true }) }),
           attachments.length
             ? {
                 description: savedFiles

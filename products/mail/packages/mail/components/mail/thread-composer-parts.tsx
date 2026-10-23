@@ -456,7 +456,10 @@ export function ComposerCardButtons({ m }: { m: ThreadPaneModel }) {
   ) : null;
   if (onFloatReply && !replyFocus) {
     return (
-      <span className="-mr-1 -mt-0.5 flex shrink-0 items-center gap-0.5">
+      // No negative margin to the right: the buttons stood 4px past the
+      // column, which then scrolled sideways under the caret and took the
+      // card's right border out of sight (2026-10-21).
+      <span className="-mt-0.5 flex shrink-0 items-center gap-0.5">
         {minimiseButton}
         <button
           type="button"

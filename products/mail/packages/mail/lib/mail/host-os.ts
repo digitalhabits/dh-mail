@@ -12,3 +12,15 @@ export function isWindowsHost(): boolean {
   if (typeof document === "undefined") return false;
   return document.documentElement.dataset.dhOs === "windows";
 }
+
+/** The character a key makes without AltGr, for keys whose `code` does not name it. */
+const PLAIN_MARKS: Record<string, string> = { Equal: "=+", Minus: "-_" };
+
+/** Windows reports AltGr as Ctrl+Alt: Danish AltGr+0 types "}", which is typing, not a shortcut. */
+export function typesWithAltGraph(
+  e: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey"> & { getModifierState?: (key: string) => boolean }
+): boolean {
+  const plain = PLAIN_MARKS[e.code] ?? /^(?:Key|Digit)(.)$/.exec(e.code)?.[1].toLowerCase();
+  const altGr = e.getModifierState?.("AltGraph") || (e.ctrlKey && e.altKey);
+  return isWindowsHost() && e.key.length === 1 && altGr && !plain?.includes(e.key.toLowerCase());
+}

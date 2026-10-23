@@ -13,6 +13,7 @@ import { canRenderPdf, mountPdfViewer } from "@/lib/mail/attachment-text";
 import type { PdfViewerHandle } from "@/lib/mail/pdf-viewer-types";
 import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { useMailT } from "@/lib/mail/i18n";
+import { formatShortcut } from "@/lib/mail/shortcuts";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { cn } from "@/lib/utils";
 import type { MailAttachment } from "@/lib/mail/types";
@@ -430,7 +431,7 @@ function AttachmentPreviewBody({
       <button
         type="button"
         aria-label={t("zoomOut")}
-        title={`${t("zoomOut")} (⌘−)`}
+        title={`${t("zoomOut")} (${formatShortcut({ key: "−", meta: true })})`}
         className="rounded-full px-1 text-[15px] leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40"
         disabled={zoom <= PREVIEW_MIN_ZOOM}
         onClick={() => setZoom((z) => nextPreviewZoom(z, -1))}
@@ -439,7 +440,7 @@ function AttachmentPreviewBody({
       </button>
       <button
         type="button"
-        title={`${t("backTo100")} (⌘0)`}
+        title={`${t("backTo100")} (${formatShortcut({ key: "0", meta: true })})`}
         className="min-w-[3.25rem] px-1 text-center text-xs tabular-nums text-stone-600 hover:text-stone-900"
         onClick={() => setZoom(1)}
       >
@@ -448,7 +449,7 @@ function AttachmentPreviewBody({
       <button
         type="button"
         aria-label={t("zoomIn")}
-        title={`${t("zoomIn")} (⌘+)`}
+        title={`${t("zoomIn")} (${formatShortcut({ key: "+", meta: true })})`}
         className="rounded-full px-1 text-[15px] leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40"
         disabled={zoom >= PREVIEW_MAX_ZOOM}
         onClick={() => setZoom((z) => nextPreviewZoom(z, 1))}

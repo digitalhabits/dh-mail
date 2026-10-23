@@ -1262,6 +1262,7 @@ export function useStreamOpenPosition({
       el.removeEventListener("scroll", onScroll);
       el.removeEventListener("wheel", readerInput);
       window.removeEventListener("pointerdown", readerInput, true);
+      el.removeEventListener("mail-frame-reader-input", readerInput);
       window.removeEventListener("keydown", readerInput);
     };
     /*
@@ -1299,6 +1300,8 @@ export function useStreamOpenPosition({
     // the reply, and the pin must not pull it back.
     window.addEventListener("pointerdown", readerInput, { passive: true, capture: true });
     window.addEventListener("keydown", readerInput);
+    // Input inside a message frame reaches the page only as this event.
+    el.addEventListener("mail-frame-reader-input", readerInput);
     el.addEventListener("touchstart", stop, { passive: true, once: true });
 
     return () => {

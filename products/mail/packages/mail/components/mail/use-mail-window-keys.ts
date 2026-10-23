@@ -31,6 +31,7 @@ import {
 } from "@/lib/mail/shortcuts";
 import { rowStandsFor, threadKey } from "@/lib/mail/thread-copies";
 import type { MailThreadSummary } from "@/lib/mail/types";
+import { typesWithAltGraph } from "@/lib/mail/host-os";
 import { nextUiScaleStop } from "@/lib/mail/ui-scale";
 
 /** Where Down or Up goes from `from` in a list of `length`; -1 is no place yet, and goes to the top. */
@@ -161,7 +162,8 @@ export function useMailWindowKeys({
       //
       // It fires while typing as well. The composer is part of what is
       // resized, and someone who resizes the app while writing means it.
-      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey) {
+      // Not AltGr on Windows: it arrives as Ctrl+Alt, and AltGr+0 types "}".
+      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && !typesWithAltGraph(e)) {
         if (e.code === "Equal") {
           e.preventDefault();
           setUiScale(nextUiScaleStop(uiScale, 1));
@@ -306,7 +308,8 @@ export function useMailWindowKeys({
         (e.metaKey || e.ctrlKey) &&
         e.altKey &&
         !e.shiftKey &&
-        e.code === "KeyF"
+        e.code === "KeyF" &&
+        !typesWithAltGraph(e)
       ) {
         e.preventDefault();
         const field = searchInputRef.current;

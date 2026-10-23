@@ -28,6 +28,7 @@ import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { patchCachedThreads } from "@/components/mail/mail-list-state";
 import { holdRead, releaseRead, stillHeld } from "@/lib/mail/held-reads";
+import { useOpenThreadEvent } from "@/components/mail/thread-answer-links";
 
 type OpenThread = {
   account: string;
@@ -147,6 +148,11 @@ export function useRowOpening({
     markRowRead(t);
   }, [markRowRead, setComposing, setListExpanded, setSelected]);
   openThreadRef.current = openThread;
+  // A link in a thread to the other half of a split conversation.
+  useOpenThreadEvent(({ account, threadId }) => {
+    setComposing(false);
+    setSelected({ account, threadId, inPeople: false });
+  });
 
   /*
     The next thread after a delete, an archive or a move is opened by

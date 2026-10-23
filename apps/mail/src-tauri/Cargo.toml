@@ -2,7 +2,7 @@
 name = "digital-habits-mail"
 # Not the version the app shows: Tauri takes that from tauri.conf.json, which
 # reads ../package.json. Kept in step by scripts/check-version.sh.
-version = "0.11.37"
+version = "0.11.38"
 description = "Digital Habits: Mail — Mac desktop app"
 authors = ["Digital Habits"]
 license = ""
@@ -33,8 +33,8 @@ mail-native = { path = "../../../products/mail/crates/mail-native" }
 
 [features]
 # Exchange on-prem over EWS. On by default, so every build has it: the
-# public app too since 2026-09-28. A new connect needs an access code
-# (docs/mail-exchange-ews.md, section 18, item 5).
+# public app too since 2026-09-28. A new connect needs no access code
+# since 2026-10-09 (docs/mail-exchange-ews.md, "How it works now").
 default = ["exchange"]
 exchange = ["mail-native/exchange"]
 # A team build's own commands and updater. The public app is built

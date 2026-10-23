@@ -1,6 +1,6 @@
 /**
  * The part of the frame script that listens to the reader: link clicks,
- * the two right-click menus, a double click, keys and the pinch.
+ * the two right-click menus, a double click, keys, scrolls and the pinch.
  *
  * This is JavaScript text, not code that runs in the app. It runs inside the
  * message frame, which has no access to the app page. Each thing it hears
@@ -218,8 +218,13 @@ function shareOfHeight(y) {
   return typeof y === "number" && h > 0 ? y / h : null;
 }
 
+/* Input in here never reaches the page; tell it the reader moved. */
+function readerMoved() { send({ type: "reader-input" }); }
+document.addEventListener("pointerdown", readerMoved, { passive: true, capture: true });
+document.addEventListener("touchstart", readerMoved, { passive: true, capture: true });
+
 document.addEventListener("wheel", function (event) {
-  if (!event.ctrlKey) return;
+  if (!event.ctrlKey) return readerMoved();
   event.preventDefault();
   send({ type: "pinch-wheel", value: event.deltaY, at: shareOfHeight(event.clientY) });
 }, { passive: false, capture: true });

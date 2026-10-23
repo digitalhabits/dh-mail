@@ -32,6 +32,7 @@ import { formatShortcut } from "@/lib/mail/shortcuts";
 import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
+import { useMailColorMode } from "@/lib/mail/theme";
 import { readImageChoices, useLoadImagesByDefault } from "@/components/mail/MailBubble";
 import { textStyleVars, useTextStyleDefault } from "@/components/mail/use-text-style";
 import { DEFAULT_COMPOSER_HEIGHT } from "@/components/mail/use-mail-layout";
@@ -377,7 +378,7 @@ export function ThreadComposerBand({
               // The card is chrome and takes the theme; only the box you
               // type in is a light island — see below, and the compose
               // window, which is split the same way.
-              "mail-composer-card relative flex flex-1 flex-col rounded-surface border border-teal-700/50 bg-white focus-within:border-teal-700",
+              "mail-composer-card relative flex flex-1 flex-col rounded-surface border border-[var(--mail-compose-edge)] bg-white focus-within:border-[var(--mail-compose-edge-focus)]",
               // Never shorter than its own floor and the row with Send on
               // it. In focus mode the card is the pane and may shrink.
               bandFills ? "mail-composer-card-focus min-h-0" : "min-h-min"
@@ -629,6 +630,9 @@ function ForwardSourceQuote({
   } = m;
   const [open, setOpenState] = React.useState(readForwardOpen);
   const [loadImagesByDefault] = useLoadImagesByDefault();
+  // The quote is drawn for white paper; on the dark box its colours are
+  // re-lit, as a message's are in the thread, or it read dark on dark.
+  const inTheDark = useQuoteInTheDark();
   const setOpen = (next: boolean) => {
     setOpenState(next);
     try {
@@ -646,7 +650,9 @@ function ForwardSourceQuote({
   const allowImages =
     loadImagesByDefault ||
     (readImageChoices()[forwardSource.fromEmail.trim().toLowerCase()] ?? false);
-  const link = "whitespace-nowrap text-teal-700 underline-offset-2 hover:underline";
+  // As the links under the box (Add signature, Edit subject): the one
+  // colour in the box is Send.
+  const link = "whitespace-nowrap text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline";
   return (
     <div data-forward-source="" className="mx-3 mb-3 border-l-2 border-stone-200 pl-3 text-[13px] text-stone-600">
       <span className="flex items-center gap-1.5 font-semibold">
@@ -662,6 +668,7 @@ function ForwardSourceQuote({
                 inlineImages={forwardSource.inlineImages}
                 allowImages={allowImages}
                 zoom={zoom}
+                {...inTheDark}
               />
             ) : (
               <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-stone-700">
@@ -702,10 +709,19 @@ function readHistoryOpen(): boolean {
  * earlier messages with nothing on screen to say so. Folded by default, as
  * the history is long; the choice is kept, as the forward's is.
  */
+/** What EmailHtmlView needs to draw a quote on the dark box. */
+function useQuoteInTheDark(): { bodyColor?: string; darkRecolor?: boolean } {
+  const dark = useMailColorMode() === "dark";
+  return dark ? { bodyColor: "#e2e9f0", darkRecolor: true } : {};
+}
+
 function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
   const { t, zoom } = m;
   const [open, setOpenState] = React.useState(readHistoryOpen);
   const [loadImagesByDefault] = useLoadImagesByDefault();
+  // The quote is drawn for white paper; on the dark box its colours are
+  // re-lit, as a message's are in the thread, or it read dark on dark.
+  const inTheDark = useQuoteInTheDark();
   const setOpen = (next: boolean) => {
     setOpenState(next);
     try {
@@ -714,12 +730,14 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
       /* not kept: the choice holds for this reply */
     }
   };
-  const link = "whitespace-nowrap text-teal-700 underline-offset-2 hover:underline";
+  // As the links under the box (Add signature, Edit subject): the one
+  // colour in the box is Send.
+  const link = "whitespace-nowrap text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline";
   return (
     <div data-reply-history="" className="mx-3 mb-3 border-l-2 border-stone-200 pl-3 text-[13px] text-stone-600">
       {open ? (
         <>
-          <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} />
+          <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} {...inTheDark} />
           <button type="button" className={cn(link, "mt-1")} onClick={() => setOpen(false)}>
             {t("hideQuotedText")}
           </button>

@@ -766,7 +766,7 @@ export const en = {
   pickDateAndTimeTitle: "Pick date & time",
   downloadOptions: "Download options",
   saveAs: "Save as…",
-  optionClick: "⌥ click",
+  optionClick: "{key} click",
   saveTo: "Save to",
   downloadsFolder: "Downloads",
   desktopFolder: "Desktop",
@@ -1000,6 +1000,9 @@ export const en = {
   goingToFirst: "Going to the first message…",
   loadEarlier: "Load earlier messages",
   loadNewer: "Load newer messages",
+  answerLinkAnswers: "Your reply to {name}'s email of {date}",
+  answerLinkAnsweredBy: "You replied from {address} on {date}",
+  answerLinkOpen: "Open",
   sendNow: "Send now",
   outbox: "Outbox",
   keptInOutbox: "It is in the Outbox at the top of the list, where you can try again or delete it.",
@@ -1193,7 +1196,7 @@ export const en = {
   outlookNewMessage: "A new Outlook message (paste it in)",
   outlookDraftIn: "A draft in {account}",
   openInOutlookPaste: "Open a new Outlook message and paste this into it",
-  outlookIsOpenPaste: "Outlook is open on a new message — press ⌘V to paste it in",
+  outlookIsOpenPaste: "Outlook is open on a new message — press {key} to paste it in",
   outlookFilesInDownloads:
     "Outlook cannot take files this way — {count} in your Downloads, ready to drag in",
   outlookFilesLeftBehind:

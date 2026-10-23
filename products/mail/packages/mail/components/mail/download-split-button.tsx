@@ -29,6 +29,7 @@ import {
   recentDownloadFolders,
   setAlwaysAskWhereToSave,
 } from "@/lib/mail/download-folder";
+import { isWindowsHost } from "@/lib/mail/host-os";
 import { useMailT } from "@/lib/mail/i18n";
 import { toast } from "@/lib/mail/toast";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
@@ -138,7 +139,7 @@ export function DownloadSplitButton({
             }}
           >
             <span className="flex-1">{t("saveAs")}</span>
-            <span className="text-xs text-stone-400">{t("optionClick")}</span>
+            <span className="text-xs text-stone-400">{t("optionClick", { key: isWindowsHost() ? "Alt" : "⌥" })}</span>
           </button>
           <div className="mx-1.5 my-1 border-t border-stone-100" />
           <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-stone-400">

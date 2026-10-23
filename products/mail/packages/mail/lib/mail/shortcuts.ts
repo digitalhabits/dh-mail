@@ -17,11 +17,14 @@
  * Cmd+R is browser reload, which is why these only fire with a thread open
  * and the focus outside a field.
  *
+ * On Windows Ctrl does Cmd's job, and the Windows key is never ours.
+ *
  * Send, focus-message, and float-message are the exceptions, and have to be:
  * they are pressed from inside the message being written. The composers
  * listen for those themselves rather than through the thread handler, which
  * stands down wherever a reply is written.
  */
+import { isWindowsHost, typesWithAltGraph } from "@/lib/mail/host-os";
 import { MAIL_SHORTCUTS_KEY as STORAGE_KEY } from "@/lib/mail/storage-keys";
 import type { MailStringKey } from "@/lib/mail/i18n-strings";
 
@@ -236,17 +239,24 @@ export function shortcutMatchesEvent(
   event: KeyboardEvent,
   shortcut: MailShortcut
 ): boolean {
+  if (typesWithAltGraph(event)) return false;
   const wanted = normalizeKey(shortcut.key);
   const typed = normalizeKey(event.key);
   if (typed !== wanted) {
     // Option is held, and the character is not the letter. Trust the key.
     if (!event.altKey || eventLetter(event) !== wanted) return false;
   }
+  shortcut = onHost(shortcut);
   if (event.metaKey !== Boolean(shortcut.meta)) return false;
   if (event.shiftKey !== Boolean(shortcut.shift)) return false;
   if (event.altKey !== Boolean(shortcut.alt)) return false;
   if (event.ctrlKey !== Boolean(shortcut.ctrl)) return false;
   return true;
+}
+
+/** On Windows a Cmd binding is a Ctrl one. */
+function onHost(s: MailShortcut): MailShortcut {
+  return isWindowsHost() ? { ...s, ctrl: s.ctrl || s.meta, meta: false } : s;
 }
 
 /** The action a key press asks for, if any. */
@@ -299,8 +309,16 @@ const KEY_SYMBOLS: Record<string, string> = {
   tab: "⇥",
 };
 
-/** "⌘⇧R" — the way a Mac writes it, for the dialog and the tooltips. */
+const WINDOWS_KEY_NAMES: Record<string, string> = { backspace: "Backspace", enter: "Enter", escape: "Esc", tab: "Tab" };
+
+/** "⇧⌘R" the way a Mac writes it, or "Ctrl+Shift+R" on Windows. */
 export function formatShortcut(shortcut: MailShortcut): string {
+  if (isWindowsHost()) {
+    const { ctrl, alt, shift, key } = onHost(shortcut);
+    const k = normalizeKey(key);
+    const name = WINDOWS_KEY_NAMES[k] ?? KEY_SYMBOLS[k] ?? k.toUpperCase();
+    return [ctrl && "Ctrl", alt && "Alt", shift && "Shift", name].filter(Boolean).join("+");
+  }
   const parts: string[] = [];
   if (shortcut.ctrl) parts.push("⌃");
   if (shortcut.alt) parts.push("⌥");
@@ -313,6 +331,8 @@ export function formatShortcut(shortcut: MailShortcut): string {
 
 /** True when two bindings would answer the same key press. */
 export function sameShortcut(a: MailShortcut, b: MailShortcut): boolean {
+  a = onHost(a);
+  b = onHost(b);
   return (
     normalizeKey(a.key) === normalizeKey(b.key) &&
     Boolean(a.meta) === Boolean(b.meta) &&
@@ -354,6 +374,7 @@ export function conflictingActions(
 /** Why the operating system answers this one first, as an i18n key. */
 export function reservedReason(shortcut: MailShortcut): MailStringKey | null {
   const key = normalizeKey(shortcut.key);
+  if (isWindowsHost()) return null;
   if (shortcut.meta && !shortcut.shift && !shortcut.alt && !shortcut.ctrl) {
     if (key === "m") return "reservedMinimize";
     if (key === "q") return "reservedQuit";
@@ -374,6 +395,7 @@ export function editorReservedReason(shortcut: MailShortcut): MailStringKey | nu
     return "reservedEditorKey";
   }
   if (shortcut.shift && key === "z") return "reservedEditorKey";
+  if (!shortcut.shift && key === "y" && isWindowsHost()) return "reservedEditorKey"; // Windows redo
   return null;
 }
 
@@ -459,13 +481,13 @@ export function subscribeMailShortcuts(onChange: () => void): () => void {
  *
  * These are Quill's own bindings rather than the app's, so they are not in
  * the table above — but a button that has a key should say so, the way
- * every action in the reader's header does.
+ * every action in the reader's header does. Getters: the host is not known at load.
  */
 export const FORMAT_SHORTCUTS = {
-  bold: formatShortcut({ key: "b", meta: true }),
-  italic: formatShortcut({ key: "i", meta: true }),
-  underline: formatShortcut({ key: "u", meta: true }),
-} as const;
+  get bold() { return formatShortcut({ key: "b", meta: true }); },
+  get italic() { return formatShortcut({ key: "i", meta: true }); },
+  get underline() { return formatShortcut({ key: "u", meta: true }); },
+};
 
 /**
  * The editor's fixed keys, for the Writing group in the settings list.

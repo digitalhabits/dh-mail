@@ -178,19 +178,25 @@ export function SettingsToggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cn(
-        "relative block h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50",
-        checked ? "bg-teal-600" : "bg-stone-300"
-      )}
+      className="block shrink-0 rounded-full disabled:opacity-50"
     >
+      <SwitchTrack on={checked} className={checked ? "bg-teal-600" : "bg-stone-300"} />
+    </button>
+  );
+}
+
+/** Every Mail switch. The knob moves by transform: top/left round to whole pixels at 125% and sit it low. */
+export function SwitchTrack({ on, small, className }: { on: boolean; small?: boolean; className?: string }) {
+  return (
+    <span aria-hidden className={cn("relative block shrink-0 rounded-full transition-colors", small ? "h-4 w-7" : "h-5 w-9", className)}>
       <span
-        aria-hidden
         className={cn(
-          "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left]",
-          checked ? "left-4" : "left-0.5"
+          "absolute left-0 top-0 translate-y-0.5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none",
+          small ? "h-3 w-3" : "h-4 w-4",
+          on ? (small ? "translate-x-3.5" : "translate-x-[18px]") : "translate-x-0.5"
         )}
       />
-    </button>
+    </span>
   );
 }
 

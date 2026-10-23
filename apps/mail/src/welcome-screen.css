@@ -435,17 +435,20 @@
 
 .mail-shell.mail-welcome #eula-onboarding .welcome-switch-knob {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 0;
+  left: 0;
   width: 12px;
   height: 12px;
   border-radius: 999px;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  /* Placed by transform, as .mail-switch does: top and left round to whole
+     pixels at 125%, which drops the knob low. */
+  transform: translate(2px, 2px);
 }
 
 .mail-shell.mail-welcome #eula-onboarding .welcome-switch.is-on .welcome-switch-knob {
-  left: 14px;
+  transform: translate(14px, 2px);
 }
 
 .mail-shell.mail-welcome #eula-onboarding .welcome-stack-row {

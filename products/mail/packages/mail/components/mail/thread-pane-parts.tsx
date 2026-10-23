@@ -27,6 +27,7 @@ import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
 import { ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
+import { AnswerLinkLines, useAnswerLinks } from "@/components/mail/thread-answer-links";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
   SettingsDialog,
@@ -388,6 +389,7 @@ export function ThreadMessages({
   const outlineShown = useThreadOutlineShown(
     outlineWanted(m.threadOverflows, outlineMessages.length)
   );
+  const answerLinks = useAnswerLinks(thread.account, thread.threadId, m.newestKnown?.id ?? thread.messages.at(-1)?.id);
   return (
     <>
       {!floating ? (
@@ -511,6 +513,9 @@ export function ThreadMessages({
                 }}
               />
             ) : null}
+            {!thread.hasOlder ? (
+              <AnswerLinkLines account={thread.account} links={answerLinks.filter((l) => l.direction === "answers")} t={t} />
+            ) : null}
             {thread.messages.map((m) => {
               const outboxStatus = outbox[m.id]?.status;
               return (
@@ -556,6 +561,9 @@ export function ThreadMessages({
                 </React.Fragment>
               );
             })}
+            {!thread.hasNewer ? (
+              <AnswerLinkLines account={thread.account} links={answerLinks.filter((l) => l.direction === "answeredBy")} t={t} />
+            ) : null}
             {/* Held, not sent. Dashed and dimmed says the same thing the
                 undo count says: this has not gone anywhere yet. */}
             {scheduled.map((held) => (

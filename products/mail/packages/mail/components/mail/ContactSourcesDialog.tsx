@@ -4,7 +4,7 @@ import * as React from "react";
 import { ArrowUpRight, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "@/lib/mail/toast";
 
-import { SettingsDialog, SettingsPane } from "@/components/mail/settings-ui";
+import { SettingsDialog, SettingsPane, SwitchTrack } from "@/components/mail/settings-ui";
 import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { Button } from "@/components/ui/button";
 import { useMailT, type MailT } from "@/lib/mail/i18n";
@@ -148,18 +148,9 @@ function SourceToggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!enabled)}
-      className={cn(
-        "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-        enabled ? "bg-teal-700" : "bg-stone-300",
-        disabled && "opacity-60"
-      )}
+      className={cn("shrink-0 rounded-full", disabled && "opacity-60")}
     >
-      <span
-        className={cn(
-          "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left]",
-          enabled ? "left-4" : "left-0.5"
-        )}
-      />
+      <SwitchTrack on={enabled} className={enabled ? "bg-teal-700" : "bg-stone-300"} />
     </button>
   );
 }

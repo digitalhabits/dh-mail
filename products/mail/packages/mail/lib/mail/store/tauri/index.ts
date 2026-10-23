@@ -21,6 +21,7 @@
 
 import type {
   MailAccountRecord,
+  MailAnswerLink,
   MailChatBinding,
   MailChatOpenPart,
   MailChatPartRow,
@@ -132,6 +133,7 @@ export const MAIL_STORE_OPERATIONS = [
   "messages.counts",
   "messages.thread",
   "messages.copies",
+  "messages.answerLinks",
   "messages.search",
   "messages.upsertMany",
   "messages.putBody",
@@ -296,6 +298,10 @@ export function createTauriMailStore(): MailStore {
           { account, threadId }
         );
         return out.messages;
+      },
+      answerLinks: async (account, threadId, own) => {
+        const out = await call<{ links: MailAnswerLink[] }>("messages.answerLinks", { account, threadId, own });
+        return out.links;
       },
       copies: async (account, rfcIds) => {
         const out = await call<{ copies: { account: string; threadId: string }[] }>("messages.copies", {
