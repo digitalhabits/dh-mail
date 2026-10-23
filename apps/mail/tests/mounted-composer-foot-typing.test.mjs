@@ -1,8 +1,8 @@
 /**
  * A letter typed into To, Cc or the subject of a reply is kept.
  *
- * The reply band listens for `input` on its column, to keep Send and the
- * caret apart (useStickyComposerFoot). That listener runs before React reads
+ * The reply card listens for `input` on its letter, for the shadow above
+ * Send (useComposerMoreBelow). That listener runs before React reads
  * the same event. In the Mac app, a state change there drew the composer
  * again first. The box got its old text back, React saw no change, and the
  * letter was lost: the second letter of a name (the suggestions opened and
@@ -10,8 +10,8 @@
  * a pick (the suggestions closed and the shadow went off).
  *
  * happy-dom has no layout, so the heights are set by hand here. The check is
- * the rule that stops the loss: an `input` event sets the padding at once
- * and changes no state before the next frame.
+ * the rule that stops the loss: an `input` event changes no state before
+ * the next frame.
  *
  * The DOM globals must be in place before a component module runs. Thus the
  * walk is imported dynamically from the impl file.

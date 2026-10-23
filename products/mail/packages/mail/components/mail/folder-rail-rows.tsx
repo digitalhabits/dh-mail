@@ -989,7 +989,7 @@ function MoveRow({
         highlighted
           ? "bg-[var(--mail-chrome-pinned)] text-[var(--mail-chrome-pinned-fg)]"
           : onPick
-            ? "text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+            ? "text-stone-800 hover:bg-[var(--mail-sidebar-hover)]"
             : "cursor-default text-stone-400"
       )}
     >

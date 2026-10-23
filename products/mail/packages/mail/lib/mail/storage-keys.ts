@@ -195,6 +195,8 @@ export const MAILBOX_HIDE_KEY = "redd-plan-mail-hide";
 export const SNOOZE_SETTINGS_KEY = "redd-plan-mail-snooze-options";
 /** The pause options that the reader changed. Local. */
 export const PAUSE_OPTIONS_KEY = "redd-plan-mail-pause-options";
+/** When each mailbox's inbox was last read, not paused: epoch ms by address. Local. */
+export const MAIL_LAST_LIVE_READ_KEY = "dh-mail-last-live-read";
 /** The missed scheduled messages that the app asked about. Session. */
 export const MISSED_SCHEDULED_ASKED_KEY = "mail-missed-scheduled-asked";
 

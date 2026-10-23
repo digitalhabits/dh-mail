@@ -50,7 +50,7 @@ import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
 import { ComposerPreview, ComposerFooter, ComposerAddressRow, ComposerCardButtons } from "@/components/mail/thread-composer-parts";
 import { ComposerMinimiseProvider } from "@/components/mail/composer-minimise";
 import { ComposerFieldRows } from "@/components/mail/thread-composer-rows";
-import { useStickyComposerFoot } from "@/components/mail/use-sticky-composer-foot";
+import { useComposerMoreBelow } from "@/components/mail/use-composer-more-below";
 
 
 /**
@@ -139,8 +139,8 @@ export function ThreadComposerBand({
     zoom,
   } = m;
   const textDefaults = useTextStyleDefault(fromAccount);
-  const footRef = React.useRef<HTMLDivElement | null>(null);
-  const sendBarRef = React.useRef<HTMLDivElement | null>(null);
+  // The letter: the one part of the card that scrolls.
+  const letterRef = React.useRef<HTMLDivElement | null>(null);
   /* In the Reader the column is the measure: the box takes all of it, and
      there are no edges to drag. */
   const wholeWidth =
@@ -149,10 +149,8 @@ export function ThreadComposerBand({
   useComposerRoom(replyBandRef, Boolean(mode) && look.floats);
   const drag = useComposerDrag(look.floats, zoom);
   const minimiseValue = useBandMinimise(look.floats, bandFills, mode, card.minimised);
-  const moreBelow = useStickyComposerFoot(
-    composerColumnRef,
-    footRef,
-    sendBarRef,
+  const moreBelow = useComposerMoreBelow(
+    letterRef,
     `${mode}|${showPreview}|${bandFills}|${editorKey}`
   );
   return (
@@ -353,7 +351,9 @@ export function ThreadComposerBand({
               and recipients. Without a floor, the box that you type in is
               squeezed to nothing: a toolbar and no place to write. So the
               box keeps a floor, and this column scrolls rather than let the
-              band cut Send off below it. */}
+              band cut Send off below it. That is the last resort, in a very
+              short window: otherwise the card fits the band and only the
+              letter inside it scrolls. */}
           <div
             ref={composerColumnRef}
             className={cn(
@@ -379,9 +379,13 @@ export function ThreadComposerBand({
               // type in is a light island — see below, and the compose
               // window, which is split the same way.
               "mail-composer-card relative flex flex-1 flex-col rounded-surface border border-[var(--mail-compose-edge)] bg-white focus-within:border-[var(--mail-compose-edge-focus)]",
-              // Never shorter than its own floor and the row with Send on
-              // it. In focus mode the card is the pane and may shrink.
-              bandFills ? "mail-composer-card-focus min-h-0" : "min-h-min"
+              // A fixed frame: it shrinks to the band's ceiling and the letter
+              // inside it scrolls, so its border and Send at its foot never
+              // move. When it was as tall as its words and scrolled inside
+              // the band, Send was a sticky row drawing the card's foot, and
+              // at a fractional zoom WebKit drew those borders on half pixels.
+              "min-h-0",
+              bandFills && "mail-composer-card-focus"
             )}
             {...attachDropHandlers}
             {...attachPasteHandlers}
@@ -398,6 +402,7 @@ export function ThreadComposerBand({
                   If it sits under a box that scrolls by itself, a long
                   reply stops mid-sentence and the signature begins. */}
               <div
+                ref={letterRef}
                 /* Writing puts the opened recipients away again, down to
                    the one line, when there is somebody to send to. Not on
                    a forward, whose rows are its head. */
@@ -461,15 +466,11 @@ export function ThreadComposerBand({
                 <ReplyHistoryQuote m={m} html={m.historyAppendix.html} />
               ) : null}
               </div>
-            <ComposerSendBar key={editorKey} m={m} barRef={sendBarRef} overText={moreBelow} />
+            <ComposerSendBar key={editorKey} m={m} overText={moreBelow} />
           </div>
-          {/* Held at the bottom edge with Send above it, on the band's own
-              colour so the reply scrolls out of sight under it. flow-root
-              keeps the gap above the links inside it. */}
-          <div
-            ref={footRef}
-            className="sticky bottom-0 z-10 flow-root shrink-0 bg-[var(--mail-thread-chrome)]"
-          >
+          {/* Under the card. flow-root keeps the gap above the links
+              inside it. */}
+          <div className="flow-root shrink-0">
             <ComposerFooter m={m} chatStyle={chatStyle} />
           </div>
           </div>
@@ -757,12 +758,10 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
  */
 function ComposerSendBar({
   m,
-  barRef,
   overText,
 }: {
   m: ThreadPaneModel;
-  barRef: React.RefObject<HTMLDivElement | null>;
-  /** The reply runs on under the row: a soft shadow says there is more. */
+  /** The letter runs on below the frame: a soft shadow says there is more. */
   overText: boolean;
 }) {
   const {
@@ -794,17 +793,12 @@ function ComposerSendBar({
     toList,
   } = m;
   return (
-    /* Sticks to the bottom of the band, standing on the links under the
-       card — see useStickyComposerFoot. */
+    /* The card's foot: an ordinary row under the letter, which scrolls
+       above it (useComposerMoreBelow). */
     <div
-      ref={barRef}
       className={cn(
-        "sticky bottom-[var(--composer-foot-h,0px)] z-10 flex shrink-0 flex-col gap-1.5 rounded-b-xl bg-white px-3 pb-2.5 pt-1",
-        /* Stuck over the reply, the card's own foot is out of sight
-           under the links, so the row draws it: the card's border, in
-           the card's colour (which turns darker while you type). */
-        overText &&
-          "-mx-px border-x border-b border-inherit shadow-[0_-10px_12px_-10px_rgba(28,25,23,0.18)]"
+        "flex shrink-0 flex-col gap-1.5 rounded-b-surface bg-white px-3 pb-2.5 pt-1",
+        overText && "shadow-[0_-10px_12px_-10px_rgba(28,25,23,0.18)]"
       )}
     >
       {/* The files, docked here above Send rather than at the end

@@ -36,6 +36,7 @@ export function useActionsCore({
   listCacheKey,
   listViewIdRef,
   loadAbortRef,
+  personRowOrderRef,
   screenThreadOrderRef,
   selected,
   selectedPersonKey,
@@ -52,7 +53,7 @@ export function useActionsCore({
   Pick<ReturnType<typeof useListQuery>, "activeFolder"> &
   Pick<ReturnType<typeof useListView>, "folder"> &
   Pick<ReturnType<typeof useListData>, "hiddenRowsRef" | "listCacheKey" | "listViewIdRef" | "loadAbortRef" | "setSnoozedCount" | "setThreads" | "threads" | "threadsRef"> &
-  Pick<ReturnType<typeof useVisibleRows>, "screenThreadOrderRef"> &
+  Pick<ReturnType<typeof useVisibleRows>, "personRowOrderRef" | "screenThreadOrderRef"> &
   Pick<MailPageProps, "viewerId">) {
   // The open folder's chip takes the counted number and leaves it alone.
   //
@@ -79,6 +80,7 @@ export function useActionsCore({
     setSelected,
     threadsRef,
     screenThreadOrderRef,
+    personRowOrderRef,
     hiddenRowsRef,
     listViewIdRef,
     loadAbortRef,

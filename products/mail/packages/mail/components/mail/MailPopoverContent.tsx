@@ -61,7 +61,14 @@ export const MailPopoverContent = React.forwardRef<
       ref={setRefs}
       data-theme={colorMode}
       // Mail's menus and popovers are surfaces: 16px corners (tailwind.config).
-      className={cn("mail-shell mail-popover rounded-surface", className)}
+      //
+      // Over every layer a menu can be opened from: the composer given the
+      // whole window (z-[60], lib/mail/card-window), a right-click menu
+      // (z-[70]) and the attachment preview (z-[80]). At the popover's own
+      // z-50 a menu opened under them, and its button seemed to do nothing:
+      // Send's chevron in a full-window reply, Download's in a preview.
+      // Under the dialogs that ask before something is lost (z-[200]).
+      className={cn("mail-shell mail-popover z-[100] rounded-surface", className)}
       {...props}
     >
       {children}

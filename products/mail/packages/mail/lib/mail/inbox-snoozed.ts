@@ -72,6 +72,12 @@ export async function listSnoozedThreads(options: {
   clerkUserId: string;
   /** Words typed in the search box; only rows with all of them come back. */
   q?: string;
+  /**
+   * ISO. The snoozes that have woken since this moment come back too, with
+   * their wake time in the past: a paused inbox puts them back
+   * (snooze-wake-paused).
+   */
+  since?: string;
 }): Promise<{ accounts: string[]; threads: MailThreadSummary[] }> {
   const scope = options.scope ?? "all";
   const allAccounts = filterAccountsForScope(
@@ -87,7 +93,7 @@ export async function listSnoozedThreads(options: {
     allAccounts.map((a) => [a.email, a.provider] as const)
   );
 
-  const snoozed = await mailStore().snoozes.listActive(100);
+  const snoozed = await mailStore().snoozes.listActive(100, options.since);
   const rows = snoozed.filter((r) => accountEmails.has(r.accountEmail));
   if (!rows.length) {
     return { accounts: allAccounts.map((a) => a.email), threads: [] };

@@ -38,3 +38,21 @@ export function successorInEitherOrder<T>(
     ? successorAfterRemoving(painted, isRemoved)
     : successorAfterRemoving(fallback, isRemoved);
 }
+
+/**
+ * What to open when a thread opened from a stack goes away: the next thread
+ * in that stack, or the one above it when it was the last.
+ *
+ * The reader is working through one person's threads, so the next one is
+ * theirs too. The next row of the list would be someone else, and the
+ * stack's own page would stop them where they were. Undefined when the stack
+ * is not in `stacks`, or the thread was its only one.
+ */
+export function successorInStack<T>(
+  stacks: readonly { key: string; threads: readonly T[] }[],
+  stackKey: string,
+  isRemoved: (item: T) => boolean
+): T | undefined {
+  const stack = stacks.find((row) => row.key === stackKey);
+  return stack ? successorAfterRemoving(stack.threads, isRemoved) : undefined;
+}

@@ -1,6 +1,7 @@
 import {
   successorAfterRemoving,
   successorInEitherOrder,
+  successorInStack,
 } from "@/lib/mail/successor";
 import { check, suite } from "./harness.mjs";
 
@@ -66,4 +67,20 @@ suite(async () => {
     "the only row in both leaves nothing to open",
     successorInEitherOrder([{ k: 1 }], [{ k: 1 }], is(1)) === undefined
   );
+
+  // --- A thread opened from a stack ---------------------------------------
+  //
+  // The next thread is the next one in the same stack, not the next row of
+  // the list, which is someone else.
+
+  const stacks = [
+    { key: "ann", threads: ["a1", "a2"] },
+    { key: "web", threads: ["w1", "w2", "w3"] },
+    { key: "bo", threads: ["b1"] },
+  ];
+  const gone = (id) => (t) => t === id;
+  check("the next thread in the stack opens", successorInStack(stacks, "web", gone("w2")) === "w3");
+  check("the stack's last thread falls back to the one above", successorInStack(stacks, "web", gone("w3")) === "w2");
+  check("a stack's only thread leaves nothing", successorInStack(stacks, "bo", gone("b1")) === undefined);
+  check("a stack that is not there leaves nothing", successorInStack(stacks, "cy", gone("c1")) === undefined);
 });

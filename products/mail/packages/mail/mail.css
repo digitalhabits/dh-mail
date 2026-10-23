@@ -623,7 +623,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-folder-active: var(--mail-segment-active);
   --mail-folder-active-fg: var(--mail-segment-active-fg);
   --mail-folder-active-icon: var(--mail-segment-active-fg);
-  --mail-folder-hover: var(--mail-chrome-hover);
+  --mail-folder-hover: var(--mail-sidebar-hover);
   --mail-segment-fg: #47616a;
 
   /* Boxes that hold something rather than do something. */
@@ -656,7 +656,18 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-own-ink: #2f6680;
   /* The faint line between two conversations, edge to edge, as Gmail
      draws it: rows read as separate without the list looking ruled. */
-  --mail-row-line: rgba(27, 61, 74, 0.07);
+  --mail-row-line: rgba(27, 61, 74, 0.14);
+  /*
+   * Three panes, not one sand (2026-10-23). The folder rail is a step darker
+   * than the list and the reader, so the three read apart; the lines between
+   * them and between rows are ink, strong enough to see. The small grey
+   * words in the list and the rail (the TODAY labels, the time of a read
+   * mail) are the muted grey, 5.8:1 on the cream, not the faint one.
+   */
+  --mail-sidebar: #ebe4d8;
+  --mail-sidebar-hover: rgba(27, 61, 74, 0.06);
+  --mail-pane-divider: rgba(27, 61, 74, 0.16);
+  --mail-list-muted: #47616a;
 
   /* A person or a list, as a chip in an address field. */
   --mail-chip: #e9e4da;
@@ -805,6 +816,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-row-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --mail-row-hover: var(--mail-chrome-hover);
   --mail-row-line: rgba(255, 255, 255, 0.06);
+  /* The light theme's three panes, as the dark theme already draws them. */
+  --mail-sidebar: var(--mail-chrome);
+  --mail-sidebar-hover: var(--mail-chrome-hover);
+  --mail-pane-divider: var(--mail-chrome-border);
+  --mail-list-muted: var(--mail-chrome-faint);
   --mail-tick-other: rgba(255, 255, 255, 0.24);
   --mail-tick-own: #5f8fb8;
   /* On screen: a step up from the rest, not the text's white, which was

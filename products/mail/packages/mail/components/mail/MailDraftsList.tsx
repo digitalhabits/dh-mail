@@ -207,7 +207,7 @@ export function MailDraftsList({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--mail-chrome-fg)]">
                   {title}
                 </span>
-                <span className="shrink-0 text-xs text-[var(--mail-chrome-faint)]">
+                <span className="shrink-0 text-xs text-[var(--mail-list-muted)]">
                   {row.updatedAt ? rowTime(row.updatedAt) : ""}
                 </span>
               </span>
@@ -217,7 +217,7 @@ export function MailDraftsList({
                 </span>
               ) : null}
               {row.snippet ? (
-                <span className="truncate text-xs text-[var(--mail-chrome-faint)]">
+                <span className="truncate text-xs text-[var(--mail-list-muted)]">
                   {row.snippet}
                 </span>
               ) : null}

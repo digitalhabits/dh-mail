@@ -1003,7 +1003,7 @@ export function ThreadListRow({
                 className={cn(
                   atRestClass,
                   "text-xs",
-                  onNavy ? "text-white/40" : "text-stone-400"
+                  onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
                 )}
               >
                 <HiddenAccountMark account={t.account} />
@@ -1141,7 +1141,7 @@ function StackedRowBody({
               className={cn(
                 atRestClass,
                 "text-xs",
-                onNavy ? "text-white/40" : "text-stone-400"
+                onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
               )}
             >
               <HiddenAccountMark account={t.account} />
@@ -1280,7 +1280,7 @@ function WideRowBody({
             // for the hidden-account eye before one.
             "min-w-[4.5rem] whitespace-nowrap text-right text-xs tabular-nums",
             withYear && "min-w-[6rem]",
-            onNavy ? "text-white/40" : "text-stone-400"
+            onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
           )}
         >
           <HiddenAccountMark account={t.account} />

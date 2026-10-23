@@ -9,6 +9,7 @@
  * thread honest; what comes back is the list and the levers.
  */
 
+import { noteListRead, noteLiveRead, showsInbox, usePausedSnoozeWakes } from "@/components/mail/use-paused-snooze-wakes";
 import {
   SEARCH_HIDDEN_MAILBOXES_KEY as SEARCH_HIDDEN_KEY,
   MAIL_POPOUT_SENT_KEY,
@@ -128,6 +129,15 @@ export function useThreadListData(input: ThreadListDataInput) {
   const { loadThreads } = useListLoad({ activeFolder, appendListParams, debouncedSearch, folder, hiddenRowsRef, inFlightRef, listEmails, listQueryRef, listViewIdRef, loadAbortRef, loadGenRef, loadThreadsRef, pastPause, pauseStateRef, reconcileSelection, reloadAfterRef, searchScopeKey, setListCursor, setListError, setLoadingList, setRefreshing, setResultsQuery, setSnoozedCount, setThreads, setUnreadable, threadsKeyRef, threadsRef, viewerId });
   const { loadMoreThreads, refreshSentForAccount, scheduleSentRefreshForAccount, shownListCursor } = useListMore({ accountEmails, activeFolder, appendListParams, folder, listCacheKey, listCursor, listQueryRef, loadingList, loadingMore, mailboxScopeEmails, refreshing, setListCursor, setLoadingMore, setSnoozedCount, setThreads, viewerId });
   useListPolls({ debouncedSearch, loadThreads, loadingListRef, mailSurfaceRef, pausedRef, refreshingRef, scheduleSentRefreshForAccount });
+  // A snooze is stronger than a pause: its threads come back on time.
+  usePausedSnoozeWakes({
+    inboxShown: showsInbox(debouncedSearch, activeFolder, folder),
+    listEmails,
+    pauseState,
+    setThreads,
+    viewerId,
+    listCacheKey,
+  });
 
   return {
     listCacheKey,
@@ -613,6 +623,9 @@ export function useListLoad({
         if (!quiet) setListError(null);
         return true;
       }
+      // The inbox itself, read from the provider: what a paused inbox holds
+      // from (snooze-wake-paused).
+      const inboxRead = showsInbox(debouncedSearch, activeFolder, folder);
       const liveEmails = listEmails.filter(
         (email) =>
           pastPause ||
@@ -770,6 +783,7 @@ export function useListLoad({
             successes += 1;
             Object.assign(cursorTokens, decodeCursorTokens(json.nextCursor));
             buckets.set(email, rows);
+            if (inboxRead) noteLiveRead([email]);
             // Rows from one mailbox are already the server's answer, so
             // local narrowing must stop even though others are still out.
             setThreads(mergedNow());
@@ -944,6 +958,7 @@ export function useListLoad({
         setListCursor(nextCursor);
         writeCachedList(viewerId, key, { threads, nextCursor });
         if (snoozedView) setSnoozedCount(threads.length);
+        noteListRead({ inbox: inboxRead, snoozedView, account: params.get("account"), emails: liveEmails });
         // Keep the open thread's People flag in sync after a change or a refresh.
         reconcileSelection(threads);
         return true;

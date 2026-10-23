@@ -89,7 +89,7 @@ export function MailFolderRail(props: FolderRailProps) {
        * boxes, one fixed and one scrolling, cannot overlap at all.
        */
       className={cn(
-        "group/rail flex h-full w-full shrink-0 flex-col overflow-hidden border-[var(--mail-chrome-border)] bg-[var(--mail-chrome)] px-2 pt-1",
+        "group/rail flex h-full w-full shrink-0 flex-col overflow-hidden border-[var(--mail-pane-divider)] bg-[var(--mail-sidebar)] px-2 pt-1",
         side === "right" ? "border-l" : "border-r"
       )}
     >
@@ -659,7 +659,7 @@ function RailMailboxSections({
                     // over it. The mailbox is something to point at, not
                     // something to copy.
                     "flex min-w-0 flex-1 select-none items-center gap-1 rounded-inner py-0.5 pl-1 pr-1 text-left",
-                    "hover:bg-[var(--mail-chrome-hover)]",
+                    "hover:bg-[var(--mail-sidebar-hover)]",
                     // The one being carried. Where it would land is a line
                     // between headings, drawn on the section — see below.
                     accountDrag === account && "opacity-40"

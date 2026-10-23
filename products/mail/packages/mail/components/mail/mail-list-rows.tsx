@@ -173,7 +173,7 @@ export function ThreadRows() {
               <div key={group.label || "results"}>
                 {group.label && !listNarrow ? (
                   <p className={cn(
-                    "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                    "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
                     listExpanded ? "pt-2" : "pt-4"
                   )}>
                     {t(group.label as MailStringKey)}
@@ -292,7 +292,7 @@ export function PeopleRows() {
             ) : group.label && !listNarrow ? (
               <p
                 className={cn(
-                  "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                  "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
                   listExpanded ? "pt-2" : "pt-4"
                 )}
               >
@@ -657,7 +657,7 @@ function PersonListRow({
                         nothing in the row moves when they show. The
                         count goes with the time. */}
                     <PersonCount threads={row.threads} open={stackOpen} />
-                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
+                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-list-muted)] group-hover:invisible">
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       {rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
@@ -695,7 +695,7 @@ function PersonListRow({
                         slot as a thread row keeps for them, so a name is as
                         long with Stacks on as off. */}
                     <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
-                      <span className="text-xs text-[var(--mail-chrome-faint)]">
+                      <span className="text-xs text-[var(--mail-list-muted)]">
                         <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                         {rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),
@@ -1031,7 +1031,7 @@ export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
           {heldMessages.length && !listNarrow ? (
             <div>
               <p className={cn(
-                "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+                "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
                 listExpanded ? "pt-2" : "pt-4"
               )}>
                 {t(onTop ? "scheduledGroup" : "outbox")} · {heldMessages.length}
@@ -1191,7 +1191,7 @@ function PinnedHeading({
     return (
       <div className="flex justify-center pb-0.5 pt-2" title={label}>
         <Pin
-          className="h-3 w-3 text-[var(--mail-chrome-faint)]"
+          className="h-3 w-3 text-[var(--mail-list-muted)]"
           aria-label={label}
         />
       </div>
@@ -1200,7 +1200,7 @@ function PinnedHeading({
   return (
     <p
       className={cn(
-        "flex items-center gap-1.5 px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-chrome-faint)]",
+        "flex items-center gap-1.5 px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
         listExpanded ? "pt-2" : "pt-3"
       )}
     >

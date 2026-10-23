@@ -467,6 +467,7 @@ async function snoozed({ q }: RouteContext): Promise<Response> {
     clerkUserId: OWNER_ID,
     account: q.get("account") ?? undefined,
     q: q.get("q") ?? undefined,
+    since: q.get("since") ?? undefined,
   });
   return ok({ success: true, ...result });
 }

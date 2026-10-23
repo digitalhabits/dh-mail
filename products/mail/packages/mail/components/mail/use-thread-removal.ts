@@ -25,7 +25,8 @@ import {
 } from "@/components/mail/mail-list-state";
 import { hideRow, unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { forgetThreadEverywhere } from "@/lib/mail/list-cache";
-import { successorInEitherOrder } from "@/lib/mail/successor";
+import { successorInEitherOrder, successorInStack } from "@/lib/mail/successor";
+import type { PersonRow } from "@/lib/mail/person-participants";
 import { threadKey } from "@/lib/mail/thread-copies";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
@@ -62,6 +63,7 @@ export function useThreadRemoval({
   setSelected,
   threadsRef,
   screenThreadOrderRef,
+  personRowOrderRef,
   hiddenRowsRef,
   listViewIdRef,
   loadAbortRef,
@@ -76,6 +78,8 @@ export function useThreadRemoval({
   threadsRef: React.RefObject<MailThreadSummary[]>;
   /** The threads as painted: pins band, then the list. */
   screenThreadOrderRef: React.RefObject<MailThreadSummary[]>;
+  /** The stacks as painted, each with its threads in the order shown. */
+  personRowOrderRef: React.RefObject<PersonRow[]>;
   hiddenRowsRef: React.RefObject<HiddenRows>;
   listViewIdRef: React.RefObject<string>;
   loadAbortRef: React.RefObject<AbortController | null>;
@@ -116,6 +120,11 @@ export function useThreadRemoval({
         threadsRef.current,
         isRemoved
       );
+      // A thread opened from a stack: the next one is in the same stack.
+      const inStack =
+        viewMode === "people" && selectedPersonKey
+          ? successorInStack(personRowOrderRef.current, selectedPersonKey, isRemoved)
+          : undefined;
       if (
         !successor &&
         !painted.some(isRemoved) &&
@@ -137,9 +146,19 @@ export function useThreadRemoval({
       forgetThreadEverywhere(viewerId, isRemoved);
       setSelected((current) => {
         if (!current || !gone.has(threadKey(current))) return current;
-        // With a person digest open, fall back to it — the successor thread
-        // in list order could belong to someone else entirely.
-        if (viewMode === "people" && selectedPersonKey) return null;
+        // With a person or a stack open, the next thread is one of theirs.
+        // When they have no other, fall back to their page — the successor
+        // thread in list order could belong to someone else entirely.
+        if (viewMode === "people" && selectedPersonKey) {
+          return inStack
+            ? {
+                account: inStack.account,
+                threadId: inStack.threadId,
+                inPeople: inStack.tab === "people",
+                focusMessageId: inStack.focusMessageId,
+              }
+            : null;
+        }
         return successor
           ? {
               account: successor.account,
@@ -160,6 +179,7 @@ export function useThreadRemoval({
       // A ref and a setter: stable, listed because a hook's input is not
       // known to be.
       screenThreadOrderRef,
+      personRowOrderRef,
       setSelected,
     ]
   );

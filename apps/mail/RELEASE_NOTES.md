@@ -15,6 +15,12 @@
 - In the dark theme, the messages you sent are blue and the messages you received are a quiet slate, as in the light theme.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
 
+**The reply box**
+- The reply box is now a frame that stays still. Only the words inside it scroll, and Send is at its foot. Before, its edge could turn pale or disappear while you scrolled a long reply, and text could show under the row with Send.
+
+**Snoozed mail and paused mail**
+- Mail that you snoozed comes back at its time, also while your mail is paused. A pause holds back new mail; a snooze is your own plan for mail that you have already seen. New mail still waits until the pause ends.
+
 **Replies from another mailbox**
 - When you answer from a mailbox that is not connected to Mail, and copy one that is, the two conversations now link to each other. Above your reply, a line says which email it answers, with Open. Under the email, a line says that you replied, from which address and when, with Open.
 
@@ -27,6 +33,9 @@
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
 **Fixes**
+- The folder list is a little darker than the list of conversations, and the small grey words in the list (TODAY, the time of a read email) are darker, so they are easier to read.
+- When you delete, archive or move a conversation that you opened from a stack, the next conversation in that stack opens.
+- Menus open in front of what they were opened from: the menu beside Send in a reply that fills the window, and the menu beside Download when you look at a file.
 - You can scroll an email as soon as you open it, also with the pointer on the email itself. Before, it could jump back to the top, or to the newest message, for a few seconds.
 - After you click a link or text in an email, Delete, Archive, Reply and the other shortcuts work. Before, they did nothing until you clicked the conversation in the list again.
 - When you turn Stacks off, each conversation slides down out of its stack, and all are in place within about a second. Before, they moved up and down the list.

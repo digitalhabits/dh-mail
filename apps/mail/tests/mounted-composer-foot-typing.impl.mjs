@@ -7,13 +7,13 @@ import assert from "node:assert/strict";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
-import { useStickyComposerFoot } from "@/components/mail/use-sticky-composer-foot";
+import { useComposerMoreBelow } from "@/components/mail/use-composer-more-below";
 
 const pass = (line) => console.log(`PASS  ${line}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** What the column, the foot and the Send row measure. Set by the walk. */
-const size = { scrollHeight: 100, clientHeight: 100, foot: 20, bar: 30 };
+/** What the letter measures. Set by the walk. */
+const size = { scrollHeight: 100, clientHeight: 100 };
 const measured = (el, name, read) =>
   Object.defineProperty(el, name, { configurable: true, get: read });
 
@@ -22,10 +22,8 @@ let shownMore = null;
 let shownText = null;
 function Band() {
   const columnRef = React.useRef(null);
-  const footRef = React.useRef(null);
-  const sendBarRef = React.useRef(null);
   const [text, setText] = React.useState("");
-  const more = useStickyComposerFoot(columnRef, footRef, sendBarRef, "k");
+  const more = useComposerMoreBelow(columnRef, "k");
   renders += 1;
   shownMore = more;
   shownText = text;
@@ -38,14 +36,6 @@ function Band() {
     measured(el, "clientHeight", () => size.clientHeight);
     measured(el, "scrollTop", () => 0);
   };
-  const foot = (el) => {
-    footRef.current = el;
-    if (el) measured(el, "offsetHeight", () => size.foot);
-  };
-  const bar = (el) => {
-    sendBarRef.current = el;
-    if (el) measured(el, "offsetHeight", () => size.bar);
-  };
   return React.createElement(
     "div",
     null,
@@ -55,10 +45,8 @@ function Band() {
       React.createElement("input", {
         value: text,
         onChange: (e) => setText(e.target.value),
-      }),
-      React.createElement("div", { ref: bar })
-    ),
-    React.createElement("div", { ref: foot })
+      })
+    )
   );
 }
 
@@ -104,7 +92,6 @@ async function main() {
     const column = document.querySelector("[data-column]");
     const input = document.querySelector("input");
     assert.equal(shownMore, false, "nothing below at first");
-    assert.equal(column.style.scrollPaddingBottom, "50px", "the padding is the foot and the Send row");
 
     await press(input, column, "p");
     await sleep(60);
@@ -114,9 +101,8 @@ async function main() {
     // than it shows now, and the foot grew. The next letter is the one that
     // was lost.
     size.scrollHeight = 400;
-    size.foot = 40;
     await press(input, column, "e");
-    assert.equal(column.style.scrollPaddingBottom, "70px", "the padding follows the typing at once");
+    assert.equal(shownMore, false, "no state changes while the key press is handled");
     assert.equal(input.value, "pe", "the box keeps the second letter");
     assert.equal(shownText, "pe", "and React has it");
     pass("a letter typed as the suggestions open is kept");

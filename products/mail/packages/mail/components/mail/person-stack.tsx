@@ -121,7 +121,7 @@ export function StackThreadRow({
       {thread.hasAttachments ? (
         <Paperclip className="mt-0.5 h-3.5 w-3.5 shrink-0 stroke-[1.5] text-[var(--mail-chrome-muted)]" aria-hidden />
       ) : null}
-      <span className="shrink-0 text-xs tabular-nums text-[var(--mail-chrome-faint)]">
+      <span className="shrink-0 text-xs tabular-nums text-[var(--mail-list-muted)]">
         {rowTime(thread.lastAt, { withYear })}
       </span>
     </button>
@@ -249,7 +249,7 @@ export function PersonWideBody({
         </span>
       </span>
       {/* Away on hover, keeping its room: the actions float over it. */}
-      <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-[var(--mail-chrome-faint)] group-hover:invisible">
+      <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-[var(--mail-list-muted)] group-hover:invisible">
         {time}
       </span>
     </span>

@@ -266,7 +266,7 @@ export function ListPaneFrame({
         className={cn(
           // Explicit border colour + side (listBorderClass) so the divider
           // between list and reader stays visible against cream chrome.
-          "flex overflow-hidden border-[var(--mail-chrome-border)]",
+          "flex overflow-hidden border-[var(--mail-pane-divider)]",
           // Pane behind the rows when they are the reading surface —
           // stacked above/below, or expanded — so chrome cannot bleed
           // into the table.
@@ -292,7 +292,7 @@ export function ListPaneFrame({
             // (avoids a ~3px inline-flex whitespace offset in block layout).
             "mail-chrome-strip flex flex-col px-5",
             listSplit
-              ? "shrink-0 overflow-y-auto border-r border-[var(--mail-chrome-border)] bg-[var(--mail-chrome)] pb-3 pt-2"
+              ? "shrink-0 overflow-y-auto border-r border-[var(--mail-pane-divider)] bg-[var(--mail-chrome)] pb-3 pt-2"
               // No line of its own at the foot: the filter row draws one
               // under the tabs, and with both the expanded list had two.
               // Nothing under that line either: where the rows have a fill

@@ -237,10 +237,10 @@ export function createTauriMailStore(): MailStore {
     snoozes: {
       // "Active" is a comparison against a clock. Postgres has its own. This
       // host has none, so the caller sends one and the store never invents it.
-      listActive: (limit) =>
+      listActive: (limit, asOf) =>
         call<MailSnoozeRecord[]>("snoozes.listActive", {
           limit: limit ?? null,
-          now: now(),
+          now: asOf ?? now(),
         }),
       countActive: (accounts) =>
         call<number>("snoozes.countActive", { accounts, now: now() }),

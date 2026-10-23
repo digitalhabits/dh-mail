@@ -241,8 +241,12 @@ export type MailSnoozeRecord = {
  * the comparison belongs with the clock that stores the rows.
  */
 export type MailSnoozeStore = {
-  /** Active snoozes, soonest wake first. Omit the limit for all of them. */
-  listActive(limit?: number): Promise<MailSnoozeRecord[]>;
+  /**
+   * Active snoozes, soonest wake first. Omit the limit for all of them.
+   * `asOf` (ISO) counts as active what had not woken at that moment, so the
+   * snoozes that have woken since are in the answer too. Default: now.
+   */
+  listActive(limit?: number, asOf?: string): Promise<MailSnoozeRecord[]>;
 
   /** How many active snoozes these mailboxes hold. */
   countActive(accounts: string[]): Promise<number>;
