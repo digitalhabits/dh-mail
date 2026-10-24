@@ -253,7 +253,7 @@ export const en = {
   offlineWaitingOne: "1 change waits to be sent.",
   offlineWaitingMany: "{count} changes wait to be sent.",
   syncNeedsReconnect:
-    "{account} needs a new permission. Mail now keeps a copy of this mailbox on this computer, which the old connection cannot fill. Reconnect once and the copy starts.",
+    "Mail cannot sign in to {account} any more. Reconnect to go on getting its mail.",
   actionRefused: "{provider} refused \"{kind}\" on a thread in {account}",
   sendRefused: "\"{subject}\" was not sent",
   contactSourcesFooter: "Mail reads these sources; it never edits them",

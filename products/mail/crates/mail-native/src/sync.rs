@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -80,7 +80,13 @@ pub struct SyncConfig {
   google: Mutex<Option<GoogleOauth>>,
   /// Access tokens by mailbox, with when they stop being good. A token
   /// lasts an hour; every on-demand fetch would otherwise buy a new one.
-  tokens: Mutex<HashMap<String, (String, Instant)>>,
+  ///
+  /// By the wall clock, not `Instant`: on macOS an `Instant` stands still
+  /// while the computer sleeps, so after a night asleep a token Google had
+  /// long expired still looked fresh. Gmail refused it, the refusal named
+  /// the full-mail scope as every Gmail refusal does, and Mail asked the
+  /// reader to reconnect for a permission they had (2026-10-24).
+  tokens: Mutex<HashMap<String, (String, SystemTime)>>,
 }
 
 const TOKEN_KEEP: Duration = Duration::from_secs(50 * 60);
@@ -770,14 +776,39 @@ pub(crate) struct SyncFolder {
 /// How often the side folders are looked at between wakes.
 const SIDE_EVERY: Duration = Duration::from_secs(300);
 
-fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -> Result<(), SyncError> {
-  let db = app.state::<MailDb>();
+/// Connect and sign in. A refused Google token is tried once more, fresh:
+/// the refused one may simply have expired (a laptop that slept, a token
+/// another app copy refreshed). Only a fresh token refused means the grant
+/// itself is short, and only that asks the reader to reconnect.
+fn sign_in(app: &AppHandle, email: &str) -> Result<Client, SyncError> {
   let credential = credential(app, email)?;
   let mut client = Client::connect(IMAP_HOST, IMAP_PORT, CONNECT_TIMEOUT)?;
-  if let Err(e) = client.sign_in(email, &credential) {
+  let Err(first) = client.sign_in(email, &credential) else {
+    return Ok(client);
+  };
+  forget_token(app, email);
+  if !matches!(credential, Credential::OAuth(_)) || auth_refusal_reason(&first).is_none() {
+    return Err(first.into());
+  }
+  log::info!("[mail-sync] {email}: the token was refused; trying once with a fresh one");
+  let fresh = credential_fresh(app, email)?;
+  let mut client = Client::connect(IMAP_HOST, IMAP_PORT, CONNECT_TIMEOUT)?;
+  if let Err(e) = client.sign_in(email, &fresh) {
     forget_token(app, email);
     return Err(e.into());
   }
+  Ok(client)
+}
+
+/// A credential with no cached token in it: bought from Google now.
+fn credential_fresh(app: &AppHandle, email: &str) -> Result<Credential, SyncError> {
+  forget_token(app, email);
+  credential(app, email)
+}
+
+fn session(app: &AppHandle, email: &str, stop: &AtomicBool, wake: &AtomicBool) -> Result<(), SyncError> {
+  let db = app.state::<MailDb>();
+  let mut client = sign_in(app, email)?;
   let boxes = client.list()?;
   let named = |attr: &str| {
     boxes
@@ -1449,7 +1480,7 @@ pub fn mail_check_gmail_app_password(email: String, password: String) -> Result<
 fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
   let config = app.state::<SyncConfig>();
   if let Some((token, until)) = config.tokens.locked().get(email) {
-    if Instant::now() < *until {
+    if SystemTime::now() < *until {
       return Ok(token.clone());
     }
   }
@@ -1457,7 +1488,7 @@ fn access_token(app: &AppHandle, email: &str) -> Result<String, SyncError> {
   config
     .tokens
     .locked()
-    .insert(email.to_string(), (token.clone(), Instant::now() + TOKEN_KEEP));
+    .insert(email.to_string(), (token.clone(), SystemTime::now() + TOKEN_KEEP));
   Ok(token)
 }
 

@@ -56,3 +56,56 @@ export function useComposerMoreBelow(
   }, [scrollerRef, key]);
   return more;
 }
+
+/** The letter's own floor: about three lines, so there is a place to type. */
+const LETTER_FLOOR_PX = 72;
+
+/**
+ * The least the card may be: everything in it but the letter, at its own
+ * height, and the letter at its floor.
+ *
+ * The card shrinks to the band so that only the letter scrolls. With no
+ * floor, whatever else stood in the band (a tall block of notes above
+ * the card) squeezed it to its border, and the letter and Send
+ * spilled out below it over the links (2026-10-24). With this floor the
+ * card stops shrinking there, and the band scrolls instead, as it did
+ * before the card was a frame.
+ */
+export function useComposerCardFloor(
+  cardRef: React.RefObject<HTMLElement | null>,
+  letterRef: React.RefObject<HTMLElement | null>,
+  key: string
+): void {
+  React.useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const place = () => {
+      const letter = letterRef.current;
+      let floor = LETTER_FLOOR_PX;
+      for (const child of Array.from(card.children) as HTMLElement[]) {
+        if (child === letter) continue;
+        const position = getComputedStyle(child).position;
+        if (position === "absolute" || position === "fixed") continue;
+        floor += child.offsetHeight;
+      }
+      const style = getComputedStyle(card);
+      floor += (Number.parseFloat(style.borderTopWidth) || 0) + (Number.parseFloat(style.borderBottomWidth) || 0);
+      card.style.minHeight = `${Math.ceil(floor)}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    for (const child of Array.from(card.children)) observer.observe(child);
+    // Rows that come and go (the recipients opened, files docked above Send).
+    const mutations = new MutationObserver(() => {
+      observer.disconnect();
+      for (const child of Array.from(card.children)) observer.observe(child);
+      place();
+    });
+    mutations.observe(card, { childList: true });
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+      card.style.minHeight = "";
+    };
+  }, [cardRef, letterRef, key]);
+}

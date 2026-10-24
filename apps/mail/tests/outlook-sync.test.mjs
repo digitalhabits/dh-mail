@@ -28,6 +28,8 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 
 const states = [];
+/** Every state the worker publishes, in order. */
+const published = [];
 let fullAnnouncements = 0;
 let lastOverallPhase = null;
 const upserts = [];
@@ -46,6 +48,7 @@ setMailStore({
   sync: {
     list: async () => states.map((s) => ({ ...s })),
     set: async (state) => {
+      published.push({ ...state });
       // A walk is announced once, when the phase turns full; the progress
       // it publishes after each folder is not a new announcement.
       if (state.folder === "") {
@@ -112,10 +115,15 @@ let arriveMovedOnce = false;
 let partialInboxOnce = false;
 /** Graph fails the archive's delta once: a first read cut short partway. */
 let failArchiveOnce = false;
+/** Graph refuses the token "stale": one that expired while the Mac slept. */
+let refuseStale = false;
 globalThis.fetch = async (url, init) => {
   const json = (body, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   if (url.includes("login.microsoftonline.com")) return json({ access_token: "tok", expires_in: 3600 });
+  if (refuseStale && init?.headers?.Authorization === "Bearer stale") {
+    return json({ error: { code: "InvalidAuthenticationToken", message: "Lifetime validation failed, the token is expired." } }, 401);
+  }
   const delta = url.match(/\/mailFolders\/([^/]+)\/messages\/delta/);
   if (delta) {
     const folder = decodeURIComponent(delta[1]);
@@ -396,4 +404,28 @@ suite(async () => {
   FOLDERS.pop();
   await stopOutlookSync(big);
   }
+
+  // A token that expired while the computer slept: Graph answers 401. The
+  // worker drops it and tries once more with a fresh one, and says nothing:
+  // the sign-in is fine (2026-10-24).
+  const sleepy = "sleepy@outlook.example";
+  rememberOutlookAccessToken(sleepy, "stale");
+  refuseStale = true;
+  const publishedBefore = published.length;
+  check("a worker starts on a mailbox whose cached token has expired", startOutlookSync(sleepy) === true);
+  // A fresh token is bought by the desktop shell, which this test has not:
+  // the worker asking for one is what shows it did not stop at the 401.
+  await until(
+    () => /desktop app/i.test(states.find((x) => x.account === sleepy && x.folder === "")?.lastError ?? ""),
+    "the worker asking for a fresh token after the 401"
+  );
+  const told = published.slice(publishedBefore).filter((x) => x.account === sleepy && /reconnect/i.test(x.lastError ?? ""));
+  check("a refused token is not taken for a refused sign-in: no reconnect is said", told.length === 0, told);
+  check(
+    "the 401 itself is not published: the worker tried again first",
+    !published.slice(publishedBefore).some((x) => x.account === sleepy && /\b401\b/.test(x.lastError ?? "")),
+    published.slice(publishedBefore).filter((x) => x.account === sleepy).map((x) => x.lastError)
+  );
+  await stopOutlookSync(sleepy);
+  refuseStale = false;
 });

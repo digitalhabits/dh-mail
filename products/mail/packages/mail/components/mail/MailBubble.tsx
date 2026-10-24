@@ -265,6 +265,8 @@ export type MailBubbleProps = {
    */
   onReact?: (emoji: string) => void;
   onReplyTo?: () => void;
+  /** Reply to everybody this message went to, quoting it. */
+  onReplyAll?: () => void;
   onForward?: () => void;
   /**
    * Copy this message into a new compose, out of the thread.
@@ -328,6 +330,7 @@ export function MailBubble({
   timeLabel,
   onReact,
   onReplyTo,
+  onReplyAll,
   onForward,
   onEditAsNew,
   onShowOriginal,
@@ -336,7 +339,7 @@ export function MailBubble({
 }: MailBubbleProps) {
   const { allowImages, bubbleRef, detailsOpen, fullBody, hasHidden, hasImages, htmlSplit, loadImagesByDefault, printThisMessage, railAnchorRef, readInTheDark, setDetailsOpen, showHtml, showQuoted, shownHtml, stripped, t, toggleImages, toggleQuoted } = useBubbleContent({ defaultAllowImages, earlierFromSender, message, subject });
   const { canLoadImages, displayName, failedOut, fileAttachments, messageRecipients, metaDetails, metaHeadline, noteCalendarUnavailable, onBubbleDoubleClick, outgoing, reactAction, replyAction, savableFiles, sendingOut, showMetaRow, statusCaption, timeCorner, toggleDetailsFromBody } = useBubbleMeta({ account, detailsOpen, hasImages, loadImagesByDefault, message, metaNeeds, onEditSend, onReact, onReplyTo, onRetrySend, sendStatus, setDetailsOpen, showHtml, showMeta, t, timeLabel });
-  const { bodyBoxRef, bubbleReader, contextMenu, menuActions, onBubbleContextMenu, onBubbleMouseDown, setContextMenu } = useBubbleMenu({ account, allowImages, bubbleRef, detailsOpen, displayName, fullBody, highlight, htmlSplit, message, messageRecipients, onEditAsNew, onForward, onShowOriginal, outgoing, printThisMessage, readInTheDark, replyAction, savableFiles, setDetailsOpen, showMeta, showPrint, showQuoted, shownHtml, stripped, subject, zoom });
+  const { bodyBoxRef, bubbleReader, contextMenu, menuActions, onBubbleContextMenu, onBubbleMouseDown, setContextMenu } = useBubbleMenu({ account, allowImages, bubbleRef, detailsOpen, displayName, fullBody, highlight, htmlSplit, message, messageRecipients, onEditAsNew, onForward, onReplyAll, onShowOriginal, outgoing, printThisMessage, readInTheDark, replyAction, savableFiles, setDetailsOpen, showMeta, showPrint, showQuoted, shownHtml, stripped, subject, zoom });
 
   return (
     // The row the message sits in, and what the pointer has to be on for
@@ -1285,6 +1288,7 @@ export function useBubbleMenu({
   messageRecipients,
   onEditAsNew,
   onForward,
+  onReplyAll,
   onShowOriginal,
   outgoing,
   printThisMessage,
@@ -1301,7 +1305,7 @@ export function useBubbleMenu({
   zoom,
 }: Pick<ReturnType<typeof useBubbleContent>, "allowImages" | "bubbleRef" | "detailsOpen" | "fullBody" | "htmlSplit" | "printThisMessage" | "readInTheDark" | "setDetailsOpen" | "showQuoted" | "shownHtml" | "stripped"> &
   Pick<ReturnType<typeof useBubbleMeta>, "displayName" | "messageRecipients" | "outgoing" | "replyAction" | "savableFiles"> &
-  { account: MailBubbleProps["account"]; highlight: MailBubbleProps["highlight"]; message: MailBubbleProps["message"]; onEditAsNew: MailBubbleProps["onEditAsNew"]; onForward: MailBubbleProps["onForward"]; onShowOriginal: MailBubbleProps["onShowOriginal"]; showMeta: Exclude<MailBubbleProps["showMeta"], undefined>; showPrint: Exclude<MailBubbleProps["showPrint"], undefined>; subject: MailBubbleProps["subject"]; zoom: Exclude<MailBubbleProps["zoom"], undefined> }) {
+  { account: MailBubbleProps["account"]; highlight: MailBubbleProps["highlight"]; message: MailBubbleProps["message"]; onEditAsNew: MailBubbleProps["onEditAsNew"]; onForward: MailBubbleProps["onForward"]; onReplyAll: MailBubbleProps["onReplyAll"]; onShowOriginal: MailBubbleProps["onShowOriginal"]; showMeta: Exclude<MailBubbleProps["showMeta"], undefined>; showPrint: Exclude<MailBubbleProps["showPrint"], undefined>; subject: MailBubbleProps["subject"]; zoom: Exclude<MailBubbleProps["zoom"], undefined> }) {
   /** The body's box, which the Reader button measures in lines. */
   const bodyBoxRef = React.useRef<HTMLDivElement>(null);
   /* The Reader: the button in the rail for a long message, and the Reader
@@ -1333,6 +1337,9 @@ export function useBubbleMenu({
   const menuActions: MessageMenuActions = {
     bodyText: message.bodyText,
     recipients: messageRecipients,
+    // Only where it differs from Reply: a message that went to one person
+    // is answered the same either way.
+    onReplyAll: outgoing || messageRecipients.length < 2 ? undefined : onReplyAll,
     onForward: outgoing ? undefined : onForward,
     onEditAsNew: outgoing ? undefined : onEditAsNew,
     onDownloadAttachments: savableFiles.length

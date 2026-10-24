@@ -18,6 +18,10 @@
 **The reply box**
 - The reply box is now a frame that stays still. Only the words inside it scroll, and Send is at its foot. Before, its edge could turn pale or disappear while you scrolled a long reply, and text could show under the row with Send.
 
+**Reply all and search**
+- Each message in a conversation has Reply all at the top of its "…" menu, and under Reply when you right-click it. So you can reply to everyone on an earlier message, not only on the newest one. It shows when the message went to more than one person.
+- Searches with `in:`, `label:`, `is:unread`, `is:read`, `is:starred`, `is:important` and `filename:` now use the copy of your mail on your computer. They are quicker and work offline. For example, `label:clients-oxford` finds the label "Clients/Oxford", and `in:trash` shows what is in Trash.
+
 **Snoozed mail and paused mail**
 - Mail that you snoozed comes back at its time, also while your mail is paused. A pause holds back new mail; a snooze is your own plan for mail that you have already seen. New mail still waits until the pause ends.
 
@@ -33,6 +37,11 @@
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
 **Fixes**
+- After the computer sleeps for a long time, Mail no longer asks you to reconnect a mailbox. It gets a new sign-in in the background.
+- A stack that you have open stays in its place in the list until you open something else. Before, when you deleted its newest conversation, the stack could move down the list at once.
+- The reply box keeps its size when there is a lot above it. Before, it could shrink to a thin line, and its text and Send showed below it.
+- A list of choices in a small panel, for example "Automatically hide again after", opens in full and does not move the panel.
+- In the box of words that you type to show a hidden mailbox early, the words you type correctly turn green, and the first wrong letter or space is red.
 - The folder list is a little darker than the list of conversations, and the small grey words in the list (TODAY, the time of a read email) are darker, so they are easier to read.
 - When you delete, archive or move a conversation that you opened from a stack, the next conversation in that stack opens.
 - Menus open in front of what they were opened from: the menu beside Send in a reply that fills the window, and the menu beside Download when you look at a file.

@@ -35,6 +35,12 @@ import {
   groupThreadsByPerson,
   type PersonRow,
 } from "@/lib/mail/person-participants";
+import {
+  nextPersonHold,
+  placedAt,
+  placeHeldRow,
+  type PersonHold,
+} from "@/lib/mail/person-hold";
 import { isMailPersonPinned, orderByPersonPin } from "@/lib/mail/person-pins";
 import { mailStore } from "@/lib/mail/store";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -45,6 +51,7 @@ export function usePersonRows({
   visible,
   pendingTokens,
   debouncedSearch,
+  openPersonKey,
 }: {
   viewMode: MailViewMode;
   accountEmails: string[];
@@ -53,6 +60,8 @@ export function usePersonRows({
   /** The search words still waiting for the server's answer. */
   pendingTokens: string[];
   debouncedSearch: string;
+  /** The person open in the reader, whose row keeps its place (person-hold). */
+  openPersonKey: string | null;
 }) {
   const personPins = useMailPersonPins();
   /**
@@ -88,7 +97,7 @@ export function usePersonRows({
     };
   }, [accountEmails]);
 
-  const personRows = React.useMemo(() => {
+  const unheldRows = React.useMemo(() => {
     if (viewMode !== "people") return [];
     const grouped = orderByPersonPin(
       groupThreadsByPerson(visible, personIdentity ?? undefined)
@@ -110,6 +119,23 @@ export function usePersonRows({
     );
     // pendingTokens is derived from search + resultsQuery each render.
   }, [viewMode, visible, pendingTokens, personIdentity]);
+  /*
+    The open person keeps their place until the reader leaves them. Not in
+    a search, whose hits are not in date order of their own. Kept in state
+    and moved on during the render (React's "previous value" pattern), so
+    the row never paints in its new place first.
+  */
+  const [hold, setHold] = React.useState<PersonHold | null>(null);
+  const nextHold = nextPersonHold(
+    hold,
+    viewMode === "people" && !debouncedSearch ? openPersonKey : null,
+    unheldRows
+  );
+  if (nextHold !== hold) setHold(nextHold);
+  const personRows = React.useMemo(
+    () => placeHeldRow(unheldRows, nextHold, (row) => isMailPersonPinned(row.key)),
+    [unheldRows, nextHold]
+  );
   /**
    * The same day headings the thread list uses.
    *
@@ -136,7 +162,7 @@ export function usePersonRows({
       personGroups.push({ label: "", items: pinnedPeople, pinned: true });
     }
     for (const row of flowPeople) {
-      const label = dayBucket(row.lastAt);
+      const label = dayBucket(placedAt(row, nextHold));
       const last = personGroups[personGroups.length - 1];
       if (last && last.label === label) last.items.push(row);
       else personGroups.push({ label, items: [row] });

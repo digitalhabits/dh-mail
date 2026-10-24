@@ -116,8 +116,9 @@ async function listFromLocalStore(input: {
       ...(within ?? {}),
     });
     // The copy reads the words Gmail reads — from:, has:attachment,
-    // before:, quotes, OR — and says when a query asks something only the
-    // provider knows, such as in: or is:unread. That one goes out.
+    // before:, in:, label:, is:unread, filename:, quotes, OR — and says
+    // when a query asks something only the provider knows, such as
+    // in:anywhere or larger:. That one goes out.
     if (handled === false) return null;
     return { summaries: threads.map((t) => summaryFromStored(t, classifier)) };
   }
@@ -453,7 +454,7 @@ export async function listUnifiedInbox(options: {
         // An Exchange mailbox is read from the copy only. Before its first
         // rows, and for a search the copy does not answer, it lists nothing.
         if (provider === "exchange") return;
-        // An Outlook search the copy does not answer (in:, is:unread) goes
+        // An Outlook search the copy does not answer (larger:, is:muted) goes
         // to Graph, as it did before the copy.
         if (provider === "outlook") {
           const result = await listOutlookAccountThreads({

@@ -253,7 +253,7 @@ export const da: Record<keyof typeof en, string> = {
   offlineWaitingOne: "1 ændring venter på at blive sendt.",
   offlineWaitingMany: "{count} ændringer venter på at blive sendt.",
   syncNeedsReconnect:
-    "{account} har brug for en ny tilladelse. Mail gemmer nu en kopi af denne postkasse på din computer, og den gamle forbindelse kan ikke fylde den. Forbind igen én gang, så starter kopien.",
+    "Mail kan ikke længere logge ind på {account}. Forbind igen for at blive ved med at få dens mail.",
   actionRefused: "{provider} afviste \"{kind}\" på en tråd i {account}",
   sendRefused: "\"{subject}\" blev ikke sendt",
   contactSourcesFooter: "Mail læser disse kilder; Mail ændrer dem ikke",

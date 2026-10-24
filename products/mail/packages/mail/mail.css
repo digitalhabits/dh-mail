@@ -1076,6 +1076,37 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   color: var(--mail-u-accent);
 }
 
+/*
+ * The words typed right so far, in the box of words to type. A clear green
+ * beside the ink of the words still to come. It was text-teal-700, which
+ * the design system's green (2026-10-21) made a deep green, close to the
+ * ink: the words no longer seemed to fill in as they were typed.
+ */
+.mail-typed-right {
+  color: #2a8a7d;
+}
+.mail-shell[data-theme="dark"] .mail-typed-right {
+  color: var(--mail-u-accent);
+}
+
+/* The first letter typed wrong, as Blocker marks it: red on a red tint.
+   Not bold, which can change a letter's width. A space has no ink, so a
+   wrong space gets a box with some width (2026-10-24: "laught" for
+   "laugh" marked nothing). */
+.mail-typed-wrong {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.18);
+  border-radius: 2px;
+  white-space: pre;
+}
+.mail-typed-wrong-space {
+  padding: 0 0.3em;
+}
+.mail-shell[data-theme="dark"] .mail-typed-wrong {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.22);
+}
+
 /* The time in the corner of one of your own messages. Dark teal on pale
    mint was the quiet way to say it; on the dark bubble the same words have
    to be the pale one. Still held back, because it is a timestamp. */

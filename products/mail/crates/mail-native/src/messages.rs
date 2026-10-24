@@ -1609,6 +1609,40 @@ impl MailDb {
     if plan.attachment {
       sql.push_str(" AND m.has_attachments = 1");
     }
+    for term in &plan.labels {
+      sql.push_str(if term.negated { " AND NOT EXISTS" } else { " AND EXISTS" });
+      match term.system {
+        Some(system) => {
+          sql.push_str(
+            " (SELECT 1 FROM message_labels l WHERE l.account_email = m.account_email
+                 AND l.message_id = m.message_id AND l.label = ?)",
+          );
+          binds.push(SqlValue::Text(system.into()));
+        }
+        None => {
+          // Spelled as Gmail's search spells it, on both sides: see label_key.
+          sql.push_str(
+            " (SELECT 1 FROM message_labels l WHERE l.account_email = m.account_email
+                 AND l.message_id = m.message_id
+                 AND REPLACE(REPLACE(REPLACE(LOWER(TRIM(l.label)), ' ', '-'), '/', '-'), '_', '-') = ?)",
+          );
+          binds.push(SqlValue::Text(term.key.clone()));
+        }
+      }
+    }
+    if let Some(unread) = plan.unread {
+      sql.push_str(" AND m.unread = ?");
+      binds.push(SqlValue::Integer(i64::from(unread)));
+    }
+    for (part, negated) in &plan.filenames {
+      sql.push_str(if *negated { " AND NOT EXISTS" } else { " AND EXISTS" });
+      sql.push_str(
+        " (SELECT 1 FROM message_bodies b, json_each(b.attachments_json) f
+            WHERE b.account_email = m.account_email AND b.message_id = m.message_id
+              AND INSTR(LOWER(COALESCE(json_extract(f.value, '$.filename'), '')), ?) > 0)",
+      );
+      binds.push(SqlValue::Text(part.clone()));
+    }
     // The newest matches, whether by words or by filters alone: the list is
     // newest first. Cut by relevance, a long new reply that names the
     // sender only in its From line ranked below hundreds of older mails
@@ -1633,7 +1667,13 @@ impl MailDb {
         *entry = (score, message_id);
       }
     }
-    let view = if include_hidden { View::Trash } else { View::All };
+    // `in:trash` and `in:spam` show the rows that are hidden everywhere else.
+    let view = match plan.hidden {
+      Some(HiddenPlace::Trash) => View::Trash,
+      Some(HiddenPlace::Spam) => View::Junk,
+      None if include_hidden => View::Trash,
+      None => View::All,
+    };
     let mut by_account: HashMap<String, Vec<String>> = HashMap::new();
     for ((account, thread_id), _) in &best {
       by_account.entry(account.clone()).or_default().push(thread_id.clone());
@@ -2101,22 +2141,78 @@ pub struct SearchPlan {
   pub before: Option<i64>,
   /// Only mail with a file attached, from `has:attachment`.
   pub attachment: bool,
+  /// Labels a message must carry, or must not, from `in:`, `label:`,
+  /// `is:starred`, and `is:important`.
+  pub labels: Vec<LabelTerm>,
+  /// Read state, from `is:unread` (true) or `is:read` (false).
+  pub unread: Option<bool>,
+  /// Parts of a file's name, from `filename:`; true leaves them out.
+  pub filenames: Vec<(String, bool)>,
+  /// `in:trash` or `in:spam`: rows the list otherwise hides.
+  pub hidden: Option<HiddenPlace>,
+}
+
+/// One `in:` or `label:` word: a system label, or a label of the reader's
+/// own, in Gmail's spelling of it (see `label_key`).
+#[derive(Debug, PartialEq)]
+pub struct LabelTerm {
+  pub system: Option<&'static str>,
+  pub key: String,
+  pub negated: bool,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum HiddenPlace {
+  Trash,
+  Spam,
 }
 
 impl SearchPlan {
   pub fn is_empty(&self) -> bool {
-    self.fts.is_empty() && self.after.is_none() && self.before.is_none() && !self.attachment
+    self.fts.is_empty()
+      && self.after.is_none()
+      && self.before.is_none()
+      && !self.attachment
+      && self.labels.is_empty()
+      && self.unread.is_none()
+      && self.filenames.is_empty()
+      && self.hidden.is_none()
   }
 }
 
 /// Keys the copy cannot answer. A query with one goes to the provider,
-/// which speaks them. `has:` is here for every value but `attachment`.
+/// which speaks them. `in:`, `label:`, `is:`, and `has:` are here for the
+/// values the copy does not know (`in:anywhere`, `is:muted`, `has:drive`).
 const PROVIDER_KEYS: &[&str] = &[
-  "in", "label", "is", "has", "filename", "larger", "smaller", "size", "category", "list",
-  "deliveredto", "bcc", "rfc822msgid",
+  "in", "label", "is", "has", "larger", "smaller", "size", "category", "list", "deliveredto",
+  "bcc", "rfc822msgid",
 ];
 const LOCAL_KEYS: &[&str] =
-  &["from", "to", "cc", "subject", "after", "before", "newer_than", "older_than"];
+  &["from", "to", "cc", "subject", "after", "before", "newer_than", "older_than", "filename"];
+
+/// A label name as Gmail's search spells it: lower case, with a space, a
+/// slash, or a dash all one dash. `label:work-stuff` finds "Work stuff",
+/// and `label:clients-oxford` finds "Clients/Oxford".
+///
+/// Lower case for A to Z only, as SQLite's LOWER is, so the two sides of
+/// the comparison agree on a label like "Ærø".
+pub fn label_key(name: &str) -> String {
+  name.trim().to_ascii_lowercase().replace([' ', '/', '_'], "-")
+}
+
+/// The system label an `in:` or `label:` word names, if it names one.
+fn system_label(word: &str) -> Option<&'static str> {
+  Some(match word.to_ascii_lowercase().as_str() {
+    "inbox" => INBOX,
+    "sent" => SENT,
+    "draft" | "drafts" => DRAFT,
+    "starred" => STARRED,
+    "important" => IMPORTANT,
+    "trash" | "bin" => TRASH,
+    "spam" | "junk" => SPAM,
+    _ => return None,
+  })
+}
 
 /// The words as typed, read as a search over the copy.
 ///
@@ -2126,8 +2222,15 @@ const LOCAL_KEYS: &[&str] =
 /// `after:`, `newer_than:`, and `older_than:` narrow by what the table
 /// knows. The same words Gmail reads, so nobody learns a second language.
 ///
+/// `in:` and `label:` (a folder, or a label of the reader's own),
+/// `is:unread`, `is:read`, `is:starred`, `is:important`, and `filename:`
+/// are answered from the copy too: it holds every message's labels and
+/// read state, and the names of the files in the mail whose bodies it
+/// holds (the last 12 months; older mail is asked for by "Older mail").
+///
 /// `None` when the query asks something only the provider can answer —
-/// `in:`, `label:`, `is:`, and the rest — so the caller asks the provider.
+/// `in:anywhere`, `is:muted`, `larger:`, and the rest — so the caller asks
+/// the provider.
 pub fn parse_search(q: &str) -> Option<SearchPlan> {
   let mut plan = SearchPlan::default();
   let mut positives: Vec<String> = Vec::new();
@@ -2184,6 +2287,41 @@ pub fn parse_search(q: &str) -> Option<SearchPlan> {
         }
       }
       Some("has") if text.eq_ignore_ascii_case("attachment") && !neg => plan.attachment = true,
+      Some("in") | Some("label") => {
+        if text.trim().is_empty() || text.eq_ignore_ascii_case("anywhere") {
+          return None;
+        }
+        let system = system_label(text);
+        let place = match system {
+          Some(TRASH) => Some(HiddenPlace::Trash),
+          Some(SPAM) => Some(HiddenPlace::Spam),
+          _ => None,
+        };
+        if let (Some(place), false) = (place, neg) {
+          // In two hidden places at once is in neither: the provider says so.
+          if plan.hidden.is_some_and(|had| had != place) {
+            return None;
+          }
+          plan.hidden = Some(place);
+        }
+        plan.labels.push(LabelTerm { system, key: label_key(text), negated: neg });
+      }
+      Some("is") => match text.to_ascii_lowercase().as_str() {
+        "unread" => plan.unread = Some(!neg),
+        "read" => plan.unread = Some(neg),
+        "starred" | "important" => {
+          let system = system_label(text);
+          plan.labels.push(LabelTerm { system, key: label_key(text), negated: neg });
+        }
+        _ => return None,
+      },
+      Some("filename") => {
+        let part = text.trim().to_lowercase();
+        if part.is_empty() {
+          return None;
+        }
+        plan.filenames.push((part, neg));
+      }
       Some("after") if !neg => plan.after = Some(parse_day(text)?),
       Some("before") if !neg => plan.before = Some(parse_day(text)?),
       Some("newer_than") if !neg => plan.after = Some(now_ms() - parse_span_ms(text)?),
@@ -2837,9 +2975,25 @@ mod tests {
     let after = plan.after.unwrap();
     assert!(now_ms() - after >= 7 * 86_400_000 && now_ms() - after < 8 * 86_400_000);
 
-    assert!(parse_search("in:inbox paris").is_none(), "in: is the provider's");
-    assert!(parse_search("is:unread").is_none());
+    assert!(parse_search("in:anywhere paris").is_none(), "in:anywhere is the provider's");
+    assert!(parse_search("is:muted").is_none());
+    assert!(parse_search("larger:5M").is_none());
+    assert!(parse_search("in:trash in:spam").is_none(), "two hidden places at once");
     assert!(parse_search("has:drive").is_none());
+    let plan = parse_search("in:inbox -label:Work/Stuff is:unread -is:starred filename:PDF").unwrap();
+    assert_eq!(plan.unread, Some(true));
+    assert_eq!(
+      plan.labels,
+      vec![
+        LabelTerm { system: Some(INBOX), key: "inbox".into(), negated: false },
+        LabelTerm { system: None, key: "work-stuff".into(), negated: true },
+        LabelTerm { system: Some(STARRED), key: "starred".into(), negated: true },
+      ]
+    );
+    assert_eq!(plan.filenames, vec![("pdf".to_string(), false)]);
+    assert_eq!(parse_search("in:trash").unwrap().hidden, Some(HiddenPlace::Trash));
+    assert_eq!(parse_search("-in:spam").unwrap().hidden, None, "leaving out is not going in");
+    assert_eq!(parse_search("is:read").unwrap().unread, Some(false));
     assert!(parse_search("-only").is_none(), "nothing to take away from");
     assert!(parse_search("after:yesterday").is_none(), "a date it cannot read goes out");
     assert!(parse_search("OR paris OR").unwrap().fts == "\"paris\"*", "a stray OR is nothing");
@@ -2913,9 +3067,51 @@ mod tests {
     assert_eq!(ids(&search("after:2026-01-01 before:2026-12-31")).len(), 2);
     assert_eq!(search("subject")["handled"], true);
 
-    let out = search("in:inbox subject");
+    let out = search("larger:5M subject");
     assert_eq!(out["handled"], false, "the provider's words are handed back");
     assert_eq!(ids(&out).len(), 0);
+  }
+
+  #[test]
+  fn search_answers_folders_labels_read_state_and_file_names_from_the_copy() {
+    let db = db();
+    let mut unread = msg("m1", "t1", 1, 1_000, &[INBOX, "Clients/Oxford"]);
+    unread.unread = true;
+    let mut starred = msg("m2", "t2", 2, 2_000, &[STARRED, "Work stuff"]);
+    starred.unread = false;
+    let binned = msg("m3", "t3", 3, 3_000, &[TRASH]);
+    let spam = msg("m4", "t4", 4, 4_000, &[SPAM]);
+    db.messages_upsert("vera@example.com", &[unread, starred, binned, spam]).unwrap();
+    db.bodies_put(
+      "vera@example.com",
+      "m2",
+      &BodyRow { text: Some("Here".into()), attachments: json!([{ "filename": "Budget 2027.PDF" }]), ..Default::default() },
+    )
+    .unwrap();
+    let ids = |v: &Value| -> Vec<String> {
+      let mut out: Vec<String> =
+        v["threads"].as_array().unwrap().iter().map(|t| t["threadId"].as_str().unwrap().to_string()).collect();
+      out.sort();
+      out
+    };
+    let search = |q: &str| db.messages_search(&json!({ "accounts": ["vera@example.com"], "q": q })).unwrap();
+
+    assert_eq!(ids(&search("in:inbox")), vec!["t1"]);
+    assert_eq!(ids(&search("-in:inbox")), vec!["t2"], "trash and spam stay hidden");
+    assert_eq!(ids(&search("label:clients-oxford")), vec!["t1"], "Gmail's spelling of a nested label");
+    assert_eq!(ids(&search("label:\"Work stuff\"")), vec!["t2"]);
+    assert_eq!(ids(&search("in:work-stuff")), vec!["t2"], "in: takes a label too");
+    assert_eq!(ids(&search("is:unread")), vec!["t1"]);
+    assert_eq!(ids(&search("is:read")), vec!["t2"]);
+    assert_eq!(ids(&search("is:starred")), vec!["t2"]);
+    assert_eq!(ids(&search("filename:pdf")), vec!["t2"], "case does not matter");
+    assert_eq!(ids(&search("filename:budget")), vec!["t2"]);
+    assert_eq!(ids(&search("subject -filename:pdf")), vec!["t1"]);
+    assert_eq!(ids(&search("in:trash")), vec!["t3"], "the bin shows what it hides elsewhere");
+    assert_eq!(ids(&search("in:spam")), vec!["t4"]);
+    assert_eq!(ids(&search("in:inbox t1")), vec!["t1"], "words and a folder together");
+    assert_eq!(ids(&search("in:inbox t2")).len(), 0);
+    assert_eq!(search("is:unread")["handled"], true);
   }
 
   #[test]

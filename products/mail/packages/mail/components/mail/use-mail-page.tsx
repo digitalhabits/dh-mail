@@ -99,7 +99,7 @@ export function useMailPage(props: MailPageProps) {
   const connection = useConnection();
   const firstReadState = useFirstReadState(props);
   useReconnectRequests({ ...actionsCore, ...connection });
-  const listPeople = useListPeople({ ...pageSetup, ...listTabsAndPins, ...accountsState, ...listQuery, ...listData, ...visibleRows, ...listRowsPart, ...firstReadState });
+  const listPeople = useListPeople({ ...pageSetup, ...listTabsAndPins, ...accountsState, ...listQuery, ...listData, ...visibleRows, ...listRowsPart, ...firstReadState, selectedPersonKey: readerState.selectedPersonKey });
   const draftBadges = useDraftBadges();
   const readerOpening = useReaderOpening({ ...listTabsAndPins, ...readerState, ...listData, ...composeState, ...listSpace, ...visibleRows, ...selectionPart, ...listPeople, ...props });
   const listPlace = useListPlace({ ...listTabsAndPins, ...accountsState, ...listQuery });

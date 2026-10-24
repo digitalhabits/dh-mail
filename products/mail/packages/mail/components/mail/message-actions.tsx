@@ -17,6 +17,7 @@ import {
   Maximize2,
   MoreHorizontal,
   Printer,
+  ReplyAll,
   SquarePen,
   Users,
 } from "lucide-react";
@@ -49,6 +50,7 @@ export function MessageHoverActions({
   recipients,
   onReact,
   onReplyTo,
+  onReplyAll,
   onOpenReader,
   onForward,
   onEditAsNew,
@@ -65,6 +67,7 @@ export function MessageHoverActions({
   recipients: string[];
   onReact?: (emoji: string) => void;
   onReplyTo?: () => void;
+  onReplyAll?: () => void;
   /** Open the thread in the Reader at this message. Only on a long message. */
   onOpenReader?: () => void;
   onForward?: () => void;
@@ -83,6 +86,7 @@ export function MessageHoverActions({
   const canCopy = Boolean(bodyText.trim());
   const canCopyRecipients = recipients.length > 0;
   const hasMenu =
+    Boolean(onReplyAll) ||
     Boolean(onForward) ||
     Boolean(onEditAsNew) ||
     Boolean(onDownloadAttachments) ||
@@ -199,6 +203,7 @@ export function MessageHoverActions({
               {...{
                 bodyText,
                 recipients,
+                onReplyAll,
                 onForward,
                 onEditAsNew,
                 onDownloadAttachments,
@@ -291,8 +296,24 @@ export function MessageContextMenu({
           {t("actionReply")}
         </button>
       ) : null}
-      {onReact || selectedText || onReplyTo ? <div aria-hidden className="my-1 h-px bg-stone-200" /> : null}
-      <MessageMenuItems {...actions} onDone={onDismiss} />
+      {actions.onReplyAll ? (
+        <button
+          type="button"
+          className={row}
+          onClick={() => {
+            onDismiss();
+            actions.onReplyAll?.();
+          }}
+        >
+          <ReplyAll className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+          {t("actionReplyAll")}
+        </button>
+      ) : null}
+      {onReact || selectedText || onReplyTo || actions.onReplyAll ? (
+        <div aria-hidden className="my-1 h-px bg-stone-200" />
+      ) : null}
+      {/* Reply all is beside Reply above, not again among the rows. */}
+      <MessageMenuItems {...actions} onReplyAll={undefined} onDone={onDismiss} />
     </PointerMenu>
   );
 }
@@ -301,6 +322,8 @@ export function MessageContextMenu({
 export type MessageMenuActions = {
   bodyText: string;
   recipients: string[];
+  /** Reply all to this message. Not on one that went to one person only. */
+  onReplyAll?: () => void;
   onForward?: () => void;
   onEditAsNew?: () => void;
   onDownloadAttachments?: () => void;
@@ -319,6 +342,7 @@ export type MessageMenuActions = {
 function MessageMenuItems({
   bodyText,
   recipients,
+  onReplyAll,
   onForward,
   onEditAsNew,
   onDownloadAttachments,
@@ -334,6 +358,19 @@ function MessageMenuItems({
   const canCopyRecipients = recipients.length > 0;
   return (
     <>
+      {onReplyAll ? (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-[var(--mail-chrome-hover)]"
+          onClick={() => {
+            onDone();
+            onReplyAll();
+          }}
+        >
+          <ReplyAll className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+          {t("actionReplyAll")}
+        </button>
+      ) : null}
       {onForward ? (
         <button
           type="button"
@@ -423,7 +460,8 @@ function MessageMenuItems({
       {/* The message as a document — printed, or as it came — stands
           apart from what is done with its words. */}
       {(onPrint || onShowOriginal) &&
-      (onForward ||
+      (onReplyAll ||
+        onForward ||
         onEditAsNew ||
         onDownloadAttachments ||
         canCopy ||

@@ -439,6 +439,7 @@ export function useListRowsPart({
 
 export function useListPeople({
   accountEmails,
+  selectedPersonKey,
   debouncedSearch,
   pendingTokens,
   personRowOrderRef,
@@ -454,7 +455,10 @@ export function useListPeople({
   Pick<ReturnType<typeof useListData>, "unreadable"> &
   Pick<ReturnType<typeof useVisibleRows>, "personRowOrderRef" | "visible"> &
   Pick<ReturnType<typeof useListRowsPart>, "pendingTokens"> &
-  Pick<ReturnType<typeof useFirstReadState>, "readSoFar">) {
+  Pick<ReturnType<typeof useFirstReadState>, "readSoFar"> & {
+    /** The person open in the reader (useReaderState). */
+    selectedPersonKey: string | null;
+  }) {
   /* What the empty state says about a search: that it could not run,
      that it ran over the part read so far, or that it found nothing. */
   const searchEmptyText = debouncedSearch
@@ -470,6 +474,7 @@ export function useListPeople({
     visible,
     pendingTokens,
     debouncedSearch,
+    openPersonKey: selectedPersonKey,
   });
   personRowOrderRef.current = personRows;
   return { personGroups, personRows, searchEmptyText };

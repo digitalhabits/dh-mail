@@ -21,6 +21,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { useMailT } from "@/lib/mail/i18n";
 import { useMailColorMode } from "@/lib/mail/theme";
+import { cn } from "@/lib/utils";
 import {
   correctPrefixLength,
   normaliseUnpauseWords,
@@ -146,10 +147,19 @@ export function ChallengeTyping({
         aria-hidden
         className="mt-3 select-none break-words rounded-control bg-stone-100 px-3 py-2.5 font-mono text-sm leading-relaxed text-stone-600"
       >
-        <span className="text-teal-700">{target.slice(0, correct)}</span>
+        <span className="mail-typed-right">{target.slice(0, correct)}</span>
         {wrongAt >= 0 ? (
           <>
-            <span className="rounded-sm bg-red-100 text-red-700">{target.slice(correct, correct + 1) || " "}</span>
+            {/* As Blocker marks it. A space has no ink, so a wrong space
+                gets a box wide enough to see. */}
+            <span
+              className={cn(
+                "mail-typed-wrong",
+                /\s/.test(target.charAt(correct) || " ") && "mail-typed-wrong-space"
+              )}
+            >
+              {target.charAt(correct) || " "}
+            </span>
             {target.slice(correct + 1)}
           </>
         ) : (

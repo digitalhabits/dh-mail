@@ -666,9 +666,10 @@ export type MailMessageStore = {
   /**
    * Full-text search over the copy. Threads, newest first; inside one view
    * when asked. Reads the words Gmail reads: `from:`, `to:`, `subject:`,
-   * `has:attachment`, `before:`, `after:`, quotes, `-word`, `OR`.
-   * `handled` is false when the query asks something only the provider
-   * can answer — `in:`, `label:`, `is:` — and the caller asks the provider.
+   * `has:attachment`, `before:`, `after:`, `in:`, `label:`, `is:unread`,
+   * `is:starred`, `filename:`, quotes, `-word`, `OR`. `handled` is false
+   * when the query asks something only the provider can answer —
+   * `in:anywhere`, `is:muted`, `larger:` — and the caller asks the provider.
    */
   search(input: {
     accounts: string[];

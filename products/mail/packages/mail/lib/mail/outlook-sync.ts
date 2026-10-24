@@ -33,7 +33,7 @@ import {
   resolveOutlookInlineImages,
   bodyHasInlineImage,
 } from "@/lib/outlook/attachments";
-import { outlookAccessTokenFor } from "@/lib/mail/outlook-token";
+import { clearOutlookAccessToken, outlookAccessTokenFor } from "@/lib/mail/outlook-token";
 import { backgroundToken } from "@/lib/outlook/graph";
 import { listOutlookFolders, type OutlookFolder } from "@/lib/mail/outlook-folders";
 import { mailStore } from "@/lib/mail/store";
@@ -62,6 +62,8 @@ type Worker = {
   current: Promise<void> | null;
   stop: boolean;
   failures: number;
+  /** A refused token was dropped and the pass tried again fresh, since the last pass that went through. */
+  triedFresh?: boolean;
   /** When every folder was last walked; 0 asks for all of them next. */
   lastAll: number;
   /** The folder list from the last full walk, for the inbox-only passes. */
@@ -153,10 +155,13 @@ async function pass(email: string): Promise<void> {
     .catch((err: unknown) => console.warn(`[mail-sync] ${email}: the queued actions did not go: ${err instanceof Error ? err.message : String(err)}`))
     .then(() => syncFolders(email, all ? "all" : "inbox", worker));
   worker.current = run;
+  // Set when a refused token is dropped: the pass runs again once it is over.
+  let againFresh = false;
   try {
     await run;
     if (all) worker.lastAll = Date.now();
     worker.failures = 0;
+    worker.triedFresh = false;
     if (all && worker.firstReadDone && repairDue(email, PARTIAL_ROWS_MARK)) {
       await repairPartialRows(email).catch((err: unknown) =>
         console.warn(`[mail-sync] ${email}: the mended rows could not all be read: ${err instanceof Error ? err.message : String(err)}`)
@@ -167,6 +172,20 @@ async function pass(email: string): Promise<void> {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[mail-sync] ${email}: ${reason}`);
+    /*
+      Graph refused the token: try once more with a fresh one before
+      saying anything. A pass holds its token while it runs, and a Mac that
+      slept in the middle of one woke to a token Graph had expired; the 401
+      read as "needs reconnect" on a sign-in that was fine, and the notice
+      went away by itself on the next pass (2026-10-24). A refused refresh
+      (invalid_grant) is the real thing, and is said at once.
+    */
+    if (/\b401\b/.test(reason) && !/invalid_grant/i.test(reason) && !worker.triedFresh) {
+      worker.triedFresh = true;
+      clearOutlookAccessToken(email);
+      againFresh = true;
+      return;
+    }
     /*
       The row as it stands, with the phase and the reason changed. The store
       writes every column of a state it is given, so a state that named only
@@ -191,6 +210,7 @@ async function pass(email: string): Promise<void> {
     );
     worker.running = false;
     worker.current = null;
+    if (againFresh && !worker.stop) void runSoon(email, 0);
   }
 }
 

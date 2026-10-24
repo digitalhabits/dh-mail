@@ -14,6 +14,7 @@ import { useChatStyle } from "@/components/mail/use-chat-style";
 import { useComposerAttachments } from "@/components/mail/use-composer-attachments";
 import { useForwardFiles } from "@/components/mail/use-forward-files";
 import { findLoadedMessage } from "@/components/mail/thread-messages";
+import { replyTargets } from "@/lib/mail/reply-target";
 import { useComposerHome } from "@/components/mail/use-composer-home";
 import { useThreadComposerState } from "@/components/mail/use-thread-composer";
 import { useReplyBand } from "@/components/mail/use-thread-pane-geometry";
@@ -454,7 +455,7 @@ export function useReplyFlow({
    * that fill it are the toolbar's own Reply and closing the composer. An open composer is left alone, draft and recipients and all.
    */
   const replyQuoting = React.useCallback(
-    (messageId: string) => {
+    (messageId: string, all = false) => {
       // The pop-out answers this thread while it is open, and it has its own
       // reply-to-one-message on every bubble.
       if (answerInPopout()) return;
@@ -462,7 +463,34 @@ export function useReplyFlow({
         onUnfloatReply?.();
         return;
       }
-      if (mode) {
+      if (all) {
+        // Reply all to this one message: everybody it went to, worked out
+        // as the toolbar's Reply all works it out for the newest message.
+        // Picked on purpose, so it sets the people of an open composer too.
+        const picked = findLoadedMessage(thread, olderParts, messageId);
+        const from = thread?.reply.from ?? account;
+        const targets = picked
+          ? replyTargets({
+              from: picked.fromEmail,
+              to: picked.toEmails ?? [],
+              cc: picked.ccEmails ?? [],
+              account: from,
+            })
+          : { allTo: thread?.reply.allTo ?? [], allCc: thread?.reply.allCc ?? [] };
+        openComposer({
+          quoteMessageId: messageId,
+          mode: "replyAll",
+          toList: recipientsFromEmails(targets.allTo),
+          ccList: recipientsFromEmails(targets.allCc),
+          ...(mode
+            ? null
+            : {
+                editRecipients: false,
+                includeSignature: signsReply(),
+                updateRecordsAfterSend: false,
+              }),
+        });
+      } else if (mode) {
         // A composer is open: only the pick changes.
         openComposer({ quoteMessageId: messageId });
       } else {
@@ -486,6 +514,7 @@ export function useReplyFlow({
       focusReply();
     },
     [
+      account,
       mode,
       olderParts,
       thread,

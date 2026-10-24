@@ -825,11 +825,12 @@ export function ListNotices() {
                 className="border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-2.5"
               >
                 {syncPauseKind(s.lastError) === "signIn" ? (
-                  /* The grant is not good for the copy — an old one
-                     from before the full-mail scope, or one revoked.
-                     Said in the reader's terms, with the one thing
-                     that mends it, since a line that only names a
-                     refusal leaves them to guess at the remedy. */
+                  /* The sign-in is refused: a grant revoked, a password
+                     changed, a grant short of the full-mail scope. Only
+                     after a fresh token was refused too (sync.rs,
+                     outlook-sync.ts), so a token that merely expired
+                     while the computer slept never shows this. Said in
+                     the reader's terms, with the one thing that mends it. */
                   <ListNotice
                     title={s.account}
                     action={

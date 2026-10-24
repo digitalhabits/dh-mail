@@ -260,6 +260,7 @@ export function useThreadPaneLate({
       onReact: (emoji: string) =>
         void sendQuickReply(emoji, quoteFromMessage(m)),
       onReplyTo: () => replyQuoting(m.id),
+      onReplyAll: () => replyQuoting(m.id, true),
       onForward: () => forwardMessage(m.id),
       onEditAsNew: onEditAsNew
         ? () => onEditAsNew(m, thread?.subject ?? "")

@@ -50,7 +50,7 @@ import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
 import { ComposerPreview, ComposerFooter, ComposerAddressRow, ComposerCardButtons } from "@/components/mail/thread-composer-parts";
 import { ComposerMinimiseProvider } from "@/components/mail/composer-minimise";
 import { ComposerFieldRows } from "@/components/mail/thread-composer-rows";
-import { useComposerMoreBelow } from "@/components/mail/use-composer-more-below";
+import { useComposerCardFloor, useComposerMoreBelow } from "@/components/mail/use-composer-more-below";
 
 
 /**
@@ -153,6 +153,7 @@ export function ThreadComposerBand({
     letterRef,
     `${mode}|${showPreview}|${bandFills}|${editorKey}`
   );
+  useComposerCardFloor(replyRef, letterRef, `${mode}|${showPreview}|${bandFills}|${editorKey}`);
   return (
     <ComposerMinimiseProvider value={minimiseValue}>
       {mode ? (
