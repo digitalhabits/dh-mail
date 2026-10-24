@@ -14,6 +14,7 @@ import { useMailColorMode } from "@/lib/mail/theme";
 import { Loader2, Trash2 } from "lucide-react";
 
 import { ThreadFindBar } from "@/components/mail/ThreadFindBar";
+import { findLoadedMessage } from "@/components/mail/thread-messages";
 import {
   AttachmentPreviewDialog,
   DraftAttachmentPreviewDialog,
@@ -332,8 +333,9 @@ export function ThreadPane(props: ThreadPaneProps) {
         messageId={attachmentPreview?.messageId ?? ""}
         attachment={attachmentPreview?.attachment ?? null}
         siblings={
+          // Older pages too: a long conversation's photos can be on one.
           attachmentPreview
-            ? (thread?.messages.find((m) => m.id === attachmentPreview.messageId)
+            ? (findLoadedMessage(thread, olderParts, attachmentPreview.messageId)
                 ?.attachments ?? [])
             : []
         }

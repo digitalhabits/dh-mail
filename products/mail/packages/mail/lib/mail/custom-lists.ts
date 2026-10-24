@@ -8,6 +8,16 @@ export type MailCustomListMember = {
 };
 
 /**
+ * A recipient list on a filter: a link, not a copy, so the filter follows
+ * the list when people join or leave it. The name is kept for the chip in
+ * the editor while the lists load.
+ */
+export type MailCustomListGroup = {
+  id: string;
+  name: string;
+};
+
+/**
  * Days for a schedule window: Monday = 0 … Sunday = 6
  * (same convention as Digital Habits Blocker).
  */
@@ -17,6 +27,8 @@ export type MailCustomList = {
   id: string;
   name: string;
   members: MailCustomListMember[];
+  /** Recipient lists whose people the filter takes too. */
+  groups?: MailCustomListGroup[];
   /** Prefer this tab when local clock matches the schedule window + days. */
   scheduleDefault?: boolean;
   /** Local time "HH:MM" (24h). */
@@ -206,6 +218,22 @@ export function scheduledCustomListTabIds(
   return out;
 }
 
+function parseGroups(raw: unknown): MailCustomListGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const out: MailCustomListGroup[] = [];
+  for (const g of raw) {
+    const id = String((g as MailCustomListGroup)?.id ?? "").trim();
+    if (!id || out.some((x) => x.id === id)) continue;
+    out.push({ id, name: String((g as MailCustomListGroup)?.name ?? "").trim() });
+  }
+  return out;
+}
+
+function cleanGroups(groups: readonly MailCustomListGroup[] | undefined): Pick<MailCustomList, "groups"> {
+  const clean = parseGroups(groups ?? []);
+  return clean.length ? { groups: clean } : {};
+}
+
 function parseCustomLists(raw: string | null): MailCustomList[] {
   if (!raw) return EMPTY_CUSTOM_LISTS;
   try {
@@ -234,6 +262,7 @@ function parseCustomLists(raw: string | null): MailCustomList[] {
         });
       }
       seen.add(id);
+      const groups = parseGroups((item as MailCustomList).groups);
       const scheduleDefault = Boolean(
         (item as MailCustomList).scheduleDefault
       );
@@ -241,6 +270,7 @@ function parseCustomLists(raw: string | null): MailCustomList[] {
         id,
         name,
         members,
+        ...(groups.length ? { groups } : {}),
         scheduleDefault,
         scheduleFrom: scheduleDefault
           ? normalizeTimeHm(
@@ -310,7 +340,8 @@ function scheduleFields(
 export function createCustomList(
   name: string,
   members: MailCustomListMember[],
-  schedule?: MailCustomListSchedule
+  schedule?: MailCustomListSchedule,
+  groups?: MailCustomListGroup[]
 ): MailCustomList {
   const list: MailCustomList = {
     id: newListId(),
@@ -319,6 +350,7 @@ export function createCustomList(
       email: m.email.trim().toLowerCase(),
       name: m.name.trim(),
     })),
+    ...cleanGroups(groups),
     ...scheduleFields(schedule),
   };
   writeCustomLists([...readCustomLists(), list]);
@@ -331,6 +363,7 @@ export function updateCustomList(
     name: string;
     members: MailCustomListMember[];
     schedule?: MailCustomListSchedule;
+    groups?: MailCustomListGroup[];
   }
 ): MailCustomList | null {
   const lists = readCustomLists();
@@ -343,6 +376,7 @@ export function updateCustomList(
       email: m.email.trim().toLowerCase(),
       name: m.name.trim(),
     })),
+    ...cleanGroups(patch.groups),
     ...scheduleFields(patch.schedule),
   };
   const copy = lists.slice();
@@ -353,6 +387,29 @@ export function updateCustomList(
 
 export function deleteCustomList(id: string): void {
   writeCustomLists(readCustomLists().filter((l) => l.id !== id));
+}
+
+/**
+ * The filter as it is matched: its own people, and the people now on each
+ * recipient list it links to. A link to a list that is gone adds nobody.
+ */
+export function withGroupMembers(
+  list: MailCustomList,
+  recipientLists: readonly { id: string; members: readonly { email: string; name: string }[] }[]
+): MailCustomList {
+  if (!list.groups?.length) return list;
+  const seen = new Set(list.members.map((m) => m.email.toLowerCase()));
+  const members = [...list.members];
+  for (const group of list.groups) {
+    const found = recipientLists.find((r) => r.id === group.id);
+    for (const m of found?.members ?? []) {
+      const email = m.email.trim().toLowerCase();
+      if (!email || seen.has(email)) continue;
+      seen.add(email);
+      members.push({ email, name: m.name });
+    }
+  }
+  return { ...list, members };
 }
 
 /** True when any external participant is in the list. */

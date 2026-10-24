@@ -11,7 +11,8 @@
 
 import * as React from "react";
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { parseCustomListTabId, threadMatchesCustomList, type MailCustomList } from "@/lib/mail/custom-lists";
+import { parseCustomListTabId, threadMatchesCustomList, withGroupMembers, type MailCustomList } from "@/lib/mail/custom-lists";
+import { useContactLists } from "@/components/mail/recipient-suggestions";
 import { filterIds } from "@/lib/mail/filter-set";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { useTabSchedules } from "@/lib/mail/tab-schedules";
@@ -31,11 +32,23 @@ export function threadOnTab(
 
 export function useListTabs() {
   const customLists = useMailCustomLists();
-  const customListById = React.useMemo(() => {
+  // As saved, for the editor: the people picked one by one, and the links.
+  const savedListById = React.useMemo(() => {
     const map = new Map<string, MailCustomList>();
     for (const list of customLists) map.set(list.id, list);
     return map;
   }, [customLists]);
+  /*
+    As matched: with the people now on each recipient list a filter links
+    to, so a filter follows its lists. Everything that asks whether a
+    conversation is on a tab reads this one.
+  */
+  const recipientLists = useContactLists();
+  const customListById = React.useMemo(() => {
+    const map = new Map<string, MailCustomList>();
+    for (const list of customLists) map.set(list.id, withGroupMembers(list, recipientLists));
+    return map;
+  }, [customLists, recipientLists]);
   const [tab, setTab] = useMailListTab(customLists);
   const [tabOrder, setTabOrder] = useMailListTabOrder(customLists);
   const tabReorderSuppressClick = React.useRef(false);
@@ -60,7 +73,7 @@ export function useListTabs() {
       : null;
   const editingList =
     typeof listEditor === "string"
-      ? customListById.get(listEditor) ?? null
+      ? savedListById.get(listEditor) ?? null
       : null;
   /** The filters on, more than one at a time — see lib/mail/filter-set. */
   const activeFilters = React.useMemo(() => filterIds(tab, MAIL_OFF_TAB_VIEWS), [tab]);

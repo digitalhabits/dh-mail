@@ -109,6 +109,8 @@ export const OLD_REPLY_TRAY_KEY = "dh-mail-reply-tray";
 
 /** "threads" or "people": one row per thread, or one per person. Local. */
 export const MAIL_VIEW_MODE_KEY = "redd-plan-mail-view-mode";
+/** "1" when the unread switch at the end of the tabs is on. Local. */
+export const MAIL_UNREAD_ONLY_KEY = "redd-plan-mail-unread-only";
 /** The row density of the list. Local. */
 export const MAIL_LIST_DENSITY_KEY = "redd-plan-mail-list-density";
 /** The tab that was open last. Local. */

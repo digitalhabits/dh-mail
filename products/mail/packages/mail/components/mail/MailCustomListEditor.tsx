@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, X } from "lucide-react";
+import { Check, Users, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import {
   WEEKEND_DAYS,
   normalizeScheduleDays,
   sameDaySet,
+  type MailCustomListGroup,
   type MailCustomListMember,
   type MailCustomListSchedule,
   type MailScheduleDay,
@@ -21,6 +22,8 @@ import type { MailContactSuggestion } from "@/lib/mail/contact-suggestion";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import { TabIconPicker } from "@/components/mail/TabIconPicker";
+import { useContactLists } from "@/components/mail/recipient-suggestions";
+import { listSubtitle } from "@/components/mail/recipient-lists";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 
 
@@ -116,6 +119,41 @@ function toggleDay(
 }
 
 /** Inline editor card under the tab row (not a popover). */
+/**
+ * A recipient list on the filter, as a chip with the people icon. Named as
+ * the list is named now, or as it was saved while the lists load.
+ */
+function GroupChip({
+  group,
+  live,
+  onRemove,
+}: {
+  group: MailCustomListGroup;
+  live: { name: string; members: unknown[] } | undefined;
+  onRemove: () => void;
+}) {
+  const t = useMailT();
+  const label = live?.name || group.name;
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-900"
+      title={live ? listSubtitle(t, live.members.length) : undefined}
+    >
+      <Users className="h-3 w-3 shrink-0 text-teal-700" aria-hidden />
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        title={`Remove ${label}`}
+        aria-label={`Remove ${label}`}
+        className="rounded-full p-0.5 text-teal-700/70 hover:bg-teal-100 hover:text-teal-900"
+        onClick={onRemove}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
 export function MailCustomListEditor({
   open,
   onCancel,
@@ -133,6 +171,8 @@ export function MailCustomListEditor({
     /** The tab's icon, a Lucide name, or "" for none (lib/mail/tab-icons). */
     icon?: string;
     members: MailCustomListMember[];
+    /** Recipient lists the filter takes the people of (lib/mail/custom-lists). */
+    groups?: MailCustomListGroup[];
     scheduleDefault?: boolean;
     scheduleFrom?: string;
     scheduleTo?: string;
@@ -144,7 +184,8 @@ export function MailCustomListEditor({
     name: string,
     members: MailCustomListMember[],
     schedule: MailCustomListSchedule,
-    icon: string
+    icon: string,
+    groups: MailCustomListGroup[]
   ) => void;
   onDelete?: () => void;
   /**
@@ -162,6 +203,8 @@ export function MailCustomListEditor({
   const [members, setMembers] = React.useState<MailCustomListMember[]>(
     initial?.members ?? []
   );
+  const [groups, setGroups] = React.useState<MailCustomListGroup[]>(initial?.groups ?? []);
+  const recipientLists = useContactLists();
   const [scheduleDefault, setScheduleDefault] = React.useState(
     Boolean(initial?.scheduleDefault)
   );
@@ -180,7 +223,7 @@ export function MailCustomListEditor({
   const nameRef = React.useRef<HTMLInputElement | null>(null);
   const initialKey = `${initial?.name ?? ""}\0${initial?.icon ?? ""}\0${(initial?.members ?? [])
     .map((m) => m.email)
-    .join(",")}\0${initial?.scheduleDefault ? "1" : "0"}\0${
+    .join(",")}\0${(initial?.groups ?? []).map((g) => g.id).join(",")}\0${initial?.scheduleDefault ? "1" : "0"}\0${
     initial?.scheduleFrom ?? ""
   }\0${initial?.scheduleTo ?? ""}\0${(initial?.scheduleDays ?? []).join(",")}`;
 
@@ -189,6 +232,7 @@ export function MailCustomListEditor({
     setName(initial?.name ?? "");
     setIcon(initial?.icon ?? "");
     setMembers(initial?.members ?? []);
+    setGroups(initial?.groups ?? []);
     setScheduleDefault(Boolean(initial?.scheduleDefault));
     setScheduleFrom(initial?.scheduleFrom || DEFAULT_SCHEDULE_FROM);
     setScheduleTo(initial?.scheduleTo || DEFAULT_SCHEDULE_TO);
@@ -206,10 +250,40 @@ export function MailCustomListEditor({
     () => new Set(members.map((m) => m.email.toLowerCase())),
     [members]
   );
-  const suggestions = React.useMemo(
+  const peopleSuggestions = React.useMemo(
     () => filterContacts(query, contacts, taken),
     [query, contacts, taken]
   );
+  // Your recipient lists first, as in the address field: a list is one pick.
+  const listSuggestions = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return recipientLists
+      .filter((l) => !groups.some((g) => g.id === l.id) && l.name.toLowerCase().includes(q))
+      .slice(0, 4);
+  }, [query, recipientLists, groups]);
+  type FilterPick =
+    | { kind: "list"; id: string; name: string; count: number }
+    | { kind: "person"; email: string; name: string; detail: string };
+  const suggestions: FilterPick[] = [
+    ...listSuggestions.map((l) => ({ kind: "list" as const, id: l.id, name: l.name, count: l.members.length })),
+    ...peopleSuggestions.map((c) => ({
+      kind: "person" as const,
+      email: c.email,
+      name: c.name,
+      detail: c.name ? c.email : c.recordName ?? "",
+    })),
+  ];
+
+  const addPick = (pick: FilterPick) => {
+    if (pick.kind === "person") {
+      addMember({ email: pick.email, name: pick.name });
+      return;
+    }
+    setGroups((prev) => (prev.some((g) => g.id === pick.id) ? prev : [...prev, { id: pick.id, name: pick.name }]));
+    setQuery("");
+    setHighlight(0);
+  };
 
   const addMember = (member: MailCustomListMember) => {
     const email = member.email.trim().toLowerCase();
@@ -223,8 +297,7 @@ export function MailCustomListEditor({
     const raw = query.trim();
     if (!raw) return;
     if (suggestions[highlight]) {
-      const hit = suggestions[highlight];
-      addMember({ email: hit.email, name: hit.name });
+      addPick(suggestions[highlight]);
       return;
     }
     if (isEmail(raw)) {
@@ -282,29 +355,29 @@ export function MailCustomListEditor({
         />
         {suggestions.length ? (
           <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-surface border border-stone-200 bg-white py-1 shadow-md">
-            {suggestions.map((contact, index) => (
-              <li key={contact.email}>
+            {suggestions.map((pick, index) => (
+              <li key={pick.kind === "list" ? `list:${pick.id}` : pick.email}>
                 <button
                   type="button"
                   onMouseEnter={() => setHighlight(index)}
-                  onClick={() =>
-                    addMember({
-                      email: contact.email,
-                      name: contact.name,
-                    })
-                  }
+                  onClick={() => addPick(pick)}
                   className={cn(
-                    "flex w-full flex-col items-start px-3 py-1.5 text-left text-sm",
+                    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm",
                     index === highlight
                       ? "bg-teal-50 text-stone-900"
                       : "hover:bg-stone-50"
                   )}
                 >
-                  <span className="truncate font-medium">
-                    {contact.name || contact.email}
-                  </span>
-                  <span className="truncate text-xs text-stone-500">
-                    {contact.name ? contact.email : contact.recordName}
+                  {pick.kind === "list" ? (
+                    <Users className="h-4 w-4 shrink-0 text-teal-700" aria-hidden />
+                  ) : null}
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium">
+                      {pick.kind === "list" ? pick.name : pick.name || pick.email}
+                    </span>
+                    <span className="truncate text-xs text-stone-500">
+                      {pick.kind === "list" ? listSubtitle(t, pick.count) : pick.detail}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -313,8 +386,16 @@ export function MailCustomListEditor({
         ) : null}
       </div>
 
-      {members.length ? (
+      {members.length || groups.length ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
+          {groups.map((group) => (
+            <GroupChip
+              key={`list:${group.id}`}
+              group={group}
+              live={recipientLists.find((l) => l.id === group.id)}
+              onRemove={() => setGroups((prev) => prev.filter((g) => g.id !== group.id))}
+            />
+          ))}
           {members.map((member) => (
             <span
               key={member.email}
@@ -474,7 +555,7 @@ export function MailCustomListEditor({
               from: scheduleFrom,
               to: scheduleTo,
               days: scheduleDays,
-            }, icon);
+            }, icon, groups);
           }}
         >
           {submitLabel}

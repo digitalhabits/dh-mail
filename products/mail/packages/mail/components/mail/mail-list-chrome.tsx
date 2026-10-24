@@ -14,6 +14,7 @@ import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { Folder, Plus } from "lucide-react";
+import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import { toast } from "@/lib/mail/toast";
 
 /**
@@ -614,9 +615,12 @@ export function FilterRow({
   filterChips: React.ReactNode;
   foldersButton: React.ReactNode;
 }) {
-  const { filtersShowing } = usePageList();
+  const { filtersShowing, setUnreadOnly, tabHasUnread, unreadOnly } = usePageList();
   // Here only with one mailbox; with more, before their tabs.
   const ownsFolders = foldersButton != null;
+  // Only where it can narrow something, and always while it is on, so
+  // there is a way back from a tab it has emptied.
+  const unreadSwitch = filtersShowing && (tabHasUnread || unreadOnly);
   return (
     !filtersShowing && !ownsFolders ? null : (
     /* The tabs, then the folders at the right end when there is no
@@ -626,13 +630,50 @@ export function FilterRow({
        border, so the selected tab's underline is drawn over it. */
     <div className="-mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
       {filtersShowing ? filterChips : null}
+      {unreadSwitch ? <UnreadSwitch on={unreadOnly} onChange={setUnreadOnly} /> : null}
       {/* Its glyph level with the times at the end of the rows. Level
           with the tab words: a tab is 30px from its underline up, with
           the words' middle 18px above the line, so this button's middle
           goes 2px up from where the row's foot puts it. */}
-      {ownsFolders ? <div className="-mr-[11px] ml-auto shrink-0 -translate-y-[2px]">{foldersButton}</div> : null}
+      {ownsFolders ? (
+        <div className={cn("-mr-[11px] shrink-0 -translate-y-[2px]", !unreadSwitch && "ml-auto")}>{foldersButton}</div>
+      ) : null}
     </div>
   )
+  );
+}
+
+/**
+ * The unread switch: one for every tab, as the envelope with a dot that
+ * marks a conversation unread in the reader's toolbar. Off, it is in the
+ * muted grey of the tabs that are not open; on, it sits in a pill and the
+ * tab lists only its unread conversations (lib/mail/unread-filter.ts).
+ * Not the green dot the rows wear: a green dot at the head of the list
+ * read as one more thing waiting (2026-10-24).
+ */
+function UnreadSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  const t = useMailT();
+  const label = on ? t("unreadOnlyHide") : t("unreadOnlyShow");
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!on)}
+      className={cn(
+        // Its middle level with the tab words, and its glyph ending where
+        // the mailbox tabs above end: the pill's padding reaches past the
+        // edge, as a tab's fill reaches past its words.
+        "-mr-1.5 mb-[3px] ml-auto flex shrink-0 items-center rounded-control border px-1.5 py-1 transition-colors",
+        // A shade lighter than the tab words: it is a quiet switch, not a tab.
+        on
+          ? "border-stone-300 bg-[var(--mail-chrome-hover)] text-[var(--mail-chrome-muted)]"
+          : "border-transparent text-[var(--mail-chrome-muted)] opacity-[0.85] hover:bg-[var(--mail-chrome-hover)] hover:opacity-100"
+      )}
+    >
+      <MailDotIcon className="h-[18px] w-[18px]" aria-hidden />
+    </button>
   );
 }
 
@@ -810,7 +851,7 @@ export function ListTabsOrFolder({
           editingBuiltin
             ? mailBuiltinTabLabels(t)[editingBuiltin] ?? editingBuiltin
             : editingList
-              ? t("editList")
+              ? t("editFilter")
               : t("newList")
         }
         submitLabel={editingList || editingBuiltin ? t("save") : t("createList")}
@@ -830,6 +871,7 @@ export function ListTabsOrFolder({
                   name: editingList.name,
                   icon: tabIcons[customListTabId(editingList.id)] ?? "",
                   members: editingList.members,
+                  groups: editingList.groups,
                   scheduleDefault: editingList.scheduleDefault,
                   scheduleFrom: editingList.scheduleFrom,
                   scheduleTo: editingList.scheduleTo,
@@ -837,7 +879,7 @@ export function ListTabsOrFolder({
                 }
               : undefined
         }
-        onSubmit={(name, members, schedule, icon) => {
+        onSubmit={(name, members, schedule, icon, groups) => {
           if (editingBuiltin) {
             setTabIcon(editingBuiltin, icon);
             setTabSchedule(editingBuiltin, schedule.enabled ? schedule : null);
@@ -849,12 +891,13 @@ export function ListTabsOrFolder({
               name,
               members,
               schedule,
+              groups,
             });
             setTabIcon(customListTabId(editingList.id), icon);
             setListEditor(null);
             return;
           }
-          const list = createCustomList(name, members, schedule);
+          const list = createCustomList(name, members, schedule, groups);
           const tabId = customListTabId(list.id);
           setTabIcon(tabId, icon);
           setTabOrder([...tabOrder, tabId]);

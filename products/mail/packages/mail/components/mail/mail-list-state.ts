@@ -3,6 +3,7 @@
 import {
   MAIL_VIEW_MODE_KEY,
   MAIL_LIST_DENSITY_KEY,
+  MAIL_UNREAD_ONLY_KEY,
   MAIL_TAB_KEY,
   MAIL_TAB_ORDER_KEY,
 } from "@/lib/mail/storage-keys";
@@ -429,6 +430,44 @@ export function useMailViewMode(): [MailViewMode, (mode: MailViewMode) => void] 
     window.dispatchEvent(new Event(MAIL_VIEW_MODE_EVENT));
   }, []);
   return [mode, update];
+}
+
+const MAIL_UNREAD_ONLY_EVENT = "redd-plan-mail-unread-only-changed";
+
+function readMailUnreadOnly(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(MAIL_UNREAD_ONLY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeMailUnreadOnly(onChange: () => void): () => void {
+  window.addEventListener(MAIL_UNREAD_ONLY_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(MAIL_UNREAD_ONLY_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+/**
+ * The unread switch at the end of the tabs (lib/mail/unread-filter.ts): one
+ * switch for every tab, kept across sessions. Off by default.
+ */
+export function useMailUnreadOnly(): [boolean, (on: boolean) => void] {
+  const on = React.useSyncExternalStore(subscribeMailUnreadOnly, readMailUnreadOnly, () => false);
+  const update = React.useCallback((next: boolean) => {
+    try {
+      if (next) localStorage.setItem(MAIL_UNREAD_ONLY_KEY, "1");
+      else localStorage.removeItem(MAIL_UNREAD_ONLY_KEY);
+    } catch {
+      /* private mode */
+    }
+    window.dispatchEvent(new Event(MAIL_UNREAD_ONLY_EVENT));
+  }, []);
+  return [on, update];
 }
 
 /** List row density, persisted across sessions. Default is comfortable. */

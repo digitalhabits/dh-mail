@@ -77,13 +77,12 @@ export function AttachmentPreviewDialog({
 
   if (!attachment) return null;
   return (
-    <>
-      <AttachmentPreviewBody
-        account={account}
-        messageId={messageId}
-        attachment={attachment}
-        onClose={onClose}
-      />
+    <AttachmentPreviewBody
+      account={account}
+      messageId={messageId}
+      attachment={attachment}
+      onClose={onClose}
+    >
       {canStep ? (
         <PreviewStepChrome
           index={index}
@@ -91,7 +90,7 @@ export function AttachmentPreviewDialog({
           step={step}
         />
       ) : null}
-    </>
+    </AttachmentPreviewBody>
   );
 }
 
@@ -134,7 +133,10 @@ function PreviewStepChrome({
       >
         <ChevronRight className="h-5 w-5" aria-hidden />
       </button>
-      <span className="fixed bottom-4 left-1/2 z-[90] -translate-x-1/2 rounded-full bg-stone-900/50 px-2.5 py-0.5 text-xs text-white">
+      <span
+        className="fixed bottom-2.5 left-1/2 z-[90] -translate-x-1/2 rounded-full bg-stone-900/50 px-2.5 py-0.5 text-xs text-white"
+        onClick={(e) => e.stopPropagation()}
+      >
         {index + 1} / {count}
       </span>
     </>
@@ -193,23 +195,22 @@ export function DraftAttachmentPreviewDialog({
 
   if (!item || !localSrc) return null;
   return (
-    <>
-      <AttachmentPreviewBody
-        account=""
-        messageId=""
-        attachment={{
-          attachmentId: item.id,
-          filename: item.filename,
-          mimeType: item.mimeType,
-          size: item.size,
-        }}
-        localSrc={localSrc}
-        onClose={onClose}
-      />
+    <AttachmentPreviewBody
+      account=""
+      messageId=""
+      attachment={{
+        attachmentId: item.id,
+        filename: item.filename,
+        mimeType: item.mimeType,
+        size: item.size,
+      }}
+      localSrc={localSrc}
+      onClose={onClose}
+    >
       {openable.length > 1 ? (
         <PreviewStepChrome index={index} count={openable.length} step={step} />
       ) : null}
-    </>
+    </AttachmentPreviewBody>
   );
 }
 
@@ -244,6 +245,7 @@ function AttachmentPreviewBody({
   attachment,
   localSrc,
   onClose,
+  children,
 }: {
   account: string;
   messageId: string;
@@ -255,6 +257,13 @@ function AttachmentPreviewBody({
    */
   localSrc?: string;
   onClose: () => void;
+  /**
+   * The arrows and the count, when there are files to step through. In
+   * this layer, not beside it: drawn by the caller, they sat in the
+   * reader's layer, under this one, and only their edges showed behind the
+   * page (2026-10-24).
+   */
+  children?: React.ReactNode;
 }) {
   const t = useMailT();
   const colorMode = useMailColorMode();
@@ -596,6 +605,7 @@ function AttachmentPreviewBody({
           )}
         </div>
       </div>
+      {children}
     </div>,
     document.body
   );

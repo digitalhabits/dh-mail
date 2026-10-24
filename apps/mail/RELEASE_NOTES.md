@@ -18,6 +18,11 @@
 **The reply box**
 - The reply box is now a frame that stays still. Only the words inside it scroll, and Send is at its foot. Before, its edge could turn pale or disappear while you scrolled a long reply, and text could show under the row with Send.
 
+**Unread only, and filters**
+- At the end of the tabs, the envelope with a dot shows only your unread conversations, in every tab. Click it again to show all. It shows when the tab has unread mail. A conversation that you read while it is on stays in the list until you change the tab.
+- "New list" at the end of the tabs is now "New filter", so it is not mixed up with the lists of people you send to.
+- A filter can include your recipient lists, not only single people. Search for the list by its name in the filter. When people join or leave the list, the filter follows.
+
 **Reply all and search**
 - Each message in a conversation has Reply all at the top of its "…" menu, and under Reply when you right-click it. So you can reply to everyone on an earlier message, not only on the newest one. It shows when the message went to more than one person.
 - Searches with `in:`, `label:`, `is:unread`, `is:read`, `is:starred`, `is:important` and `filename:` now use the copy of your mail on your computer. They are quicker and work offline. For example, `label:clients-oxford` finds the label "Clients/Oxford", and `in:trash` shows what is in Trash.
@@ -37,6 +42,7 @@
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
 **Fixes**
+- When an email has more than one file, the arrows and the "1 / 4" count show over the preview, so you can go through the files. Before, they were behind the preview.
 - After the computer sleeps for a long time, Mail no longer asks you to reconnect a mailbox. It gets a new sign-in in the background.
 - A stack that you have open stays in its place in the list until you open something else. Before, when you deleted its newest conversation, the stack could move down the list at once.
 - The reply box keeps its size when there is a lot above it. Before, it could shrink to a thin line, and its text and Send showed below it.

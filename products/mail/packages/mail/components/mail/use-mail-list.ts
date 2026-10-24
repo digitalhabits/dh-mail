@@ -27,8 +27,9 @@ import { newestFirst } from "@/lib/mail/thread-copies";
 import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { searchHighlightTerms } from "@/lib/mail/search-highlight";
-import { useLeaveEmptyPlaces, useMailPins, MailListTab, MAIL_OFF_TAB_VIEWS, useMailViewMode, isMailboxScopeAll, accountPassesMailboxScope, mailboxScopeKey, mailboxScopeApiAccount, type ActiveMailFolder } from "@/components/mail/mail-list-state";
+import { useLeaveEmptyPlaces, useMailPins, MailListTab, MAIL_OFF_TAB_VIEWS, useMailViewMode, useMailUnreadOnly, isMailboxScopeAll, accountPassesMailboxScope, mailboxScopeKey, mailboxScopeApiAccount, type ActiveMailFolder } from "@/components/mail/mail-list-state";
 import { useThreadListData } from "@/components/mail/use-thread-list-data";
+import { nextUnreadKeep, unreadRows, type UnreadKeep } from "@/lib/mail/unread-filter";
 import type { useAccountsState, usePausing } from "@/components/mail/use-mail-accounts";
 import type { usePageSetup } from "@/components/mail/use-page-setup";
 import type { useReaderState } from "@/components/mail/use-mail-reader";
@@ -58,7 +59,8 @@ export function useListTabsAndPins() {
     [pins]
   );
   const [viewMode] = useMailViewMode();
-  return { activeCustomList, customListById, editingBuiltin, editingList, listEditor, passesFilters, pinKeySet, pins, setListEditor, setTab, setTabOrder, tab, tabOrder, tabReorderSensors, tabReorderSuppressClick, tabSchedules, viewMode };
+  const [unreadOnly, setUnreadOnly] = useMailUnreadOnly();
+  return { activeCustomList, customListById, editingBuiltin, editingList, listEditor, passesFilters, pinKeySet, pins, setListEditor, setTab, setTabOrder, setUnreadOnly, tab, tabOrder, tabReorderSensors, tabReorderSuppressClick, tabSchedules, unreadOnly, viewMode };
 }
 
 export function useListQuery() {
@@ -293,7 +295,8 @@ export function useVisibleRows({
   setDebouncedSearch,
   tab,
   threads,
-}: Pick<ReturnType<typeof useListTabsAndPins>, "passesFilters" | "tab"> &
+  unreadOnly,
+}: Pick<ReturnType<typeof useListTabsAndPins>, "passesFilters" | "tab" | "unreadOnly"> &
   Pick<ReturnType<typeof useAccountsState>, "accountEmails" | "mailboxScopeEmails"> &
   Pick<ReturnType<typeof useListQuery>, "search" | "setDebouncedSearch"> &
   Pick<ReturnType<typeof useListData>, "sentHiddenEmails" | "threads">) {
@@ -318,7 +321,7 @@ export function useVisibleRows({
   // everything, which is the tab a search starts on.
   // Custom lists: any external participant in the list's people.
   // Inbox tabs: newest-first. Snoozed: soonest wake first.
-  const visible = (
+  const inTab = (
     // Every view that is a place rather than a slice of the inbox. `t.tab` is
     // only ever "people" or "other", so filtering by it here empties any of
     // these — which is exactly how Junk and Trash came back empty even with
@@ -338,13 +341,27 @@ export function useVisibleRows({
           Date.parse(b.snoozedUntil ?? b.lastAt)
         : newestFirst(a, b)
     );
+  const { tabHasUnread, visible } = useUnreadSwitch(inTab, unreadOnly, `${tab}|${mailboxScopeKey(mailboxScopeEmails, accountEmails)}`);
   // On-screen thread order for successor selection after delete/archive/move.
   // Updated below once pinned band + flow list are known; read from the ref
   // inside removeThread so those values don't need to be declared earlier.
   const screenThreadOrderRef = React.useRef<MailThreadSummary[]>([]);
   // The same, for the by-person list. Set once the rows are grouped, below.
   const personRowOrderRef = React.useRef<PersonRow[]>([]);
-  return { listScrollRef, personRowOrderRef, screenThreadOrderRef, threadsForAccount, visible };
+  return { listScrollRef, personRowOrderRef, screenThreadOrderRef, tabHasUnread, threadsForAccount, visible };
+}
+
+/**
+ * The tab's rows through the unread switch (lib/mail/unread-filter.ts).
+ * The keep is state moved on during the render, so a row read a moment ago
+ * is still there on the paint that marks it read.
+ */
+function useUnreadSwitch(rows: MailThreadSummary[], on: boolean, place: string) {
+  const [keep, setKeep] = React.useState<UnreadKeep | null>(null);
+  const next = on ? nextUnreadKeep(keep, place, rows) : null;
+  if (next !== keep) setKeep(next);
+  const visible = React.useMemo(() => (next ? unreadRows(rows, next) : rows), [rows, next]);
+  return { tabHasUnread: rows.some((r) => r.unread), visible };
 }
 
 export function useSelectionPart({
@@ -638,9 +655,11 @@ export function usePageListSlice({
   setTab,
   setTabOrder,
   setThreads,
+  setUnreadOnly,
   showPinnedBand,
   snoozedCount,
   tab,
+  tabHasUnread,
   tabOrder,
   tabReorderSensors,
   tabReorderSuppressClick,
@@ -648,14 +667,15 @@ export function usePageListSlice({
   threads,
   threadsForAccount,
   unreadable,
+  unreadOnly,
   viewMode,
   viewerId,
-}: Pick<ReturnType<typeof useListTabsAndPins>, "activeCustomList" | "customListById" | "editingBuiltin" | "editingList" | "listEditor" | "passesFilters" | "pinKeySet" | "pins" | "setListEditor" | "setTab" | "setTabOrder" | "tab" | "tabOrder" | "tabReorderSensors" | "tabReorderSuppressClick" | "tabSchedules" | "viewMode"> &
+}: Pick<ReturnType<typeof useListTabsAndPins>, "activeCustomList" | "customListById" | "editingBuiltin" | "editingList" | "listEditor" | "passesFilters" | "pinKeySet" | "pins" | "setListEditor" | "setTab" | "setTabOrder" | "setUnreadOnly" | "tab" | "tabOrder" | "tabReorderSensors" | "tabReorderSuppressClick" | "tabSchedules" | "unreadOnly" | "viewMode"> &
   Pick<ReturnType<typeof useListQuery>, "activeFolder" | "debouncedSearch" | "highlightTerms" | "search" | "searchFocused" | "setActiveFolder" | "setSearch" | "setSearchFocused"> &
   Pick<ReturnType<typeof useListFolders>, "accountFolders" | "folders" | "foldersLoading" | "refreshFolders"> &
   Pick<ReturnType<typeof useListView>, "draggingAccount" | "inJunkView" | "inTrashView" | "mailProviderNames" | "searchInputRef" | "searchingMailboxCount"> &
   Pick<ReturnType<typeof useListData>, "hiddenSearch" | "listCacheKey" | "listCursor" | "listError" | "loadMoreThreads" | "loadingList" | "loadingMore" | "scheduleSentRefreshForAccount" | "searchDeleted" | "setSearchDeleted" | "setThreads" | "snoozedCount" | "threads" | "unreadable"> &
-  Pick<ReturnType<typeof useVisibleRows>, "listScrollRef" | "threadsForAccount"> &
+  Pick<ReturnType<typeof useVisibleRows>, "listScrollRef" | "tabHasUnread" | "threadsForAccount"> &
   Pick<ReturnType<typeof useSelectionPart>, "clearMultiSelection" | "multiKeys" | "multiSelectedCount" | "selectedThreadsNow"> &
   Pick<ReturnType<typeof useOutbox>, "heldMessages"> &
   Pick<ReturnType<typeof useListRowsPart>, "groups" | "pendingTokens" | "pinnedThreads" | "searchedVisible" | "showPinnedBand"> &
@@ -678,8 +698,8 @@ export function usePageListSlice({
     scheduleSentRefreshForAccount, search, searchHits, searchDeleted, searchEmptyText,
     searchFocused, searchInputRef, searchedVisible, searchingMailboxCount, setActiveFolder,
     setListEditor, setSearch, setSearchDeleted, setSearchFocused, setTab, setTabOrder, setThreads,
-    showPinnedBand, snoozedCount, tab, tabOrder, tabReorderSensors, tabReorderSuppressClick,
-    tabSchedules, threads, unreadable, viewMode, viewerId,
+    setUnreadOnly, showPinnedBand, snoozedCount, tab, tabHasUnread, tabOrder, tabReorderSensors,
+    tabReorderSuppressClick, tabSchedules, threads, unreadable, unreadOnly, viewMode, viewerId,
   });
   return list;
 }
