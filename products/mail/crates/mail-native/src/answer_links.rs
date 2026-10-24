@@ -57,7 +57,7 @@ pub fn base_subject(subject: &str) -> String {
 }
 
 /// Every Message-ID named in In-Reply-To and References.
-fn named_ids(in_reply_to: &str, references: &str) -> Vec<String> {
+pub(crate) fn named_ids(in_reply_to: &str, references: &str) -> Vec<String> {
   let mut ids = Vec::new();
   for text in [in_reply_to, references] {
     let mut rest = text;
@@ -72,7 +72,7 @@ fn named_ids(in_reply_to: &str, references: &str) -> Vec<String> {
   ids
 }
 
-fn emails(json_list: &str) -> Vec<String> {
+pub(crate) fn emails(json_list: &str) -> Vec<String> {
   serde_json::from_str::<Vec<Value>>(json_list)
     .unwrap_or_default()
     .iter()

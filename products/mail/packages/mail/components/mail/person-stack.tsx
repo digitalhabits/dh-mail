@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight, Paperclip } from "lucide-react";
 
 import { Highlighted } from "@/components/mail/Highlighted";
 import { DraftBadge, ThreadMessageCount } from "@/components/mail/ThreadListRow";
+import { TeamRowMark } from "@/components/mail/team-layer";
 import { rowTime } from "@/lib/mail/date-format";
 import { useMailT } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -122,6 +123,7 @@ export function StackThreadRow({
         <Paperclip className="mt-0.5 h-3.5 w-3.5 shrink-0 stroke-[1.5] text-[var(--mail-chrome-muted)]" aria-hidden />
       ) : null}
       <span className="shrink-0 text-xs tabular-nums text-[var(--mail-list-muted)]">
+        <TeamRowMark account={thread.account} threadId={thread.threadId} />
         {rowTime(thread.lastAt, { withYear })}
       </span>
     </button>

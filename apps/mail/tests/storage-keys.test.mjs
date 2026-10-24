@@ -26,6 +26,8 @@ const SOURCE_DIRS = ["products/mail/packages/mail", "apps/mail/src", "packages/s
  * Each one is matched by name and value. Add one only with its reason.
  */
 const NOT_BROWSER_STORAGE = [
+  // The start of a Gmail label name on the team mailbox (internal/team-mailbox.ts).
+  { name: "ASSIGNED_PREFIX", value: "Assigned/", why: "a Gmail label name, not a storage key" },
   // Keys in the native settings store (mailStore().settings, SQLite).
   { name: "KEY", value: "mail_own_identity", why: "native settings store" },
   { name: "DONE_KEY", value: "planner_state_imported_at", why: "native settings store" },

@@ -23,6 +23,9 @@
 - "New list" at the end of the tabs is now "New filter", so it is not mixed up with the lists of people you send to.
 - A filter can include your recipient lists, not only single people. Search for the list by its name in the filter. When people join or leave the list, the filter follows.
 
+**Videos and sound in files**
+- A video or sound file that comes with an email plays in the preview, with the usual controls. It plays only when you press play. A file over 100 MB is offered as a download only.
+
 **Reply all and search**
 - Each message in a conversation has Reply all at the top of its "…" menu, and under Reply when you right-click it. So you can reply to everyone on an earlier message, not only on the newest one. It shows when the message went to more than one person.
 - Searches with `in:`, `label:`, `is:unread`, `is:read`, `is:starred`, `is:important` and `filename:` now use the copy of your mail on your computer. They are quicker and work offline. For example, `label:clients-oxford` finds the label "Clients/Oxford", and `in:trash` shows what is in Trash.
@@ -42,6 +45,8 @@
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
 **Fixes**
+- When you print an email, nothing in it can run. Before, the print copy was protected less strictly than the email on the screen.
+- While a file is still loading for its preview, the preview says "Opening…". Before, it said "preview not available" for a moment.
 - When an email has more than one file, the arrows and the "1 / 4" count show over the preview, so you can go through the files. Before, they were behind the preview.
 - After the computer sleeps for a long time, Mail no longer asks you to reconnect a mailbox. It gets a new sign-in in the background.
 - A stack that you have open stays in its place in the list until you open something else. Before, when you deleted its newest conversation, the stack could move down the list at once.

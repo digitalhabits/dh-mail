@@ -543,6 +543,28 @@ export type MailAnswerLink = {
   sentAt: number;
 };
 
+/**
+ * A thread in a mailbox that a team reads together (team_mailbox.rs): who
+ * answers it, and whether somebody did.
+ */
+export type MailTeamThreadState = {
+  threadId: string;
+  /** The names in its `Assigned/<name>` labels. */
+  assigned: string[];
+  /** "none": only the team wrote in it, so there is nothing to answer. */
+  state: "open" | "answered" | "none";
+  /** The newest message from outside the team. Milliseconds since the epoch. */
+  lastInboundAt?: number;
+  answeredBy?: {
+    /** reply: in the thread. marked: by hand. linked, matched: a reply in another thread. */
+    how: "reply" | "marked" | "linked" | "matched";
+    threadId?: string;
+    fromName?: string;
+    fromEmail?: string;
+    sentAt?: number;
+  };
+};
+
 export type MailStoredMessage = {
   messageId: string;
   threadId: string;
@@ -662,6 +684,13 @@ export type MailMessageStore = {
    * `own` is every address of the reader's. Optional: without it, no links.
    */
   answerLinks?(account: string, threadId: string, own: string[]): Promise<MailAnswerLink[]>;
+
+  /**
+   * For a mailbox that a team reads together: who answers each of these
+   * threads, and whether the team did. `team` is every address of the team.
+   * Optional: without it, no team marks.
+   */
+  teamStates?(account: string, threadIds: string[], team: string[]): Promise<MailTeamThreadState[]>;
 
   /**
    * Full-text search over the copy. Threads, newest first; inside one view

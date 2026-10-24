@@ -9,7 +9,7 @@
  */
 
 import * as React from "react";
-import { TriageTab } from "@/components/mail/team-layer";
+import { TeamAssigneeFilter, TriageTab } from "@/components/mail/team-layer";
 import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
@@ -630,13 +630,18 @@ export function FilterRow({
        border, so the selected tab's underline is drawn over it. */
     <div className="-mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
       {filtersShowing ? filterChips : null}
-      {unreadSwitch ? <UnreadSwitch on={unreadOnly} onChange={setUnreadOnly} /> : null}
+      {/* At the right: the organization's build puts who has which thread
+          of the team mailbox here, then the unread switch. */}
+      <div className="ml-auto flex shrink-0 items-end gap-2">
+        {filtersShowing ? <TeamAssigneeFilter /> : null}
+        {unreadSwitch ? <UnreadSwitch on={unreadOnly} onChange={setUnreadOnly} /> : null}
+      </div>
       {/* Its glyph level with the times at the end of the rows. Level
           with the tab words: a tab is 30px from its underline up, with
           the words' middle 18px above the line, so this button's middle
           goes 2px up from where the row's foot puts it. */}
       {ownsFolders ? (
-        <div className={cn("-mr-[11px] shrink-0 -translate-y-[2px]", !unreadSwitch && "ml-auto")}>{foldersButton}</div>
+        <div className="-mr-[11px] shrink-0 -translate-y-[2px]">{foldersButton}</div>
       ) : null}
     </div>
   )
@@ -665,7 +670,7 @@ function UnreadSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) =
         // Its middle level with the tab words, and its glyph ending where
         // the mailbox tabs above end: the pill's padding reaches past the
         // edge, as a tab's fill reaches past its words.
-        "-mr-1.5 mb-[3px] ml-auto flex shrink-0 items-center rounded-control border px-1.5 py-1 transition-colors",
+        "-mr-1.5 mb-[3px] flex shrink-0 items-center rounded-control border px-1.5 py-1 transition-colors",
         // A shade lighter than the tab words: it is a quiet switch, not a tab.
         on
           ? "border-stone-300 bg-[var(--mail-chrome-hover)] text-[var(--mail-chrome-muted)]"

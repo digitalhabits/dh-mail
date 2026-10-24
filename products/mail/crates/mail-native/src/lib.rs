@@ -19,6 +19,7 @@ pub mod contacts;
 pub mod fonts;
 pub mod actions;
 pub mod answer_links;
+pub mod team_mailbox;
 pub mod account_exchange;
 pub mod db;
 #[cfg(test)]
@@ -255,6 +256,15 @@ pub fn register_schemes<R: tauri::Runtime>(
         .status(200)
         .header("Content-Type", "text/html; charset=utf-8")
         .header("Cache-Control", "no-store")
+        // A second CSP, from outside the page, beside the one in its head.
+        // A browser keeps both and allows only what both allow, so no
+        // markup in the document can loosen this one. It says nothing
+        // about images: the page's own CSP decides those, by whether the
+        // reader asked for pictures.
+        .header(
+          "Content-Security-Policy",
+          "script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'",
+        )
         .body(html.into_bytes())
         .unwrap(),
       None => tauri::http::Response::builder()

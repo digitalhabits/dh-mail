@@ -83,6 +83,9 @@ export type MailLocalActionKind =
   | "unstar"
   | "move"
   | "unmove"
+  /** A label on, or off, without moving the thread. Payload `{ label, create? }`. */
+  | "label"
+  | "unlabel"
   | "discardDraft"
   /** Not undoable. Payload `{ from: "trash" | "junk" }`. */
   | "deleteForever";

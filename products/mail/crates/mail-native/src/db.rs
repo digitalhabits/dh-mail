@@ -452,6 +452,7 @@ impl MailDb {
       "messages.thread" => self.messages_thread(args),
       "messages.copies" => self.messages_copies(args),
       "messages.answerLinks" => self.messages_answer_links(args),
+      "messages.teamStates" => self.messages_team_states(args),
       "messages.search" => self.messages_search(args),
       "messages.upsertMany" => self.messages_upsert_many(args),
       "messages.putBody" => self.messages_put_body(args),

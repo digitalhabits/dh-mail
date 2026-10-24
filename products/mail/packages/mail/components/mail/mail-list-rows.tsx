@@ -51,6 +51,7 @@ import { ConfirmPurgeDialog } from "@/components/mail/ConfirmPurgeDialog";
 import { OutboxRowMenu, type OutboxMenuAt } from "@/components/mail/OutboxRowMenu";
 import type { MailScheduledMessage, MailThreadSummary } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
+import { TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
@@ -368,6 +369,7 @@ export function PeopleRows() {
             return (
               <ThreadRowMenu
                 account={newest.account}
+                threadId={newest.threadId}
                 x={personMenuAt.x}
                 y={personMenuAt.y}
                 unread={Boolean(newest.unread)}
@@ -622,6 +624,7 @@ function PersonListRow({
                   time={
                     <>
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                      <TeamStackMark threads={row.threads} />
                       {rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
                     </>
                   }
@@ -659,6 +662,7 @@ function PersonListRow({
                     <PersonCount threads={row.threads} open={stackOpen} />
                     <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-list-muted)] group-hover:invisible">
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                      <TeamStackMark threads={row.threads} />
                       {rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
                       })}
@@ -697,6 +701,7 @@ function PersonListRow({
                     <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
                       <span className="text-xs text-[var(--mail-list-muted)]">
                         <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
+                        <TeamStackMark threads={row.threads} />
                         {rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),
                         })}

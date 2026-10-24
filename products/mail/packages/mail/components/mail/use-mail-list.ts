@@ -11,6 +11,7 @@
  * docs/mail-ui-structure.md.
  */
 
+import { useTeamRowFilter } from "@/components/mail/team-layer";
 import * as React from "react";
 import { type PersonRow } from "@/lib/mail/person-participants";
 import { useDraggingMailAccount, useMailFolders } from "@/components/mail/MailFolders";
@@ -312,6 +313,8 @@ export function useVisibleRows({
   const threadsForAccount = threads.filter((t) =>
     accountPassesMailboxScope(t.account, mailboxScopeEmails, accountEmails, sentHiddenEmails)
   );
+  // The organization's build: Unassigned, in the team mailbox. Null when off.
+  const teamKeep = useTeamRowFilter(threadsForAccount);
   // "all" = the whole inbox (both piles); "sent" / "snoozed" are folders.
   // Folder view shows every thread in that label (no People split).
   // The tabs narrow a search too. They used not to, on the reasoning that a
@@ -332,7 +335,7 @@ export function useVisibleRows({
     // whose. A reader in Clients who wants only the people in their address
     // book must not have to leave the folder to ask.
     // The filters on, any one of them (lib/mail/filter-set).
-    threadsForAccount.filter(passesFilters)
+    threadsForAccount.filter((t) => passesFilters(t) && (!teamKeep || teamKeep(t)))
   )
     .slice()
     .sort((a, b) =>

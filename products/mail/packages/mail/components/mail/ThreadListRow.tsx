@@ -26,6 +26,7 @@ import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, subscribeMailPopouts } from "@/lib/mail/popout";
 import { cn } from "@/lib/utils";
 import { HiddenAccountMark } from "@/components/mail/hidden-account-mark";
+import { TeamRowMark, TeamRowMenuAssign } from "@/components/mail/team-layer";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
@@ -121,6 +122,7 @@ export function ThreadRowMenu({
   canReplyAll,
   folders,
   account,
+  threadId,
   onAction,
   onSnooze,
   onCancelSnooze,
@@ -148,6 +150,8 @@ export function ThreadRowMenu({
   folders: MailFolder[];
   /** The conversation's mailbox: only its folders are offered. */
   account?: string;
+  /** The conversation, for Assign… in a team mailbox. */
+  threadId?: string;
   /** Open the thread and do this there. */
   onAction: (action: MailThreadAction) => void;
   onSnooze?: () => void;
@@ -266,7 +270,8 @@ export function ThreadRowMenu({
 
       <MenuRule />
 
-      {/* Settling it: what it is to you, and when. */}
+      {/* Settling it: who answers it, what it is to you, and when. */}
+      {account && threadId ? <TeamRowMenuAssign account={account} threadId={threadId} onDone={onDismiss} /> : null}
       <button type="button" role="menuitem" className={item} onClick={run(onToggleRead)}>
         <MailDotIcon className={icon} aria-hidden />
         {unread ? t("markAsRead") : t("markAsUnread")}
@@ -1007,6 +1012,7 @@ export function ThreadListRow({
                 )}
               >
                 <HiddenAccountMark account={t.account} />
+                <TeamRowMark account={t.account} threadId={t.threadId} />
                 {rowTime(t.lastAt, { withYear })}
               </p>
             )}
@@ -1031,6 +1037,7 @@ export function ThreadListRow({
       {menuAt ? (
         <ThreadRowMenu
           account={t.account}
+          threadId={t.threadId}
           x={menuAt.x}
           y={menuAt.y}
           unread={Boolean(t.unread)}
@@ -1145,6 +1152,7 @@ function StackedRowBody({
               )}
             >
               <HiddenAccountMark account={t.account} />
+              <TeamRowMark account={t.account} threadId={t.threadId} />
               {rowTime(t.lastAt, { withYear })}
             </p>
           )}
@@ -1284,6 +1292,7 @@ function WideRowBody({
           )}
         >
           <HiddenAccountMark account={t.account} />
+          <TeamRowMark account={t.account} threadId={t.threadId} />
           {rowTime(t.lastAt, { withYear })}
         </p>
       )}

@@ -198,3 +198,38 @@ export async function handleDraftsFolderRequest(
 ): Promise<void> {
   await host.answer({ ok: false, error: "This Mail takes drafts only, not requests." });
 }
+
+/** A mark on a row of a mailbox that the team reads together. None here. */
+export function TeamRowMark(_props: { account: string; threadId: string; className?: string }): null {
+  return null;
+}
+
+/** "Assign…" in a row's right-click menu. None here. */
+export function TeamRowMenuAssign(_props: { account: string; threadId: string; onDone: () => void }): null {
+  return null;
+}
+
+/** The same for a Stacks row, which holds one person's threads. None here. */
+export function TeamStackMark(_props: {
+  threads: readonly { account: string; threadId: string }[];
+  className?: string;
+}): null {
+  return null;
+}
+
+/** Who answers a thread of a team mailbox, in the action strip. None here. */
+export function TeamThreadControl(_props: { account: string; threadId: string; newestId?: string }): null {
+  return null;
+}
+
+/** Who has which thread in the team mailbox, at the right of the tabs. None here. */
+export function TeamAssigneeFilter(): null {
+  return null;
+}
+
+/** The rows, narrowed by that filter. Never on here. */
+export function useTeamRowFilter(
+  _threads: readonly { account: string; threadId: string }[]
+): ((thread: { account: string; threadId: string }) => boolean) | null {
+  return null;
+}

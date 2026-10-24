@@ -22,8 +22,11 @@ import {
   type DraftAttachment,
   TypeBadge,
   formatFileSize,
+  isAudioMime,
   isImageMime,
   isPdfMime,
+  isVideoMime,
+  MEDIA_PREVIEW_MAX_BYTES,
   openAttachmentOutside,
   useAttachmentSourceState,
 } from "@/components/mail/attachment-files";
@@ -68,6 +71,8 @@ export function AttachmentPreviewDialog({
     if (!attachment) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      // On a video or sound file's controls, the arrows move through it.
+      if (isMediaControl(e.target)) return;
       if (e.key === "ArrowLeft") step(-1);
       if (e.key === "ArrowRight") step(1);
     };
@@ -179,6 +184,8 @@ export function DraftAttachmentPreviewDialog({
     if (!item) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      // On a video or sound file's controls, the arrows move through it.
+      if (isMediaControl(e.target)) return;
       if (e.key === "ArrowLeft") step(-1);
       if (e.key === "ArrowRight") step(1);
     };
@@ -211,6 +218,59 @@ export function DraftAttachmentPreviewDialog({
         <PreviewStepChrome index={index} count={openable.length} step={step} />
       ) : null}
     </AttachmentPreviewBody>
+  );
+}
+
+/** A video or sound player, which takes the arrow keys for itself. */
+function isMediaControl(target: EventTarget | null): boolean {
+  const tag = (target as Element | null)?.tagName;
+  return tag === "VIDEO" || tag === "AUDIO";
+}
+
+/** Which player a file gets, if any. */
+function mediaKind(attachment: MailAttachment): "video" | "audio" | null {
+  if (isVideoMime(attachment.mimeType, attachment.filename)) return "video";
+  if (isAudioMime(attachment.mimeType, attachment.filename)) return "audio";
+  return null;
+}
+
+/**
+ * A video or sound file, with the system's own controls. It plays only when
+ * the reader presses play, and reads no more than it needs to show its
+ * length until then. Nothing in it can run a script.
+ */
+function MediaPreview({
+  kind,
+  src,
+  title,
+  onFail,
+}: {
+  kind: "video" | "audio";
+  src: string;
+  title: string;
+  onFail: () => void;
+}) {
+  if (kind === "video") {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-stone-900 p-4">
+        <video
+          src={src}
+          title={title}
+          controls
+          preload="metadata"
+          playsInline
+          onError={onFail}
+          className="max-h-full max-w-full"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+      <TypeBadge filename={title} />
+      <p className="text-sm font-medium text-stone-800">{title}</p>
+      <audio src={src} title={title} controls preload="metadata" onError={onFail} className="w-full max-w-md" />
+    </div>
   );
 }
 
@@ -267,9 +327,17 @@ function AttachmentPreviewBody({
 }) {
   const t = useMailT();
   const colorMode = useMailColorMode();
+  const media = mediaKind(attachment);
+  // A video or sound file over the limit is not read at all: see
+  // MEDIA_PREVIEW_MAX_BYTES.
+  const mediaTooBig = media != null && attachment.size > MEDIA_PREVIEW_MAX_BYTES;
   const sourceState = useAttachmentSourceState(
-    localSrc ? null : attachmentUrl({ account, messageId, attachment })
+    localSrc || mediaTooBig ? null : attachmentUrl({ account, messageId, attachment })
   );
+  // The system could not play it: the download view, saying so. Kept by
+  // file, as the preview stays open while the arrows move to the next one.
+  const [failedMedia, setFailedMedia] = React.useState<string | null>(null);
+  const mediaFailed = failedMedia === attachment.attachmentId;
   const src = localSrc ?? sourceState.url;
   const error = localSrc ? null : sourceState.error;
   // Download asks where to save in its own menu (download-split-button).
@@ -301,6 +369,14 @@ function AttachmentPreviewBody({
     setPdfDrawFailed(false);
   }, [attachment.attachmentId]);
   const drawPdf = pdf && canRenderPdf && !pdfDrawFailed;
+  /*
+    A file this preview shows, whose bytes have not come yet. On the desktop
+    app they are read from the mailbox first, which takes a few seconds for
+    a video; until then the download view said "preview not available"
+    about a file that was about to play (2026-10-24).
+  */
+  const stillReading =
+    !src && !error && (image || pdf || (media != null && !mediaTooBig && !mediaFailed));
   const zoomable = image || drawPdf;
   const bodyRef = React.useRef<HTMLDivElement>(null);
   const pdfBoxRef = React.useRef<HTMLDivElement>(null);
@@ -585,6 +661,8 @@ function AttachmentPreviewBody({
               src={src}
               className="block h-full w-full border-0"
             />
+          ) : media && src && !mediaTooBig && !mediaFailed ? (
+            <MediaPreview kind={media} src={src} title={attachment.filename} onFail={() => setFailedMedia(attachment.attachmentId)} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-16 text-center">
               <TypeBadge filename={attachment.filename} />
@@ -597,7 +675,14 @@ function AttachmentPreviewBody({
                     lie about one the provider refused to hand over. */}
                 <p className="mt-1 text-xs text-stone-500">
                   {formatFileSize(attachment.size)} ·{" "}
-                  {error ?? "preview not available"}
+                  {error ??
+                    (stillReading
+                      ? t("opening")
+                      : mediaTooBig
+                      ? "too large to play here"
+                      : mediaFailed
+                        ? "cannot be played here"
+                        : "preview not available")}
                 </p>
               </div>
               <DownloadSplitButton path={downloadPath} filename={attachment.filename} look="solid" />

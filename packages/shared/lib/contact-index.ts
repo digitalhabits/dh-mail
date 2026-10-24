@@ -55,6 +55,18 @@ export type TeamRecords = {
 /** The team's own people, offered to the address field. */
 export type TeamRoster = {
   listTeamRecipientSuggestions(): Promise<{ email: string; name: string }[]>;
+  /**
+   * The mailboxes the team reads together, and the members who answer in
+   * them with every address they write from. `me` is the reader's address,
+   * when the host knows it.
+   */
+  loadTeamMailbox(): Promise<TeamMailbox>;
+};
+
+export type TeamMailbox = {
+  mailboxes: string[];
+  members: { name: string; email: string; emails: string[] }[];
+  me?: string;
 };
 
 /** A connected Gmail mailbox, as the settings screens receive it. */

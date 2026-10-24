@@ -58,7 +58,7 @@ pub struct PendingAction {
 /// The actions the interface can queue. The string is what TypeScript sends.
 pub const KINDS: &[&str] = &[
   "archive", "unarchive", "trash", "untrash", "junk", "notjunk", "read", "unread", "star", "unstar",
-  "move", "unmove", "discardDraft", "deleteForever",
+  "move", "unmove", "label", "unlabel", "discardDraft", "deleteForever",
 ];
 
 /// The folders mail can be deleted from for good, as the payload names them:
@@ -382,6 +382,18 @@ impl MailDb {
           return Err(crate::db::DbError::BadArgument("unmove needs a label".into()));
         };
         labels(&tx, &[INBOX], &[l])?;
+      }
+      // A label on every message of the thread, or off it. Unlike "move",
+      // the thread stays where it is.
+      "label" | "unlabel" => {
+        let Some(l) = label.as_deref().filter(|l| !l.is_empty()) else {
+          return Err(crate::db::DbError::BadArgument(format!("{kind} needs a label")));
+        };
+        if kind == "label" {
+          labels(&tx, &[l], &[])?;
+        } else {
+          labels(&tx, &[], &[l])?;
+        }
       }
       // A provider draft thrown away: its row is hidden the same way,
       // and goes when the sweep finds the server's copy gone.
@@ -878,6 +890,21 @@ fn deliver(client: &mut Client, action: &PendingAction, folders: &Folders) -> Re
         client.uid_store(&set(&uids), "+X-GM-LABELS", "(\\Inbox)")?;
       }
     }
+    "label" | "unlabel" => {
+      if label.is_empty() {
+        return Err(imap::ImapError::Refused { command: action.kind.clone(), text: "no label".into() });
+      }
+      if create && action.kind == "label" {
+        // CREATE says no when the label exists; that is fine.
+        let _ = client.create(&imap::encode_modified_utf7(label));
+      }
+      let uids = in_all_mail(client)?;
+      if !uids.is_empty() {
+        let quoted = imap::quote(&imap::encode_modified_utf7(label));
+        let sign = if action.kind == "label" { "+X-GM-LABELS" } else { "-X-GM-LABELS" };
+        client.uid_store(&set(&uids), sign, &format!("({quoted})"))?;
+      }
+    }
     other => {
       return Err(imap::ImapError::Refused { command: other.into(), text: "unknown action".into() });
     }
@@ -1000,6 +1027,28 @@ mod tests {
     assert_eq!(left[0].kind, "move");
     assert_eq!(left[0].attempts, 1);
     assert_eq!(left[0].last_error.as_deref(), Some("[CANNOT] no such label"));
+  }
+
+  #[test]
+  fn a_label_goes_on_and_off_without_moving_the_thread() {
+    let db = db();
+    seed(&db);
+    db.actions_apply_and_enqueue("vera@example.com", "1a", "label", &json!({ "label": "Assigned/Oskar", "create": true })).unwrap();
+    assert_eq!(labels_of(&db, "m2"), vec!["Assigned/Oskar", INBOX]);
+    db.actions_apply_and_enqueue("vera@example.com", "1a", "unlabel", &json!({ "label": "Assigned/Oskar" })).unwrap();
+    assert_eq!(labels_of(&db, "m2"), vec![INBOX]);
+    let stream = crate::imap::fake_server(vec![
+      ("CREATE \"Assigned/Oskar\"", "{tag} NO [ALREADYEXISTS] exists\r\n"),
+      ("UID SEARCH X-GM-THRID 26", "* SEARCH 1 2\r\n{tag} OK\r\n"),
+      ("UID STORE 1,2 +X-GM-LABELS (\"Assigned/Oskar\")", "{tag} OK\r\n"),
+      ("UID SEARCH X-GM-THRID 26", "* SEARCH 1 2\r\n{tag} OK\r\n"),
+      ("UID STORE 1,2 -X-GM-LABELS (\"Assigned/Oskar\")", "{tag} OK\r\n"),
+    ]);
+    let mut client = Client::connect_plain(stream).unwrap();
+    let folders = Folders { all_mail: "[Gmail]/All Mail".into(), trash: None, junk: None, drafts: None };
+    let report = flush_actions(&db, &mut client, "vera@example.com", &folders).unwrap();
+    assert_eq!(report.delivered, 2, "an existing label is not a refusal, and the inbox is not touched");
+    assert!(db.actions_pending("vera@example.com").unwrap().is_empty());
   }
 
   /// Two threads in Trash, one of them with a message still in the inbox,

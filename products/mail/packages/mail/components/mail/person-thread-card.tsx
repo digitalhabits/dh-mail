@@ -14,6 +14,7 @@ import * as React from "react";
 import { Archive, RotateCwFadingClock, Trash2 } from "lucide-react";
 
 import { DraftBadge, ThreadRowMenu } from "@/components/mail/ThreadListRow";
+import { TeamRowMark } from "@/components/mail/team-layer";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
 import { SnoozeMenu } from "@/components/mail/SnoozeMenu";
@@ -113,6 +114,7 @@ export function PersonThreadCard({
           ) : null}
           <span className="truncate">{t.subject}</span>
           {hasDraft ? <DraftBadge /> : null}
+          <TeamRowMark account={t.account} threadId={t.threadId} />
         </p>
         {/* The date stands down for the actions rather than shuffling along
             beside them, the way a list row does it — the card keeps one
@@ -211,6 +213,7 @@ export function PersonThreadCard({
         <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <ThreadRowMenu
             account={t.account}
+            threadId={t.threadId}
             x={menuAt.x}
             y={menuAt.y}
             unread={Boolean(t.unread)}

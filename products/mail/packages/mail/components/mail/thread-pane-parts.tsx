@@ -26,7 +26,7 @@ import { openThreadFullWindow } from "@/components/mail/thread-full-window";
 import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
-import { ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
+import { TeamThreadControl, ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
 import { AnswerLinkLines, useAnswerLinks } from "@/components/mail/thread-answer-links";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
@@ -1157,6 +1157,11 @@ function ThreadActionStrip({
           className="mx-1.5 h-5 w-px shrink-0 bg-[var(--mail-chrome-border)] group-data-[tight]/toolbar:mx-1"
         />
       )}
+      {/* First in the group: who answers, on a thread of a mailbox the
+          team reads together. The assignee's initials once there is one. */}
+      {mailHasTeamRecords() ? (
+        <TeamThreadControl account={thread.account} threadId={thread.threadId} newestId={thread.messages.at(-1)?.id} />
+      ) : null}
       {/* Each of these leaves on its own, when the row runs out of
           room — not as a group. See `hidden`. */}
       {hidden.has("read") ? null : (

@@ -7,11 +7,20 @@
  * list, the chrome, and the composer. So a document of its own is built — see
  * `print-document.ts` — and then printed one of two ways.
  *
- * In a browser it goes in an off-screen iframe, and that frame prints. The
- * frame is not sandboxed, because a sandbox without `allow-modals` refuses
- * `print()`. What replaces it is a stricter CSP than the reading frame uses:
- * that one names a script hash for its link bridge, and this one names no
- * `script-src` at all, so nothing runs even if the sanitizer missed something.
+ * In a browser it goes in an off-screen iframe, and that frame prints. Three
+ * barriers stop a script in a mail there, as in the reading frame:
+ *
+ * - the sanitizer;
+ * - a stricter CSP than the reading frame's: that one names a script hash
+ *   for its link bridge, and this one names no `script-src` at all;
+ * - a sandbox with no `allow-scripts`, so nothing in the frame can run. It
+ *   keeps `allow-same-origin`, so this page can wait for the pictures and
+ *   call `print()`, and `allow-modals`, without which `print()` is refused.
+ *   Same origin is safe here only because scripts are not allowed: the two
+ *   together are what a sandbox must never have.
+ *
+ * Until 2026-10-24 the frame had no sandbox, and the CSP alone stood
+ * between a script that got past the sanitizer and the app.
  *
  * In the Mac desktop app the same document goes to the shell instead.
  * WKWebView answers `window.print()` by doing nothing at all — it loads the
@@ -104,6 +113,8 @@ function printInFrame(html: string): void {
   const frame = document.createElement("iframe");
   frame.id = PRINT_FRAME_ID;
   frame.setAttribute("aria-hidden", "true");
+  // No `allow-scripts`: see the note at the top of this file.
+  frame.setAttribute("sandbox", "allow-same-origin allow-modals");
   frame.setAttribute("tabindex", "-1");
   // Off-screen with a real box, not `display:none`. A frame with no box does
   // not lay out, and prints blank.

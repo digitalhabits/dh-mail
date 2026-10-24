@@ -59,6 +59,30 @@ export function isImageMime(mimeType: string, filename?: string): boolean {
   return Boolean(ext && ["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext));
 }
 
+/**
+ * Video and sound the preview plays. By type, or by name when the sender's
+ * mail program called the file application/octet-stream. Whether the
+ * system can play one is known only when it tries: see MediaPreview.
+ */
+export function isVideoMime(mimeType: string, filename?: string): boolean {
+  if (mimeType.startsWith("video/")) return true;
+  const ext = (filename ?? "").split(".").pop()?.toLowerCase();
+  return Boolean(ext && ["mp4", "m4v", "mov", "webm"].includes(ext));
+}
+
+export function isAudioMime(mimeType: string, filename?: string): boolean {
+  if (mimeType.startsWith("audio/")) return true;
+  const ext = (filename ?? "").split(".").pop()?.toLowerCase();
+  return Boolean(ext && ["mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac"].includes(ext));
+}
+
+/**
+ * The largest video or sound file the preview plays. A preview reads the
+ * whole file into memory first, so a film sent by mail would sit there in
+ * full; past this it is offered as a download only.
+ */
+export const MEDIA_PREVIEW_MAX_BYTES = 100 * 1024 * 1024;
+
 export function isPdfMime(mimeType: string, filename?: string): boolean {
   if (mimeType === "application/pdf") return true;
   return (filename ?? "").toLowerCase().endsWith(".pdf");
