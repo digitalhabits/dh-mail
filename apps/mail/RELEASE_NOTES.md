@@ -44,6 +44,9 @@
 - In the folder list, Drafts is under Sent, and Archived is at the top of the other column.
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
+**Disconnecting a mailbox**
+- When you disconnect an account, Mail now also removes the conversations it kept ready to reopen and any unsent draft of that account, with the files on the draft. Before, these stayed on the computer until you deleted Mail's data folder.
+
 **Fixes**
 - When you print an email, nothing in it can run. Before, the print copy was protected less strictly than the email on the screen.
 - While a file is still loading for its preview, the preview says "Opening…". Before, it said "preview not available" for a moment.

@@ -490,6 +490,31 @@ export function deleteDraft(key: string): Promise<void> {
   });
 }
 
+/**
+ * Drop every draft of one account: a reply by the thread it answers, a new
+ * message by the address it is from. An unsent draft holds its attachments,
+ * so this runs when the account is disconnected.
+ */
+export async function deleteAccountDrafts(account: string): Promise<void> {
+  let rows: MailDraft[] = [];
+  try {
+    const db = await openDb();
+    try {
+      const tx = db.transaction(STORE, "readonly");
+      rows =
+        (await idbRequest<MailDraft[]>(tx.objectStore(STORE).getAll())) ?? [];
+    } finally {
+      db.close();
+    }
+  } catch {
+    return;
+  }
+  const mine = rows.filter((row) =>
+    row.kind === "thread" ? row.account === account : row.from === account
+  );
+  await Promise.all(mine.map((row) => deleteDraft(row.key)));
+}
+
 /** Persist only attachments that already have base64 (skip in-progress reads). */
 export function readyAttachmentsForDraft(
   items: Array<{

@@ -15,6 +15,7 @@ import {
   OLD_THREADS_CACHE_V7_KEY,
   OLD_THREADS_CACHE_V6_KEY,
   OLD_THREADS_CACHE_V5_KEY,
+  POPOUT_SEEN_PREFIX,
 } from "@/lib/mail/storage-keys";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
@@ -214,6 +215,23 @@ export function forgetAccountEverywhere(account: string): void {
     }
   }
   for (const viewerId of viewers) forgetThreadEverywhere(viewerId, isOfAccount);
+  forgetAccountSideLists(email);
+}
+
+/** The popout marks name their account, so they go with it. */
+function forgetAccountSideLists(email: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const mine = `${POPOUT_SEEN_PREFIX}${email}|`;
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(mine)) stale.push(key);
+    }
+    for (const key of stale) localStorage.removeItem(key);
+  } catch {
+    /* private mode: nothing was written to begin with */
+  }
 }
 
 export function writeCachedList(

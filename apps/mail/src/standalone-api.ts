@@ -20,6 +20,8 @@ import {
 } from "@/lib/mail/exchange-accounts";
 import { forgetExchangeFolders } from "@/lib/mail/exchange-folders";
 import { forgetAccountEverywhere } from "@/lib/mail/list-cache";
+import { forgetAccountThreadBodies } from "@/lib/mail/thread-cache";
+import { deleteAccountDrafts } from "@/lib/mail/local-drafts";
 import { unpinAccount } from "@/lib/mail/pins";
 import { searchOlderMail } from "@/lib/mail/older-search";
 import { trackMailWrite } from "./pending-writes";
@@ -820,9 +822,12 @@ async function accounts({ url, q, method, body }: RouteContext): Promise<Respons
     // side changes; the mail is still there to sync again.
     await stopLocalStoreSync(email).catch(() => {});
     await mailStore().messages.removeAccount(email).catch(() => {});
-    // The saved lists and pins hold its senders and subjects: they go too.
+    // The saved lists and pins hold its senders and subjects: they go too,
+    // with the cached thread bodies and any unsent draft and its files.
     forgetAccountEverywhere(email);
     unpinAccount(email);
+    await forgetAccountThreadBodies(email).catch(() => {});
+    await deleteAccountDrafts(email).catch(() => {});
     return ok({ ok: true, success: true });
   }
 
@@ -856,9 +861,12 @@ async function exchangeAccounts({ q, method, body }: RouteContext): Promise<Resp
     invalidateInboxCache();
     await stopLocalStoreSync(email).catch(() => {});
     await mailStore().messages.removeAccount(email).catch(() => {});
-    // The saved lists and pins hold its senders and subjects: they go too.
+    // The saved lists and pins hold its senders and subjects: they go too,
+    // with the cached thread bodies and any unsent draft and its files.
     forgetAccountEverywhere(email);
     unpinAccount(email);
+    await forgetAccountThreadBodies(email).catch(() => {});
+    await deleteAccountDrafts(email).catch(() => {});
     await forgetExchangeFolders(email).catch(() => {});
     return ok({ ok: true, success: true });
   }

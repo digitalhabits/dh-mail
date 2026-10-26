@@ -147,9 +147,11 @@ end run
     .arg(if cold_start { "1" } else { "0" })
     .output();
   match out {
+    // The status only. AppleScript quotes the value it choked on, and that
+    // value is the subject.
     Ok(out) if !out.status.success() => log::warn!(
-      "[mail] couldn't bring the Outlook message forward: {}",
-      String::from_utf8_lossy(&out.stderr).trim()
+      "[mail] couldn't bring the Outlook message forward: osascript {}",
+      out.status
     ),
     Err(e) => log::warn!("[mail] couldn't bring the Outlook message forward: {e}"),
     _ => {}
@@ -489,7 +491,9 @@ end run
     if !out.status.success() {
       // The new Outlook, or a message it would not make: the caller opens
       // a new message instead.
-      log::warn!("[mail] Outlook could not make the draft: {}", String::from_utf8_lossy(&out.stderr).trim());
+      // The status only: the script carries the subject and the body, and
+      // AppleScript puts what it refused into its error.
+      log::warn!("[mail] Outlook could not make the draft: osascript {}", out.status);
       return Ok(None);
     }
     let made = String::from_utf8_lossy(&out.stdout).trim().to_string();

@@ -120,16 +120,26 @@ Allow". See [`KEYCHAIN.md`](/products/mail/crates/mail-native/KEYCHAIN.md).
 directory (`database_path` in
 [`db.rs`](/products/mail/crates/mail-native/src/db.rs)). It holds a copy of
 every message's headers, the bodies of recent mail and of mail you have
-opened, and your contacts. Attachments are fetched only when you open them,
-and are not kept; one you save goes to your Downloads folder. The file is
+opened, and your contacts. An attachment on mail you receive is fetched
+only when you open it, and is not kept; one you save goes to your Downloads
+folder. An attachment you add to a draft is different: it is held with the
+draft until you send it, discard it, or disconnect the account. The file is
 not encrypted: anyone who can read your user account's files can read the
 mail in it, as with Apple Mail or Outlook.
 
+**Two smaller stores sit beside it**, in the window's own storage. One
+keeps the body of a thread you opened, so it reopens at once
+([`thread-cache.ts`](/products/mail/packages/mail/lib/mail/thread-cache.ts)).
+The other keeps a draft you have not sent, with its attachments, so it
+survives a restart
+([`local-drafts.ts`](/products/mail/packages/mail/lib/mail/local-drafts.ts)).
+
 Disconnecting an account in Settings removes its token from the credential
-store and its messages, bodies and sync state from the file
+store, its messages, bodies and sync state from the file
 ([`db.rs`](/products/mail/crates/mail-native/src/db.rs) `accounts_remove`,
 [`messages.rs`](/products/mail/crates/mail-native/src/messages.rs)
-`messages_clear_account`). A few smaller tables — contacts, snoozes, queued
+`messages_clear_account`), and its cached thread bodies and unsent drafts
+from the two stores above. A few smaller tables — contacts, snoozes, queued
 actions, the outbox — keep their rows until the app's data directory is
 deleted, which removes everything.
 
@@ -146,7 +156,9 @@ account, its rows leave this cache and its pins are removed
 worker did. It names the account. For mail you send, it records how many
 recipients there are, not who they are, and never the subject or the body.
 When a mail server refuses something, its error is written as the server
-gave it, and that error can name an address. The file is small (at most
+gave it, and that error can name an address. Where a draft is handed to
+Outlook, a failure is written as the exit status alone, because the error
+would otherwise carry the words of the draft. The file is small (at most
 40 KB; when it is full, it starts again) and stays on the machine.
 
 ## How sign-in works

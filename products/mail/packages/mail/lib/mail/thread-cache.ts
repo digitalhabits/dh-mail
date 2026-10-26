@@ -385,6 +385,34 @@ export function setCachedMailThread(
   });
 }
 
+/**
+ * Drop everything cached for one account. The keys start with the address,
+ * so one range covers both stores.
+ */
+export async function forgetAccountThreadBodies(
+  account: string
+): Promise<void> {
+  const prefix = `${account}|`;
+  for (const key of [...cache.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    const entry = cache.get(key);
+    if (entry) totalBytes -= entry.bytes;
+    cache.delete(key);
+    const i = order.indexOf(key);
+    if (i >= 0) order.splice(i, 1);
+  }
+  try {
+    const db = await openDb();
+    const tx = db.transaction([STORE, META_STORE], "readwrite");
+    const range = IDBKeyRange.bound(prefix, `${prefix}￿`);
+    tx.objectStore(STORE).delete(range);
+    tx.objectStore(META_STORE).delete(range);
+    await txDone(tx);
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function invalidateCachedMailThread(
   account: string,
   threadId: string
