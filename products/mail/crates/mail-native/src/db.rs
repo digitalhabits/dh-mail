@@ -67,6 +67,22 @@ pub fn database_path(app_data_dir: PathBuf) -> PathBuf {
   app_data_dir.join("mail.sqlite3")
 }
 
+/// Give a file or a directory to its owner alone.
+///
+/// The store holds message bodies in plain text. On a machine with more than
+/// one account, only the reader who owns the mail may open it. Unix makes a
+/// new file readable by everybody, so the mode is set here. Windows takes the
+/// permissions from the per-user data directory the file sits in, and has no
+/// mode to set.
+#[cfg(unix)]
+fn owner_only(path: &std::path::Path, mode: u32) {
+  use std::os::unix::fs::PermissionsExt;
+  let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+}
+
+#[cfg(not(unix))]
+fn owner_only(_path: &std::path::Path, _mode: u32) {}
+
 /// The mail databases of the other Digital Habits apps beside this one.
 ///
 /// Each app's data directory is named for its bundle identifier, and all of
@@ -226,7 +242,11 @@ impl TokenVault for CachedVault {
 
   fn remove(&self, provider: &str, email: &str) -> DbResult<()> {
     self.inner.remove(provider, email)?;
-    self.seen.locked().insert(vault_key(provider, email), None);
+    // The token is held for the life of the process. A disconnect ends that,
+    // so the copy here goes too, not only the keychain item.
+    if let Some(Some(mut held)) = self.seen.locked().insert(vault_key(provider, email), None) {
+      zeroize::Zeroize::zeroize(&mut held);
+    }
     Ok(())
   }
 }
@@ -277,12 +297,21 @@ impl MailDb {
   pub fn open(path: &PathBuf, secrets: Secrets) -> DbResult<Self> {
     if let Some(parent) = path.parent() {
       let _ = std::fs::create_dir_all(parent);
+      owner_only(parent, 0o700);
     }
     let conn = Connection::open(path)?;
+    // Before the first write. SQLite gives the journal files the mode it
+    // finds on the database, so the two beside it start owner-only too.
+    owner_only(path, 0o600);
     let mut db = Self::from_connection(
       conn,
       Box::new(CachedVault::new(Box::new(KeychainVault::new(secrets)))),
     )?;
+    for suffix in ["-wal", "-shm"] {
+      let mut beside = path.clone().into_os_string();
+      beside.push(suffix);
+      owner_only(std::path::Path::new(&beside), 0o600);
+    }
     db.siblings = sibling_databases(path);
     Ok(db)
   }
@@ -2647,6 +2676,28 @@ mod tests {
             &json!({"provider": "gmail", "ownerId": "second", "email": "a@x"}))
       .unwrap();
     assert_eq!(db.vault.read("gmail", "a@x").unwrap(), None);
+  }
+
+  /// The store and the directory that holds it go to their owner alone.
+  /// A new file on unix is readable by every account on the machine, so a
+  /// wrong mode here puts one reader's mail in front of another.
+  #[cfg(unix)]
+  #[test]
+  fn the_store_is_readable_by_its_owner_alone() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("dh-mail-modes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("mail.sqlite3");
+    std::fs::write(&file, b"").unwrap();
+
+    owner_only(&dir, 0o700);
+    owner_only(&file, 0o600);
+
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dir), 0o700, "the data directory");
+    assert_eq!(mode(&file), 0o600, "the store");
+    let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]

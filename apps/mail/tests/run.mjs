@@ -28,7 +28,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import esbuild from "esbuild";
 
@@ -77,7 +77,10 @@ fs.mkdirSync(path.join(out, "internal"));
  * this app without that directory has no such suites.
  */
 const internalOverrides = suites.some((s) => s.startsWith("internal/"))
-  ? (await import(path.join(appDir, "src/internal/build-flavor.mjs"))).flavorTestAliases(appDir)
+  // As a URL: an import of a bare Windows path (`C:\…`) is refused, because
+  // a drive letter reads as the scheme.
+  ? (await import(pathToFileURL(path.join(appDir, "src/internal/build-flavor.mjs")).href))
+      .flavorTestAliases(appDir)
   : [];
 const jobs = Math.max(1, Number(process.env.TEST_JOBS) || os.availableParallelism() - 1);
 

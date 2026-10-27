@@ -47,7 +47,13 @@
 **Disconnecting a mailbox**
 - When you disconnect an account, Mail now also removes the conversations it kept ready to reopen and any unsent draft of that account, with the files on the draft. Before, these stayed on the computer until you deleted Mail's data folder.
 
+**Users on a shared computer**
+- The file Mail keeps your mail in is now open to you alone. On a Mac, every account on the computer could read it before.
+- A password or a sign-in token is written over as soon as Mail is done with it. Before, it stayed in memory until something else took the space.
+- An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
+
 **Fixes**
+- The eye that shows the Exchange password stays while you type, and it looks the same on Windows and on a Mac. Windows drew one of its own, but only the first time you clicked the field, and a Mac drew none.
 - When you print an email, nothing in it can run. Before, the print copy was protected less strictly than the email on the screen.
 - While a file is still loading for its preview, the preview says "Opening…". Before, it said "preview not available" for a moment.
 - When an email has more than one file, the arrows and the "1 / 4" count show over the preview, so you can go through the files. Before, they were behind the preview.

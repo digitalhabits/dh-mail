@@ -33,7 +33,14 @@ fn open_calendar_invite(
   if !safe.to_ascii_lowercase().ends_with(".ics") {
     safe.push_str(".ics");
   }
-  let path = std::env::temp_dir().join(safe);
+  // A folder of our own, so the sweep below reaches no other app's files.
+  // The calendar opens the invite by path, so the file stays until a later
+  // launch clears it; nothing deleted it before, and a year of invites named
+  // after their meetings stayed in the temporary folder.
+  let dir = std::env::temp_dir().join("digital-habits-mail-invites");
+  std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't write invite: {e}"))?;
+  mail_native::downloads::sweep_older_than(&dir, std::time::Duration::from_secs(24 * 60 * 60));
+  let path = dir.join(safe);
   std::fs::write(&path, content.as_bytes())
     .map_err(|e| format!("Couldn't write invite: {e}"))?;
 
@@ -468,20 +475,13 @@ pub fn run() {
       // First, so the window is never seen in the config's cream on a dark
       // theme. See mail_native::backdrop.
       mail_native::backdrop::restore(app.handle());
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      } else {
-        // Release: keep logs for diagnosing sidecar boot failures.
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
+      // Info in every build. A debug build keeps no more than a release one,
+      // so nothing a reader runs writes more about them to disk.
+      app.handle().plugin(
+        tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .build(),
+      )?;
       #[cfg(target_os = "macos")]
       magnify::install(app.handle().clone());
 

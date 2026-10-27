@@ -71,6 +71,12 @@ pub fn stage_attachment_for_drag(
   let bytes = decode_base64(&content_base64)?;
   let dir = drag_dir();
   std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't make room for the file: {e}"))?;
+  // The copy is an attachment out of the reader's mail, in a folder every
+  // account on the machine can reach. Only its owner reads it.
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+  }
   sweep(&dir);
   Ok(stage_into(&dir, &filename, &bytes)?.to_string_lossy().to_string())
 }

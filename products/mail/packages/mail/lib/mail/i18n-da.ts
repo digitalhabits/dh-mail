@@ -1320,6 +1320,8 @@ export const da: Record<keyof typeof en, string> = {
   exchangeUsername: "Brugernavn",
   exchangeUsernameHelp: "Det navn, du logger ind med. Det kan være et andet end e-mailadressen.",
   exchangePassword: "Adgangskode",
+  exchangePasswordShow: "Vis adgangskoden",
+  exchangePasswordHide: "Skjul adgangskoden",
   exchangeAdvanced: "Avanceret",
   exchangeServerLeaveEmpty: "Lad feltet være tomt, så finder appen din server, når du tilknytter.",
   exchangeFindingServer: "Leder efter din server…",

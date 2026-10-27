@@ -9,6 +9,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
+import { announceAutoReplyChanged } from "@/lib/mail/autoreply-changed";
 import { AutoReplyDialog } from "@/components/mail/AutoReplyDialog";
 
 const pass = (line) => console.log(`PASS  ${line}`);
@@ -147,6 +148,20 @@ async function main() {
     assert(fresh.every((p) => p.bodyHtml === fresh[0].bodyHtml && p.restrictToContacts === true), "the same reply on both");
     assert(!/different replies/.test(document.body.textContent || ""), "and the note is gone");
     pass("a change on All sets the same reply on every mailbox, and the note goes");
+
+    // Changed somewhere else while the dialog is open: the tab shows the new
+    // reply at once, and the dialog does not post it back.
+    tabFor(new RegExp(WRITTEN.account)).click();
+    await sleep(300);
+    const quiet = posts.length;
+    const elsewhere = { ...saved.get(WRITTEN.account), enabled: true, bodyHtml: "<p>Teaching in Leith all week.</p>" };
+    saved.set(WRITTEN.account, elsewhere);
+    announceAutoReplyChanged(elsewhere);
+    await sleep(900);
+    assert(/Teaching in Leith/.test(document.body.textContent || ""), "the new words show");
+    assert.equal(toggle().getAttribute("aria-checked") ?? String(toggle().checked), "true", "and the switch is on");
+    assert.equal(posts.length, quiet, "nothing posted back");
+    pass("a reply changed elsewhere shows in the open dialog, with no post");
 
     // Opened from Settings, it has a way back to Settings; opened from
     // anywhere else, only the cross.

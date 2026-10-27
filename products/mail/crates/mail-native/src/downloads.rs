@@ -75,6 +75,42 @@ pub fn unique_path(dir: &Path, filename: &str, exists: &dyn Fn(&Path) -> bool) -
 ///
 /// A lookup table rather than a search: an attachment can be 25 MB, which is
 /// 33 MB of base64, and scanning an alphabet per character is far too slow.
+/// Drop the files in `dir` last written more than `keep` ago.
+///
+/// Mail hands a file to another app by writing a copy in the temporary
+/// folder: an invite for the calendar, an attachment for a drag, a draft for
+/// Outlook. The other app opens it by path, so the copy must stay while that
+/// happens. Nothing deletes it afterwards, and without a sweep the folder
+/// becomes every invite and attachment the reader ever opened.
+///
+/// Give the folder to one kind of file and sweep the whole of it. A sweep of
+/// a shared folder by name would reach files another app wrote.
+///
+/// Best effort: a file that will not go is not a reason to refuse the thing
+/// the reader asked for.
+pub fn sweep_older_than(dir: &Path, keep: std::time::Duration) {
+  let Ok(entries) = std::fs::read_dir(dir) else {
+    return;
+  };
+  let now = std::time::SystemTime::now();
+  for entry in entries.flatten() {
+    let old = entry
+      .metadata()
+      .and_then(|m| m.modified())
+      .map(|at| now.duration_since(at).unwrap_or_default() > keep)
+      .unwrap_or(false);
+    if !old {
+      continue;
+    }
+    // Outlook gets a folder per draft, the calendar a file. Take either.
+    if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+      let _ = std::fs::remove_dir_all(entry.path());
+    } else {
+      let _ = std::fs::remove_file(entry.path());
+    }
+  }
+}
+
 pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
   let mut table = [255u8; 256];
   let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -255,6 +291,55 @@ fn save_attachment_now(
 mod tests {
   use super::*;
   use std::collections::HashSet;
+
+  /// The sweep deletes. A window that is too wide takes a file the other app
+  /// still has open, and one that is too narrow keeps the reader's mail in a
+  /// shared folder for good.
+  #[test]
+  fn a_sweep_takes_the_old_files_and_leaves_the_new() {
+    let day = std::time::Duration::from_secs(24 * 60 * 60);
+    let dir = std::env::temp_dir().join(format!("dh-mail-sweep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let old = dir.join("yesterday.ics");
+    let fresh = dir.join("just-now.ics");
+    std::fs::write(&old, b"x").unwrap();
+    std::fs::write(&fresh, b"x").unwrap();
+    let two_days = std::time::SystemTime::now() - day * 2;
+    std::fs::File::options().write(true).open(&old).unwrap().set_modified(two_days).unwrap();
+
+    sweep_older_than(&dir, day);
+
+    assert!(!old.exists(), "a file older than the window goes");
+    assert!(fresh.exists(), "a file inside the window stays");
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  /// The Outlook hand-over leaves a folder per draft, with the attachments
+  /// inside it. A sweep that took only files would leave every one of them.
+  #[test]
+  fn a_sweep_takes_a_whole_folder_with_what_is_in_it() {
+    let dir = std::env::temp_dir().join(format!("dh-mail-sweepdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("a-draft").join("0")).unwrap();
+    std::fs::write(dir.join("a-draft").join("0").join("report.pdf"), b"x").unwrap();
+
+    // Nothing is kept, so everything already there is old enough to go.
+    sweep_older_than(&dir, std::time::Duration::ZERO);
+
+    assert!(!dir.join("a-draft").exists(), "the folder goes whole");
+    assert!(dir.exists(), "the folder swept is not itself removed");
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  /// The sweep runs before the folder exists, on the first invite of a launch.
+  #[test]
+  fn a_sweep_of_a_folder_that_is_not_there_does_nothing() {
+    let missing = std::env::temp_dir().join(format!("dh-mail-absent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&missing);
+    sweep_older_than(&missing, std::time::Duration::from_secs(1));
+    assert!(!missing.exists());
+  }
 
   #[test]
   fn it_strips_a_path_out_of_a_sender_supplied_name() {

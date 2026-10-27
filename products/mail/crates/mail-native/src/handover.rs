@@ -516,7 +516,14 @@ fn write_draft_files(files: &[OutlookFile]) -> Result<Vec<String>, String> {
   if files.is_empty() {
     return Ok(Vec::new());
   }
-  let dir = std::env::temp_dir().join(format!("dh-mail-outlook-{}", now_ms()));
+  // Under one parent, so the hand-overs of earlier drafts can be found and
+  // dropped. Outlook opens each file by path, so a folder stays until a later
+  // hand-over clears it; nothing cleared them before.
+  let parent = std::env::temp_dir().join("digital-habits-mail-outlook");
+  std::fs::create_dir_all(&parent)
+    .map_err(|e| format!("Couldn't make a folder for the files: {e}"))?;
+  crate::downloads::sweep_older_than(&parent, std::time::Duration::from_secs(24 * 60 * 60));
+  let dir = parent.join(now_ms().to_string());
   std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't make a folder for the files: {e}"))?;
   let mut paths = Vec::new();
   for (i, file) in files.iter().enumerate() {

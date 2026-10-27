@@ -937,7 +937,8 @@ fn connect_any(host: &str, port: u16, timeout: Duration) -> ImapResult<TcpStream
   )))
 }
 
-/// A TLS stream to `host:port`, verified against the platform roots.
+/// A TLS stream to `host:port`, verified against the roots built into the
+/// app (`webpki-roots`), not the ones the operating system keeps.
 pub(crate) fn tls_connect(host: &str, port: u16, timeout: Duration) -> ImapResult<Stream> {
   let tcp = connect_any(host, port, timeout)?;
   tcp.set_read_timeout(Some(DEFAULT_TIMEOUT))?;
@@ -984,6 +985,17 @@ impl std::fmt::Debug for Credential {
       Credential::OAuth(_) => "Credential::OAuth(..)",
       Credential::Password(_) => "Credential::Password(..)",
     })
+  }
+}
+
+impl Drop for Credential {
+  // A dropped String gives its bytes back to the allocator as they are. The
+  // secret then sits in free memory until something else takes that space.
+  fn drop(&mut self) {
+    use zeroize::Zeroize;
+    match self {
+      Credential::OAuth(secret) | Credential::Password(secret) => secret.zeroize(),
+    }
   }
 }
 

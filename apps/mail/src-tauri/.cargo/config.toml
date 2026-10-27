@@ -9,3 +9,15 @@ runner = "./sign-dev.sh"
 
 [target.x86_64-apple-darwin]
 runner = "./sign-dev.sh"
+
+# Control Flow Guard on Windows. The compiler writes the list of functions an
+# indirect call is allowed to reach, and Windows stops a call that goes
+# anywhere else. This covers the code built from this tree. The standard
+# library arrives already compiled and is not covered: to instrument that too
+# needs a nightly toolchain, and this app builds on stable.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "control-flow-guard"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "control-flow-guard"]

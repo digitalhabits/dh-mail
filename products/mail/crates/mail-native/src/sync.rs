@@ -1233,7 +1233,7 @@ fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
   {
     Ok(s) => s,
     Err(e) => {
-      log::warn!("[mail-sync] {email}: could not reach the mail server to send: {e}");
+      log::warn!("[mail-sync] {email}: could not reach the mail server to send: {}", e.for_log());
       if e.is_auth() {
         forget_token(app, email);
         set_paused(app, email, "needs reconnect: the mail server refused the grant");
@@ -1432,7 +1432,10 @@ fn set_paused(app: &AppHandle, email: &str, reason: &str) {
 /// rest of the hour — after the reader has already reconnected.
 fn forget_token(app: &AppHandle, email: &str) {
   let config = app.state::<SyncConfig>();
-  config.tokens.locked().remove(email);
+  let dropped = config.tokens.locked().remove(email);
+  if let Some((mut token, _)) = dropped {
+    zeroize::Zeroize::zeroize(&mut token);
+  }
 }
 
 /*

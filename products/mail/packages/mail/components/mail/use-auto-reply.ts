@@ -14,9 +14,10 @@
  * `storeAutoReply`. The markup that shows the line and the marks stays in
  * the page and reads `autoReplies` and `autoReplyByAccount`.
  *
- * One effect: the read, 2.5 seconds after mount, so that it does not compete
- * with the inbox's own requests. The page calls this hook where that effect
- * always stood.
+ * Two effects: the read, 2.5 seconds after mount, so that it does not compete
+ * with the inbox's own requests, and a listener for replies changed outside
+ * the dialog (lib/mail/autoreply-changed). The page calls this hook where
+ * the read always stood.
  *
  * New auto-reply work goes in this file, not in MailPage.
  */
@@ -26,6 +27,7 @@ import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { currentMailLocale, type useMailT } from "@/lib/mail/i18n";
 import { mailApiFetch } from "@/lib/mail/api";
+import { onAutoReplyChanged } from "@/lib/mail/autoreply-changed";
 import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import {
   autoReplyActive,
@@ -105,6 +107,9 @@ export function useAutoReply({ t }: { t: ReturnType<typeof useMailT> }) {
     },
     [autoReplies, storeAutoReply]
   );
+
+  // A reply changed outside the dialog: show it now, not at the next launch.
+  React.useEffect(() => onAutoReplyChanged<AutoReplyDto>(storeAutoReply), [storeAutoReply]);
 
   // Auto-reply is optional chrome (banner + accounts menu). Defer so we don't
   // compete with the inbox's Gmail traffic and trip concurrent-request 429s.

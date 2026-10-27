@@ -1333,6 +1333,8 @@ export const en = {
   exchangeUsername: "Username",
   exchangeUsernameHelp: "The name you sign in with. It can be different from the email address.",
   exchangePassword: "Password",
+  exchangePasswordShow: "Show the password",
+  exchangePasswordHide: "Hide the password",
   exchangeAdvanced: "Advanced",
   exchangeServerLeaveEmpty: "Leave it empty, and the app finds your server when you connect.",
   exchangeFindingServer: "Looking for your server…",

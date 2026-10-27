@@ -2,7 +2,7 @@
 name = "digital-habits-mail"
 # Not the version the app shows: Tauri takes that from tauri.conf.json, which
 # reads ../package.json. Kept in step by scripts/check-version.sh.
-version = "0.11.43"
+version = "0.11.44"
 description = "Digital Habits: Mail — Mac desktop app"
 authors = ["Digital Habits"]
 license = ""
@@ -49,6 +49,11 @@ public-updater = ["mail-native/public-updater"]
 
 [dev-dependencies]
 url = "2.5"
+
+# A release build has no symbol table. Nothing on a reader's machine needs
+# one. A crash dump from a stripped binary names no function from our source.
+[profile.release]
+strip = true
 
 # The chat popout is reclassed into a non-activating panel by mail-native;
 # the plugin that does it has to be registered by the app that hosts it.

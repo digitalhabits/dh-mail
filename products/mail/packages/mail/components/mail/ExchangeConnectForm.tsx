@@ -23,6 +23,7 @@
  * In both builds, in the desktop app only.
  */
 
+import { Eye, EyeOff } from "lucide-react";
 import * as React from "react";
 
 import { mailApiJson } from "@/lib/mail/api";
@@ -273,6 +274,7 @@ function ExchangeFields({
   onAdvanced: (open: boolean) => void;
 }) {
   const t = useMailT();
+  const [reveal, setReveal] = React.useState(false);
   const input =
     "mt-1 w-full rounded-control border border-stone-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400";
   return (
@@ -296,15 +298,32 @@ function ExchangeFields({
       </label>
       <label>
         {t("exchangePassword")}
-        <input
-          className={input}
-          type="password"
-          autoComplete="off"
-          value={fields.password}
-          onChange={set("password")}
-          disabled={busy}
-          autoFocus={again}
-        />
+        {/* Our own eye, not the engine's. Edge draws one of its own on a
+            password field, only on the first focus and never on a Mac, so the
+            field looked different on the two platforms and the control came
+            and went. `::-ms-reveal` hides that one. */}
+        <span className="relative block">
+          <input
+            className={`${input} pr-9 [&::-ms-reveal]:hidden`}
+            type={reveal ? "text" : "password"}
+            autoComplete="off"
+            value={fields.password}
+            onChange={set("password")}
+            disabled={busy}
+            autoFocus={again}
+          />
+          <button
+            type="button"
+            onClick={() => setReveal((shown) => !shown)}
+            disabled={busy}
+            aria-pressed={reveal}
+            title={t(reveal ? "exchangePasswordHide" : "exchangePasswordShow")}
+            aria-label={t(reveal ? "exchangePasswordHide" : "exchangePasswordShow")}
+            className="absolute inset-y-0 right-0 mt-1 flex w-9 items-center justify-center rounded-r-control text-stone-500 hover:text-stone-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 disabled:opacity-50"
+          >
+            {reveal ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+          </button>
+        </span>
       </label>
       {/* The server under Advanced. Connect finds it, or fills it in for a
           domain the app knows; the field is for when that fails, or for

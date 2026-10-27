@@ -27,6 +27,7 @@ import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import { mailHasTeamAssist } from "@/lib/mail/product-flavor";
 import { mailApiFetch } from "@/lib/mail/api";
+import { onAutoReplyChanged } from "@/lib/mail/autoreply-changed";
 import type { MailProvider } from "@/lib/mail/types";
 
 
@@ -502,6 +503,44 @@ function AutoReplyBody({
 }
 
 
+/**
+ * A reply changed outside the dialog while it is open: show it in that
+ * mailbox's tab. Not while the reader has a change of their own waiting or
+ * on its way for that mailbox; theirs is saved after and wins.
+ */
+function useReplyChangedElsewhere({
+  open,
+  itemsRef,
+  saveTimersRef,
+  savingRef,
+  setItems,
+  setForms,
+  setLoadStamp,
+}: {
+  open: boolean;
+  itemsRef: React.MutableRefObject<AutoReplyDto[] | null>;
+  saveTimersRef: React.MutableRefObject<Map<string, number>>;
+  savingRef: React.MutableRefObject<Set<string>>;
+  setItems: React.Dispatch<React.SetStateAction<AutoReplyDto[] | null>>;
+  setForms: React.Dispatch<React.SetStateAction<Record<string, FormState>>>;
+  setLoadStamp: React.Dispatch<React.SetStateAction<number>>;
+}) {
+  React.useEffect(() => {
+    if (!open) return;
+    return onAutoReplyChanged<AutoReplyDto>((reply) => {
+      const { account } = reply;
+      if (saveTimersRef.current.has(account) || savingRef.current.has(account)) return;
+      const next = itemsRef.current?.map((a) => (a.account === account ? reply : a)) ?? null;
+      if (!next) return;
+      itemsRef.current = next;
+      setItems(next);
+      setForms((prev) => ({ ...prev, [account]: toFormState(reply) }));
+      // The editors are uncontrolled: remount them on the new words.
+      setLoadStamp((n) => n + 1);
+    });
+  }, [open, itemsRef, saveTimersRef, savingRef, setItems, setForms, setLoadStamp]);
+}
+
 /** The dialog's state: the mailboxes and their replies, the forms, the tabs, and saving. */
 export function useAutoReplyDialogState({
   initialAccount,
@@ -641,6 +680,7 @@ export function useAutoReplyDialogState({
     // text of an error.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialAccount]);
+  useReplyChangedElsewhere({ open, itemsRef, saveTimersRef, savingRef, setItems, setForms, setLoadStamp });
   const updateForm = (account: string, patch: Partial<FormState>) => {
     if (account === ALL) {
       updateAll(patch);

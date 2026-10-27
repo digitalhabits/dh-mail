@@ -166,6 +166,15 @@ pub struct EwsClient {
   refused: AtomicBool,
 }
 
+impl Drop for EwsClient {
+  // EWS has no token: the password goes to the server on every call, so the
+  // client holds it for as long as the mailbox is connected. It does not
+  // outlive the client.
+  fn drop(&mut self) {
+    zeroize::Zeroize::zeroize(&mut self.settings.password);
+  }
+}
+
 impl EwsClient {
   pub fn new(settings: EwsSettings) -> EwsResult<EwsClient> {
     EwsClient::with_timeout(settings, Duration::from_secs(120))
@@ -598,10 +607,12 @@ pub async fn connect(
   };
   let client = Arc::new(EwsClient::new(settings.clone())?);
   let summary = inbox(&client).await?;
-  let raw = serde_json::to_string(&settings).map_err(|e| EwsError::Invalid(e.to_string()))?;
-  secrets
-    .set(&keychain_account(&email), &raw)
-    .map_err(|e| EwsError::Network(format!("keychain: {e}")))?;
+  let mut raw = serde_json::to_string(&settings).map_err(|e| EwsError::Invalid(e.to_string()))?;
+  // The keychain takes a copy. This one holds the password in plain text, so
+  // it is overwritten whether the write went through or not.
+  let stored = secrets.set(&keychain_account(&email), &raw);
+  zeroize::Zeroize::zeroize(&mut raw);
+  stored.map_err(|e| EwsError::Network(format!("keychain: {e}")))?;
   accounts.put(&email, client);
   log::info!("ews: connected {email}");
   Ok(summary)
