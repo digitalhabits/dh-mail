@@ -27,6 +27,7 @@ import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import type { MailViewMode } from "@/components/mail/MailListControls";
+import { describeTargets, type MailUndoAnchor, type MailUndoWords } from "@/components/mail/use-mail-undo";
 
 type OpenThread = {
   account: string;
@@ -34,6 +35,35 @@ type OpenThread = {
   inPeople: boolean;
   focusMessageId?: string;
 };
+
+/**
+ * The Undo of a batch: when its requests are done, ask for each to be taken
+ * back, then put the rows back.
+ */
+function takeBack(
+  sending: Promise<unknown>,
+  path: string,
+  targets: { account: string; threadId: string }[],
+  restore: () => void
+) {
+  return async () => {
+    await sending;
+    try {
+      await Promise.all(
+        targets.map((t) =>
+          apiJson(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(t),
+          })
+        )
+      );
+      restore();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : mailSay("couldNotUndo"));
+    }
+  };
+}
 
 export function useBatchActions({
   threads,
@@ -48,6 +78,7 @@ export function useBatchActions({
   hideRemovedRows,
   unhideRows,
   pushBatchUndo,
+  dropMailUndo,
   selectedThreadsNow,
   successorAfterSelection,
   clearMultiSelection,
@@ -64,7 +95,9 @@ export function useBatchActions({
   noteLeftOpenFolder: (account: string) => void;
   hideRemovedRows: (keys: string[]) => void;
   unhideRows: (keys: string[]) => void;
-  pushBatchUndo: (label: string, run: () => Promise<void>) => void;
+  pushBatchUndo: (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => string;
+  /** A batch that failed whole has nothing to take back. */
+  dropMailUndo: (id: string | null) => void;
   selectedThreadsNow: () => MailThreadSummary[];
   successorAfterSelection: () => MailThreadSummary | null;
   clearMultiSelection: () => void;
@@ -102,7 +135,7 @@ export function useBatchActions({
       hideRemovedRows(targetKeys);
       if (wasOpen) landOnPerson(successor);
 
-      const results = await Promise.allSettled(
+      const sending = Promise.allSettled(
         targets.map((t) =>
           apiJson("/api/mail/archive", {
             method: "POST",
@@ -111,10 +144,27 @@ export function useBatchActions({
           })
         )
       );
+      // The confirmation stands at once, where the rows were: they have
+      // already left. Its Undo waits for the requests (2026-10-27).
+      // On the stack too, as `trashPerson` is: Command+Z takes it back.
+      const archived = targets.length;
+      const undoId = pushBatchUndo(
+        archived === 1
+          ? `Conversation with ${row.name} archived`
+          : `${archived} conversations with ${row.name} archived`,
+        takeBack(sending, "/api/mail/unarchive", targets, () => {
+          unhideRows(targetKeys);
+          setThreads((current) => withRowsBack(current, before, targetKeys));
+        }),
+        { lastAt: row.lastAt, personKey: row.key },
+        { action: "archive", verb: mailSay("slotArchived"), object: describeTargets(row.threads, [row]) }
+      );
+      const results = await sending;
       const failed = results.filter((r) => r.status === "rejected").length;
       if (failed === targets.length) {
         unhideRows(targetKeys);
         setThreads((current) => withRowsBack(current, before, targetKeys));
+        dropMailUndo(undoId);
         toast.error(`Couldn't archive ${row.name}'s mail`);
         return;
       }
@@ -125,31 +175,6 @@ export function useBatchActions({
         return;
       }
 
-      // On the stack, as `trashPerson` is. A toast of its own left Command+Z
-      // with nothing to take back.
-      const archived = targets.length;
-      pushBatchUndo(
-        archived === 1
-          ? `Conversation with ${row.name} archived`
-          : `${archived} conversations with ${row.name} archived`,
-        async () => {
-          try {
-            await Promise.all(
-              targets.map((t) =>
-                apiJson("/api/mail/unarchive", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(t),
-                })
-              )
-            );
-            unhideRows(targetKeys);
-            setThreads((current) => withRowsBack(current, before, targetKeys));
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Couldn't undo");
-          }
-        }
-      );
     },
     [
       threads,
@@ -160,6 +185,7 @@ export function useBatchActions({
       selectedPersonKey,
       setThreads,
       pushBatchUndo,
+      dropMailUndo,
       personRowOrderRef,
     ]
   );
@@ -200,7 +226,7 @@ export function useBatchActions({
       hideRemovedRows(targetKeys);
       if (wasOpen) landOnPerson(successor);
 
-      const results = await Promise.allSettled(
+      const sending = Promise.allSettled(
         targets.map((t) =>
           apiJson("/api/mail/trash", {
             method: "POST",
@@ -209,10 +235,32 @@ export function useBatchActions({
           })
         )
       );
+      // The confirmation stands at once, where the rows were: they have
+      // already left. Its Undo waits for the requests (2026-10-27).
+      // One Undo for the batch, the way archiving does it. Trash is still
+      // where these have gone, and the dialog said so — this is the quick
+      // way back for the answer given half a second ago. On the stack too,
+      // so Command+Z is the same way back.
+      const undoId = pushBatchUndo(
+        targets.length === 1
+          ? mailSay("conversationDeletedWith", { name: row.name })
+          : mailSay("conversationsDeletedWith", {
+              count: targets.length,
+              name: row.name,
+            }),
+        takeBack(sending, "/api/mail/untrash", targets, () => {
+          unhideRows(targetKeys);
+          setThreads((current) => withRowsBack(current, before, targetKeys));
+        }),
+        { lastAt: row.lastAt, personKey: row.key },
+        { action: "trash", verb: mailSay("slotDeleted"), object: describeTargets(row.threads, [row]) }
+      );
+      const results = await sending;
       const failed = results.filter((r) => r.status === "rejected").length;
       if (failed === targets.length) {
         unhideRows(targetKeys);
         setThreads((current) => withRowsBack(current, before, targetKeys));
+        dropMailUndo(undoId);
         toast.error(mailSay("couldNotDeletePersonMail", { name: row.name }));
         return;
       }
@@ -226,37 +274,6 @@ export function useBatchActions({
         );
         return;
       }
-      // One Undo for the batch, the way archiving does it. Trash is still
-      // where these have gone, and the dialog said so — this is the quick
-      // way back for the answer given half a second ago. On the stack too,
-      // so Command+Z is the same way back.
-      pushBatchUndo(
-        targets.length === 1
-          ? mailSay("conversationDeletedWith", { name: row.name })
-          : mailSay("conversationsDeletedWith", {
-              count: targets.length,
-              name: row.name,
-            }),
-        async () => {
-          try {
-            await Promise.all(
-              targets.map((t) =>
-                apiJson("/api/mail/untrash", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(t),
-                })
-              )
-            );
-            unhideRows(targetKeys);
-            setThreads((current) => withRowsBack(current, before, targetKeys));
-          } catch (err) {
-            toast.error(
-              err instanceof Error ? err.message : mailSay("couldNotUndo")
-            );
-          }
-        }
-      );
     },
     [
       threads,
@@ -267,6 +284,7 @@ export function useBatchActions({
       selectedPersonKey,
       landOnPerson,
       pushBatchUndo,
+      dropMailUndo,
       setThreads,
       personRowOrderRef,
     ]
@@ -281,11 +299,17 @@ export function useBatchActions({
    */
   const actOnSelection = React.useCallback(
     async (kind: "archive" | "trash") => {
-      const targets = selectedThreadsNow().map((t) => ({
+      const picked = selectedThreadsNow();
+      const targets = picked.map((t) => ({
         account: t.account,
         threadId: t.threadId,
       }));
       if (!targets.length) return;
+      // Where the confirmation stands: the newest of them, in the list.
+      const newestAt = picked.reduce<string | null>(
+        (at, t) => (at && Date.parse(at) >= Date.parse(t.lastAt) ? at : t.lastAt),
+        null
+      );
       const before = threads;
       const people = viewMode === "people";
       const successor = people ? null : successorAfterSelection();
@@ -317,7 +341,15 @@ export function useBatchActions({
       }
 
       const path = kind === "archive" ? "/api/mail/archive" : "/api/mail/trash";
-      const results = await Promise.allSettled(
+      const undoPath =
+        kind === "archive" ? "/api/mail/unarchive" : "/api/mail/untrash";
+      // The conversations, in the by-person view too: "3 people deleted"
+      // said something that did not happen.
+      const noun = mailSay(
+        targets.length === 1 ? "conversationOne" : "conversationsMany",
+        { count: targets.length }
+      );
+      const sending = Promise.allSettled(
         targets.map((t) =>
           apiJson(path, {
             method: "POST",
@@ -326,16 +358,29 @@ export function useBatchActions({
           })
         )
       );
-      const failed = results.filter((r) => r.status === "rejected").length;
-      // The conversations, in the by-person view too: "3 people deleted"
-      // said something that did not happen.
-      const noun = mailSay(
-        targets.length === 1 ? "conversationOne" : "conversationsMany",
-        { count: targets.length }
+      // The confirmation stands at once, where the rows were: they have
+      // already left. Its Undo waits for the requests (2026-10-27).
+      const undoId = pushBatchUndo(
+        mailSay(kind === "archive" ? "selectionArchived" : "selectionDeleted", {
+          what: noun,
+        }),
+        takeBack(sending, undoPath, targets, () => {
+          unhideRows(targetKeys);
+          setThreads((current) => withRowsBack(current, before, targetKeys));
+        }),
+        { lastAt: newestAt },
+        {
+          action: kind,
+          verb: mailSay(kind === "archive" ? "slotArchived" : "slotDeleted"),
+          object: describeTargets(picked, people ? personRowOrderRef.current : null),
+        }
       );
+      const results = await sending;
+      const failed = results.filter((r) => r.status === "rejected").length;
       if (failed === targets.length) {
         unhideRows(targetKeys);
         setThreads((current) => withRowsBack(current, before, targetKeys));
+        dropMailUndo(undoId);
         toast.error(
           mailSay(kind === "archive" ? "couldNotArchiveThese" : "couldNotDeleteThese", {
             what: noun,
@@ -353,32 +398,6 @@ export function useBatchActions({
         );
         return;
       }
-      const undoPath =
-        kind === "archive" ? "/api/mail/unarchive" : "/api/mail/untrash";
-      pushBatchUndo(
-        mailSay(kind === "archive" ? "selectionArchived" : "selectionDeleted", {
-          what: noun,
-        }),
-        async () => {
-          try {
-            await Promise.all(
-              targets.map((t) =>
-                apiJson(undoPath, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(t),
-                })
-              )
-            );
-            unhideRows(targetKeys);
-            setThreads((current) => withRowsBack(current, before, targetKeys));
-          } catch (err) {
-            toast.error(
-              err instanceof Error ? err.message : mailSay("couldNotUndo")
-            );
-          }
-        }
-      );
     },
     [
       selectedThreadsNow,
@@ -391,9 +410,11 @@ export function useBatchActions({
       clearMultiSelection,
       noteLeftOpenFolder,
       pushBatchUndo,
+      dropMailUndo,
       setThreads,
       setSelected,
       setSelectedPersonKey,
+      personRowOrderRef,
     ]
   );
 

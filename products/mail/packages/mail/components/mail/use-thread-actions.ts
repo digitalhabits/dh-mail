@@ -30,6 +30,9 @@ import { hideRow, unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { everyCopy, rowStandsFor, threadKey, withRowsBack } from "@/lib/mail/thread-copies";
 import { releaseRead } from "@/lib/mail/held-reads";
 import { mailSay } from "@/lib/mail/i18n";
+import { describeTargets, type MailUndoAnchor, type MailUndoWords } from "@/components/mail/use-mail-undo";
+import type { PersonRow } from "@/lib/mail/person-participants";
+import type { MailViewMode } from "@/components/mail/MailListControls";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { patchCachedThreads, type ActiveMailFolder } from "@/components/mail/mail-list-state";
@@ -66,9 +69,15 @@ export type ThreadActionsInput = {
     folderName?: string,
     leftFolderName?: string | null,
     after?: Promise<unknown>,
-    wasPinned?: boolean
+    wasPinned?: boolean,
+    what?: string
   ) => string;
   dropMailUndo: (id: string | null) => void;
+  /** One Undo for many conversations (use-mail-undo). Returns its id. */
+  pushBatchUndo: (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => string;
+  /** The people view's rows as painted, to name the stacks acted on. */
+  personRowOrderRef: React.RefObject<PersonRow[]>;
+  viewMode: MailViewMode;
   hiddenRowsRef: React.RefObject<HiddenRows>;
   listViewIdRef: React.RefObject<string>;
   loadAbortRef: React.RefObject<AbortController | null>;
@@ -92,14 +101,17 @@ export function useThreadActions({
   unhideRows,
   pushMailUndo,
   dropMailUndo,
+  pushBatchUndo,
   hiddenRowsRef,
   listViewIdRef,
   loadAbortRef,
   setSnoozedCount,
+  personRowOrderRef,
+  viewMode,
 }: ThreadActionsInput) {
   const { archive, isOutlookAccount, markUnread, moveToFolder, moveToInbox } = useMoveActions({ activeFolder, dropMailUndo, folder, hideRemovedRows, listCacheKey, loadAbortRef, noteLeftOpenFolder, openFolderName, pushMailUndo, removeThread, setThreads, threads, unhideRows, viewerId });
   const { restoreFromTrash, setThreadJunk, toggleRead, trash } = useMarkAndDeleteActions({ dropMailUndo, hideRemovedRows, isOutlookAccount, noteLeftOpenFolder, openFolderName, pushMailUndo, removeThread, selected, setSelected, setThreads, threads, unhideRows });
-  const { snooze, unsnooze } = useSnoozeActions({ activeFolder, hiddenRowsRef, listCacheKey, listViewIdRef, loadAbortRef, pushMailUndo, removeThread, setSnoozedCount, setThreads, tab, threads, viewerId });
+  const { snooze, snoozeMany, unsnooze } = useSnoozeActions({ activeFolder, dropMailUndo, personRowOrderRef, viewMode, pushBatchUndo, hiddenRowsRef, listCacheKey, listViewIdRef, loadAbortRef, pushMailUndo, removeThread, setSnoozedCount, setThreads, tab, threads, viewerId });
 
   return {
     markUnread,
@@ -112,6 +124,7 @@ export function useThreadActions({
     restoreFromTrash,
     setThreadJunk,
     snooze,
+    snoozeMany,
     unsnooze,
   };
 }
@@ -652,8 +665,12 @@ export function useSnoozeActions({
   activeFolder,
   hiddenRowsRef,
   listCacheKey,
+  dropMailUndo,
   listViewIdRef,
   loadAbortRef,
+  personRowOrderRef,
+  viewMode,
+  pushBatchUndo,
   pushMailUndo,
   removeThread,
   setSnoozedCount,
@@ -661,9 +678,13 @@ export function useSnoozeActions({
   tab,
   threads,
   viewerId,
-}: { activeFolder: ThreadActionsInput["activeFolder"]; hiddenRowsRef: ThreadActionsInput["hiddenRowsRef"]; listCacheKey: ThreadActionsInput["listCacheKey"]; listViewIdRef: ThreadActionsInput["listViewIdRef"]; loadAbortRef: ThreadActionsInput["loadAbortRef"]; pushMailUndo: ThreadActionsInput["pushMailUndo"]; removeThread: ThreadActionsInput["removeThread"]; setSnoozedCount: ThreadActionsInput["setSnoozedCount"]; setThreads: ThreadActionsInput["setThreads"]; tab: ThreadActionsInput["tab"]; threads: ThreadActionsInput["threads"]; viewerId: ThreadActionsInput["viewerId"] }) {
-  const snooze = React.useCallback(
-    async (t: { account: string; threadId: string }, untilIso: string) => {
+}: { activeFolder: ThreadActionsInput["activeFolder"]; dropMailUndo: ThreadActionsInput["dropMailUndo"]; personRowOrderRef: ThreadActionsInput["personRowOrderRef"]; viewMode: ThreadActionsInput["viewMode"]; pushBatchUndo: ThreadActionsInput["pushBatchUndo"]; hiddenRowsRef: ThreadActionsInput["hiddenRowsRef"]; listCacheKey: ThreadActionsInput["listCacheKey"]; listViewIdRef: ThreadActionsInput["listViewIdRef"]; loadAbortRef: ThreadActionsInput["loadAbortRef"]; pushMailUndo: ThreadActionsInput["pushMailUndo"]; removeThread: ThreadActionsInput["removeThread"]; setSnoozedCount: ThreadActionsInput["setSnoozedCount"]; setThreads: ThreadActionsInput["setThreads"]; tab: ThreadActionsInput["tab"]; threads: ThreadActionsInput["threads"]; viewerId: ThreadActionsInput["viewerId"] }) {
+  /**
+   * One conversation. `quiet` is one of many (snoozeMany): no confirmation
+   * and no error of its own, only whether it went.
+   */
+  const snoozeOne = React.useCallback(
+    async (t: { account: string; threadId: string }, untilIso: string, quiet: boolean): Promise<boolean> => {
       const key = threadKey(t);
       const before = threads;
       const summary = threads.find((x) => threadKey(x) === key);
@@ -702,34 +723,51 @@ export function useSnoozeActions({
       } else {
         removeThread(key);
       }
+      const sent = apiJson("/api/mail/snooze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...t, until: untilIso }),
+      });
+      const when = formatSnoozeWakeLabel(untilIso);
+      // The row that left says so at once, in its place, as archive does:
+      // waiting for the provider left a gap where the list closed up and
+      // opened again. Undo waits for the request (see `after`).
+      const undoId =
+        summary && !onSnoozedTab && !quiet
+          ? pushMailUndo(
+              "snooze",
+              summary,
+              `Snoozed until ${when}`,
+              undefined,
+              undefined,
+              sent,
+              undefined,
+              mailSay("slotSnoozedUntil", { when })
+            )
+          : null;
       try {
-        await apiJson("/api/mail/snooze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...t, until: untilIso }),
-        });
-        const when = formatSnoozeWakeLabel(untilIso);
+        await sent;
         if (!onSnoozedTab) {
           setSnoozedCount((n) => {
             const current = n == null ? 0 : n;
             return current + 1;
           });
         }
-        if (summary && !onSnoozedTab) {
-          pushMailUndo("snooze", summary, `Snoozed until ${when}`);
-        } else {
-          toast(`Snoozed until ${when}`);
-        }
+        if (!undoId && !quiet) toast(`Snoozed until ${when}`);
+        return true;
       } catch (err) {
+        dropMailUndo(undoId);
         unhideRow(hiddenRowsRef.current, key);
         setThreads((current) => withRowsBack(current, before, [key]));
-        toast.error(err instanceof Error ? err.message : "Couldn't snooze");
+        if (!quiet) toast.error(err instanceof Error ? err.message : "Couldn't snooze");
+        return false;
       }
     },
     [
       threads,
       removeThread,
       pushMailUndo,
+      dropMailUndo,
       activeFolder,
       tab,
       listCacheKey,
@@ -740,6 +778,78 @@ export function useSnoozeActions({
       setThreads,
       viewerId,
     ]
+  );
+  const snooze = React.useCallback(
+    (t: { account: string; threadId: string }, untilIso: string) => snoozeOne(t, untilIso, false),
+    [snoozeOne]
+  );
+  /**
+   * Many conversations at once: a person's stack, or a selection. One
+   * confirmation and one Undo for all of them, where they were in the
+   * list. Each went with its own Undo before, so the last one's covered
+   * the rest and Command+Z took back one at a time (2026-10-27).
+   */
+  const snoozeMany = React.useCallback(
+    async (
+      targets: MailThreadSummary[],
+      untilIso: string,
+      anchor?: MailUndoAnchor
+    ) => {
+      const onSnoozedTab = !activeFolder && tab === "snoozed";
+      // One is one, and in Snoozed the rows only take a new time.
+      if (targets.length <= 1 || onSnoozedTab) {
+        for (const t of targets) void snoozeOne(t, untilIso, false);
+        return;
+      }
+      const before = threads;
+      const when = formatSnoozeWakeLabel(untilIso);
+      const done = Promise.all(targets.map((t) => snoozeOne(t, untilIso, true)));
+      // At once, as for one conversation: the rows leave now, so their
+      // confirmation stands now. Undo waits for the requests.
+      const undoId = pushBatchUndo(
+        mailSay("snoozedMany", { count: targets.length, when }),
+        async () => {
+          const ok = await done;
+          const back = targets.filter((_, i) => ok[i]);
+          const backKeys = back.map(threadKey);
+          for (const key of backKeys) unhideRow(hiddenRowsRef.current, key);
+          setThreads((current) => {
+            const next = withRowsBack(current, before, backKeys);
+            patchCachedThreads(viewerId, listCacheKey, next);
+            return next;
+          });
+          try {
+            await Promise.all(
+              back.map((t) =>
+                apiJson("/api/mail/unsnooze", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ account: t.account, threadId: t.threadId }),
+                })
+              )
+            );
+            setSnoozedCount((n) => Math.max(0, (n ?? back.length) - back.length));
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : mailSay("couldNotUndo"));
+          }
+        },
+        anchor ?? newestAnchor(targets),
+        {
+          action: "snooze",
+          verb: mailSay("slotSnoozedUntil", { when }),
+          object: describeTargets(targets, viewMode === "people" ? personRowOrderRef.current : null),
+        }
+      );
+      const wentOk = await done;
+      const failed = wentOk.filter((ok) => !ok).length;
+      if (failed === targets.length) {
+        dropMailUndo(undoId);
+        toast.error("Couldn't snooze");
+      } else if (failed) {
+        toast.error(mailSay("someCouldNotBeSnoozed", { failed, count: targets.length }));
+      }
+    },
+    [activeFolder, tab, threads, snoozeOne, viewMode, personRowOrderRef, pushBatchUndo, dropMailUndo, hiddenRowsRef, setThreads, viewerId, listCacheKey, setSnoozedCount]
   );
   const unsnooze = React.useCallback(
     async (t: { account: string; threadId: string }) => {
@@ -767,5 +877,15 @@ export function useSnoozeActions({
     },
     [threads, removeThread, hiddenRowsRef, setSnoozedCount, setThreads]
   );
-  return { snooze, unsnooze };
+  return { snooze, snoozeMany, unsnooze };
+}
+
+/**
+ * Where many conversations stood in the list: the newest of them. Its key
+ * lets the people view put the confirmation under the person it left.
+ */
+function newestAnchor(rows: readonly MailThreadSummary[]): MailUndoAnchor {
+  let newest: MailThreadSummary | null = null;
+  for (const row of rows) if (!newest || Date.parse(row.lastAt) > Date.parse(newest.lastAt)) newest = row;
+  return newest ? { lastAt: newest.lastAt, threadKey: threadKey(newest) } : { lastAt: null };
 }

@@ -26,6 +26,14 @@ if [ "$CARGO" != "$PKG" ]; then
   fail "package.json says $PKG, src-tauri/Cargo.toml says $CARGO"
 fi
 
+# The lock holds the crate's own version too, and a bump that does not rebuild
+# leaves it behind. The release workflow runs cargo with --locked, which stops
+# rather than correct it, so a stale lock fails the build and not this check.
+LOCK=$(grep -A1 '^name = "digital-habits-mail"$' src-tauri/Cargo.lock | grep -m1 '^version = ' | sed 's/.*"\(.*\)".*/\1/')
+if [ "$LOCK" != "$PKG" ]; then
+  fail "package.json says $PKG, src-tauri/Cargo.lock says ${LOCK:-nothing}. Run: cargo metadata --manifest-path apps/mail/src-tauri/Cargo.toml >/dev/null"
+fi
+
 # The config must take the number from package.json rather than hold one.
 for conf in src-tauri/tauri.conf.json; do
   IN_CONF=$(node -p "require('./$conf').version ?? ''")

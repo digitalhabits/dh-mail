@@ -59,6 +59,7 @@ export function StackThreadRow({
   active,
   onOpen,
   onExpand,
+  onMenu,
   onNavy,
   highlight,
   withYear,
@@ -67,6 +68,8 @@ export function StackThreadRow({
   /** The thread open in the reader. */
   active: boolean;
   onOpen: () => void;
+  /** A right-click: the conversation's own menu, at the pointer. */
+  onMenu?: (x: number, y: number) => void;
   /** Two clicks: the thread in a window of its own, as a thread row does. */
   onExpand?: () => void;
   onNavy: boolean;
@@ -79,6 +82,15 @@ export function StackThreadRow({
       type="button"
       data-stack-thread={`${thread.account}|${thread.threadId}`}
       onClick={onOpen}
+      onContextMenu={
+        onMenu
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMenu(e.clientX, e.clientY);
+            }
+          : undefined
+      }
       onDoubleClick={
         onExpand
           ? (e) => {
@@ -106,7 +118,7 @@ export function StackThreadRow({
             className={cn(
               "min-w-0 truncate text-sm",
               thread.unread && "font-semibold",
-              onNavy ? "text-white/85" : "text-stone-700"
+              onNavy ? "text-white/85" : "text-[var(--mail-row-name)]"
             )}
           >
             <Highlighted text={thread.subject} terms={highlight} onNavy={onNavy} />
@@ -114,7 +126,7 @@ export function StackThreadRow({
           <ThreadMessageCount count={thread.messageCount} label={t("threadMailsCount", { count: thread.messageCount })} />
         </span>
         {thread.snippet ? (
-          <span className="block truncate text-xs text-[var(--mail-chrome-muted)]">
+          <span className="block truncate text-xs text-[var(--mail-row-preview)]">
             <Highlighted text={thread.snippet} terms={highlight} onNavy={onNavy} />
           </span>
         ) : null}
@@ -139,6 +151,7 @@ export function StackThreads({
   isOpen,
   onOpen,
   onExpand,
+  onMenu,
   onNavy,
   highlight,
   withYear,
@@ -147,6 +160,8 @@ export function StackThreads({
   isOpen: (t: MailThreadSummary) => boolean;
   onOpen: (t: MailThreadSummary) => void;
   onExpand?: (t: MailThreadSummary) => void;
+  /** A right-click on one of them: that conversation's own menu. */
+  onMenu?: (t: MailThreadSummary, x: number, y: number) => void;
   onNavy: boolean;
   highlight: string[] | undefined;
   withYear: boolean;
@@ -162,6 +177,7 @@ export function StackThreads({
           active={isOpen(th)}
           onOpen={() => onOpen(th)}
           onExpand={onExpand ? () => onExpand(th) : undefined}
+          onMenu={onMenu ? (x, y) => onMenu(th, x, y) : undefined}
           onNavy={onNavy}
           highlight={highlight}
           withYear={withYear}
@@ -239,7 +255,7 @@ export function PersonWideBody({
           <PersonCount threads={threads} open={open} />
           {hasDraft ? <DraftBadge /> : null}
         </span>
-        <span className="block truncate text-[13px] text-[var(--mail-chrome-muted)]">
+        <span className="block truncate text-[13px] text-[var(--mail-row-preview)]">
           {hasFile ? (
             <Paperclip className="mr-1 inline h-3 w-3 -translate-y-px stroke-[1.5] opacity-80" aria-hidden />
           ) : null}

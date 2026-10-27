@@ -210,6 +210,8 @@ export const MISSED_SCHEDULED_ASKED_KEY = "mail-missed-scheduled-asked";
 export const TRIAGE_OPTIONS_KEY = "dh-mail-triage-options";
 /** The result of the last inbox sort. Local. */
 export const TRIAGE_RESULT_KEY = "dh-mail-triage-result";
+/** Off when the reader does not want Mail to open on a sort with mail in it. Local. */
+export const TRIAGE_OPEN_ON_KEY = "dh-mail-triage-open-on";
 
 // ---------------------------------------------------------------------------
 // Downloads

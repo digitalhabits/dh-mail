@@ -1214,7 +1214,17 @@ export function useStreamOpenPosition({
       } else {
         // The strip above, in screen pixels; the margin is drawn zoomed.
         const air = Math.min(96, Math.max(48, el.clientHeight * 0.12));
+        const before = el.scrollTop;
         scrollToTopOf(el, target, air / (zoomRef.current || 1));
+        /*
+          A pixel or less is the browser rounding, not the stream growing.
+          At a zoom the place falls between two pixels, and the browser
+          rounds it down from one side and up from the other. So every
+          heartbeat moved the thread a pixel and the next moved it back,
+          for the whole ten seconds: the messages wriggled (2026-10-27).
+          Put back before anything paints.
+        */
+        if (Math.abs(el.scrollTop - before) <= 1) el.scrollTop = before;
       }
       placed = Math.round(el.scrollTop);
     };

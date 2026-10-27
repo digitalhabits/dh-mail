@@ -23,14 +23,29 @@ export const OPEN_ROW_CARD = cn(
 );
 
 /**
- * The line under a row: an inset shadow, not a border, so the row keeps
- * its height and the list's measured rows do not move by a pixel each.
- * The open row's card is drawn over it.
+ * The line under a row. It starts where the words do, not at the list's
+ * edge, so the faces stand in one clear column (2026-10-27). Drawn as a
+ * hairline of its own, not a border, so the row keeps its height and the
+ * list's measured rows do not move by a pixel each. The open row's card
+ * is drawn over it.
+ *
+ * In the narrow list of faces there are no words, and it runs the width.
  */
 export const ROW_LINE = "shadow-[inset_0_-1px_0_var(--mail-row-line)]";
 
-/** The row's left padding: room for the unread gutter before the face. */
-export const ROW_PAD_LEFT = "pl-7";
+const LINE_FROM = "after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:h-px after:bg-[var(--mail-row-line)]";
+
+export function rowLine({ narrow, smallFace }: { narrow?: boolean; smallFace?: boolean }): string {
+  if (narrow) return ROW_LINE;
+  // The edge (24px), the face (36px or 28px) and the gap after it (12px or 10px).
+  return cn(LINE_FROM, smallFace ? "after:left-[62px]" : "after:left-[72px]");
+}
+
+/**
+ * The row's left padding: 24px, the one edge the list's head, its
+ * headings and its faces share. The unread dot hangs in it.
+ */
+export const ROW_PAD_LEFT = "pl-6";
 
 /*
  * Where the dot stands: level with the middle of the face, as the new
@@ -53,7 +68,8 @@ export function UnreadGutterDot({ unread, top }: { unread: boolean | undefined; 
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute left-[10px] h-2 w-2 rounded-full bg-[var(--mail-accent)]",
+        // Centred in the 24px margin, before the face.
+        "pointer-events-none absolute left-2 h-2 w-2 rounded-full bg-[var(--mail-accent)]",
         top == null && "top-1/2 -translate-y-1/2"
       )}
       style={top == null ? undefined : { top }}

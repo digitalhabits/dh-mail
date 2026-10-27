@@ -34,9 +34,11 @@ export type AddressMenuAt = {
 export function AddressContextMenu({
   at,
   onDismiss,
+  abovePopovers,
 }: {
   at: AddressMenuAt;
   onDismiss: () => void;
+  abovePopovers?: boolean;
 }) {
   const t = useMailT();
   const name = at.name?.trim();
@@ -48,7 +50,7 @@ export function AddressContextMenu({
     );
   };
   return (
-    <MenuShell x={at.x} y={at.y} label={at.email} onDismiss={onDismiss}>
+    <MenuShell x={at.x} y={at.y} label={at.email} onDismiss={onDismiss} abovePopovers={abovePopovers}>
       {/* The address itself first, to be read: the line that was clicked
           may have shown a name. */}
       <div
@@ -99,7 +101,7 @@ export function AddressContextMenu({
  * The menu's state, for whatever shows addresses: `openAddressMenu` goes on
  * the element's onContextMenu, and `addressMenu` goes in the output.
  */
-export function useAddressMenu(): {
+export function useAddressMenu({ abovePopovers = false }: { abovePopovers?: boolean } = {}): {
   openAddressMenu: (e: React.MouseEvent, email: string, name?: string) => void;
   addressMenu: React.ReactNode;
 } {
@@ -116,7 +118,7 @@ export function useAddressMenu(): {
   );
   const dismiss = React.useCallback(() => setAt(null), []);
   const addressMenu = at ? (
-    <AddressContextMenu at={at} onDismiss={dismiss} />
+    <AddressContextMenu at={at} onDismiss={dismiss} abovePopovers={abovePopovers} />
   ) : null;
   return { openAddressMenu, addressMenu };
 }

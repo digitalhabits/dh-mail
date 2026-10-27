@@ -21,6 +21,22 @@ import type { MailThreadSummary } from "@/lib/mail/types";
 /** How often the snoozes are read again while paused: new ones, moved ones. */
 export const PAUSED_SNOOZE_REREAD_MS = 5 * 60_000;
 
+/**
+ * How far back to look for snoozes that woke while the app was closed.
+ *
+ * Back to the mailboxes' last live read when it is known: the list on
+ * screen was read then. When it is not (the mailbox was paused at every
+ * read since this was first noted), a day: a snooze that woke overnight or
+ * this morning comes back on time. Asking only for the snoozes still
+ * asleep left those out, and they came in only when the pause ended
+ * (a tester, 2026-10-26).
+ */
+export const UNKNOWN_LIVE_READ_LOOKBACK_MS = 24 * 60 * 60_000;
+
+export function wakeLookbackFrom(lastLiveRead: number | null, now: number): number {
+  return lastLiveRead ?? now - UNKNOWN_LIVE_READ_LOOKBACK_MS;
+}
+
 /** The snoozed rows of these mailboxes whose time has come, as inbox rows. */
 export function wokenWhilePaused(
   snoozed: readonly MailThreadSummary[],

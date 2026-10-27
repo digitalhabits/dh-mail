@@ -11,7 +11,7 @@ import {
   MenuShell as RowMenuShell,
 } from "@/components/mail/MenuShell";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
-import { dotOnFace, OPEN_ROW_CARD, ROW_LINE, ROW_PAD_LEFT, RowUnreadDot } from "@/components/mail/list-row-marks";
+import { dotOnFace, OPEN_ROW_CARD, ROW_PAD_LEFT, RowUnreadDot, rowLine } from "@/components/mail/list-row-marks";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { MessageSquare, Archive, ArchiveRestore, Trash2, Calendar, Clock, FolderInput, Forward, Paperclip, MessagesSquare, Pin, Printer, Reply, ReplyAll, RotateCwFadingClock, ShieldCheck, SquarePen } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
@@ -525,7 +525,7 @@ function threadRowClass({
 }): string {
   return cn(
     "group relative flex cursor-grab transition-colors active:cursor-grabbing",
-    ROW_LINE,
+    rowLine({ narrow, smallFace: compact && !wide }),
     // No ring of the browser's own. A row is focusable so the arrow keys
     // can carry focus with the selection, and the selection is already
     // painted — the ring drew a second, louder marker over the top of it,
@@ -917,11 +917,13 @@ export function ThreadListRow({
       ) : compact ? (
         <>
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <p
+            <p data-unread={t.unread ? "" : undefined}
               className={cn(
-                "max-w-[34%] shrink-0 truncate text-sm",
-                t.unread && "font-semibold",
-                onNavy ? "text-white" : "text-stone-900"
+                // The sender is 500 when read (.mail-name): in regular
+                // weight it was hard to pick out (2026-10-27). Unread is
+                // semibold, with the subject, and the dot.
+                "mail-name max-w-[34%] shrink-0 truncate text-[14.5px] leading-5",
+                onNavy ? "text-white" : "text-[var(--mail-row-name)]"
               )}
             >
               <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
@@ -974,7 +976,7 @@ export function ThreadListRow({
               className={cn(
                 "min-w-0 flex-1 truncate text-sm",
                 t.unread && "font-semibold",
-                onNavy ? "text-white/70" : "text-stone-600"
+                onNavy ? "text-white/70" : "text-[var(--mail-row-name)]"
               )}
             >
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
@@ -1107,11 +1109,11 @@ function StackedRowBody({
     <div className="min-w-0 flex-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p
+          <p data-unread={t.unread ? "" : undefined}
             className={cn(
-              "min-w-0 truncate text-sm",
-              t.unread && "font-semibold",
-              onNavy ? "text-white" : "text-stone-900"
+              // 500 when read, semibold when not (see the compact row).
+              "mail-name min-w-0 truncate text-[14.5px] leading-5",
+              onNavy ? "text-white" : "text-[var(--mail-row-name)]"
             )}
           >
             <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
@@ -1163,7 +1165,7 @@ function StackedRowBody({
         className={cn(
           "truncate text-sm",
           t.unread && "font-semibold",
-          onNavy ? "text-white/85" : "text-stone-700"
+          onNavy ? "text-white/85" : "text-[var(--mail-row-name)]"
         )}
       >
         <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
@@ -1171,7 +1173,7 @@ function StackedRowBody({
       <p
         className={cn(
           "mt-px flex min-w-0 items-center gap-1.5 text-xs",
-          onNavy ? "text-white/45" : "text-[#908985]"
+          onNavy ? "text-white/45" : "text-[var(--mail-row-preview)]"
         )}
       >
         {t.hasCalendarInvite ? (
@@ -1308,7 +1310,7 @@ function WideRowBody({
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="flex min-w-0 items-baseline gap-1.5 text-sm">
-            <span className={cn("min-w-0 shrink truncate", t.unread && "font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+            <span className={cn("min-w-0 shrink truncate", t.unread && "font-semibold", onNavy ? "text-white" : "text-[var(--mail-row-name)]")}>
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </span>
             <span className={cn("min-w-0 max-w-[40%] shrink-0 truncate", onNavy ? "text-white/60" : "text-stone-500")}>
@@ -1317,7 +1319,7 @@ function WideRowBody({
             <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
           </p>
-          <p className={cn("truncate text-[13px]", onNavy ? "text-white/45" : "text-[#908985]")}>
+          <p className={cn("truncate text-[13px]", onNavy ? "text-white/45" : "text-[var(--mail-row-preview)]")}>
             {t.hasCalendarInvite ? (
               <Calendar className="mr-1 inline h-3.5 w-3.5 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80" aria-label={t.calendarInviteWhen || "Calendar invite"} />
             ) : null}
@@ -1336,7 +1338,7 @@ function WideRowBody({
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex w-[10rem] shrink-0 items-center gap-1.5">
-          <p className={cn("min-w-0 truncate text-sm", t.unread && "font-semibold", onNavy ? "text-white" : "text-stone-900")}>
+          <p data-unread={t.unread ? "" : undefined} className={cn("mail-name min-w-0 truncate text-[14.5px] leading-5", onNavy ? "text-white" : "text-[var(--mail-row-name)]")}>
             <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
@@ -1377,13 +1379,13 @@ function WideRowBody({
           <span
             className={cn(
               t.unread && "font-semibold",
-              onNavy ? "text-white/85" : "text-stone-700"
+              onNavy ? "text-white/85" : "text-[var(--mail-row-name)]"
             )}
           >
             <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
           </span>
           {compact && t.snippet && !poppedOut ? (
-            <span className={onNavy ? "text-white/45" : "text-[#908985]"}>
+            <span className={onNavy ? "text-white/45" : "text-[var(--mail-row-preview)]"}>
               {" — "}
               <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
             </span>

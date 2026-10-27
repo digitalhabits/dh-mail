@@ -8,6 +8,8 @@
 
 import {
   nextWakeWhilePaused,
+  UNKNOWN_LIVE_READ_LOOKBACK_MS,
+  wakeLookbackFrom,
   wokenWhilePaused,
   withWokenRows,
 } from "@/lib/mail/snooze-wake-paused";
@@ -73,5 +75,11 @@ suite(async () => {
       ["vera@mail.test"],
       NOW
     )).at(-1).threadId === oldest[0].threadId
+  );
+
+  check("the lookback starts at the last live read when it is known", wakeLookbackFrom(NOW - 3_600_000, NOW) === NOW - 3_600_000);
+  check(
+    "with no live read, it goes back a day: a snooze that woke this morning still comes back",
+    wakeLookbackFrom(null, NOW) === NOW - UNKNOWN_LIVE_READ_LOOKBACK_MS
   );
 });

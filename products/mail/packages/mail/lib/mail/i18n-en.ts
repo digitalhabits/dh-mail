@@ -728,6 +728,18 @@ export const en = {
   none: "None",
   matchOfCount: "{index} of {count}",
   undo: "Undo",
+  /** First, in bold, in the row that left the list: "Archived  Re: Hi". */
+  slotArchived: "Archived",
+  slotDeleted: "Deleted",
+  slotMovedTo: "Moved to {name}",
+  slotSnoozedUntil: "Snoozed until {when}",
+  /** What the action was on, after it: "GitHub stack (5)". */
+  slotOneConversation: "1 conversation",
+  slotConversations: "{count} conversations",
+  slotStack: "{name} stack ({count})",
+  slotAnd: "and",
+  snoozedMany: "{count} conversations snoozed until {when}",
+  someCouldNotBeSnoozed: "{failed} of {count} couldn't be snoozed",
   couldNotUndo: "Couldn't undo",
   sendLaterNeedsApp: "Send later needs the Mail app on this computer",
   sendLaterTimePassed: "That time has passed. Pick a later time.",
@@ -850,6 +862,8 @@ export const en = {
   // opening everyone.
   threadAnd: "and",
   threadOthersOne: "1 other",
+  threadMoreOne: "1 more",
+  threadMoreMany: "{count} more",
   threadOthersMany: "{count} others",
   // Your own address in that list: "you <you@example.org>".
   threadYouLower: "you",

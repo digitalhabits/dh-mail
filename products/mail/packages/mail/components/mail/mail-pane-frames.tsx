@@ -12,11 +12,8 @@ import * as React from "react";
 import { isInteractiveDoubleClickTarget, MAX_CONTROLS_WIDTH, MAX_LIST_ARIA, MIN_CONTROLS_WIDTH, MIN_LIST_HEIGHT, NARROW_LIST_WIDTH } from "@/components/mail/use-mail-layout";
 import { ArrowLeft, Moon, PanelLeft, PanelRight, Pin } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
-import { autoReplyActive } from "@/components/mail/AutoReplyDialog";
-import { formatAccountChipLabel } from "@/lib/mail/account-labels";
-import { currentMailLocale, useMailT } from "@/lib/mail/i18n";
-import { usePageAccounts, usePageCompose, usePageLayout, usePageList, usePageSync } from "@/components/mail/mail-page-slices";
-import { AutoReplyMark } from "@/components/mail/AutoReplyMark";
+import { useMailT } from "@/lib/mail/i18n";
+import { usePageAccounts, usePageLayout, usePageList, usePageSync } from "@/components/mail/mail-page-slices";
 import { cn } from "@/lib/utils";
 import { SyncIcon } from "@/components/mail/MailListControls";
 import { listBoxStyle, listInnerStyle } from "@/components/mail/list-box-style";
@@ -174,9 +171,7 @@ export function ListPaneFrame({
   threadListColumn: React.ReactNode;
 }) {
   const t = useMailT();
-  const { accountLabels, autoReplies } = usePageAccounts();
   const { controlsWidth, expandClip, hideList, listBorderClass, listExpandSliding, listExpanded, listFirst, listHeight, listMounted, listNarrow, listNearSnap, listOpen, listRowsOnPane, listSliding, listSlideOverlay, listSlideTransform, listSplit, listVertical, listWidth, phone, railInset, shownListWidth, startControlsResize, startListResize, toggleListExpanded } = usePageLayout();
-  const { openAutoReply } = usePageCompose();
   const box = {
     listExpandSliding,
     listSlideOverlay,
@@ -290,7 +285,7 @@ export function ListPaneFrame({
           className={cn(
             // Always a column flex so the New email control is a flex item
             // (avoids a ~3px inline-flex whitespace offset in block layout).
-            "mail-chrome-strip flex flex-col px-5",
+            "mail-chrome-strip flex flex-col px-6",
             listSplit
               ? "shrink-0 overflow-y-auto border-r border-[var(--mail-pane-divider)] bg-[var(--mail-chrome)] pb-3 pt-2"
               // No line of its own at the foot: the filter row draws one
@@ -321,68 +316,6 @@ export function ListPaneFrame({
               Settings + density live in the title bar. */}
           {/* No margin under this row: what follows brings its own, and two
               stacked read as a gap twice over. */}
-
-          {(() => {
-            /*
-              A line, not a band.
-
-              An amber block the width of the pane was more weight than the
-              news deserves — the auto-reply is a thing the reader turned on
-              themselves, and the tabs already carry a mark on each mailbox
-              it is on for. So this says how many and until when, and offers
-              the way in to change it.
-
-              One end date is only named when every mailbox shares it.
-              Otherwise the count stands alone and the dialog has the
-              detail, which the hover carries too.
-            */
-            const on = autoReplies.filter((a) => autoReplyActive(a));
-            if (!on.length) return null;
-            const day = (at: number) =>
-              new Date(at - 1).toLocaleDateString(currentMailLocale(), {
-                day: "numeric",
-                month: "short",
-              });
-            const ends = on.map((a) => a.endTime);
-            const shared =
-              ends[0] !== null && ends.every((end) => end === ends[0])
-                ? day(ends[0])
-                : null;
-            const who =
-              on.length === 1
-                ? formatAccountChipLabel(on[0].account, accountLabels)
-                : t("autoReplyAccounts", { count: on.length });
-            return (
-              <div
-                className="mt-2 flex items-center gap-1.5 px-0.5 text-xs text-[var(--mail-chrome-muted)]"
-                title={on
-                  .map(
-                    (a) =>
-                      formatAccountChipLabel(a.account, accountLabels) +
-                      (a.endTime !== null
-                        ? ` ${t("outOfOfficeUntil", { date: day(a.endTime) })}`
-                        : "")
-                  )
-                  .join(", ")}
-              >
-                <AutoReplyMark className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  {t("autoReplyOnFor", { who })}
-                  {shared ? ` ${t("outOfOfficeUntil", { date: shared })}` : ""}
-                </span>
-                <span aria-hidden>·</span>
-                <button
-                  type="button"
-                  // The same ink as the line it ends: a way in, not a status.
-                  className="shrink-0 font-semibold hover:underline"
-                  // Several on: the All tab, where they are managed together.
-                  onClick={() => openAutoReply(on.length > 1 ? null : on[0].account)}
-                >
-                  {t("manage")}
-                </button>
-              </div>
-            );
-          })()}
 
           {!listVertical ? listTabsOrFolder : null}
         </div>

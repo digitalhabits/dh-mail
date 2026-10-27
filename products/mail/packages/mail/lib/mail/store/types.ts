@@ -707,6 +707,12 @@ export type MailMessageStore = {
     includeDeleted?: boolean;
     view?: MailStoredView;
     label?: string;
+    /**
+     * A paused mailbox's cut-off (ms): mail that came in after it neither
+     * matches nor shapes a row. The reader's own mail still counts. See
+     * lib/mail/pause-cut-off.ts.
+     */
+    asOf?: number;
   }): Promise<{ threads: MailStoredThread[]; handled?: boolean }>;
 
   /**

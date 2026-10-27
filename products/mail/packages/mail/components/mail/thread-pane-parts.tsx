@@ -56,6 +56,7 @@ import { partJumpLabel, type MailChatPartSummary } from "@/lib/mail/chat-types";
 import { messageStamp, timeOfDay } from "@/lib/mail/date-format";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { cn } from "@/lib/utils";
+import { UndoSlotPill } from "@/components/mail/undo-slot-row";
 import { ThreadParticipants, participantsWithAddresses } from "@/components/mail/ThreadParticipants";
 import { ThreadToolbarOverflow } from "@/components/mail/ThreadToolbarOverflow";
 import { ThreadAction } from "@/components/mail/ThreadAction";
@@ -1324,6 +1325,10 @@ function ThreadActionStrip({
           onProposeDiary={(hint) => void proposeDiaryFromThread(hint)}
         />
       ) : null}
+      {/* The confirmation of an archive, delete, move or snooze, after
+          the buttons that did it, when no list is on screen to hold the
+          row that left (undo-slot-row). */}
+      {m.floating ? null : <UndoSlotPill />}
       {/* No Focus mode button here any more: the list has its own way to
           be put away, on its head, and the edge brings it back. The
           shortcut still does both (use-thread-keys). */}

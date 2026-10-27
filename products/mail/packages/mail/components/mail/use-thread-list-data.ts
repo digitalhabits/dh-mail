@@ -310,7 +310,8 @@ export function useListReach({
     A search reaches a paused mailbox too. A pause holds back the mail
     that comes in; a search is the reader asking for mail they know is
     there, and finding nothing in a paused mailbox reads as the mail being
-    gone.
+    gone. But it finds the mailbox as it was when the pause began: what
+    came in since stays held back (lib/mail/pause-cut-off.ts).
   */
   const searching = Boolean(debouncedSearch);
   const pastPause = sentOnly || searching;

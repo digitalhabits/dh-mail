@@ -39,7 +39,7 @@ export function SelectionRowMenu({
   onClose: () => void;
 }) {
   const t = useMailT();
-  const { actOnSelection, askDeleteForever, purgeFrom, rowMenuActions, snooze, togglePersonPin, togglePin, toggleRead, unsnooze } = usePageActions();
+  const { actOnSelection, askDeleteForever, purgeFrom, rowMenuActions, snoozeMany, togglePersonPin, togglePin, toggleRead, unsnooze } = usePageActions();
   const { multiKeys, personRows, pinKeySet, selectedThreadsNow, viewMode } = usePageList();
   /*
     The times, hung where the menu was. The menu closes as the picker
@@ -65,7 +65,7 @@ export function SelectionRowMenu({
   const picker = snoozing ? (
     <SnoozeMenu
       onSnooze={(untilIso) => {
-        for (const thread of snoozing.threads) void snooze(thread, untilIso);
+        void snoozeMany(snoozing.threads, untilIso);
         setSnoozing(null);
       }}
       openSignal={snoozeSignal}

@@ -31,7 +31,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Moon } from "lucide-react";
 
 import { AccountMark } from "@/components/mail/AccountMark";
-import { AutoReplyBadge } from "@/components/mail/AutoReplyMark";
+import { AutoReplyMark } from "@/components/mail/AutoReplyMark";
 import { AccountHoursMenu, type PauseControls } from "@/components/mail/account-hours-menu";
 import { hiddenStatusText } from "@/components/mail/hidden-status";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
@@ -328,7 +328,13 @@ export function MailAccountTabs({
         >
           {label?.primary ?? email}
         </span>
-        {awayTip ? <AutoReplyBadge title={awayTip} /> : null}
+        {/* After the name, as a word would be: the corner badge sat on
+            the tab's edge and was the one thing out of line in the row. */}
+        {awayTip ? (
+          <span title={awayTip} className="-ml-0.5 flex shrink-0">
+            <AutoReplyMark className="h-3 w-3" />
+          </span>
+        ) : null}
       </>
     );
     const title = quietTip ?? email;
@@ -450,6 +456,12 @@ export function MailAccountTabs({
                     <span className="max-w-[10rem] truncate">
                       {labels.get(email)?.primary ?? email.split("@")[0]}
                     </span>
+                    {/* A hidden mailbox still answers on its own. */}
+                    {autoReplyOn?.get(email.trim().toLowerCase()) ? (
+                      <span title={autoReplyOn.get(email.trim().toLowerCase())} className="-ml-0.5 flex shrink-0">
+                        <AutoReplyMark className="h-3 w-3" />
+                      </span>
+                    ) : null}
                   </button>
                 );
               })

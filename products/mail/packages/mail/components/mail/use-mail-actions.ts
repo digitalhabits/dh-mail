@@ -109,6 +109,7 @@ export function useActionsCore({
     restoreFromTrash,
     setThreadJunk,
     snooze,
+    snoozeMany,
     unsnooze,
   } = useThreadActions({
     viewerId,
@@ -127,12 +128,15 @@ export function useActionsCore({
     unhideRows,
     pushMailUndo,
     dropMailUndo,
+    pushBatchUndo,
     hiddenRowsRef,
     listViewIdRef,
     loadAbortRef,
     setSnoozedCount,
+    personRowOrderRef,
+    viewMode,
   });
-  return { archive, hasMailUndo, hideRemovedRows, isOutlookAccount, markUnread, moveToFolder, moveToInbox, noteLeftOpenFolder, pushBatchUndo, removeThread, restoreFromTrash, setThreadJunk, snooze, toggleRead, trash, undoLastMailAction, unhideRows, unsnooze };
+  return { snoozeMany, dropMailUndo, archive, hasMailUndo, hideRemovedRows, isOutlookAccount, markUnread, moveToFolder, moveToInbox, noteLeftOpenFolder, pushBatchUndo, removeThread, restoreFromTrash, setThreadJunk, snooze, toggleRead, trash, undoLastMailAction, unhideRows, unsnooze };
 }
 
 export function useActionsMore({
@@ -147,6 +151,7 @@ export function useActionsMore({
   personRowOrderRef,
   pins,
   pushBatchUndo,
+  dropMailUndo,
   removeThread,
   selectedPersonKey,
   selectedThreadsNow,
@@ -165,7 +170,7 @@ export function useActionsMore({
   Pick<ReturnType<typeof useListView>, "inJunkView" | "inTrashView"> &
   Pick<ReturnType<typeof useListData>, "loadThreads" | "setThreads" | "threads" | "threadsRef"> &
   Pick<ReturnType<typeof useVisibleRows>, "listScrollRef" | "personRowOrderRef"> &
-  Pick<ReturnType<typeof useActionsCore>, "hideRemovedRows" | "noteLeftOpenFolder" | "pushBatchUndo" | "removeThread" | "unhideRows"> &
+  Pick<ReturnType<typeof useActionsCore>, "dropMailUndo" | "hideRemovedRows" | "noteLeftOpenFolder" | "pushBatchUndo" | "removeThread" | "unhideRows"> &
   Pick<ReturnType<typeof useSelectionPart>, "clearMultiSelection" | "selectedThreadsNow" | "successorAfterSelection">) {
   const {
     archivePerson,
@@ -186,6 +191,7 @@ export function useActionsMore({
     hideRemovedRows,
     unhideRows,
     pushBatchUndo,
+    dropMailUndo,
     selectedThreadsNow,
     successorAfterSelection,
     clearMultiSelection,
@@ -372,13 +378,14 @@ export function usePageActionsSlice({
   setPersonSnooze,
   setThreadJunk,
   snooze,
+  snoozeMany,
   togglePersonPin,
   togglePin,
   toggleRead,
   trash,
   trashPerson,
   unsnooze,
-}: Pick<ReturnType<typeof useActionsCore>, "archive" | "markUnread" | "moveToFolder" | "moveToInbox" | "restoreFromTrash" | "setThreadJunk" | "snooze" | "toggleRead" | "trash" | "unsnooze"> &
+}: Pick<ReturnType<typeof useActionsCore>, "archive" | "markUnread" | "moveToFolder" | "moveToInbox" | "restoreFromTrash" | "setThreadJunk" | "snooze" | "snoozeMany" | "toggleRead" | "trash" | "unsnooze"> &
   Pick<ReturnType<typeof useActionsMore>, "actOnSelection" | "archivePerson" | "askDeleteForever" | "askPersonSnooze" | "cancelPurge" | "capturePinFlip" | "dragCarriesSelection" | "moveManyToFolder" | "onPersonSnoozeOpenChange" | "personMenuAt" | "personSnooze" | "personSnoozeSignal" | "purgeAsk" | "purgeFrom" | "runPurge" | "setPersonMenuAt" | "setPersonSnooze" | "togglePersonPin" | "togglePin" | "trashPerson"> &
   Pick<ReturnType<typeof useOutbox>, "actOnHeld"> &
   Pick<ReturnType<typeof useRowActions>, "markThreadInPeople" | "rowMenuActions">) {
@@ -387,7 +394,7 @@ export function usePageActionsSlice({
     cancelPurge, capturePinFlip, dragCarriesSelection, markThreadInPeople, markUnread,
     moveManyToFolder, moveToFolder, moveToInbox, onPersonSnoozeOpenChange, personMenuAt,
     personSnooze, personSnoozeSignal, purgeAsk, purgeFrom, restoreFromTrash, rowMenuActions,
-    runPurge, setPersonMenuAt, setPersonSnooze, setThreadJunk, snooze, togglePersonPin, togglePin,
+    runPurge, setPersonMenuAt, setPersonSnooze, setThreadJunk, snooze, snoozeMany, togglePersonPin, togglePin,
     toggleRead, trash, trashPerson, unsnooze,
   });
   return actions;

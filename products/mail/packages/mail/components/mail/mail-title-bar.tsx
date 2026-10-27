@@ -16,6 +16,7 @@ import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { cn } from "@/lib/utils";
 import { SyncControl } from "@/components/mail/SyncControl";
 import { StacksSwitch } from "@/components/mail/stack-threads-setting";
+import { AutoReplyPill } from "@/components/mail/auto-reply-pill";
 import { threadKey } from "@/lib/mail/thread-copies";
 import { SearchOptionsMenu } from "@/components/mail/SearchOptionsMenu";
 import { HiddenSearchChip, hiddenSearchChipShown } from "@/components/mail/hidden-account-mark";
@@ -104,6 +105,9 @@ export function MailTitleBar({
             {t("newEmail")}
           </button>
           <SyncControl />
+          {/* The auto-reply, when it is on: a pill that opens it, beside
+              Sync, as both say what the mailboxes are doing on their own. */}
+          <AutoReplyPill onDark={chromeDark} />
           <label
             className={cn(
               "mail-titlebar-search",

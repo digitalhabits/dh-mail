@@ -493,6 +493,13 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-chrome-border: #dbdbd7;
   --mail-chrome-fg: #1b3d4a; /* ink, as all text (tailwind.config.ts) */
   --mail-chrome-muted: #47616a;
+  /* A row's preview line in the list: ink at 85% over the cream. The
+     muted grey above read too faint there (2026-10-27). */
+  --mail-row-preview: #3c5862;
+  /* A sender's name and the subject under it: one ink, a step past the
+     system's, so the two differ by weight alone. In two inks they read as
+     two typefaces (2026-10-27). */
+  --mail-row-name: #122a33;
   --mail-chrome-faint: #9ea9aa;
   --mail-chrome-hover: #efeae2;
   --mail-chrome-selected: #e9e4da;
@@ -688,6 +695,8 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-chrome-border: rgba(255, 255, 255, 0.1);
   --mail-chrome-fg: #f5f0e8;
   --mail-chrome-muted: #c9c5bc;
+  --mail-row-preview: #c9c5bc;
+  --mail-row-name: var(--mail-chrome-fg);
   --mail-chrome-faint: #9aa3b0;
   /*
    * One hover, everywhere a row is hovered: the folders, the thread list
@@ -1716,4 +1725,20 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 .mail-shell.font-serif {
   font-weight: 500;
   letter-spacing: -0.01em;
+}
+
+/*
+ * A sender's name in the list: 500 when read, between regular and
+ * semibold, and semibold when unread, and 14.5px over the subject's 14px
+ * (2026-10-27). The rows set the size, on the 20px line the 14px text has,
+ * so a row does not grow. The face is the
+ * variable one standalone.css names for this. Where it is missing, 500
+ * falls back to regular.
+ */
+.mail-name {
+  font-family: "Schibsted Grotesk Names", "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+}
+.mail-name[data-unread] {
+  font-weight: 600;
 }

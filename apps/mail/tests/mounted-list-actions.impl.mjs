@@ -286,6 +286,8 @@ setMailApiTransport(async (path, init) => {
 let toasts = [];
 toastSink.push = (t) => toasts.push(t);
 const undoToasts = () => toasts.filter((t) => t.data?.action?.label);
+/** The confirmations standing in the list where rows left it (undo-slot). */
+const listSlots = () => [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
 
 const clickEl = (el, init = {}) => {
   for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
@@ -410,25 +412,66 @@ async function toastUndoTakesBackItsOwn() {
   await open(CHOIR);
   clickEl(paneAction("Archive"));
   await sleep(600);
+  const slots = () => [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
+  assert.equal(slots().length, 1, "the archived row became its confirmation, in the list");
+  assert.equal(slots()[0].textContent, `Archived${CHOIR.subject}Undo`, "it says what happened, then to what");
+  assert.equal(undoToasts().length, 0, "and no toast at the foot of the window");
+  pass("an archive is confirmed in the list, where the row was, not in a toast");
+
   // The next row is open now: the loan.
   clickEl(paneAction("Archive"));
   await sleep(600);
   assert.deepEqual(server.postsTo("/api/mail/archive"), ["choir-1", "loan-1"]);
-  const [first, second] = undoToasts();
-  assert(first && second, "each archive raised a toast with an Undo");
-  assert(first.message.includes(CHOIR.subject), `first toast: ${first.message}`);
+  assert.equal(slots().length, 1, "one stack in the list");
+  assert.equal(slots()[0].textContent, `Archived${LOAN.subject}Undo`, "the newest on top, alone in words");
+  assert.equal(slots()[0].querySelectorAll("[data-undo-slot-edge]").length, 1, "the one before peeks out under it");
+  pass("a second action stacks on the first, as the toasts did");
 
-  first.data.action.onClick();
-  await sleep(600);
-  assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["choir-1"]);
-  assert(inList(CHOIR) && !inList(LOAN), "only the first came back");
-  pass("the Undo on an older toast takes back that archive, not the newest");
+  slots()[0].dispatchEvent(new Event("pointerenter", { bubbles: false }));
+  slots()[0].dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  await waitFor(() => slots()[0]?.querySelectorAll("[data-undo-card]").length === 2);
+  const cards = [...slots()[0].querySelectorAll("[data-undo-card]")].map((c) => c.textContent);
+  assert.deepEqual(cards, [`Archived${LOAN.subject}Undo`, `Archived${CHOIR.subject}Undo`]);
+  pass("the pointer on the stack spreads it out, each with its own Undo");
 
   undoKey();
   await sleep(600);
-  assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["choir-1", "loan-1"]);
-  assert(inList(LOAN));
-  pass("and Command+Z then takes back the one still on the stack");
+  assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["loan-1"]);
+  assert(inList(LOAN) && !inList(CHOIR), "Command+Z took back the newest");
+  assert.equal(slots()[0]?.querySelectorAll("[data-undo-card]").length, 1, "and it left the stack");
+  assert(slots()[0].textContent.includes(CHOIR.subject), "the older one is on top now");
+  assert.equal(undoToasts().length, 0, "with no toast to say so: the row says it");
+  pass("Command+Z takes back the newest, and the next is on top");
+
+  undoKey();
+  await sleep(600);
+  assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["loan-1", "choir-1"]);
+  assert(inList(CHOIR));
+  assert.equal(slots().length, 0, "the stack is gone");
+  pass("and Command+Z again takes back the one before");
+}
+
+async function archiveWithTheListAway() {
+  await mount();
+  await open(CHOIR);
+  const hide = [...document.querySelectorAll("button")].find((b) =>
+    ((b.getAttribute("aria-label") || b.getAttribute("title") || "")).startsWith("Hide the mail list")
+  );
+  assert(hide, "the list has a button that puts it away");
+  clickEl(hide);
+  await sleep(400);
+  clickEl(paneAction("Archive"));
+  await sleep(600);
+  assert.equal(listSlots().length, 0, "no row stands in a list that is put away");
+  const pill = document.querySelector(".mail-chrome-strip [data-undo-slot]");
+  assert(pill, "the confirmation is in the reader's toolbar");
+  assert(pill.textContent.includes(CHOIR.subject), `it names the conversation: ${pill.textContent}`);
+  assert.equal(undoToasts().length, 0, "and not in a toast");
+  clickEl(pill.querySelector("[data-undo-slot-button]"));
+  await sleep(600);
+  assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["choir-1"]);
+  assert(!document.querySelector(".mail-chrome-strip [data-undo-slot]"), "Undo takes it away");
+  pass("with the list put away, the confirmation and its Undo are in the reader's toolbar");
 }
 
 async function arrowKeysWalkTheList() {
@@ -541,7 +584,9 @@ async function rangeSelectionArchive() {
   assert(!inList(CHOIR) && !inList(LOAN) && !inList(BIKE));
   assert(inList(GARDEN));
   assert(reading(3), "the row after the range opened");
-  assert.equal(undoToasts().length, 1, "one toast for the whole selection");
+  const slots = [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
+  assert.equal(slots.length, 1, "one confirmation for the whole selection, in the list");
+  assert.equal(undoToasts().length, 0, "and no toast");
   pass("Archive on the selection sends one request per thread, then opens the row after it");
 
   undoKey();
@@ -584,7 +629,9 @@ async function archiveAPersonThenCommandZ() {
   assert.deepEqual([...server.postsTo("/api/mail/archive")].sort(), ["choir-1", "robes-1"]);
   assert(!personEl("Merle Mikkelsen"), "her row has left the list");
   assert(personEl("Otto Brink"), "the others stay");
-  assert.equal(undoToasts().length, 1, "one toast for both");
+  assert.equal(listSlots().length, 1, "one confirmation for both, in the list");
+  assert.equal(listSlots()[0].textContent, "ArchivedMerle Mikkelsen stack (2)Undo", "it names her stack");
+  assert.equal(undoToasts().length, 0, "and no toast");
   pass("Archive all in the person pane archives each of that person's threads");
 
   // Command+Z, not the toast: the toast's Undo worked, but nothing was put
@@ -681,30 +728,26 @@ const AWAY = {
 
 async function autoReplyLineAndManage() {
   await mount({ autoReplies: [AWAY] });
-  const text = () => document.body.textContent || "";
-  assert(!text().includes("Auto-reply on for"), "not read yet: the read waits");
-  await waitFor(() => text().includes("Auto-reply on for"));
-  assert(text().includes("Auto-reply on for"), "the page says the auto-reply is on");
-  pass("the auto-reply is read after its pause, and the page says it is on");
+  const pill = () => document.querySelector("[data-auto-reply-pill]");
+  assert(!pill(), "not read yet: the read waits");
+  await waitFor(() => Boolean(pill()));
+  assert.equal(pill().textContent.trim(), "Auto-reply on", "the title bar says it is on (no end date)");
+  pass("the auto-reply is read after its pause, and a pill in the title bar says it is on");
 
-  const manage = [...document.querySelectorAll("button")].find(
-    (b) => (b.textContent || "").trim() === "Manage"
-  );
-  assert(manage, "the line offers Manage");
-  clickEl(manage);
+  clickEl(pill());
   await sleep(500);
   // In the dialog: the title bar has a switch of its own (Stacks).
   const toggle = document.querySelector("[role=dialog] [role=switch],[role=dialog] input[type=checkbox]");
   assert(toggle, "the dialog is open, with its switch");
-  pass("Manage opens the auto-reply dialog");
+  pass("a click on the pill opens the auto-reply dialog");
 
   toggle.click();
   await sleep(900);
   const saved = server.posts.filter((x) => x.path === "/api/mail/autoreply");
   assert.equal(saved.length, 1, "the dialog saved once");
   assert.equal(saved[0].body.enabled, false);
-  assert(!text().includes("Auto-reply on for"), "the line went with it");
-  pass("a save in the dialog reaches the page: the line goes when the reply is off");
+  assert(!pill(), "the pill went with it");
+  pass("a save in the dialog reaches the page: the pill goes when the reply is off");
 }
 
 async function commandClickSelection() {
@@ -764,6 +807,17 @@ async function selectionPaneSnooze() {
   assert(!inList(CHOIR) && !inList(BIKE), "both left the list");
   assert(!(document.body.textContent || "").includes("conversations selected"), "the selection is gone");
   pass("Snooze in the selection pane snoozes every selected conversation");
+
+  // One confirmation for both, and one Undo. Each had its own before, so
+  // the last covered the first and Command+Z took back one at a time.
+  assert.equal(listSlots().length, 1, "one confirmation in the list");
+  assert(/^Snoozed until .+2 conversationsUndo$/.test(listSlots()[0].textContent), listSlots()[0].textContent);
+  assert.equal(undoToasts().length, 0, "and no toast");
+  undoKey();
+  await sleep(700);
+  assert.deepEqual(postsOf("/api/mail/unsnooze").map((p) => p.body.threadId).sort(), ["bike-1", "choir-1"]);
+  assert(inList(CHOIR) && inList(BIKE), "both are back");
+  pass("snoozing a selection is one confirmation, and one Command+Z brings all of it back");
 
   await mount();
   await open(CHOIR);
@@ -1281,10 +1335,21 @@ async function stacksOpenInTheList() {
   clickEl(rows()[1]);
   await sleep(600);
   assert(marked().length === 1 && marked()[0] === rows()[1], "a click on the other opens it, and the mark moves");
+  const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 });
+  rows()[1].dispatchEvent(event);
+  await sleep(300);
+  assert(event.defaultPrevented, "a right-click on a conversation in the stack is the app's, not the system's");
+  const items = [...document.querySelectorAll("[role=menuitem]")].map((b) => (b.textContent || "").trim());
+  assert(items.includes("Reply") && items.includes("Forward") && items.includes("Move to folder"), items.join(","));
+  assert(!items.some((i) => / all 2/.test(i)), "the conversation's own menu, not the stack's: " + items.join(","));
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await sleep(200);
   clickEl(personEl("Merle Mikkelsen"));
   await sleep(300);
   assert.equal(rows().length, 0, "and a click on her row folds the stack");
   pass("a person with several threads is a stack: a click unfolds it and opens the newest, marked");
+  pass("a right-click on a conversation in an open stack gives that conversation's own menu");
 }
 
 async function personCardMenuSnoozes() {
@@ -1576,6 +1641,7 @@ async function main() {
     await archiveThenCommandZ();
     await deleteThenCommandZ();
     await toastUndoTakesBackItsOwn();
+    await archiveWithTheListAway();
     await arrowKeysWalkTheList();
     await arrowKeysWalkTheDrafts();
     await aSearchShowsTheHiddenList();

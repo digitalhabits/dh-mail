@@ -324,6 +324,7 @@ export function createTauriMailStore(): MailStore {
           includeDeleted: input.includeDeleted ?? false,
           view: input.view ?? null,
           label: input.label ?? null,
+          ...(input.asOf != null ? { asOf: input.asOf } : {}),
         }),
       recipients: (account, since, own) =>
         call("messages.recipients", { account, since, own: own ?? [] }),

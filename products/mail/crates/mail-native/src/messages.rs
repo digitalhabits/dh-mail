@@ -624,7 +624,7 @@ impl MailDb {
     let ids: Vec<String> = best.keys().cloned().collect();
     let mut out: Vec<ThreadRow> = Vec::new();
     for chunk in ids.chunks(400) {
-      out.extend(load_threads(&conn, account, chunk, &View::All)?);
+      out.extend(load_threads(&conn, account, chunk, &View::All, None)?);
     }
     for row in out.iter_mut() {
       row.focus_message_id = best.get(&row.thread_id).map(|(_, id)| id.clone());
@@ -1444,7 +1444,7 @@ impl MailDb {
     for account in &accounts {
       let candidates = candidate_threads(&conn, account, &view, before, limit)?;
       let ids: Vec<String> = candidates.iter().map(|(id, _)| id.clone()).collect();
-      rows.extend(load_threads(&conn, account, &ids, &view)?);
+      rows.extend(load_threads(&conn, account, &ids, &view, None)?);
     }
     rows.sort_by(|a, b| b.last_at.cmp(&a.last_at));
     rows.truncate(limit as usize);
@@ -1566,6 +1566,11 @@ impl MailDb {
     let q = str_arg(args, "q")?;
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(50).clamp(1, 500);
     let include_hidden = args.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false);
+    // A paused mailbox's cut-off (ms): mail that came in after it is held
+    // back by the pause, from the search as from the list. The reader's own
+    // mail is not held back. Searching it again and again for news was what
+    // a pause was set to stop (a tester, 2026-10-27).
+    let as_of = args.get("asOf").and_then(Value::as_i64);
     // A search inside a folder keeps only threads that belong to it.
     let within = match opt_str_arg(args, "view") {
       Some(view) if view != "all" => Some(View::parse(&view, opt_str_arg(args, "label"))?),
@@ -1608,6 +1613,13 @@ impl MailDb {
     }
     if plan.attachment {
       sql.push_str(" AND m.has_attachments = 1");
+    }
+    if let Some(cut) = as_of {
+      sql.push_str(
+        " AND (m.sent_at < ? OR m.is_draft = 1 OR EXISTS (SELECT 1 FROM message_labels l
+            WHERE l.account_email = m.account_email AND l.message_id = m.message_id AND l.label = 'SENT'))",
+      );
+      binds.push(SqlValue::Integer(cut));
     }
     for term in &plan.labels {
       sql.push_str(if term.negated { " AND NOT EXISTS" } else { " AND EXISTS" });
@@ -1681,7 +1693,7 @@ impl MailDb {
     let mut out: Vec<ThreadRow> = Vec::new();
     for (account, ids) in by_account {
       for chunk in ids.chunks(400) {
-        let mut rows = load_threads(&conn, &account, chunk, &view)?;
+        let mut rows = load_threads(&conn, &account, chunk, &view, as_of)?;
         for row in rows.iter_mut() {
           if let Some((_, message_id)) = best.get(&(account.clone(), row.thread_id.clone())) {
             row.focus_message_id = Some(message_id.clone());
@@ -2018,11 +2030,25 @@ fn messages_of_threads(
 }
 
 /// The rows the list draws for these threads, in no particular order.
+/// Whether a message counts before a pause's cut-off: sent before it, or
+/// sent by the reader (Sent, or a draft). A pause holds back the mail that
+/// comes in, not the reader's own.
+fn before_cut_off(m: &StoredMessage, as_of: Option<i64>) -> bool {
+  match as_of {
+    None => true,
+    Some(cut) => m.row.sent_at < cut || m.row.labels.iter().any(|l| l == SENT || l == DRAFT),
+  }
+}
+
+/// `as_of`: a paused mailbox's cut-off. The rows are made from the messages
+/// before it only, so a row's date, snippet and unread dot say nothing of
+/// mail the pause holds back.
 fn load_threads(
   conn: &Connection,
   account: &str,
   thread_ids: &[String],
   view: &View,
+  as_of: Option<i64>,
 ) -> DbResult<Vec<ThreadRow>> {
   let messages = messages_of_threads(conn, account, thread_ids)?;
   let mut by_thread: HashMap<String, Vec<StoredMessage>> = HashMap::new();
@@ -2035,6 +2061,7 @@ fn load_threads(
   for (thread_id, list) in by_thread {
     let visible: Vec<&StoredMessage> = list
       .iter()
+      .filter(|m| before_cut_off(m, as_of))
       .filter(|m| {
         let hidden = m.row.labels.iter().any(|l| l == TRASH || l == SPAM);
         if let Some(only) = &only_label {
@@ -3070,6 +3097,47 @@ mod tests {
     let out = search("larger:5M subject");
     assert_eq!(out["handled"], false, "the provider's words are handed back");
     assert_eq!(ids(&out).len(), 0);
+  }
+
+  #[test]
+  fn a_paused_mailbox_is_searched_as_it_was_when_the_pause_began() {
+    let db = db();
+    // t1: an old letter, and a reply that came in during the pause.
+    let mut old = msg("m1", "t1", 1, 1_000, &[INBOX]);
+    old.subject = "Budget plan".into();
+    old.snippet = "the old letter".into();
+    let mut news = msg("m2", "t1", 2, 5_000, &[INBOX]);
+    news.subject = "Re: Budget plan".into();
+    news.snippet = "the news".into();
+    // t2: only new mail, all of it during the pause.
+    let mut fresh = msg("m3", "t2", 3, 6_000, &[INBOX]);
+    fresh.subject = "Budget news".into();
+    // t3: the reader's own reply, sent during the pause.
+    let mut mine = msg("m4", "t3", 4, 7_000, &[SENT]);
+    mine.subject = "Budget answer".into();
+    db.messages_upsert("vera@example.com", &[old, news, fresh, mine]).unwrap();
+    let search = |q: &str, as_of: Option<i64>| {
+      let mut args = json!({ "accounts": ["vera@example.com"], "q": q });
+      if let Some(cut) = as_of {
+        args["asOf"] = json!(cut);
+      }
+      db.messages_search(&args).unwrap()
+    };
+    let ids = |v: &Value| -> Vec<String> {
+      let mut out: Vec<String> =
+        v["threads"].as_array().unwrap().iter().map(|t| t["threadId"].as_str().unwrap().to_string()).collect();
+      out.sort();
+      out
+    };
+
+    assert_eq!(ids(&search("budget", None)), vec!["t1", "t2", "t3"], "with no pause, everything");
+    let paused = search("budget", Some(3_000));
+    assert_eq!(ids(&paused), vec!["t1", "t3"], "mail that came in during the pause is not found");
+    let row = paused["threads"].as_array().unwrap().iter().find(|t| t["threadId"] == "t1").unwrap();
+    assert_eq!(row["latest"]["snippet"], "the old letter", "the row is the thread as it was: no word of the news");
+    assert_eq!(row["lastAt"], json!(1_000));
+    assert_eq!(row["messageCount"], json!(1), "and counts only the messages before the pause");
+    assert_eq!(ids(&search("news", Some(3_000))).len(), 0, "the new reply's words do not find the thread");
   }
 
   #[test]

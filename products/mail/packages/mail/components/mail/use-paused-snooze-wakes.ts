@@ -19,26 +19,18 @@ import { mailPauseVerdictForAccount, type MailPauseState } from "@/lib/mail/quie
 import {
   nextWakeWhilePaused,
   PAUSED_SNOOZE_REREAD_MS,
+  wakeLookbackFrom,
   wokenWhilePaused,
   withWokenRows,
 } from "@/lib/mail/snooze-wake-paused";
 import { threadKey } from "@/lib/mail/thread-copies";
+import { readLastLiveReads } from "@/lib/mail/pause-cut-off";
 import type { MailThreadSummary } from "@/lib/mail/types";
-
-function readLiveReads(): Record<string, number> {
-  try {
-    const raw = window.localStorage.getItem(MAIL_LAST_LIVE_READ_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
-}
 
 /** These mailboxes' inboxes were just read from the provider, not paused. */
 export function noteLiveRead(emails: readonly string[]): void {
   if (!emails.length) return;
-  const reads = readLiveReads();
+  const reads = readLastLiveReads();
   const now = Date.now();
   for (const email of emails) reads[email.toLowerCase()] = now;
   try {
@@ -74,7 +66,7 @@ export function noteListRead(read: {
  * then, so a snooze that woke after it is not in it. Null when never noted.
  */
 function lastLiveRead(emails: readonly string[]): number | null {
-  const reads = readLiveReads();
+  const reads = readLastLiveReads();
   const times = emails.map((e) => reads[e.toLowerCase()]).filter((t): t is number => typeof t === "number");
   return times.length ? Math.min(...times) : null;
 }
@@ -136,9 +128,9 @@ export function usePausedSnoozeWakes({
         // the app was closed, is missing from the list on screen too. Never
         // further: one that woke before it was in that list, and the reader
         // may have archived it since.
-        const since = lastLiveRead(paused());
+        const since = wakeLookbackFrom(lastLiveRead(paused()), Date.now());
         const params = new URLSearchParams();
-        if (since !== null) params.set("since", new Date(since).toISOString());
+        params.set("since", new Date(since).toISOString());
         const answer = await mailApiJson<{ threads?: MailThreadSummary[] }>(`/api/mail/snoozed?${params.toString()}`);
         if (!live) return;
         snoozed = Array.isArray(answer?.threads) ? answer.threads : [];

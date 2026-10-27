@@ -171,6 +171,11 @@ export function TriageButton(): null {
   return null;
 }
 
+/** More rows in Settings > Reading. None here. */
+export function TeamReadingSettings(): null {
+  return null;
+}
+
 /** A tab right of Other. None here. */
 export function TriageTab(_props: { tabClass: (active: boolean) => string }): null {
   return null;

@@ -1,5 +1,12 @@
 ## What is new
 
+**Undo where you are looking**
+- When you archive, delete, move or snooze a conversation, the row it leaves in the list says so, in its place: "Archived", "Deleted", "Moved to Receipts" or "Snoozed until 18:13", then the subject, with Undo. Before, this was a message at the foot of the window, over what you were reading or writing.
+- With the list hidden, the same line with Undo is in the bar above the conversation. In the narrow list of faces, it is an Undo arrow.
+- When you act on many conversations at once, one line says what they were: "GitHub stack (5)", "7 conversations" or "3 conversations and Google Ads stack (3)". One Undo, or one Cmd+Z (Ctrl+Z on Windows), brings all of them back.
+- Several actions stack, newest on top, with the ones before peeking out under it. Point at the stack to spread it out, each with its own Undo. Each Cmd+Z (Ctrl+Z on Windows) takes back the newest, then the one before.
+- Each line goes after 8 seconds, and all of them wait while the pointer is on the stack.
+
 **An outline of a long conversation**
 - A conversation that does not fit on the screen has a narrow outline at the right: one mark for each message, yours set to the right, unread ones in green, the ones on screen darker.
 - Point at it to see a list of every message, with who wrote it, its first words and its time. Click a message to go to it, also one that is not loaded yet.
@@ -7,11 +14,13 @@
 
 **A new look**
 - Mail now uses the look of the Centre for Digital Habits: a warm cream background, dark blue-green text, Schibsted Grotesk for text and Georgia for headings, and smaller corners.
-- An unread conversation has a green dot to the left of its sender, and its sender and subject are in bold. The conversation you have open is a white card in the list.
+- An unread conversation has a green dot to the left of its sender, and its sender and subject are in bold. The sender's name is a little larger than the subject and in a heavier weight, also in a read conversation. The conversation you have open is a white card in the list.
 - A faint line separates the conversations in the list, also inside an open stack of one person's conversations.
 - The messages you sent are light blue, so they are easy to tell apart from the messages you received.
 - The subject of a conversation is larger and in bold. A long subject is set smaller, and wraps onto two lines when it must, so it is not cut off. The reader that fills the window shows the subject the same way.
+- Beside the subject, a conversation names its people by name: "Mikkel Christoffersen and You", or "Jane Roe, You and 2 more". Point at the names to see everyone with their addresses, and to copy them or save them as a list.
 - The files of a conversation follow its number of messages and its dates at the top.
+- When an auto-reply is on, a small "Auto-reply on until …" beside Sync says so; click it to change it. Each account it is on for has a reply arrow after its name in the tabs, also an account you have hidden. Before, the notice was a line above the tabs, which pushed the list down out of line with the conversation beside it.
 - In the dark theme, the messages you sent are blue and the messages you received are a quiet slate, as in the light theme.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
 
@@ -32,6 +41,7 @@
 
 **Snoozed mail and paused mail**
 - Mail that you snoozed comes back at its time, also while your mail is paused. A pause holds back new mail; a snooze is your own plan for mail that you have already seen. New mail still waits until the pause ends.
+- A search of a paused mailbox finds its mail as it was when the pause began. Mail that came in during the pause stays out of the results, and out of the conversations you open, until the pause ends. Mail that you send yourself always shows.
 
 **Replies from another mailbox**
 - When you answer from a mailbox that is not connected to Mail, and copy one that is, the two conversations now link to each other. Above your reply, a line says which email it answers, with Open. Under the email, a line says that you replied, from which address and when, with Open.
@@ -53,6 +63,9 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- An email no longer moves up and down for a few seconds after you open it.
+- A right-click on a conversation inside an open stack opens that conversation's own menu.
+- The subject and the first words of each email in the list are a little darker, so they are easier to read.
 - The eye that shows the Exchange password stays while you type, and it looks the same on Windows and on a Mac. Windows drew one of its own, but only the first time you clicked the field, and a Mac drew none.
 - When you print an email, nothing in it can run. Before, the print copy was protected less strictly than the email on the screen.
 - While a file is still loading for its preview, the preview says "Opening…". Before, it said "preview not available" for a moment.

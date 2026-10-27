@@ -14,12 +14,13 @@ import { useAccountMarks } from "@/lib/mail/account-mark";
 import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 
 export { participantsWithAddresses, threadPeople } from "@/lib/mail/thread-heading-people";
+import { headingPeople, headingPeopleLine } from "@/lib/mail/thread-heading-people";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 
 /**
- * The people on the thread, in the heading: the one who started it, and
- * "and N others" as the way to see everyone.
+ * The people on the thread, in the heading: two names and a count, and the
+ * whole line as the way to see everyone.
  */
 /**
  * One name on the line, with its address as a way to write to it.
@@ -33,6 +34,11 @@ import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
  * and the short name, with the whole address on hover. Each is clickable —
  * writing to yourself is how half the world takes notes.
  */
+/** A right press does not select the word under it: it opens a menu. */
+function keepSelection(e: React.MouseEvent) {
+  if (e.button === 2) e.preventDefault();
+}
+
 type AddressMenuOpener = (
   e: React.MouseEvent,
   email: string,
@@ -62,6 +68,7 @@ function ParticipantName({
               className="hover:underline"
               title={`${email} — ${t("writeToThisAddress")}`}
               onClick={() => requestMailComposeTo(email)}
+              onMouseDown={keepSelection}
               onContextMenu={(e) => onAddressMenu(e, email)}
             >
               {/*
@@ -89,7 +96,8 @@ function ParticipantName({
       className="hover:underline"
       title={t("writeToThisAddress")}
       onClick={() => requestMailComposeTo(chunk.email)}
-      onContextMenu={(e) => onAddressMenu(e, chunk.email, chunk.name)}
+      onMouseDown={keepSelection}
+              onContextMenu={(e) => onAddressMenu(e, chunk.email, chunk.name)}
     >
       {chunk.name ? (
         <>
@@ -128,86 +136,45 @@ export function ThreadParticipants({
   people: ParticipantChunk[];
   /** The same people, addressable — what a saved list would hold. */
   others: { email: string; name?: string }[];
-  /** Who wrote the thread's first message: the one the heading names. */
+  /** Who wrote the thread's first message: the one the heading names first. */
   leadEmail?: string;
   /** The rest of the header line: count, dates, which mailbox. */
   meta: React.ReactNode;
 }) {
   const t = useMailT();
-  const { openAddressMenu, addressMenu } = useAddressMenu();
+  // Opened from the card of everyone, which is a popover: over it.
+  const { openAddressMenu, addressMenu } = useAddressMenu({ abovePopovers: true });
   /*
-    One name, and a count for the rest.
+    Names, not addresses, and no more than two (2026-10-27).
 
-    The heading belongs to the whole thread, and its people took the
-    line from the subject: four "Name <address>" pairs left the subject
-    as "Digital Distraction ...". So the heading names who started the
-    thread, and counts the others. The count opens everyone, with their
-    addresses, and the things to do with them.
+    "Mikkel Gabriel Christoffersen <mch@…> and 1 other" was most of the
+    line and said less than "Mikkel Christoffersen and You". So the
+    heading names who started the thread and the next person, and counts
+    the rest: "A, B and 2 more". The line as a whole opens one card of
+    everyone, with their addresses and what to do with them.
   */
-  const lead = leadChunk(people, leadEmail);
-  const rest = people.filter((c) => c !== lead);
-  const restCount = rest.reduce(
-    (n, c) => n + (c.kind === "you" ? (c.plain ? 1 : c.emails.length) : 1),
-    0
-  );
-  if (!lead) return <span>{meta}</span>;
+  const names = headingPeople(people, leadEmail, t("threadYou"));
+  if (!names.length) return <span>{meta}</span>;
+  const line = headingPeopleLine(names, {
+    and: t("threadAnd"),
+    more: (count) => (count === 1 ? t("threadMoreOne") : t("threadMoreMany", { count })),
+  });
   return (
     <span>
-      <ParticipantName chunk={shortName(lead)} onAddressMenu={openAddressMenu} />
-      {restCount > 0 ? (
-        <>
-          {" "}
-          {t("threadAnd")}{" "}
-          <EveryoneCard
-            people={people}
-            others={others}
-            label={
-              restCount === 1
-                ? t("threadOthersOne")
-                : t("threadOthersMany", { count: restCount })
-            }
-            onAddressMenu={openAddressMenu}
-          />
-        </>
-      ) : null}
+      <EveryoneCard people={people} others={others} onAddressMenu={openAddressMenu}>
+        {line}
+      </EveryoneCard>
       {meta ? <> {meta}</> : null}
       {addressMenu}
     </span>
   );
 }
 
-/** The chunk that holds the first sender, else the first one. */
-function leadChunk(
-  people: ParticipantChunk[],
-  leadEmail?: string
-): ParticipantChunk | undefined {
-  const key = leadEmail?.trim().toLowerCase();
-  const found = key
-    ? people.find((c) =>
-        c.kind === "you"
-          ? c.emails.some((e) => e.trim().toLowerCase() === key)
-          : c.email.trim().toLowerCase() === key
-      )
-    : undefined;
-  return found ?? people[0];
-}
-
-/**
- * The heading's name without the job a sender puts after it: "Claire
- * Cockcroft (SC MTST Programme Director)" is "Claire Cockcroft" there.
- * The card keeps the whole name.
- */
-function shortName(chunk: ParticipantChunk): ParticipantChunk {
-  if (chunk.kind !== "person" || !chunk.name) return chunk;
-  const name = chunk.name.replace(/\s*\([^()]*\)\s*$/, "").trim();
-  return name ? { ...chunk, name } : chunk;
-}
-
 /** How long the pointer can be off the count and the card before it closes. */
 const CARD_CLOSE_MS = 200;
 
 /**
- * Everyone on the thread, from the "N others" count.
+ * Everyone on the thread, from the names beside the subject.
  *
  * It opens on hover, for a look. A click on the count, or anything inside
  * the card, keeps it open, because who a mail went to is often worth
@@ -217,12 +184,13 @@ const CARD_CLOSE_MS = 200;
 function EveryoneCard({
   people,
   others,
-  label,
+  children,
   onAddressMenu,
 }: {
   people: ParticipantChunk[];
   others: { email: string; name?: string }[];
-  label: string;
+  /** The names, which are the way in. */
+  children: React.ReactNode;
   onAddressMenu: AddressMenuOpener;
 }) {
   const t = useMailT();
@@ -254,8 +222,8 @@ function EveryoneCard({
         <button
           type="button"
           aria-expanded={open}
-          // The heading's own line colour: a quiet pill in both themes.
-          className="rounded-full bg-[var(--mail-chrome-selected)] px-2 py-0.5 font-medium hover:underline"
+          // The heading's own line, as words: no pill.
+          className="max-w-full truncate text-left hover:underline"
           onMouseEnter={hoverOpen}
           onMouseLeave={hoverClose}
           onClick={(e) => {
@@ -266,7 +234,7 @@ function EveryoneCard({
             setKept(true);
           }}
         >
-          {label}
+          {children}
         </button>
       </PopoverTrigger>
       <MailPopoverContent
@@ -290,7 +258,8 @@ function EveryoneCard({
                       className="text-left hover:underline"
                       title={t("writeToThisAddress")}
                       onClick={() => requestMailComposeTo(email)}
-                      onContextMenu={(e) => onAddressMenu(e, email)}
+                      onMouseDown={keepSelection}
+              onContextMenu={(e) => onAddressMenu(e, email)}
                     >
                       {t("threadYouLower")} &lt;{email}&gt;
                     </button>

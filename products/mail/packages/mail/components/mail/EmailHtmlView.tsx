@@ -432,7 +432,30 @@ export function EmailHtmlView({
   }, [zoom, applyFit]);
 
   return (
-    <div className="relative w-full" style={{ minHeight: ready ? undefined : 140 }}>
+    <div
+      className="relative w-full"
+      style={
+        ready
+          ? undefined
+          : {
+              minHeight: 140,
+              /*
+                The room, before the first size. The frame waits out of
+                the flow until then, so the bubble shrank round nothing and
+                the frame read its words at 57px wide: thousands of pixels
+                tall. That height went on screen for a frame or two before
+                the right one came, and threw the thread's scroll about. A
+                thread drawn again did it again, so the messages bounced
+                (2026-10-27). As wide as it may be, capped by the room, as
+                the frame's own width is once it is measured: a mail is
+                read at the width it will be shown at, or wider than it
+                needs, which gives the same lines.
+              */
+              width: 100000,
+              maxWidth: "100%",
+            }
+      }
+    >
       {showPlaceholder && !ready ? (
         <div
           className="flex min-h-[140px] items-center justify-center gap-2 px-4 py-10 text-sm text-stone-500"

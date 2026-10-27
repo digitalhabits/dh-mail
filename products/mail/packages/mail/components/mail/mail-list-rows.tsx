@@ -10,8 +10,8 @@
 
 import {
   OPEN_ROW_CARD,
-  ROW_LINE,
   ROW_PAD_LEFT,
+  rowLine,
   FACE_DOT_TOP,
   UnreadGutterDot,
   WIDE_FACE_DOT_TOP,
@@ -55,6 +55,43 @@ import { TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
+import { UndoSlotRow, useUndoSlot, useUndoSlotPlace, useUndoSlotPlacement } from "@/components/mail/undo-slot-row";
+import type { UndoSlot } from "@/lib/mail/undo-slot";
+
+/**
+ * The list is on screen to hold the row that left: not put away, and not
+ * covered by the reader on a phone.
+ */
+function useListHoldsUndoSlot() {
+  const { detailOpen, listCollapsed, listOutForSearch, phone } = usePageLayout();
+  const on = phone ? !detailOpen : !listCollapsed || listOutForSearch;
+  useUndoSlotPlace("list", on);
+}
+
+/** The pinned band is not where a row that left goes back to. */
+const skipPinnedGroup = (group: { pinned?: boolean }) => Boolean(group.pinned);
+
+/**
+ * The person whose stack each conversation was in, as last drawn. A
+ * conversation that left is gone from the rows, so the people view looks
+ * here to put its confirmation under the person it left.
+ */
+function useLastPersonOf(rows: readonly PersonRow[]) {
+  // Kept for the life of the list, and only added to: setting the same
+  // pair again on a second render changes nothing.
+  const [map] = React.useState(() => new Map<string, string>());
+  if (map.size > 20000) map.clear();
+  for (const row of rows) for (const th of row.threads) map.set(threadKey(th), row.key);
+  return map;
+}
+
+/** The person the slot belongs under, when that person is still a row. */
+function slotPerson(slot: UndoSlot | null, lastPersonOf: Map<string, string>, rows: readonly PersonRow[]): string | null {
+  if (!slot) return null;
+  const key = slot.personKey ?? (slot.threadKey ? lastPersonOf.get(slot.threadKey) : undefined);
+  if (!key) return null;
+  return rows.some((row) => row.key === key) ? key : null;
+}
 
 
 /** The thread view's rows: the pinned band, then the list by day. */
@@ -71,6 +108,8 @@ export function ThreadRows() {
   const scheduledOpen = Boolean(useOpenScheduledMessage());
   const selected = scheduledOpen ? null : selectedThread;
   const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
+  useListHoldsUndoSlot();
+  const undoAt = useUndoSlotPlacement(groups);
   return (
     <>
       <>
@@ -170,11 +209,11 @@ export function ThreadRows() {
             }
           }}
         >
-          {groups.map((group) => (
+          {groups.map((group, groupIndex) => (
               <div key={group.label || "results"}>
                 {group.label && !listNarrow ? (
                   <p className={cn(
-                    "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
+                    cn(ROW_PAD_LEFT, "pr-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]"),
                     listExpanded ? "pt-2" : "pt-4"
                   )}>
                     {t(group.label as MailStringKey)}
@@ -190,10 +229,13 @@ export function ThreadRows() {
                     }
                   />
                 )}
-                {group.items.map((t) => (
+                {group.items.map((t, index) => (
+                  <React.Fragment key={threadKey(t)}>
+                  {undoAt && undoAt.group === groupIndex && undoAt.index === index ? (
+                    <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} />
+                  ) : null}
                   <ThreadListRow
                     highlight={highlightTerms}
-                    key={threadKey(t)}
                     thread={t}
                     selected={
                       !listExpanded &&
@@ -230,7 +272,11 @@ export function ThreadRows() {
                         : undefined
                     }
                   />
+                  </React.Fragment>
                 ))}
+                {undoAt && undoAt.group === groupIndex && undoAt.index === group.items.length ? (
+                  <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} />
+                ) : null}
               </div>
             ))}
         </div>
@@ -240,9 +286,49 @@ export function ThreadRows() {
   );
 }
 
+type StackMenuAt = { thread: MailThreadSummary; x: number; y: number };
+
+/**
+ * A right-click on a conversation inside an open stack: that conversation's
+ * own menu, as a row of the list has, with its own pin, snooze and folder.
+ * The system's menu showed before (2026-10-27).
+ */
+function StackThreadMenu({ at, onDismiss }: { at: StackMenuAt; onDismiss: () => void }) {
+  const { archive, askPersonSnooze, rowMenuActions, togglePin, toggleRead, trash, unsnooze } = usePageActions();
+  const { inTrashView, pinKeySet } = usePageList();
+  const th = at.thread;
+  return (
+    <ThreadRowMenu
+      account={th.account}
+      threadId={th.threadId}
+      x={at.x}
+      y={at.y}
+      unread={Boolean(th.unread)}
+      pinned={pinKeySet.has(threadKey(th))}
+      snoozed={Boolean(th.snoozedUntil)}
+      canReplyAll={(th.externalParticipants?.length ?? 0) > 1}
+      onSnooze={() => askPersonSnooze(th, at.x, at.y)}
+      onCancelSnooze={th.snoozedUntil ? () => void unsnooze(th) : undefined}
+      onToggleRead={() => void toggleRead([th], "it")}
+      onTogglePin={() => togglePin(th)}
+      onArchive={inTrashView ? undefined : () => void archive(th)}
+      onTrash={inTrashView ? undefined : () => void trash(th)}
+      {...rowMenuActions(th)}
+      onDismiss={onDismiss}
+    />
+  );
+}
+
 /** The people view's rows: one per correspondent, pinned people first, then by day, with the person menu and its snooze times. */
 export function PeopleRows() {
-  const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, snooze, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
+  const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, setStackMenu, snoozeMany, stackMenu, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
+  useListHoldsUndoSlot();
+  const lastPersonOf = useLastPersonOf(personRows);
+  const undoAt = useUndoSlotPlacement(personGroups, skipPinnedGroup);
+  const { slot: undoSlot } = useUndoSlot();
+  // Under the person it left, while they are still a row; else by its time.
+  const undoUnder = slotPerson(undoSlot, lastPersonOf, personRows);
+  const undoRow = undoSlot ? <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} /> : null;
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -273,7 +359,7 @@ export function PeopleRows() {
                     "No mail from your contacts right now."}
             </p>
           ) : null}
-          {personGroups.map((group) => (
+          {personGroups.map((group, groupIndex) => (
           <div
             key={group.pinned ? "pinned" : group.label || "people"}
             className={group.pinned ? "relative" : undefined}
@@ -293,7 +379,7 @@ export function PeopleRows() {
             ) : group.label && !listNarrow ? (
               <p
                 className={cn(
-                  "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
+                  cn(ROW_PAD_LEFT, "pr-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]"),
                   listExpanded ? "pt-2" : "pt-4"
                 )}
               >
@@ -310,7 +396,7 @@ export function PeopleRows() {
                 }
               />
             )}
-          {group.items.map((row) => {
+          {group.items.map((row, index) => {
             const newest = row.threads[0];
             const personHasDraft = row.threads.some((t) =>
               draftKeys.has(threadDraftKey(t.account, t.threadId))
@@ -330,6 +416,7 @@ export function PeopleRows() {
             const painted = paintedNow && !scheduledOpen;
             return (
               <React.Fragment key={row.key}>
+              {!undoUnder && undoAt && undoAt.group === groupIndex && undoAt.index === index ? undoRow : null}
               <PersonListRow archivePerson={archivePerson} chromeDark={chromeDark} clickStack={clickStack} debouncedSearch={debouncedSearch} highlightTerms={highlightTerms} listDensity={listDensity} listExpanded={listExpanded} listNarrow={listNarrow} listRowWide={listRowWide} multiKeys={multiKeys} newest={newest} openPersonWindow={openPersonWindow} painted={painted} personHasDraft={personHasDraft} personHasFile={personHasFile} personTitle={personTitle} purgeFrom={purgeFrom} row={row} setPersonMenuAt={setPersonMenuAt} setSelectionMenu={setSelectionMenu} stackOpen={stackOpen} t={t} togglePersonPin={togglePersonPin} toggleRead={toggleRead} />
               {stackOpen ? (
                 <StackThreads
@@ -337,14 +424,17 @@ export function PeopleRows() {
                   isOpen={isOpenThread}
                   onOpen={(th) => openFromStack(row, th)}
                   onExpand={expandThreadRow}
+                  onMenu={(th, x, y) => setStackMenu({ thread: th, x, y })}
                   onNavy={chromeDark}
                   highlight={highlightTerms}
                   withYear={Boolean(debouncedSearch)}
                 />
               ) : null}
+              {undoUnder === row.key ? undoRow : null}
               </React.Fragment>
             );
           })}
+          {!undoUnder && undoAt && undoAt.group === groupIndex && undoAt.index === group.items.length ? undoRow : null}
           </div>
           ))}
         </div>
@@ -357,6 +447,7 @@ export function PeopleRows() {
           pile that has changed.
         */}
         {(() => {
+          if (stackMenu) return <StackThreadMenu at={stackMenu} onDismiss={() => setStackMenu(null)} />;
           if (!personMenuAt) return null;
           const row = personRows.find((r) => r.key === personMenuAt.key);
           if (!row) return null;
@@ -437,7 +528,7 @@ export function PeopleRows() {
           <SnoozeMenu
             key={threadKey(personSnooze.thread)}
             onSnooze={(untilIso) => {
-              for (const th of personSnooze.threads) void snooze(th, untilIso);
+              void snoozeMany(personSnooze.threads, untilIso);
               setPersonSnooze(null);
             }}
             onCancelSnooze={
@@ -554,7 +645,7 @@ function PersonListRow({
                 className={cn(
                   // Relative: the hover actions float over its right end.
                   "group relative flex w-full transition-colors",
-                  ROW_LINE,
+                  rowLine({ narrow: listNarrow, smallFace: listDensity === "compact" && !listRowWide }),
                   listNarrow
                     ? "items-center justify-center px-1 py-1.5"
                     : listRowWide && listDensity !== "compact"
@@ -633,7 +724,7 @@ function PersonListRow({
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="flex w-[14rem] shrink-0 items-center gap-2">
-                      <span className={cn("min-w-0 truncate text-sm text-[var(--mail-chrome-fg)]", row.unread && "font-semibold")}>
+                      <span data-unread={row.unread ? "" : undefined} className="mail-name min-w-0 truncate text-[14.5px] leading-5 text-[var(--mail-row-name)]">
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                     </span>
@@ -643,7 +734,7 @@ function PersonListRow({
                         <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       {listDensity === "compact" && newest.snippet ? (
-                        <span className="text-[var(--mail-chrome-muted)]">
+                        <span className="text-[var(--mail-row-preview)]">
                           {" — "}
                           {personHasFile ? (
                         <Paperclip
@@ -671,7 +762,7 @@ function PersonListRow({
                   {listDensity === "compact" || !newest.snippet ? null : (
                     <span className="flex min-w-0 items-center gap-3">
                       <span className="w-[14rem] shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--mail-chrome-muted)]">
+                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--mail-row-preview)]">
                         {personHasFile ? (
                         <Paperclip
                           className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
@@ -689,7 +780,7 @@ function PersonListRow({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className={cn("min-w-0 truncate text-sm text-[var(--mail-chrome-fg)]", row.unread && "font-semibold")}>
+                      <span data-unread={row.unread ? "" : undefined} className="mail-name min-w-0 truncate text-[14.5px] leading-5 text-[var(--mail-row-name)]">
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       <PersonCount threads={row.threads} open={stackOpen} />
@@ -714,7 +805,7 @@ function PersonListRow({
                       className={cn(
                         "block truncate text-sm",
                         row.unread && "font-semibold",
-                        chromeDark ? "text-white/85" : "text-stone-700"
+                        chromeDark ? "text-white/85" : "text-[var(--mail-row-name)]"
                       )}
                     >
                       <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
@@ -722,7 +813,7 @@ function PersonListRow({
                   )}
                   {listDensity === "compact" || !newest.snippet ? null : (
                     <span className="mt-px flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate text-xs text-[var(--mail-chrome-muted)]">
+                      <span className="min-w-0 truncate text-xs text-[var(--mail-row-preview)]">
                         {personHasFile ? (
                         <Paperclip
                           className="mr-1 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
@@ -1037,7 +1128,7 @@ export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
           {heldMessages.length && !listNarrow ? (
             <div>
               <p className={cn(
-                "px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
+                cn(ROW_PAD_LEFT, "pr-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]"),
                 listExpanded ? "pt-2" : "pt-4"
               )}>
                 {t(onTop ? "scheduledGroup" : "outbox")} · {heldMessages.length}
@@ -1206,7 +1297,7 @@ function PinnedHeading({
   return (
     <p
       className={cn(
-        "flex items-center gap-1.5 px-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]",
+        cn(ROW_PAD_LEFT, "flex items-center gap-1.5 pr-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]"),
         listExpanded ? "pt-2" : "pt-3"
       )}
     >
@@ -1256,7 +1347,7 @@ function RowAction({
 /** What the people view reads from the page, and which people are unfolded into their conversations. */
 export function usePeopleRowsState() {
   const t = useMailT();
-  const { archive, archivePerson, askDeleteForever, askPersonSnooze, onPersonSnoozeOpenChange, personMenuAt, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, setPersonMenuAt, setPersonSnooze, snooze, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
+  const { archive, archivePerson, askDeleteForever, askPersonSnooze, onPersonSnoozeOpenChange, personMenuAt, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, setPersonMenuAt, setPersonSnooze, snooze, snoozeMany, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
   const { chromeDark, listDensity, listExpanded, listNarrow, listRowWide } = usePageLayout();
   const { clearMultiSelection, debouncedSearch, highlightTerms, inTrashView, multiKeys, pendingTokens, personGroups, personRows, search } = usePageList();
   const { clickPersonRow, openPersonWindow, expandThreadRow, paintedPersonKey, openThread, selected: selectedThread, setSelectedPersonKey } = usePageReader();
@@ -1303,5 +1394,7 @@ export function usePeopleRowsState() {
     */
     else clickPersonRow(row, e);
   };
-  return { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, snooze, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze };
+  // A conversation inside an open stack, right-clicked: its own menu.
+  const [stackMenu, setStackMenu] = React.useState<StackMenuAt | null>(null);
+  return { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, setStackMenu, snooze, snoozeMany, stackMenu, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze };
 }

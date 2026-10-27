@@ -110,3 +110,57 @@ export function participantsWithAddresses(
   ];
 }
 
+
+/**
+ * A name as the heading shows it: the first name and the last, and nothing
+ * the sender put after it. "Mikkel Gabriel Christoffersen" is "Mikkel
+ * Christoffersen"; "Roe, Jane" is "Jane Roe"; "Claire Cockcroft (SC MTST
+ * Programme Director)" is "Claire Cockcroft". The card of everyone keeps
+ * the whole name.
+ */
+export function headingName(name: string): string {
+  let n = name.replace(/\s*\([^()]*\)\s*$/, "").replace(/^["']|["']$/g, "").trim();
+  const comma = n.match(/^([^,]+),\s*(.+)$/);
+  if (comma) n = `${comma[2]} ${comma[1]}`.trim();
+  const words = n.split(/\s+/).filter(Boolean);
+  if (words.length <= 2) return words.join(" ");
+  return `${words[0]} ${words[words.length - 1]}`;
+}
+
+/**
+ * Who the heading names, in order: who started the thread first, then the
+ * rest as the thread met them. All of the reader's own addresses are one
+ * "You" (`you`), wherever they fall. A person with no name is their address.
+ */
+export function headingPeople(
+  people: readonly ParticipantChunk[],
+  leadEmail: string | undefined,
+  you: string
+): string[] {
+  const key = leadEmail?.trim().toLowerCase();
+  const isLead = (c: ParticipantChunk) =>
+    Boolean(key) &&
+    (c.kind === "you"
+      ? c.emails.some((e) => e.trim().toLowerCase() === key)
+      : c.email.trim().toLowerCase() === key);
+  const lead = people.find(isLead) ?? people[0];
+  const ordered = lead ? [lead, ...people.filter((c) => c !== lead)] : [];
+  const names: string[] = [];
+  for (const c of ordered) {
+    const name = c.kind === "you" ? you : c.name ? headingName(c.name) || c.email : c.email;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/**
+ * The line itself: one name; "A and B"; then "A, B and 2 more".
+ */
+export function headingPeopleLine(
+  names: readonly string[],
+  words: { and: string; more: (count: number) => string }
+): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} ${words.and} ${names[1]}`;
+  return `${names[0]}, ${names[1]} ${words.and} ${words.more(names.length - 2)}`;
+}

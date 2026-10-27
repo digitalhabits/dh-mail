@@ -14,6 +14,7 @@ import { exchangeListTarget } from "@/lib/mail/exchange-folders";
 import { outlookListTarget } from "@/lib/mail/outlook-folders";
 
 import { localStoreComplete, localStoreServes, localStoreServesFolder } from "@/lib/mail/local-store";
+import { pauseCutOff } from "@/lib/mail/pause-cut-off";
 import type { MailStoredThread, MailStoredView } from "@/lib/mail/store/types";
 import { decodeSnippet, getThreadMetadata, gmailLabelSearchQuery, listGmailHistory, listRecentMessages, listRecentThreads } from "@/lib/gmail/api";
 import {
@@ -78,6 +79,23 @@ async function dropListRowsFromAnOlderShape(): Promise<void> {
  * OR, a minus, a quoted phrase. The copy's index reads every word as a
  * required prefix, so these go to the provider, which speaks them.
  */
+/**
+ * A search the provider answered, in a paused mailbox: its conversations
+ * that had news after the cut-off go (lib/mail/pause-cut-off.ts). The
+ * provider's rows carry no message dates to trim by, so a conversation
+ * with a newer message is left out whole. The copy answers most searches,
+ * and trims instead.
+ */
+function dropHeldBack(summaries: SummaryEntry[], accountEmail: string): void {
+  const cutOff = pauseCutOff(accountEmail);
+  if (cutOff == null) return;
+  const account = accountEmail.toLowerCase();
+  for (let i = summaries.length - 1; i >= 0; i -= 1) {
+    const row = summaries[i].summary;
+    if (row.account.toLowerCase() === account && Date.parse(row.lastAt) >= cutOff) summaries.splice(i, 1);
+  }
+}
+
 async function listFromLocalStore(input: {
   accountEmail: string;
   folder: string;
@@ -108,12 +126,15 @@ async function listFromLocalStore(input: {
       if (!view) return null;
       within = { view };
     }
+    // A paused mailbox is searched as it was when the pause began.
+    const asOf = pauseCutOff(accountEmail);
     const { threads, handled } = await store.search({
       accounts: [accountEmail],
       q: input.q,
       limit: PER_ACCOUNT_MESSAGES,
       includeDeleted: input.includeDeleted,
       ...(within ?? {}),
+      ...(asOf != null ? { asOf } : {}),
     });
     // The copy reads the words Gmail reads — from:, has:attachment,
     // before:, in:, label:, is:unread, filename:, quotes, OR — and says
@@ -468,6 +489,7 @@ export async function listUnifiedInbox(options: {
           });
           if (result.nextPageToken) nextTokens[accountEmail] = result.nextPageToken;
           summaries.push(...result.summaries);
+          if (q) dropHeldBack(summaries, accountEmail);
           return;
         }
 
@@ -485,6 +507,7 @@ export async function listUnifiedInbox(options: {
           gmailListSnippetsByAccount,
           pageStateByAccount,
         });
+        if (q) dropHeldBack(summaries, accountEmail);
       } catch (err) {
         // A Gmail on an app password is read from the copy only, as Exchange
         // is: before its first rows it lists nothing, and that is no failure.

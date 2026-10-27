@@ -11,6 +11,7 @@
 import "server-only";
 
 import { localStoreComplete, queueLocalAction } from "@/lib/mail/local-store";
+import { pauseCutOff, shownUnderCutOff } from "@/lib/mail/pause-cut-off";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import { mailStore } from "@/lib/mail/store";
@@ -50,7 +51,28 @@ const MAX_COPIES = 4;
  */
 async function withCopies(account: string, rows: StoredWithBody[]): Promise<StoredWithBody[]> {
   const ids = rows.filter((r) => !r.isDraft).map((r) => r.rfcMessageId);
-  return [...rows, ...(await copyRows(account, ids))];
+  return withoutHeldBack(account, [...rows, ...(await copyRows(account, ids))]);
+}
+
+/**
+ * The thread as a paused mailbox held it: no message that came in after
+ * the pause's cut-off (lib/mail/pause-cut-off.ts). Each row by its own
+ * mailbox, so a copy in a mailbox that is not paused still shows. The
+ * reader's own messages and drafts always show.
+ */
+function withoutHeldBack(account: string, rows: StoredWithBody[]): StoredWithBody[] {
+  const cuts = new Map<string, number | null>();
+  const cutFor = (mailbox: string) => {
+    const key = mailbox.toLowerCase();
+    if (!cuts.has(key)) cuts.set(key, pauseCutOff(mailbox));
+    return cuts.get(key) ?? null;
+  };
+  return rows.filter((r) => {
+    const owner = r.copy?.account ?? account;
+    const own =
+      r.isDraft || normalizeEmail(r.fromEmail) === normalizeEmail(owner) || isOwnOrgAddress(r.fromEmail);
+    return shownUnderCutOff({ sentAt: r.sentAt, own }, cutFor(owner));
+  });
 }
 
 /**

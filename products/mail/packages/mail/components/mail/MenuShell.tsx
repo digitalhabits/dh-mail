@@ -27,12 +27,18 @@ export function MenuShell({
   label,
   onDismiss,
   children,
+  abovePopovers = false,
 }: {
   x: number;
   y: number;
   label: string;
   onDismiss: () => void;
   children: React.ReactNode;
+  /**
+   * Opened from inside a popover (z-[100]), such as the card of everyone
+   * on a thread: over it, not under it, where the menu could not be seen.
+   */
+  abovePopovers?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [placed, setPlaced] = React.useState({ left: x, top: y });
@@ -103,7 +109,7 @@ export function MenuShell({
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => e.stopPropagation()}
       data-theme={colorMode}
-      className="mail-shell mail-popover fixed z-[70] w-max min-w-[11rem] rounded-surface border border-stone-200 bg-white py-1 shadow-lg"
+      className={`mail-shell mail-popover fixed ${abovePopovers ? "z-[110]" : "z-[70]"} w-max min-w-[11rem] rounded-surface border border-stone-200 bg-white py-1 shadow-lg`}
     >
       {children}
     </div>,

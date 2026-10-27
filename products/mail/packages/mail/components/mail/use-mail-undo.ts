@@ -2,9 +2,10 @@
 
 /*
  * The undo of list actions, off MailPage: the stack behind Command+Z, the
- * Undo button on each toast, and how each kind of action is taken back.
+ * Undo on the row that left (lib/mail/undo-slot), and how each kind of
+ * action is taken back.
  *
- * Owns: the stack, the toast that offers Undo, and the requests that take an
+ * Owns: the stack, the confirmation that offers Undo, and the requests that take an
  * action back (unarchive, untrash, unmove, unsnooze), with the row put back
  * in the list. The stack itself is `lib/mail/mail-undo-stack.ts`, which is
  * pure and has its own suite.
@@ -33,6 +34,8 @@ import { everyCopy, threadKey, newestFirst } from "@/lib/mail/thread-copies";
 import { unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { pinMailThread } from "@/lib/mail/pins";
 import { createMailUndoStack } from "@/lib/mail/mail-undo-stack";
+import { describeUndoTargets, mailUndoSlot, type UndoSlotAction } from "@/lib/mail/undo-slot";
+import type { PersonRow } from "@/lib/mail/person-participants";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { bumpMailFolderCount } from "@/components/mail/MailFolders";
 import { patchCachedThreads } from "@/components/mail/mail-list-state";
@@ -45,15 +48,41 @@ import { patchCachedThreads } from "@/components/mail/mail-list-state";
 type MailBatchUndoEntry = {
   id: string;
   kind: "batch";
-  toastId: string | number;
   run: () => Promise<void>;
 };
+
+/** Where a batch stood in the list, so its confirmation stands there too. */
+export type MailUndoAnchor = { lastAt: string | null; personKey?: string; threadKey?: string };
+
+/** What a batch's confirmation says: the action, and what it was on. */
+export type MailUndoWords = { action: UndoSlotAction; verb: string; object: string };
+
+/**
+ * What these conversations were, in the list's words: one conversation's
+ * subject, or "3 conversations and Google Ads stack (3)". `rows` are the
+ * people view's rows, or null in the conversation view.
+ */
+export function describeTargets(
+  targets: readonly MailThreadSummary[],
+  rows: readonly PersonRow[] | null
+): string {
+  if (targets.length === 1) return targets[0].subject || mailSay("noSubject");
+  return describeUndoTargets(
+    targets.map(threadKey),
+    rows ? rows.map((row) => ({ name: row.name, keys: row.threads.map(threadKey) })) : null,
+    {
+      conversations: (count) =>
+        count === 1 ? mailSay("slotOneConversation") : mailSay("slotConversations", { count }),
+      stack: (name, count) => mailSay("slotStack", { name, count }),
+      and: mailSay("slotAnd"),
+    }
+  );
+}
 
 type MailThreadUndoEntry = {
   id: string;
   kind: "trash" | "archive" | "move" | "snooze";
   summary: MailThreadSummary;
-  toastId: string | number;
   folderName?: string;
   /** The open folder this left, if it left one. Undo puts the count back. */
   leftFolderName?: string | null;
@@ -70,6 +99,31 @@ type MailThreadUndoEntry = {
 };
 
 type MailUndoEntry = MailThreadUndoEntry | MailBatchUndoEntry;
+
+/** What the row that left says happened to it. */
+function slotWhat(kind: MailThreadUndoEntry["kind"], folderName?: string): string {
+  if (kind === "trash") return mailSay("slotDeleted");
+  if (kind === "move") return mailSay("slotMovedTo", { name: folderName ?? "" });
+  return mailSay("slotArchived");
+}
+
+/**
+ * The words for an undo that worked, only where no list shows the row
+ * coming back. In the list, the row back in its place says it.
+ */
+function saidBack(message: string) {
+  if (mailUndoSlot.get().listOn > 0) return;
+  toast.success(message);
+}
+
+/** No list and no reader toolbar on screen: the toast, as before. */
+mailUndoSlot.setFallback((slot) => {
+  const id = toast(slot.label, {
+    action: { label: mailSay("undo"), onClick: slot.undo },
+    duration: 8000,
+  });
+  return () => toast.dismiss(id);
+});
 
 export function useMailUndo({
   viewerId,
@@ -92,7 +146,7 @@ export function useMailUndo({
 
   const applyMailUndo = React.useCallback(
     async (undo: MailUndoEntry) => {
-      toast.dismiss(undo.toastId);
+      mailUndoSlot.clear(undo.id);
       if (undo.kind === "batch") {
         await undo.run();
         return;
@@ -130,7 +184,7 @@ export function useMailUndo({
           });
           if (undo.folderName)
             bumpMailFolderCount(undo.summary.account, undo.folderName, -1);
-          toast.success(mailSay("movedBackToInbox"));
+          saidBack(mailSay("movedBackToInbox"));
         } else if (undo.kind === "snooze") {
           await apiJson("/api/mail/unsnooze", {
             method: "POST",
@@ -144,7 +198,7 @@ export function useMailUndo({
             const current = n == null ? 1 : n;
             return Math.max(0, current - 1);
           });
-          toast.success(mailSay("snoozeCancelled"));
+          saidBack(mailSay("snoozeCancelled"));
         } else {
           // Every copy that went — the row's own and the ones folded into
           // it — comes back, or the row would return as one of them and the
@@ -166,7 +220,7 @@ export function useMailUndo({
           // The pin archiving took off. Undo is the whole move back, and a
           // thread that returns to the inbox without its pin is not that.
           if (undo.wasPinned) pinMailThread(undo.summary);
-          toast.success(
+          saidBack(
             mailSay(
               undo.kind === "trash" ? "restoredToInbox" : "movedBackToInbox"
             )
@@ -205,31 +259,26 @@ export function useMailUndo({
       folderName?: string,
       leftFolderName?: string | null,
       after?: Promise<unknown>,
-      wasPinned?: boolean
+      wasPinned?: boolean,
+      /** What the row says happened, when the kind alone cannot say it. */
+      what?: string
     ): string => {
       const id = `${kind}-${threadKey(summary)}-${Date.now()}`;
-      const toastId =
-        kind === "move"
-          ? toast.success(label, {
-              action: {
-                label: "Undo",
-                onClick: () => void undoMailActionById(id),
-              },
-              duration: 8000,
-            })
-          : toast(label, {
-              action: {
-                label: "Undo",
-                onClick: () => void undoMailActionById(id),
-              },
-              duration: 8000,
-            });
+      mailUndoSlot.show({
+        id,
+        action: kind,
+        verb: what ?? slotWhat(kind, folderName),
+        object: summary.subject || mailSay("noSubject"),
+        lastAt: summary.lastAt,
+        threadKey: threadKey(summary),
+        label,
+        undo: () => void undoMailActionById(id),
+      });
       stack.push({
         id,
         kind,
         summary,
         wasPinned,
-        toastId,
         folderName,
         leftFolderName,
         after,
@@ -239,12 +288,12 @@ export function useMailUndo({
     [undoMailActionById, stack]
   );
 
-  /** An action that failed has nothing to take back: off the stack, toast gone. */
+  /** An action that failed has nothing to take back: off the stack, row gone. */
   const dropMailUndo = React.useCallback((id: string | null) => {
     if (!id) return;
     const entry = stack.take(id);
     if (!entry) return;
-    toast.dismiss(entry.toastId);
+    mailUndoSlot.clear(entry.id);
   }, [stack]);
 
   /**
@@ -255,16 +304,19 @@ export function useMailUndo({
    * and the people view deletes no other way.
    */
   const pushBatchUndo = React.useCallback(
-    (label: string, run: () => Promise<void>) => {
+    (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => {
       const id = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const toastId = toast(label, {
-        action: {
-          label: mailSay("undo"),
-          onClick: () => void undoMailActionById(id),
-        },
-        duration: 8000,
+      mailUndoSlot.show({
+        id,
+        ...words,
+        label,
+        lastAt: anchor?.lastAt ?? null,
+        personKey: anchor?.personKey,
+        threadKey: anchor?.threadKey,
+        undo: () => void undoMailActionById(id),
       });
-      stack.push({ id, kind: "batch", toastId, run });
+      stack.push({ id, kind: "batch", run });
+      return id;
     },
     [undoMailActionById, stack]
   );
