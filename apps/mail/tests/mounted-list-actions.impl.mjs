@@ -572,12 +572,16 @@ async function arrowKeysWalkTheDrafts() {
   await waitFor(() => document.querySelectorAll("[data-draft-key]").length === 2);
   const openDraft = () => document.querySelector("[data-draft-key][aria-current=true]")?.dataset.draftKey ?? null;
   document.body.focus();
+  // A slow machine (the public Build) is still settling the tab after the
+  // drafts show: let it settle, then wait for what the key does, not a
+  // fixed time.
+  await sleep(300);
   press("ArrowDown");
-  await sleep(600);
+  await waitFor(() => openDraft() === "d-new").catch(() => {});
   assert.equal(openDraft(), "d-new", "the first Down opens the top draft");
   assert(!reading(0), "and no inbox mail");
   press("ArrowDown");
-  await sleep(600);
+  await waitFor(() => openDraft() === "d-old").catch(() => {});
   assert.equal(openDraft(), "d-old", "the next Down opens the next draft, the caret not taken into the first");
   assert(!reading(0) && !reading(1), "still no inbox mail");
   press("ArrowUp");
