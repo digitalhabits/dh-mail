@@ -63,6 +63,8 @@ export function usePageKeys({
   selected,
   selectedPersonKey,
   setActiveFolder,
+  setSelected,
+  setSelectedPersonKey,
   setUiScale,
   shortcuts,
   startCompose,
@@ -74,7 +76,7 @@ export function usePageKeys({
 }: Pick<ReturnType<typeof usePageSetup>, "shortcuts"> &
   Pick<ReturnType<typeof useListTabsAndPins>, "viewMode"> &
   Pick<ReturnType<typeof useDisplaySettings>, "setUiScale" | "uiScale"> &
-  Pick<ReturnType<typeof useReaderState>, "landOnPerson" | "openThreadRef" | "selected" | "selectedPersonKey"> &
+  Pick<ReturnType<typeof useReaderState>, "landOnPerson" | "openThreadRef" | "selected" | "selectedPersonKey" | "setSelected" | "setSelectedPersonKey"> &
   Pick<ReturnType<typeof useListQuery>, "activeFolder" | "setActiveFolder"> &
   Pick<ReturnType<typeof useDraftsView>, "draftsView"> &
   Pick<ReturnType<typeof useListView>, "searchInputRef"> &
@@ -105,5 +107,9 @@ export function usePageKeys({
     screenThreadOrderRef,
     openThreadRef,
     searchInputRef,
+    closeThread: () => {
+      setSelected(null);
+      setSelectedPersonKey(null);
+    },
   });
 }

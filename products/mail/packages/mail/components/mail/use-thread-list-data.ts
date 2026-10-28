@@ -1127,33 +1127,50 @@ export function useListMore({
     () => cursorForMailboxScope(listCursor, mailboxScopeEmails, accountEmails),
     [listCursor, mailboxScopeEmails, accountEmails]
   );
-  const loadMoreThreads = React.useCallback(async () => {
-    if (!listCursor || loadingMore || loadingList || refreshing) return;
-    if (!activeFolder && folder === "snoozed") return;
+  /**
+   * The next page, and the next, until one brings a row the list will
+   * show (`shows`), or there are no more pages.
+   *
+   * A page of read mail under Unread only, or of another mailbox's mail
+   * under one mailbox's tab, added rows that the list then hid, so a
+   * click on Load more did nothing anyone could see (2026-10-27). Returns
+   * how many shown rows came, so the button can say when there were none.
+   */
+  const loadMoreThreads = React.useCallback(async (shows?: (t: MailThreadSummary) => boolean): Promise<number> => {
+    if (!listCursor || loadingMore || loadingList || refreshing) return 0;
+    if (!activeFolder && folder === "snoozed") return 0;
     setLoadingMore(true);
+    let cursor: string | null = listCursor;
+    let found = 0;
     try {
-      const params = new URLSearchParams();
-      appendListParams(params);
-      params.set("cursor", listCursor);
-      const json = await apiJson<{
-        threads: MailThreadSummary[];
-        nextCursor?: string | null;
-      }>(`/api/mail/threads?${params.toString()}`);
-      const nextCursor = json.nextCursor ?? null;
-      setThreads((current) => {
-        const byKey = new Map(current.map((t) => [threadKey(t), t]));
-        for (const t of json.threads) byKey.set(threadKey(t), t);
-        // Sorts newest-first and collapses cc'd copies across mailboxes.
-        const merged = dedupeThreadsByTip([...byKey.values()]);
-        writeCachedList(viewerId, listCacheKey, { threads: merged, nextCursor });
-        return merged;
-      });
-      setListCursor(nextCursor);
+      for (let page = 0; cursor && page < LOAD_MORE_PAGES; page += 1) {
+        const params = new URLSearchParams();
+        appendListParams(params);
+        params.set("cursor", cursor);
+        const json = await apiJson<{
+          threads: MailThreadSummary[];
+          nextCursor?: string | null;
+        }>(`/api/mail/threads?${params.toString()}`);
+        const nextCursor = json.nextCursor ?? null;
+        setThreads((current) => {
+          const byKey = new Map(current.map((t) => [threadKey(t), t]));
+          for (const t of json.threads) byKey.set(threadKey(t), t);
+          // Sorts newest-first and collapses cc'd copies across mailboxes.
+          const merged = dedupeThreadsByTip([...byKey.values()]);
+          writeCachedList(viewerId, listCacheKey, { threads: merged, nextCursor });
+          return merged;
+        });
+        setListCursor(nextCursor);
+        cursor = nextCursor;
+        found += shows ? json.threads.filter(shows).length : json.threads.length;
+        if (found > 0) break;
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't load more");
     } finally {
       setLoadingMore(false);
     }
+    return found;
   }, [appendListParams,
     folder,
     activeFolder,
@@ -1166,6 +1183,9 @@ export function useListMore({
     viewerId, setListCursor, setLoadingMore]);
   return { loadMoreThreads, refreshSentForAccount, scheduleSentRefreshForAccount, shownListCursor };
 }
+
+/** How many pages one Load more reads at most, looking for a row to show. */
+const LOAD_MORE_PAGES = 10;
 
 /** When the list reads again: on open, on new contacts, on the poll, and on signals from other windows. */
 export function useListPolls({

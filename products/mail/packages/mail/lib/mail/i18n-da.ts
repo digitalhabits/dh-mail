@@ -1255,6 +1255,8 @@ export const da: Record<keyof typeof en, string> = {
   unread: "Ulæst",
   pinned: "Fastgjort",
   loadMore: "Hent flere",
+  noMoreUnreadFound: "Der kom ikke mere ulæst post i de ældre sider.",
+  noMoreInViewFound: "Der kom ikke mere post til denne visning i de ældre sider.",
   loadingFolderHint: "En stor mappe kan tage nogle sekunder.",
   loadingFolders: "Henter mapper…",
   connectToStart: "Forbind en konto for at komme i gang",

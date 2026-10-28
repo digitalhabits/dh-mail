@@ -90,7 +90,7 @@ export function MailFolderRail(props: FolderRailProps) {
        */
       className={cn(
         "group/rail flex h-full w-full shrink-0 flex-col overflow-hidden border-[var(--mail-pane-divider)] bg-[var(--mail-sidebar)] px-2 pt-1",
-        side === "right" ? "border-l" : "border-r"
+        props.edgeless ? null : side === "right" ? "border-l" : "border-r"
       )}
     >
       {/* No "Folders" heading: the rows say what the column is. The way out
@@ -236,7 +236,13 @@ export function MailFolderRail(props: FolderRailProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("filterFoldersPlaceholder")}
           aria-label={t("filterFolders")}
-          className="w-full rounded-inner border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300"
+          // The rail's own sand until it is in use: a white box at rest
+          // was the brightest thing in the rail (2026-10-27). White once
+          // it has the focus, or holds words.
+          className={cn(
+            "w-full rounded-inner border border-stone-200 px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300 focus:bg-white",
+            query ? "bg-white" : "bg-transparent"
+          )}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();

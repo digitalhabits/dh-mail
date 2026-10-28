@@ -673,7 +673,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    */
   --mail-sidebar: #ebe4d8;
   --mail-sidebar-hover: rgba(27, 61, 74, 0.06);
-  --mail-pane-divider: rgba(27, 61, 74, 0.16);
+  --mail-pane-divider: rgba(27, 61, 74, 0.11); /* 16% read heavy round the frame (2026-10-27) */
   --mail-list-muted: #47616a;
 
   /* A person or a list, as a chip in an address field. */
@@ -1735,6 +1735,25 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
  * variable one standalone.css names for this. Where it is missing, 500
  * falls back to regular.
  */
+/*
+ * The title bar's words, which go when the search field would be under
+ * 320px: the icons stay, with their tooltips (mail-title-bar, 20c).
+ */
+/*
+ * In the Reader that fills the window, a mail laid out at a fixed width
+ * narrower than its card (GitHub's, a newsletter's) stands in the middle
+ * of the card, as it does in a browser, not against its left edge
+ * (2026-10-27). In the thread beside the list the card fits the mail.
+ */
+[data-thread-full-window] iframe[data-dh-mail-frame],
+[data-mail-reader] iframe[data-dh-mail-frame] {
+  margin-inline: auto;
+}
+
+[data-tb-compact] .mail-tb-label {
+  display: none;
+}
+
 .mail-name {
   font-family: "Schibsted Grotesk Names", "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-weight: 500;

@@ -43,7 +43,7 @@ export const SyncControl = React.memo(function SyncControl() {
       )}
     >
       <SyncIcon className="h-3.5 w-3.5" spinning={refreshing || syncTurn} />
-      {t("sync")}
+      <span className="mail-tb-label">{t("sync")}</span>
       {paused ? (
         <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />
       ) : null}

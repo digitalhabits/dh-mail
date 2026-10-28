@@ -8,6 +8,7 @@
  * comes in as props. The JSX is MailPage's own, word for word.
  */
 
+import { usePaneCorner } from "@/components/mail/mail-pane-frames";
 import * as React from "react";
 import { TeamAssigneeFilter, TriageTab } from "@/components/mail/team-layer";
 import { filterIsOn as filterIsOnFor } from "@/lib/mail/filter-set";
@@ -143,6 +144,7 @@ export const FolderRail = React.memo(function FolderRail() {
   const { actOnSelection, dragCarriesSelection, moveManyToFolder, moveToFolder, moveToInbox, setThreadJunk, trash } = usePageActions();
   const { drafts, refreshDrafts } = usePageCompose();
   const { railOnRight } = usePageLayout();
+  const paneCorner = usePaneCorner();
   const { setSelected, setSelectedPersonKey } = usePageReader();
   return (
     <MailFolderRail
@@ -173,6 +175,8 @@ export const FolderRail = React.memo(function FolderRail() {
       draftCount={draftCountForTabs(drafts, isMailboxScopeAll(mailboxScopeEmails, accountEmails) ? null : mailboxScopeEmails)}
       draggingAccount={draggingAccount}
       side={railOnRight ? "right" : "left"}
+      // The pane beside it draws the line, round its corner.
+      edgeless={paneCorner !== null}
       onOpenFolder={(account, name) => {
         const known = accountFolders.find(
           (f) =>

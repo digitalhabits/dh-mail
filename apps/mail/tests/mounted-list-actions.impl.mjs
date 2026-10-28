@@ -165,6 +165,8 @@ const server = {
     this.failing = new Set();
     this.routes = new Map();
     this.outOfInbox = () => new Set();
+    // Older pages behind the first, for Load more: arrays of summaries.
+    this.pages = [];
   },
   postsTo(path) {
     return this.posts.filter((p) => p.path === path).map((p) => p.body.threadId);
@@ -239,8 +241,21 @@ setMailApiTransport(async (path, init) => {
       threads: ROWS.map((r) => r.summary).filter((t) => server.trashed.has(t.threadId)),
       nextCursor: null,
     });
+  if (p === "/api/mail/threads" && url.searchParams.get("cursor")) {
+    const at = Number(url.searchParams.get("cursor").split(":")[1]);
+    return json({
+      threads: server.pages[at] ?? [],
+      nextCursor: at + 1 < server.pages.length ? `page:${at + 1}` : null,
+    });
+  }
   if (p === "/api/mail/threads") {
     const outOfInbox = server.outOfInbox();
+    if (server.pages.length) {
+      return json({
+        threads: [...server.arriving, ...ROWS.map((r) => r.summary)].filter((t) => !server.gone.has(t.threadId)),
+        nextCursor: "page:0",
+      });
+    }
     return json({
       threads: [...server.arriving, ...ROWS.map((r) => r.summary)].filter(
         (t) => !server.gone.has(t.threadId) && !outOfInbox.has(t.threadId)
@@ -317,7 +332,7 @@ const paneAction = (name) =>
   );
 
 let root = null;
-async function mount({ people = false, autoReplies = [] } = {}) {
+async function mount({ people = false, autoReplies = [], pages = [] } = {}) {
   root?.unmount();
   localStorage.clear();
   // Stacking is on by default since 2026-09-29; this walk sets it either way.
@@ -325,6 +340,7 @@ async function mount({ people = false, autoReplies = [] } = {}) {
   sessionStorage.clear();
   server.reset();
   server.autoReplies = autoReplies;
+  server.pages = pages;
   toasts = [];
   draftRows.clear();
   document.body.innerHTML = '<div id="root"></div>';
@@ -365,6 +381,51 @@ async function pauseFromSyncAndResume() {
   assert(byLabel("Sync inbox"), "resumed, Sync is plain again");
   assert(!byText(/^Sync$/).querySelector(".bg-amber-500"), "with no dot");
   pass("Sync is one button: no ▾, and a dot and a label while paused");
+}
+
+/**
+ * Load more under Unread only reads on until unread mail comes. A page of
+ * read mail added rows the switch then hid, and a click did nothing anyone
+ * could see (2026-10-27).
+ */
+async function loadMoreUnderUnreadOnly() {
+  const old = (id, unread) => ({ ...row(id, `Old letter ${id}`, "Ida Old", "ida@old.example", `2026-01-0${id.slice(-1)}T09:00:00Z`, "An old letter").summary, unread });
+  const unreadOnly = (on) => {
+    if (on) localStorage.setItem("redd-plan-mail-unread-only", "1");
+    else localStorage.removeItem("redd-plan-mail-unread-only");
+    window.dispatchEvent(new Event("redd-plan-mail-unread-only-changed"));
+  };
+  const loadMore = () => [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Load more");
+
+  await mount({ pages: [[old("o1", false), old("o2", false)], [old("o3", true)]] });
+  unreadOnly(true);
+  await sleep(300);
+  assert(loadMore(), "there is more to load");
+  clickEl(loadMore());
+  await waitFor(() => inList({ subject: "Old letter o3" }));
+  assert(!inList({ subject: "Old letter o1" }), "the read ones stay hidden");
+  assert(!loadMore(), "and with no more pages, no button");
+  pass("under Unread only, one Load more reads past a page of read mail to the unread one");
+
+  await mount({ pages: [[old("o1", false)], [old("o2", false)]] });
+  unreadOnly(true);
+  await sleep(300);
+  clickEl(loadMore());
+  await waitFor(() => (document.body.textContent || "").includes("No more unread mail came in the older pages."));
+  pass("and when none comes, it says so instead of seeming to do nothing");
+  unreadOnly(false);
+}
+
+/** Escape puts the open thread away: nothing is open, and the resting picture comes. */
+async function escapeClosesTheThread() {
+  await mount();
+  await open(CHOIR);
+  assert(reading(0), "the thread is open");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await sleep(400);
+  assert(!reading(0), "Escape put it away");
+  assert(!document.querySelector(".mail-titlebar ~ * [aria-current=true][data-thread-key]"), "and no row is marked open");
+  pass("Escape on an open thread puts it away");
 }
 
 async function archiveThenCommandZ() {
@@ -1638,6 +1699,8 @@ async function archiveOfflineStaysGone() {
 
 async function main() {
   try {
+    await loadMoreUnderUnreadOnly();
+    await escapeClosesTheThread();
     await archiveThenCommandZ();
     await deleteThenCommandZ();
     await toastUndoTakesBackItsOwn();

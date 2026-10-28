@@ -37,10 +37,10 @@ import {
   useDraftSelection,
 } from "@/components/mail/draft-selection";
 import { TYPING_TARGET } from "@/lib/mail/shortcuts";
-import type { MailDraftRow } from "@/lib/mail/types";
+import type { MailDraftRow, MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
 import { MailListLoading } from "@/components/mail/MailListLoading";
-import { gmailOauthHref, MAIL_OFF_TAB_VIEWS, mailboxScopeApiAccount, outlookOauthHref } from "@/components/mail/mail-list-state";
+import { accountPassesMailboxScope, gmailOauthHref, MAIL_OFF_TAB_VIEWS, mailboxScopeApiAccount, outlookOauthHref } from "@/components/mail/mail-list-state";
 import { OlderMailRows } from "@/components/mail/mail-older-rows";
 import { useOlderMail } from "@/components/mail/use-older-mail";
 import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/mail/mail-list-rows";
@@ -70,10 +70,11 @@ export function ThreadListColumn({
   const pageList = usePageList();
   const { accountEmails } = usePageAccounts();
   const { chromeDark, listExpanded, listNarrow, listRowsOnPane, listVertical, phone, threadListRef } = usePageLayout();
-  const { debouncedSearch, listCursor, listError, listScrollRef, loadMoreThreads, loadingList, loadingMore, mailProviderNames, pinnedThreads, searchedVisible, tab, threads, viewMode } = usePageList();
+  const { debouncedSearch, listCursor, listError, listScrollRef, loadingList, loadingMore, mailProviderNames, pinnedThreads, searchedVisible, tab, threads, viewMode } = usePageList();
   const { draftsView } = usePageCompose();
   const { readSoFar } = usePageSync();
   const older = useOlderSearch();
+  const { loadMoreShown, loadNote } = useLoadMoreShown();
   // Stacks switched: the rows glide from where they were (lib/mail/stack-glide).
   React.useLayoutEffect(() => {
     glideToNewPlaces(listScrollRef.current);
@@ -182,6 +183,7 @@ export function ThreadListColumn({
               {t("searchedSoFar", { count: readSoFar.toLocaleString() })}
             </p>
           ) : null}
+          <LoadMoreNote note={loadNote} />
           {listCursor && !loadingList ? (
             <div
               className={cn("pb-2 pt-3", listNarrow ? "px-1" : "px-5")}
@@ -191,7 +193,7 @@ export function ThreadListColumn({
                 disabled={loadingMore}
                 title={t("loadMore")}
                 aria-label={loadingMore ? t("loadingMore") : t("loadMore")}
-                onClick={() => void loadMoreThreads()}
+                onClick={() => void loadMoreShown()}
                 className={cn(
                   "flex w-full items-center justify-center gap-2 rounded-inner py-2 text-xs font-medium text-[var(--mail-chrome-muted)] transition-colors hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)] disabled:opacity-60",
                   listNarrow && "px-0"
@@ -221,6 +223,48 @@ export function ThreadListColumn({
         </div>
     </HiddenAccountsContext.Provider>
   );
+}
+
+/** What the last Load more found nothing of, under the rows. */
+function LoadMoreNote({ note }: { note: string | null }) {
+  const { listNarrow } = usePageLayout();
+  const { loadingList } = usePageList();
+  if (!note || listNarrow || loadingList) return null;
+  return (
+    <p className="px-5 pt-3 text-center text-[11px] leading-snug text-[var(--mail-chrome-faint)]">
+      {note}
+    </p>
+  );
+}
+
+/**
+ * Load more, for what this view shows: the rows that pass its filters, the
+ * Unread switch and the mailbox tab. It reads on until one of those comes;
+ * when none does, it says so, rather than seem to do nothing (2026-10-27).
+ */
+function useLoadMoreShown() {
+  const t = useMailT();
+  const { loadMoreThreads, passesFilters, tab, unreadOnly } = usePageList();
+  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
+  const [loadNote, setLoadNote] = React.useState<string | null>(null);
+  const viewKey = `${tab}|${unreadOnly}|${mailboxScopeEmails.join(",")}`;
+  const [noteFor, setNoteFor] = React.useState(viewKey);
+  // A note is about the view it was said in.
+  if (noteFor !== viewKey) {
+    setNoteFor(viewKey);
+    setLoadNote(null);
+  }
+  const loadMoreShown = async () => {
+    setLoadNote(null);
+    const shows = (row: MailThreadSummary) =>
+      passesFilters(row) &&
+      (!unreadOnly || Boolean(row.unread)) &&
+      accountPassesMailboxScope(row.account, mailboxScopeEmails, accountEmails);
+    const found = await loadMoreThreads(shows);
+    if (found > 0) return;
+    setLoadNote(t(unreadOnly ? "noMoreUnreadFound" : "noMoreInViewFound"));
+  };
+  return { loadMoreShown, loadNote };
 }
 
 /**

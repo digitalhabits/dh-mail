@@ -60,7 +60,7 @@ export function StacksSwitch({
       )}
     >
       <GalleryVerticalEnd className="h-3.5 w-3.5" aria-hidden />
-      {t("stacksSwitch")}
+      <span className="mail-tb-label">{t("stacksSwitch")}</span>
       <SwitchTrack
         small
         on={on}

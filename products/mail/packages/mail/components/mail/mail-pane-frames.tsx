@@ -33,8 +33,10 @@ export function ReadingPaneFrame({
     listFirst,
     listSliding,
     listWidth,
+    phone,
     railInset,
   } = usePageLayout();
+  const corner = usePaneCorner();
   const t = useMailT();
   /*
     The list shown from the edge pushes the reader over rather than lying
@@ -66,7 +68,11 @@ export function ReadingPaneFrame({
           the app at rest, and at rest the two halves of the window should
           be the one colour, which is what light has always done.
         */
-        className="mail-reading-pane relative z-0 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--mail-thread-chrome)]"
+        className={cn(
+          "mail-reading-pane relative z-0 flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--mail-thread-chrome)]",
+          !phone && PANE_TOP_LINE,
+          corner === "reader" && cn(PANE_CORNER, "overflow-hidden")
+        )}
         style={{
           order: listFirst ? 3 : 1,
           ...(pushedBy ? (listFirst ? { marginLeft: pushedBy } : { marginRight: pushedBy }) : {}),
@@ -147,7 +153,8 @@ export const ListResizeHandle = React.memo(function ListResizeHandle() {
           "relative z-20 shrink-0 touch-none bg-transparent transition-colors hover:bg-[var(--mail-chrome-hover)] active:bg-white/20",
           listVertical
             ? "h-2 w-full cursor-row-resize"
-            : "w-2 cursor-col-resize"
+            // The line along the panes' top runs across the gap too.
+            : cn("w-2 cursor-col-resize", PANE_TOP_LINE)
         )}
         style={{ order: 2 }}
       />
@@ -155,6 +162,26 @@ export const ListResizeHandle = React.memo(function ListResizeHandle() {
     </>
   );
 });
+
+/**
+ * Where the list and the reader meet the sand of the title bar and the
+ * folder rail: a line along their top, and a rounded corner where the
+ * frame turns down beside the rail (2026-10-27). The corner is on
+ * whichever pane comes first after the rail: the list, or the reader
+ * with the list put away. The rail gives its own line to that pane then,
+ * so the line runs on round the corner.
+ */
+export function usePaneCorner(): "list" | "reader" | null {
+  const { hideList, listFirst, listVertical, phone, railOnRight, railShowing } = usePageLayout();
+  if (phone || !railShowing || railOnRight || listVertical) return null;
+  if (hideList) return "reader";
+  return listFirst ? "list" : null;
+}
+
+/** The line along the top of the panes, under the sand. */
+const PANE_TOP_LINE = "border-t border-[var(--mail-pane-divider)]";
+/** The corner where the frame turns down beside the rail. */
+const PANE_CORNER = "rounded-tl-surface border-l border-[var(--mail-pane-divider)]";
 
 /** The thread list's frame: its size, its slide, and the controls over it. */
 export function ListPaneFrame({
@@ -171,6 +198,7 @@ export function ListPaneFrame({
   threadListColumn: React.ReactNode;
 }) {
   const t = useMailT();
+  const corner = usePaneCorner();
   const { controlsWidth, expandClip, hideList, listBorderClass, listExpandSliding, listExpanded, listFirst, listHeight, listMounted, listNarrow, listNearSnap, listOpen, listRowsOnPane, listSliding, listSlideOverlay, listSlideTransform, listSplit, listVertical, listWidth, phone, railInset, shownListWidth, startControlsResize, startListResize, toggleListExpanded } = usePageLayout();
   const box = {
     listExpandSliding,
@@ -229,6 +257,8 @@ export function ListPaneFrame({
         data-list-expanded={listExpanded ? "true" : "false"}
         className={cn(
           "relative overflow-hidden",
+          // The sand shows in the corner the list's frame turns.
+          corner === "list" && !peeking && "bg-[var(--mail-sidebar)]",
           peeking && "shadow-xl",
           listExpanded && listOpen ? "min-h-0 min-w-0 flex-1" : "shrink-0",
           listSlideOverlay &&
@@ -267,6 +297,8 @@ export function ListPaneFrame({
           // into the table.
           listRowsOnPane ? "bg-[var(--mail-pane)]" : "bg-[var(--mail-chrome)]",
           listBorderClass,
+          !phone && !listVertical && PANE_TOP_LINE,
+          corner === "list" && !peeking && PANE_CORNER,
           // Top/bottom: controls | thread list side-by-side.
           listSplit ? "min-h-0 w-full flex-row" : "min-w-0 flex-col"
         )}

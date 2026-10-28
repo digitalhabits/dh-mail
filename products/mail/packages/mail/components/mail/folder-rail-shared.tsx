@@ -240,6 +240,11 @@ export type FolderRailProps = {
    * the border — is the left one.
    */
   side?: "left" | "right";
+  /**
+   * No line on that edge: the pane beside it draws one, round its rounded
+   * corner (usePaneCorner), so the two lines would stand side by side.
+   */
+  edgeless?: boolean;
 };
 
 /**

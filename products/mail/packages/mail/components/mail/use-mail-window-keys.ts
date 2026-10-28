@@ -85,6 +85,7 @@ export function useMailWindowKeys({
   screenThreadOrderRef,
   openThreadRef,
   searchInputRef,
+  closeThread,
 }: {
   undoLastMailAction: () => Promise<void>;
   hasMailUndo: () => boolean;
@@ -110,6 +111,8 @@ export function useMailWindowKeys({
   screenThreadOrderRef: React.RefObject<MailThreadSummary[]>;
   openThreadRef: React.RefObject<((t: MailThreadSummary) => void) | null>;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
+  /** Put the open thread (or person) away: the resting picture comes. */
+  closeThread: () => void;
 }): void {
   React.useEffect(() => {
     /** Down and Up in the people view: the next person, landed on as a click lands. */
@@ -248,6 +251,35 @@ export function useMailWindowKeys({
         return;
       }
 
+      /*
+        Escape → put the open thread away, and the resting picture comes
+        (2026-10-27). First, before the folder: it is the nearer thing. A
+        second Escape then leaves the folder. Keys inside the thread that
+        mean something of their own (a find bar, a preview, the composer)
+        answer first: see the tick below.
+      */
+      if (
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        e.key === "Escape" &&
+        !e.defaultPrevented &&
+        (selected || selectedPersonKey)
+      ) {
+        /*
+          Last, not first. A composer, the find bar and a file preview
+          each answer Escape on the window too, and some of them were
+          added after this listener, so they hear it after it. A tick
+          later every one has had its turn; the thread goes only if none
+          of them took the key (it asked before a written reply went).
+        */
+        window.setTimeout(() => {
+          if (!e.defaultPrevented) closeThread();
+        }, 0);
+        return;
+      }
+
       // Escape → leave the open folder (back to inbox tabs).
       if (
         !typing &&
@@ -371,6 +403,7 @@ export function useMailWindowKeys({
     // Stable, or refs: listed because a value from a custom hook is not
     // known to be stable.
     setActiveFolder,
+    closeThread,
     personRowOrderRef,
     screenThreadOrderRef,
     openThreadRef,

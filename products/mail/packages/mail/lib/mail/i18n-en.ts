@@ -1269,6 +1269,9 @@ export const en = {
   unread: "Unread",
   pinned: "Pinned",
   loadMore: "Load more",
+  /** Under Load more, when the pages it read held nothing this view shows. */
+  noMoreUnreadFound: "No more unread mail came in the older pages.",
+  noMoreInViewFound: "No more mail for this view came in the older pages.",
   loadingFolderHint: "A big folder can take a few seconds to come back.",
   loadingFolders: "Loading folders…",
   connectToStart: "Connect an account to get started",

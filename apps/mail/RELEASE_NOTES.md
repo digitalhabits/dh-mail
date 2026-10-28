@@ -20,8 +20,11 @@
 - The subject of a conversation is larger and in bold. A long subject is set smaller, and wraps onto two lines when it must, so it is not cut off. The reader that fills the window shows the subject the same way.
 - Beside the subject, a conversation names its people by name: "Mikkel Christoffersen and You", or "Jane Roe, You and 2 more". Point at the names to see everyone with their addresses, and to copy them or save them as a list.
 - The files of a conversation follow its number of messages and its dates at the top.
-- When an auto-reply is on, a small "Auto-reply on until …" beside Sync says so; click it to change it. Each account it is on for has a reply arrow after its name in the tabs, also an account you have hidden. Before, the notice was a line above the tabs, which pushed the list down out of line with the conversation beside it.
+- When an auto-reply is on, a small "Auto-reply on" beside Sync says so; point at it to see until when, and click it to change it. Each account it is on for has a reply arrow after its name in the tabs, also an account you have hidden. Before, the notice was a line above the tabs, which pushed the list down out of line with the conversation beside it.
 - In the dark theme, the messages you sent are blue and the messages you received are a quiet slate, as in the light theme.
+- The title bar has the same sand colour as the folder list, so the two make one frame round the list and the conversation. The list and the conversation sit in that frame, with a rounded corner at the top left.
+- The search field takes the free width of the title bar, up to a limit, and Sync and the other buttons are beside it. When the window is narrow, the buttons show only their icons.
+- The box that filters the folder list is the colour of the folder list until you click in it.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
 
 **The reply box**
@@ -63,6 +66,10 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- Escape closes the conversation you have open, so you see the list again. It first closes what is in front: a reply you are writing, Find, or a file you are looking at.
+- A narrow email is in the middle of the Reader that fills the window, not at its left edge.
+- "Load more" with only unread mail shown, or one mailbox's tab open, reads on until it finds mail that shows, or says that the older pages had none. Before, it could load mail that was then hidden, and seem to do nothing.
+- With an auto-reply on and the window narrow, the search field keeps room to type.
 - An email no longer moves up and down for a few seconds after you open it.
 - A right-click on a conversation inside an open stack opens that conversation's own menu.
 - The subject and the first words of each email in the list are a little darker, so they are easier to read.

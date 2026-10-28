@@ -44,6 +44,9 @@ export function MailTitleBar({
   const chipShown = hiddenSearchChipShown(search, hiddenSearch);
   // The search menu, opened by its chevron or by the hidden chip.
   const [optionsOpen, setOptionsOpen] = React.useState(false);
+  const controlsRef = React.useRef<HTMLDivElement>(null);
+  const searchRef = React.useRef<HTMLLabelElement>(null);
+  const compact = useTitlebarCompact(controlsRef, searchRef);
   return (
     <>
       {/* Overlay title bar — same height as the Mac traffic-light strip
@@ -54,9 +57,13 @@ export function MailTitleBar({
           `deep` makes empty chrome draggable; inputs stay interactive. */}
       <div
         data-tauri-drag-region="deep"
-        className="mail-titlebar mail-chrome-strip relative flex h-[calc(44px/var(--mail-window-scale,1))] shrink-0 items-center gap-3 border-b bg-[var(--mail-chrome)] transition-[padding-left] ease-out motion-reduce:transition-none"
+        // The folder rail's ground, so the bar and the rail read as one
+        // frame round the list and the reader, which are lighter. No line
+        // under it: the step in colour is the edge. The 1px stays, clear,
+        // so nothing below moves.
+        className="mail-titlebar mail-chrome-strip relative flex h-[calc(44px/var(--mail-window-scale,1))] shrink-0 items-center gap-3 border-b bg-[var(--mail-sidebar)] transition-[padding-left] ease-out motion-reduce:transition-none"
         style={{
-          borderColor: "var(--mail-chrome-border)",
+          borderColor: "transparent",
           // Where the row stops. A shell that puts window buttons at the
           // right of the strip (the standalone app on Windows) sets this.
           paddingRight: "var(--mail-titlebar-right, 12px)",
@@ -82,7 +89,12 @@ export function MailTitleBar({
         >
           {listToggle}
         </div>
-        <div className="mail-titlebar-controls -ml-[4px] flex min-w-0 max-w-3xl flex-1 items-center gap-2">
+        {/* The whole row: the search takes what the buttons leave (20c). */}
+        <div
+          ref={controlsRef}
+          data-tb-compact={compact ? "" : undefined}
+          className="mail-titlebar-controls -ml-[4px] flex min-w-0 flex-1 items-center gap-2"
+        >
           {/* First, where it is in reach whatever the list is doing: it
               stood at the head of the list, and went with the list when
               the list was put away. */}
@@ -109,13 +121,18 @@ export function MailTitleBar({
               Sync, as both say what the mailboxes are doing on their own. */}
           <AutoReplyPill onDark={chromeDark} />
           <label
+            ref={searchRef}
             className={cn(
               "mail-titlebar-search",
               // h-7 (~28px) centers with traffic lights in the 44px strip.
               // Its own colours, not stone: on the dark theme the blanket
               // rewrite made this the same shade as the bar it sits in, so
               // the box a reader types into had no edges.
-              "relative flex h-7 min-w-0 flex-1 items-center rounded-[8px] border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
+              // 12rem at least: room to type beside the hidden-mail chip.
+              // The auto-reply pill beside it gives way first.
+              // No wider than 40rem: past that a field reads as a bar, and
+              // the eye travels too far along it.
+              "relative flex h-7 min-w-[12rem] max-w-[40rem] flex-1 items-center rounded-[8px] border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
               "focus-within:ring-2 focus-within:ring-[var(--mail-title-search-ring)]"
             )}
           >
@@ -213,4 +230,47 @@ export function MailTitleBar({
       </div>
     </>
   );
+}
+
+/** The least the search field is let be before the buttons drop their words. */
+const SEARCH_ROOM_PX = 320;
+
+/**
+ * Whether the title bar's buttons go to their icons (20c). The search field
+ * keeps 320px: below that the words go, and come back once the field has
+ * room for them and its 320px both. Measured, not set by a window width,
+ * because what stands in the row (Triage, the auto-reply) differs.
+ */
+function useTitlebarCompact(
+  rowRef: React.RefObject<HTMLDivElement | null>,
+  searchRef: React.RefObject<HTMLElement | null>
+): boolean {
+  const [compact, setCompact] = React.useState(false);
+  // What the words took when they went: the room they need to come back.
+  const wordsRef = React.useRef(0);
+  React.useLayoutEffect(() => {
+    const row = rowRef.current;
+    const search = searchRef.current;
+    if (!row || !search || typeof ResizeObserver === "undefined") return;
+    const check = () => {
+      const room = search.getBoundingClientRect().width;
+      if (!row.hasAttribute("data-tb-compact")) {
+        if (room >= SEARCH_ROOM_PX) return;
+        // Each word, and the gap before it beside its icon.
+        wordsRef.current = [...row.querySelectorAll<HTMLElement>(".mail-tb-label")].reduce(
+          (sum, el) => sum + el.getBoundingClientRect().width + 6,
+          0
+        );
+        setCompact(true);
+      } else if (room - wordsRef.current >= SEARCH_ROOM_PX + 8) {
+        setCompact(false);
+      }
+    };
+    const observer = new ResizeObserver(check);
+    observer.observe(row);
+    observer.observe(search);
+    check();
+    return () => observer.disconnect();
+  }, [rowRef, searchRef]);
+  return compact;
 }
