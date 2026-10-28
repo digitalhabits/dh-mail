@@ -72,7 +72,7 @@ suite(async () => {
     (await hasStaleCopyHistory(VIEWER)) === true
   );
 
-  setUp({ states: [history(VERA, ago(2 * MINUTE))] });
+  setUp({ states: [history(VERA, ago(30 * 1000))] });
   check(
     "but not twice in a minute, for a compose opened twice",
     (await hasStaleCopyHistory(VIEWER)) === false
