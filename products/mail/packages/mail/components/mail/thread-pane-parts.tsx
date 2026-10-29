@@ -74,6 +74,7 @@ export function ThreadPaneDialogs({
 
 }) {
   const {
+    account,
     accounts,
     clearForgottenAttachment,
     closeDiaryProposal,
@@ -89,7 +90,11 @@ export function ThreadPaneDialogs({
     setSigSettings,
     sigDialogOpen,
     t,
+    threadId,
+    onTrash,
   } = m;
+  // Delete asked, not Escape: the conversation goes with the draft.
+  const andTrash = confirmDiscard === "andTrash";
   return (
     <>
       {/* Over the whole reader, because it is a question about the whole
@@ -135,14 +140,20 @@ export function ThreadPaneDialogs({
       ) : null}
       {confirmDiscard ? (
         <SettingsDialog
-          title={t(forwarding ? "discardForwardAsk" : "discardDraftAsk")}
+          title={t(
+            andTrash ? "discardAndDeleteAsk" : forwarding ? "discardForwardAsk" : "discardDraftAsk"
+          )}
           width="w-[400px]"
           bare
           onClose={() => setConfirmDiscard(false)}
           footer={
             <>
+              {/* Asked by Delete, the focus starts here instead: Backspace
+                  can reach the list from a reply whose focus slipped, and
+                  Return straight after it must not take the conversation. */}
               <button
                 type="button"
+                autoFocus={andTrash}
                 className={settingsSecondaryButton}
                 onClick={() => setConfirmDiscard(false)}
               >
@@ -155,20 +166,21 @@ export function ThreadPaneDialogs({
                   half-written reply this interrupts cannot. */}
               <button
                 type="button"
-                autoFocus
+                autoFocus={!andTrash}
                 className="rounded-control bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
                 onClick={() => {
                   setConfirmDiscard(false);
                   discardComposer();
+                  if (andTrash) onTrash({ account, threadId });
                 }}
               >
-                {t("discard")}
+                {t(andTrash ? "discardAndDelete" : "discard")}
               </button>
             </>
           }
         >
           <p className="text-sm text-stone-600">
-            {t("unsentWillBeDeleted")}
+            {t(andTrash ? "discardAndDeleteExplain" : "unsentWillBeDeleted")}
           </p>
         </SettingsDialog>
       ) : null}

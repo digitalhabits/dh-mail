@@ -2,6 +2,8 @@ import {
   attachmentContentDisposition,
   safeAttachmentMimeType,
   OPAQUE_MIME_TYPE,
+  fileTypeFromBytes,
+  nameWithFoundExtension,
 } from "@/lib/mail/attachment-mime";
 import { openAttachmentSource, hostSavesAttachments, saveAttachment }
   from "../src/seams/attachment-source";
@@ -115,6 +117,26 @@ suite(async () => {
       safeAttachmentMimeType("text/html", { bytes: pdfBytes }) === "application/pdf" &&
       safeAttachmentMimeType("application/octet-stream", { bytes: htmlBytes }) ===
         OPAQUE_MIME_TYPE);
+  // Outlook cut a forwarded file's name at a semicolon, so a PDF came with
+  // no extension and the general type, and showed as "FILE" (2026-10-29).
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]);
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+  const gif = new TextEncoder().encode("GIF89a");
+  check("PNG, JPEG and GIF are known by their first bytes too",
+    safeAttachmentMimeType("application/octet-stream", { bytes: png }) === "image/png" &&
+      safeAttachmentMimeType(null, { bytes: jpeg }) === "image/jpeg" &&
+      safeAttachmentMimeType("", { bytes: gif }) === "image/gif");
+  check("nothing else is guessed: SVG and HTML stay opaque",
+    fileTypeFromBytes(new TextEncoder().encode("<svg xmlns")) === null &&
+      fileTypeFromBytes(htmlBytes) === null &&
+      fileTypeFromBytes(new Uint8Array([0x25, 0x50])) === null);
+  check("a name with no extension takes the one its bytes show",
+    nameWithFoundExtension("Reading list 2027", pdfBytes) === "Reading list 2027.pdf" &&
+      nameWithFoundExtension("photo", jpeg) === "photo.jpg");
+  check("a name with an extension, or bytes of no known kind, are left alone",
+    nameWithFoundExtension("report.docx", pdfBytes) === "report.docx" &&
+      nameWithFoundExtension("notes", htmlBytes) === "notes" &&
+      nameWithFoundExtension("Version 2.", pdfBytes) === "Version 2..pdf");
   check("a download stays opaque even for a real PDF",
     safeAttachmentMimeType("application/pdf", { download: true, bytes: pdfBytes }) ===
       OPAQUE_MIME_TYPE);
@@ -130,6 +152,8 @@ suite(async () => {
   });
 
   const source = await openAttachmentSource("/api/mail/attachment?x=1");
+  check("it says the type the bytes were served as",
+    source.mimeType === "image/png", String(source.mimeType));
   check("it reads the attachment through the transport, not by URL",
     asked === "/api/mail/attachment?x=1", String(asked));
   check("it answers a blob URL, which an <img> can load with no server",
@@ -169,4 +193,9 @@ suite(async () => {
 
   await saveAttachment({ path: "/api/mail/attachment?x=1", filename: "a.png", open: true });
   check("opening asks for it", invoked?.args.open === true);
+
+  setMailApiTransport(async () => new Response(pdfBytes, { status: 200 }));
+  await saveAttachment({ path: "/api/mail/attachment?x=2", filename: "Reading list 2027" });
+  check("a file saved with no extension gets the one its bytes show",
+    invoked?.args.filename === "Reading list 2027.pdf", String(invoked?.args.filename));
 });

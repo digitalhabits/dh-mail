@@ -21,6 +21,7 @@ import { DownloadSplitButton } from "@/components/mail/download-split-button";
 import {
   type DraftAttachment,
   TypeBadge,
+  fileExtension,
   formatFileSize,
   isAudioMime,
   isImageMime,
@@ -342,8 +343,15 @@ function AttachmentPreviewBody({
   const error = localSrc ? null : sourceState.error;
   // Download asks where to save in its own menu (download-split-button).
   const downloadPath = attachmentUrl({ account, messageId, attachment, download: true });
-  const image = isImageMime(attachment.mimeType, attachment.filename);
-  const pdf = isPdfMime(attachment.mimeType, attachment.filename);
+  const servedType = localSrc ? null : (sourceState.mimeType ?? null);
+  const image =
+    isImageMime(attachment.mimeType, attachment.filename) ||
+    Boolean(servedType && /^image\/(png|jpeg|gif)$/.test(servedType));
+  // Or by its bytes: a file sent as "unknown", with no extension, that the
+  // server found to be a PDF when it read it (Outlook can cut a name short).
+  const pdf =
+    isPdfMime(attachment.mimeType, attachment.filename) ||
+    servedType === "application/pdf";
 
   /**
    * How big the document is shown. 1 is fit: a picture at its natural size
@@ -375,8 +383,15 @@ function AttachmentPreviewBody({
     a video; until then the download view said "preview not available"
     about a file that was about to play (2026-10-24).
   */
+  // A file of no known kind may still turn out to be one when its bytes
+  // come, so it waits for them too, rather than saying "no preview" first.
+  const unknownKind =
+    fileExtension(attachment.filename) === "FILE" &&
+    /^(application\/octet-stream)?$/i.test(attachment.mimeType.split(";")[0].trim());
   const stillReading =
-    !src && !error && (image || pdf || (media != null && !mediaTooBig && !mediaFailed));
+    !src &&
+    !error &&
+    (image || pdf || unknownKind || (media != null && !mediaTooBig && !mediaFailed));
   const zoomable = image || drawPdf;
   const bodyRef = React.useRef<HTMLDivElement>(null);
   const pdfBoxRef = React.useRef<HTMLDivElement>(null);

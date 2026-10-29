@@ -317,25 +317,43 @@ async function main() {
     assert(bodyEditor(), "the reply is still open");
     pass("Backspace in the signature does not run the Delete shortcut");
 
-    // Nor with the focus out of the words while the reply is open: on a
-    // button of the card, or on nothing at all (2026-10-20: the thread went
-    // to Trash in the middle of a reply).
+    // Nor with the focus on a button of the card (2026-10-20: the thread
+    // went to Trash in the middle of a reply).
     const cardButton = document.querySelector("[data-mail-reply-open] button");
     assert(cardButton, "the open reply has a button to stand on");
-    for (const target of [cardButton, document.body]) {
-      if (target !== document.body) target.focus?.();
-      else document.activeElement?.blur?.();
-      target.dispatchEvent(
-        new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true })
+    cardButton.focus?.();
+    cardButton.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true })
+    );
+    await sleep(300);
+    const askDialog = () =>
+      [...document.querySelectorAll('[role="dialog"]')].find((d) =>
+        /delete conversation/i.test(d.textContent || "")
       );
-      await sleep(300);
-    }
+    assert(!askDialog(), "Backspace on the card asks nothing");
+
+    // With the focus outside the reply, Delete means the conversation, draft
+    // and all, so it asks — opening on Keep draft, so a slipped focus and a
+    // Return after it keep everything (2026-10-29).
+    document.activeElement?.blur?.();
+    document.body.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true })
+    );
+    await waitFor(() => askDialog());
+    assert(askDialog(), "Backspace outside the reply asks to discard and delete");
+    assert(
+      /keep draft/i.test(document.activeElement?.textContent || ""),
+      `the question opens on Keep draft: ${document.activeElement?.textContent}`
+    );
+    clickEl(document.activeElement);
+    await sleep(300);
+    assert(!askDialog(), "Keep draft closes the question");
     assert(
       !writes.some((p) => /trash|delete|archive/i.test(p)),
       `no delete went out: ${writes.join(", ")}`
     );
     assert(bodyEditor(), "the reply is still open");
-    pass("Backspace outside the words of an open reply does not delete the conversation");
+    pass("Backspace outside an open reply asks first, and Keep draft keeps all");
 
     writeIn(bodyEditor(), "<p>I have the second key.</p>");
     await sleep(300);

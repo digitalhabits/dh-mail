@@ -15,6 +15,7 @@ import { toast } from "@/lib/mail/toast";
 import { mailApiFetch } from "@/lib/mail/api";
 import type { AttachmentSource } from "@/lib/mail/host/contracts";
 import { bytesToBase64 } from "@/lib/base64";
+import { nameWithFoundExtension } from "@/lib/mail/attachment-mime";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import {
   alwaysAskWhereToSave,
@@ -37,9 +38,11 @@ export async function openAttachmentSource(
     const detail = await res.text().catch(() => "");
     throw new Error(detail || `Couldn't read the attachment (${res.status})`);
   }
-  const url = URL.createObjectURL(await res.blob());
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
   return {
     url,
+    mimeType: blob.type || undefined,
     // A blob URL holds its bytes until this runs. Without it, every attachment
     // ever shown stays in memory for the life of the window.
     release: () => URL.revokeObjectURL(url),
@@ -87,7 +90,8 @@ export async function saveAttachment(input: {
     }
     const bytes = new Uint8Array(await res.arrayBuffer());
     await saveAttachmentBytes({
-      filename: input.filename,
+      // A name with no extension takes the one its bytes show.
+      filename: nameWithFoundExtension(input.filename, bytes),
       // Base64 because the bridge carries JSON. An attachment is at most 25 MB,
       // which Gmail will not exceed, so this stays a copy and not a problem.
       contentBase64: bytesToBase64(bytes),

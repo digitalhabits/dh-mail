@@ -819,7 +819,7 @@ pub(crate) fn upsert_one(tx: &Connection, account: &str, row: &MessageRow) -> Db
       serde_json::to_string(&row.bcc)?,
       row.subject,
       // Every source of a row's line comes through here: IMAP, Gmail, Graph.
-      strip_stray_tags(&row.snippet),
+      if is_html_page(&row.snippet) { squash(&strip_html(&row.snippet)) } else { strip_stray_tags(&row.snippet) },
       row.sent_at,
       row.size_estimate,
       row.has_attachments as i64,
@@ -923,8 +923,9 @@ pub(crate) fn delete_one(tx: &Connection, account: &str, rowid: i64, message_id:
 
 fn put_body(tx: &Connection, account: &str, message_id: &str, body: &BodyRow) -> DbResult<()> {
   let search_text = match (&body.text, &body.html) {
-    (Some(text), _) if !text.trim().is_empty() => squash(&decode_entities(&strip_stray_tags(text))),
+    (Some(text), _) if !text.trim().is_empty() && !is_html_page(text) => squash(&plain_words(text)),
     (_, Some(html)) => squash(&strip_html(html)),
+    (Some(text), None) => squash(&plain_words(text)),
     _ => String::new(),
   };
   tx.execute(
@@ -974,7 +975,7 @@ fn put_body(tx: &Connection, account: &str, message_id: &str, body: &BodyRow) ->
   if !snippet.is_empty() {
     tx.execute(
       "UPDATE messages SET snippet = ?3 WHERE account_email = ?1 AND message_id = ?2
-         AND (length(snippet) < 40 OR snippet GLOB '*ï¿½*')",
+         AND (length(snippet) < 40 OR snippet GLOB '*ï¿½*' OR snippet GLOB '<!*' OR snippet GLOB '<[hH][tT][mM][lL]*')",
       params![account, message_id, snippet],
     )?;
   }
@@ -1002,7 +1003,9 @@ fn repair_snippets(conn: &Connection) -> DbResult<()> {
   // 6: a Latin part of a multipart mail was read twice, and "på" showed
   //    as "pï¿½". A row's line that holds that takes fresh words. A row
   //    with no stored body takes them when its body is kept.
-  const VERSION: &str = "6";
+  // 7: a whole HTML page sent as the plain part showed its <!DOCTYPE …>.
+  //    A row's line that begins with a page takes fresh words.
+  const VERSION: &str = "7";
   let done: Option<String> = conn
     .query_row("SELECT value FROM settings WHERE key = ?1", [MARK], |r| r.get(0))
     .optional()?;
@@ -1019,11 +1022,11 @@ fn repair_snippets(conn: &Connection) -> DbResult<()> {
   let now = now_ms();
   for (account, message_id, text, html) in rows {
     let search_text = match (&text, &html) {
-      (Some(text), _) if !text.trim().is_empty() && !starts_with_bare_number(text) => {
-        squash(&decode_entities(&strip_stray_tags(text)))
+      (Some(text), _) if !text.trim().is_empty() && !starts_with_bare_number(text) && !is_html_page(text) => {
+        squash(&plain_words(text))
       }
       (_, Some(html)) => squash(&strip_html(html)),
-      (Some(text), None) => squash(&decode_entities(&strip_stray_tags(text))),
+      (Some(text), None) => squash(&plain_words(text)),
       _ => String::new(),
     };
     conn.execute(
@@ -1035,7 +1038,7 @@ fn repair_snippets(conn: &Connection) -> DbResult<()> {
       conn.execute(
         "UPDATE messages SET snippet = ?3, updated_at = ?4 WHERE account_email = ?1 AND message_id = ?2
            AND (length(snippet) < 40 OR snippet GLOB '[0-9]*' OR snippet GLOB '*&*;*'
-             OR snippet GLOB '*<[a-zA-Z/]*>*' OR snippet GLOB '*ï¿½*')",
+             OR snippet GLOB '*<[a-zA-Z/]*>*' OR snippet GLOB '*ï¿½*' OR snippet GLOB '<!*')",
         params![account, message_id, snippet, now],
       )?;
     }
@@ -1125,6 +1128,27 @@ pub fn strip_stray_tags(text: &str) -> String {
   }
   out.push_str(rest);
   out
+}
+
+/// A whole HTML page sent as plain text.
+///
+/// One airline sends its itinerary with the same page in both parts, so
+/// the plain part begins `<!DOCTYPE html PUBLIC …` and the row showed
+/// that. Only a page that starts as one counts: a text that names a tag
+/// further in is still text.
+pub fn is_html_page(text: &str) -> bool {
+  let start: String = text.trim_start().chars().take(14).collect::<String>().to_ascii_lowercase();
+  start.starts_with("<!doctype html") || start.starts_with("<html")
+}
+
+/// Plain text as words: tags a sender left in it out, entities read. A
+/// whole page sent as plain text is read as the page it is.
+pub fn plain_words(text: &str) -> String {
+  if is_html_page(text) {
+    strip_html(text)
+  } else {
+    decode_entities(&strip_stray_tags(text))
+  }
 }
 
 /// The first words of a body's text, as a row shows them.
@@ -2672,6 +2696,30 @@ mod tests {
     .unwrap();
     let out = db.messages_list(&json!({ "accounts": ["vera@example.com"], "view": "inbox", "limit": 5 })).unwrap();
     assert_eq!(out["threads"][0]["latest"]["snippet"], "Hej Ulrik, dit fly er forsinket med to timer.");
+  }
+
+  #[test]
+  fn a_page_sent_as_plain_text_shows_its_words_not_its_doctype() {
+    let page = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><html><head><style>p{color:red}</style></head><body><p>Your flight to Porto is booked.</p></body></html>";
+    let db = db();
+    let mut row = msg("m1", "t1", 1, 1_000, &[INBOX]);
+    row.snippet = page.into();
+    db.messages_upsert("vera@example.com", &[row]).unwrap();
+    let out = db.messages_list(&json!({ "accounts": ["vera@example.com"], "view": "inbox", "limit": 5 })).unwrap();
+    assert_eq!(out["threads"][0]["latest"]["snippet"], "Your flight to Porto is booked.");
+
+    // A row whose line came in before this, made good when its body is kept.
+    db.conn_mut().execute("UPDATE messages SET snippet = ?1", [&page[..120]]).unwrap();
+    db.bodies_put(
+      "vera@example.com",
+      "m1",
+      &BodyRow { text: Some(page.into()), html: Some(page.into()), ..Default::default() },
+    )
+    .unwrap();
+    let out = db.messages_list(&json!({ "accounts": ["vera@example.com"], "view": "inbox", "limit": 5 })).unwrap();
+    assert_eq!(out["threads"][0]["latest"]["snippet"], "Your flight to Porto is booked.");
+    assert!(!is_html_page("Hi, the <html> tag starts a page."));
+    assert!(is_html_page("  <HTML><body>Hi</body></HTML>"));
   }
 
   #[test]

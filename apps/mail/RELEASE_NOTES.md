@@ -69,6 +69,10 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- A file whose name has a semicolon in it keeps its whole name. Before, Mail cut the name at the semicolon, so a PDF showed as a plain "FILE", and when you forwarded the email, the file went out without ".pdf".
+- A file that comes without an extension, but is a PDF or a picture, opens in the preview, and is saved with ".pdf" (or the picture's extension) on its name.
+- An email whose plain text is a whole web page shows its first words in the list, not "<!DOCTYPE html …".
+- With a reply open, Delete on the conversation asks "Discard draft and delete conversation?". Before, it did nothing.
 - Forward puts the cursor in To every time. Before, it sometimes went nowhere when the message box opened a moment late.
 - "Inbox zero — enjoy the quiet." no longer disappears for a moment once a minute, when Mail looks for new mail.
 - When you snooze several conversations or a whole stack, the next conversation that opens is one that is still in the list. When none is left, the conversation closes.

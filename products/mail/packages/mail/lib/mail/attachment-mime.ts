@@ -73,14 +73,51 @@ export function safeAttachmentMimeType(
   // and they are another thing a sender controls.
   const bare = (claimed ?? "").split(";")[0].trim().toLowerCase();
   if (INLINE_TYPES.has(bare)) return bare;
-  if (options?.bytes && startsAsPdf(options.bytes)) return "application/pdf";
+  const found = options?.bytes ? fileTypeFromBytes(options.bytes) : null;
+  if (found) return found.type;
   return OPAQUE_MIME_TYPE;
 }
 
-/** `%PDF-`, which every PDF begins with. */
-function startsAsPdf(bytes: Uint8Array): boolean {
-  const magic = [0x25, 0x50, 0x44, 0x46, 0x2d];
-  return magic.every((b, i) => bytes[i] === b);
+/**
+ * The few kinds of file known by how they begin, each one only shown and
+ * never run: PDF and three kinds of picture. Nothing that holds script, so
+ * no HTML and no SVG, whatever the bytes look like.
+ */
+const SIGNATURES: { type: string; extension: string; magic: number[] }[] = [
+  { type: "application/pdf", extension: "pdf", magic: [0x25, 0x50, 0x44, 0x46, 0x2d] }, // %PDF-
+  { type: "image/png", extension: "png", magic: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { type: "image/jpeg", extension: "jpg", magic: [0xff, 0xd8, 0xff] },
+  { type: "image/gif", extension: "gif", magic: [0x47, 0x49, 0x46, 0x38] }, // GIF8
+];
+
+/** What the file is by its first bytes, when it is one of the kinds above. */
+export function fileTypeFromBytes(
+  bytes: Uint8Array
+): { type: string; extension: string } | null {
+  for (const { type, extension, magic } of SIGNATURES) {
+    if (bytes.length >= magic.length && magic.every((b, i) => bytes[i] === b)) {
+      return { type, extension };
+    }
+  }
+  return null;
+}
+
+/**
+ * The name to save a file under: as sent, or with the extension its bytes
+ * show when the name has none.
+ *
+ * Outlook can cut a file name at a semicolon when it forwards a message, so
+ * "Reading list; part 2.pdf" arrives as "Reading list" and opens as nothing
+ * on a double-click. A name that already has an extension is left alone,
+ * even when it does not match: the sender may know something the bytes
+ * do not.
+ */
+export function nameWithFoundExtension(filename: string, bytes: Uint8Array): string {
+  const base = filename.split(/[/\\]/).pop() ?? filename;
+  const dot = base.lastIndexOf(".");
+  if (dot > 0 && dot < base.length - 1) return filename;
+  const found = fileTypeFromBytes(bytes);
+  return found ? `${filename}.${found.extension}` : filename;
 }
 
 /**

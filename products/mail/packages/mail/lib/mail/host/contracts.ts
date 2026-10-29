@@ -53,6 +53,12 @@ export type MailConnectProvider = MailProvider;
 /** A URL an element can load for an attachment, and how to let it go. */
 export type AttachmentSource = {
   url: string;
+  /**
+   * The type the bytes were served as, when the host read them. It can say
+   * more than the message did: a file sent as "unknown" that starts as a
+   * PDF is served as a PDF (see attachment-mime).
+   */
+  mimeType?: string;
   /** Release anything held for this URL. Safe to call more than once. */
   release: () => void;
 };

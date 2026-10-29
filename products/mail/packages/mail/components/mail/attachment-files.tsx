@@ -110,6 +110,8 @@ export type AttachmentSourceState = {
   url: string | null;
   /** Why it could not be read, or null while it is still being read. */
   error: string | null;
+  /** The type the bytes were served as, when the host says (see AttachmentSource). */
+  mimeType?: string | null;
 };
 
 /**
@@ -152,7 +154,7 @@ export function useAttachmentSourceState(
           return;
         }
         opened = source;
-        setState({ url: source.url, error: null });
+        setState({ url: source.url, error: null, mimeType: source.mimeType ?? null });
       } catch (err) {
         // Said out loud, both to the reader and to the console. A silent
         // catch here is how an attachment that the provider refused looks

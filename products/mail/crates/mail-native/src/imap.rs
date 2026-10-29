@@ -1584,7 +1584,7 @@ fn first_text(body: &[u8], content_type: &str, transfer_encoding: &str, depth: u
     crate::messages::strip_html(&text)
   } else if kind.starts_with("text/") || kind.is_empty() {
     // Some senders write entities into the plain part too.
-    crate::messages::decode_entities(&crate::messages::strip_stray_tags(&text))
+    crate::messages::plain_words(&text)
   } else {
     String::new()
   }
@@ -1867,6 +1867,9 @@ mod tests {
     assert_eq!(html, "Hi there");
     let b64 = snippet_from_body(b"SGVsbG8gd29ybGQ=", "text/plain", "base64", 200);
     assert_eq!(b64, "Hello world");
+    // A whole page sent as the plain part is read as a page.
+    let page = snippet_from_body(b"<!DOCTYPE html><html><head><title>Trip</title></head><body><p>Booked.</p></body></html>", "text/plain", "7bit", 200);
+    assert!(!page.contains('<') && page.ends_with("Booked."), "{page}");
   }
 
   #[test]

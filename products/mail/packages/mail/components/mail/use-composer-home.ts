@@ -89,8 +89,8 @@ export function useComposerHome(input: {
   reply: string;
   replyText: string;
   attachItems: ReturnType<typeof useDraftAttachments>["items"];
-  confirmDiscard: boolean;
-  setConfirmDiscard: (value: boolean) => void;
+  confirmDiscard: boolean | "andTrash";
+  setConfirmDiscard: (value: boolean | "andTrash") => void;
   closeComposer: Composer["close"];
   restoreComposer: Composer["restore"];
   handOverComposer: Composer["handOver"];
@@ -358,7 +358,9 @@ export function useComposerHome(input: {
       // The Reader answers it (see MessageReader).
       if (readerHoldsComposer()) return;
       if (event.key === "Enter") {
-        if (!confirmDiscard) return;
+        // The Delete question is answered by its own focused button, which
+        // knows to take the conversation too.
+        if (!confirmDiscard || confirmDiscard === "andTrash") return;
         event.preventDefault();
         setConfirmDiscard(false);
         discardComposer();

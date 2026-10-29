@@ -36,6 +36,7 @@ export function useThreadKeys({
   popOutThread,
   printThread,
   requestDiscard,
+  requestDiscardAndTrash,
   setMoveMenuSignal,
   setSnoozeMenuSignal,
   shortcuts,
@@ -56,6 +57,8 @@ export function useThreadKeys({
   popOutThread: () => void;
   printThread: () => void;
   requestDiscard: () => void;
+  /** Delete with a reply open: ask, then discard it and delete the conversation. */
+  requestDiscardAndTrash: () => void;
   setMoveMenuSignal: React.Dispatch<React.SetStateAction<number>>;
   setSnoozeMenuSignal: React.Dispatch<React.SetStateAction<number>>;
   shortcuts: Record<MailShortcutAction, MailShortcut>;
@@ -170,7 +173,18 @@ export function useThreadKeys({
             to Trash in the middle of a sentence. The card's own bin is
             there for the draft.
           */
-          if (target?.closest(REPLY_OPEN) || document.querySelector(REPLY_OPEN)) break;
+          if (target?.closest(REPLY_OPEN)) break;
+          /*
+            A reply open, with the focus outside it — the conversation
+            picked in the list. Delete then means the conversation, draft
+            and all, so it asks first, as Escape does for the draft alone
+            (2026-10-29). The question opens on "Keep draft", so a slipped
+            focus and a Return after it still keep the conversation.
+          */
+          if (document.querySelector(REPLY_OPEN)) {
+            requestDiscardAndTrash();
+            break;
+          }
           onTrash({ account, threadId });
           break;
         case "toggleUnread":

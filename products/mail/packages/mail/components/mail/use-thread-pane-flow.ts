@@ -222,6 +222,7 @@ export function useThreadSending({
   requestDiscard,
   restoreComposer,
   restoreForwardBoxes,
+  setConfirmDiscard,
   setMoveMenuSignal,
   setSnoozeMenuSignal,
   setThread,
@@ -236,7 +237,7 @@ export function useThreadSending({
   toList,
   updateRecordsAfterSend,
 }: Pick<ReturnType<typeof useThreadPaneSetup>, "error" | "olderParts" | "readableAttachments" | "recordsChanged" | "setMoveMenuSignal" | "setSnoozeMenuSignal" | "setThread" | "shortcuts" | "thread"> &
-  Pick<ReturnType<typeof useReplyState>, "ccList" | "composer" | "editRecipients" | "fromAccount" | "includeSignature" | "loadScheduled" | "mode" | "outlookElsewhere" | "outlookTarget" | "quoteMessageId" | "reply" | "showCc" | "sigSettings" | "subjectDraft" | "toList" | "updateRecordsAfterSend"> &
+  Pick<ReturnType<typeof useReplyState>, "ccList" | "composer" | "editRecipients" | "fromAccount" | "includeSignature" | "loadScheduled" | "mode" | "outlookElsewhere" | "outlookTarget" | "quoteMessageId" | "reply" | "setConfirmDiscard" | "showCc" | "sigSettings" | "subjectDraft" | "toList" | "updateRecordsAfterSend"> &
   Pick<ReturnType<typeof useReplySpace>, "attachItems" | "attachmentPayload" | "attachmentsReady" | "beginForwardFiles" | "forwardFiles" | "forwarding" | "recipientInputRef" | "restoreForwardBoxes"> &
   Pick<ReturnType<typeof useComposerAndStream>, "closeComposer" | "focusReply" | "importedDraftRef" | "openComposer" | "restoreComposer"> &
   Pick<ReturnType<typeof useReplyFlow>, "closeFloatingCardRef" | "discardComposer" | "popOutThread" | "printThread" | "replyText" | "requestDiscard" | "signsReply" | "startReply"> &
@@ -280,6 +281,10 @@ export function useThreadSending({
     // The thread is gone, so its dialogs are not drawn: no question to ask.
     requestDiscard:
       fromDrafts && draftThreadProblem(error) ? discardComposer : requestDiscard,
+    // Delete with a reply open and the focus outside it: always asked, even
+    // over an empty reply, since the focus can slip out of a reply being
+    // written and Backspace then lands here.
+    requestDiscardAndTrash: () => setConfirmDiscard("andTrash"),
     setMoveMenuSignal,
     setSnoozeMenuSignal,
     shortcuts,

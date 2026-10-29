@@ -64,8 +64,12 @@ export type ComposerState = {
   showPreview: boolean;
   /** Per-send: the team layer updates its records after this reply goes out. */
   updateRecordsAfterSend: boolean;
-  /** The "Discard draft?" question is open. Escape asks it; the bin does not. */
-  confirmDiscard: boolean;
+  /**
+   * The "Discard draft?" question is open. Escape asks it; the bin does not.
+   * "andTrash" when Delete asked it: the conversation goes too (see
+   * use-thread-keys).
+   */
+  confirmDiscard: boolean | "andTrash";
 };
 
 /** A field of the composer that a control writes by itself. */

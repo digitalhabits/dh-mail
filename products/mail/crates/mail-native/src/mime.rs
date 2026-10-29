@@ -271,10 +271,55 @@ fn split_multipart<'a>(body: &'a [u8], boundary: &str) -> Vec<&'a [u8]> {
 /// The mime type, lower-cased, and its parameters, keys lower-cased.
 fn content_type(headers: &[(String, String)]) -> (String, HashMap<String, String>) {
   let value = header(headers, "content-type").unwrap_or("text/plain");
-  let mut pieces = value.split(';');
+  let mut pieces = split_params(value).into_iter();
   let kind = pieces.next().unwrap_or("").trim().to_ascii_lowercase();
   let params = params_of(pieces);
   (kind, params)
+}
+
+/// A header value cut at each `;` that is not inside quotes.
+///
+/// A file name can hold a semicolon: `filename="Plan; draft 2.pdf"`. A
+/// plain split cut it there, and the file lost its name's end and its
+/// .pdf with it.
+fn split_params(value: &str) -> Vec<&str> {
+  let mut out = Vec::new();
+  let mut start = 0;
+  let mut quoted = false;
+  let mut escaped = false;
+  for (i, ch) in value.char_indices() {
+    if escaped {
+      escaped = false;
+    } else if quoted && ch == '\\' {
+      escaped = true;
+    } else if ch == '"' {
+      quoted = !quoted;
+    } else if ch == ';' && !quoted {
+      out.push(&value[start..i]);
+      start = i + 1;
+    }
+  }
+  out.push(&value[start..]);
+  out
+}
+
+/// A parameter value without its quotes, `\"` read as `"`.
+fn unquote(value: &str) -> String {
+  let value = value.trim();
+  let Some(inner) = value.strip_prefix('"') else { return value.to_string() };
+  let inner = inner.strip_suffix('"').unwrap_or(inner);
+  let mut out = String::with_capacity(inner.len());
+  let mut chars = inner.chars();
+  while let Some(ch) = chars.next() {
+    if ch == '\\' {
+      if let Some(next) = chars.next() {
+        out.push(next);
+        continue;
+      }
+    }
+    out.push(ch);
+  }
+  out
 }
 
 fn params_of<'a>(pieces: impl Iterator<Item = &'a str>) -> HashMap<String, String> {
@@ -284,7 +329,7 @@ fn params_of<'a>(pieces: impl Iterator<Item = &'a str>) -> HashMap<String, Strin
   for piece in pieces {
     let Some((k, v)) = piece.split_once('=') else { continue };
     let key = k.trim().to_ascii_lowercase();
-    let value = v.trim().trim_matches('"').to_string();
+    let value = unquote(v);
     if let Some(base) = key.strip_suffix('*') {
       if let Some((name, index)) = base.split_once('*') {
         if let Ok(i) = index.parse() {
@@ -343,16 +388,16 @@ fn rfc2231_decode(value: &str) -> String {
 
 fn disposition_of(headers: &[(String, String)]) -> String {
   header(headers, "content-disposition")
-    .map(|d| d.split(';').next().unwrap_or("").trim().to_ascii_lowercase())
+    .map(|d| split_params(d)[0].trim().to_ascii_lowercase())
     .unwrap_or_default()
 }
 
 /// The part's file name, from Content-Disposition or Content-Type, decoded.
 pub fn filename_of(headers: &[(String, String)]) -> Option<String> {
   let from_disposition = header(headers, "content-disposition")
-    .and_then(|d| params_of(d.split(';').skip(1)).get("filename").cloned());
+    .and_then(|d| params_of(split_params(d).into_iter().skip(1)).get("filename").cloned());
   let from_type = header(headers, "content-type")
-    .and_then(|d| params_of(d.split(';').skip(1)).get("name").cloned());
+    .and_then(|d| params_of(split_params(d).into_iter().skip(1)).get("name").cloned());
   let raw = from_disposition.or(from_type)?;
   let name = decode_encoded_words(raw.trim()).trim().to_string();
   if name.is_empty() { None } else { Some(name) }
@@ -522,8 +567,14 @@ fn structure_params(item: &crate::imap::Item) -> HashMap<String, String> {
     }
     i += 2;
   }
-  // "filename*0*", "filename*1*" … in order, then "filename*", then plain.
-  raw.sort_by(|a, b| a.0.cmp(&b.0));
+  // "filename*0*", "filename*1*" … in number order, so *10* comes after
+  // *9*, not after *1*; then "filename*", then plain.
+  let order = |k: &str| {
+    let (base, rest) = k.split_once('*').unwrap_or((k, ""));
+    let index = rest.trim_end_matches('*').parse::<usize>().unwrap_or(0);
+    (base.to_string(), index)
+  };
+  raw.sort_by(|a, b| order(&a.0).cmp(&order(&b.0)));
   let mut out: HashMap<String, String> = HashMap::new();
   let mut pieces: HashMap<String, String> = HashMap::new();
   for (k, v) in raw {
@@ -741,6 +792,41 @@ mod tests {
     assert_eq!(kind, "application/pdf");
     assert_eq!(name.as_deref(), Some("plan.pdf"));
     assert!(part_by_section(raw.as_bytes(), "9").is_none());
+  }
+
+  #[test]
+  fn a_file_name_keeps_a_semicolon_and_a_quote_inside_its_quotes() {
+    let raw = concat!(
+      "Subject: Reading list\r\n",
+      "Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n",
+      "--b\r\nContent-Type: text/plain\r\n\r\nHello.\r\n",
+      "--b\r\nContent-Type: application/octet-stream; name=\"Reading 2027; part \\\"B\\\" final.pdf\"\r\n",
+      "Content-Disposition: attachment;\r\n filename=\"Reading 2027; part \\\"B\\\" final.pdf\"; size=6\r\n",
+      "Content-Transfer-Encoding: base64\r\n\r\nJVBERi0x\r\n",
+      "--b--\r\n"
+    );
+    let parsed = parse_message(raw.as_bytes());
+    assert_eq!(parsed.attachments.len(), 1);
+    assert_eq!(parsed.attachments[0].filename, "Reading 2027; part \"B\" final.pdf");
+    let (_, _, name) = part_by_section(raw.as_bytes(), "2").unwrap();
+    assert_eq!(name.as_deref(), Some("Reading 2027; part \"B\" final.pdf"));
+  }
+
+  #[test]
+  fn a_long_name_in_the_structure_is_joined_in_number_order() {
+    // Eleven pieces: as text, *10* sorts before *2*.
+    let pieces = ["Re", "ad", "in", "g ", "li", "st", " 2", "02", "7 ", "fi", "nal.pdf"];
+    let mut params = Vec::new();
+    for (i, piece) in pieces.iter().enumerate() {
+      params.push(s(&format!("FILENAME*{i}")));
+      params.push(s(piece));
+    }
+    let pdf = list(vec![
+      s("APPLICATION"), s("PDF"), Item::Nil, Item::Nil, Item::Nil, s("BASE64"), Item::Num(8),
+      Item::Nil, list(vec![s("ATTACHMENT"), list(params)]), Item::Nil, Item::Nil,
+    ]);
+    let parts = structure_parts(&pdf);
+    assert_eq!(parts[0].filename.as_deref(), Some("Reading list 2027 final.pdf"));
   }
 
   fn s(v: &str) -> Item {
