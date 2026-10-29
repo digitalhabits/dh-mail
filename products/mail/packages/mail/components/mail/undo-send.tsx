@@ -21,7 +21,9 @@
 
 import * as React from "react";
 import { useMailT } from "@/lib/mail/i18n";
+import { mailSay } from "@/lib/mail/i18n-strings";
 import { toast } from "@/lib/mail/toast";
+import { mailUndoSlot } from "@/lib/mail/undo-slot";
 
 /** Long enough to notice the mistake, short enough not to feel held up. */
 export const UNDO_SEND_SECONDS = 5;
@@ -95,21 +97,27 @@ export function sendWithUndo(options: {
   onSend: () => void;
   onUndo: () => void;
   seconds?: number;
-  /** What the pill says; "Sending in 5…" when left out. */
+  /** What it says; "Sending in 5…" when left out. */
   label?: (left: number) => string;
+  /** What is sent, after the words: its subject. */
+  object?: string;
 }): void {
   const seconds = options.seconds ?? UNDO_SEND_SECONDS;
   bindFlush();
+  const label = options.label ?? ((left: number) => mailSay("sendingIn", { seconds: left }));
 
   let settled = false;
   const item: Pending = { fire: () => {}, timer: 0 };
+  const slotId = `send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let toastId: string | number | null = null;
 
   const finish = (what: "send" | "undo") => {
     if (settled) return;
     settled = true;
     pending.delete(item);
     window.clearTimeout(item.timer);
-    toast.dismiss(toastId);
+    if (toastId != null) toast.dismiss(toastId);
+    mailUndoSlot.clear(slotId);
     if (what === "send") options.onSend();
     else options.onUndo();
   };
@@ -118,14 +126,26 @@ export function sendWithUndo(options: {
   item.timer = window.setTimeout(() => finish("send"), seconds * 1000);
   pending.add(item);
 
-  const toastId = toast.custom(
-    () => (
-      <CountdownPill
-        seconds={seconds}
-        label={options.label ?? ((left) => `Sending in ${left}…`)}
-        onUndo={() => finish("undo")}
-      />
-    ),
+  // With a list or a reader on screen, it stands with the other
+  // confirmations at their foot (undo-slot-row). A window that has neither,
+  // a composer of its own, keeps the countdown toast.
+  const { listOn, stripOn } = mailUndoSlot.get();
+  if (listOn > 0 || stripOn > 0) {
+    mailUndoSlot.show({
+      id: slotId,
+      action: "send",
+      verb: label(seconds),
+      countdown: { endsAt: Date.now() + seconds * 1000, verb: label },
+      object: options.object?.trim() ?? "",
+      label: label(seconds),
+      // Gone when it is sent; this is only a floor.
+      ms: seconds * 1000 + 2000,
+      undo: () => finish("undo"),
+    });
+    return;
+  }
+  toastId = toast.custom(
+    () => <CountdownPill seconds={seconds} label={label} onUndo={() => finish("undo")} />,
     { duration: seconds * 1000 }
   );
 }

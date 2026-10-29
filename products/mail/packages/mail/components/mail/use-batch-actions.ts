@@ -27,7 +27,7 @@ import { mailSay } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import type { MailViewMode } from "@/components/mail/MailListControls";
-import { describeTargets, type MailUndoAnchor, type MailUndoWords } from "@/components/mail/use-mail-undo";
+import { describeTargets, type MailUndoWords } from "@/components/mail/use-mail-undo";
 
 type OpenThread = {
   account: string;
@@ -95,7 +95,7 @@ export function useBatchActions({
   noteLeftOpenFolder: (account: string) => void;
   hideRemovedRows: (keys: string[]) => void;
   unhideRows: (keys: string[]) => void;
-  pushBatchUndo: (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => string;
+  pushBatchUndo: (label: string, run: () => Promise<void>, words: MailUndoWords) => string;
   /** A batch that failed whole has nothing to take back. */
   dropMailUndo: (id: string | null) => void;
   selectedThreadsNow: () => MailThreadSummary[];
@@ -156,7 +156,6 @@ export function useBatchActions({
           unhideRows(targetKeys);
           setThreads((current) => withRowsBack(current, before, targetKeys));
         }),
-        { lastAt: row.lastAt, personKey: row.key },
         { action: "archive", verb: mailSay("slotArchived"), object: describeTargets(row.threads, [row]) }
       );
       const results = await sending;
@@ -252,7 +251,6 @@ export function useBatchActions({
           unhideRows(targetKeys);
           setThreads((current) => withRowsBack(current, before, targetKeys));
         }),
-        { lastAt: row.lastAt, personKey: row.key },
         { action: "trash", verb: mailSay("slotDeleted"), object: describeTargets(row.threads, [row]) }
       );
       const results = await sending;
@@ -305,11 +303,6 @@ export function useBatchActions({
         threadId: t.threadId,
       }));
       if (!targets.length) return;
-      // Where the confirmation stands: the newest of them, in the list.
-      const newestAt = picked.reduce<string | null>(
-        (at, t) => (at && Date.parse(at) >= Date.parse(t.lastAt) ? at : t.lastAt),
-        null
-      );
       const before = threads;
       const people = viewMode === "people";
       const successor = people ? null : successorAfterSelection();
@@ -368,7 +361,6 @@ export function useBatchActions({
           unhideRows(targetKeys);
           setThreads((current) => withRowsBack(current, before, targetKeys));
         }),
-        { lastAt: newestAt },
         {
           action: kind,
           verb: mailSay(kind === "archive" ? "slotArchived" : "slotDeleted"),

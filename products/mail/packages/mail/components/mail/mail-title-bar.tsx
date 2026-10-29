@@ -132,8 +132,12 @@ export function MailTitleBar({
               // The auto-reply pill beside it gives way first.
               // No wider than 40rem: past that a field reads as a bar, and
               // the eye travels too far along it.
-              "relative flex h-7 min-w-[12rem] max-w-[40rem] flex-1 items-center rounded-[8px] border border-[var(--mail-field-border-soft)] bg-[var(--mail-field-bg)] shadow-sm",
-              "focus-within:ring-2 focus-within:ring-[var(--mail-title-search-ring)]"
+              // A frame field (mail.css): no fill and an outline at rest, as
+              // the account tabs; white with a stronger edge once clicked
+              // into, or while it holds a search (2026-10-29).
+              "relative flex h-7 min-w-[12rem] max-w-[40rem] flex-1 items-center rounded-[8px] border border-[var(--mail-frame-field-edge)] bg-[var(--mail-frame-field)] text-[var(--mail-frame-field-ink)]",
+              "focus-within:border-[var(--mail-frame-field-focus-edge)] focus-within:bg-[var(--mail-field-bg)]",
+              "has-[input:not(:placeholder-shown)]:border-[var(--mail-frame-field-focus-edge)] has-[input:not(:placeholder-shown)]:bg-[var(--mail-field-bg)]"
             )}
           >
             {/* Which mailboxes to search is which mailbox the tabs are
@@ -150,7 +154,7 @@ export function MailTitleBar({
               onIncludeHiddenChange={hiddenSearch.set}
             />
             <Search
-              className="pointer-events-none h-3.5 w-3.5 shrink-0 text-stone-400"
+              className="pointer-events-none h-3.5 w-3.5 shrink-0"
               aria-hidden
             />
             <input
@@ -180,7 +184,7 @@ export function MailTitleBar({
                     })
               }
               className={cn(
-                "h-full min-w-0 flex-1 border-0 bg-transparent py-1 pl-2 text-[13px] text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-placeholder)] shadow-none [&::-webkit-search-cancel-button]:hidden",
+                "h-full min-w-0 flex-1 border-0 bg-transparent py-1 pl-2 text-[13px] text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-frame-field-ink)] shadow-none [&::-webkit-search-cancel-button]:hidden",
                 // Room for the clear button, and for the hidden chip beside
                 // it, only when they are there. An empty box kept 32px for a
                 // clear button it does not show, and cut its hint off in

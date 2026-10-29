@@ -11,29 +11,22 @@ import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
 import { MailPage } from "@/components/mail/MailPage";
-import { toast } from "@/lib/mail/toast";
 import { recipientsFromEmails } from "@/lib/mail/contact-list-types";
 import { threadDraftKey } from "@/lib/mail/local-drafts";
 
 import { waitFor } from "./mounted-dom.mjs";
 
 /**
- * The Undo of a send, as the countdown pill holds it.
- *
- * The toast library is a shim that draws nothing, so there is no Undo button
- * to press. The send hands its pill to `toast.custom`. This keeps the newest
- * one, and `pressUndo` calls what the button calls.
+ * The Undo of a send, as the countdown at the foot of the list or the
+ * reader holds it (undo-slot-row): the newest one that is still sending.
  */
-let newestPill = null;
-toast.custom = (render) => {
-  newestPill = render;
-  return "pill";
-};
 const pressUndo = () => {
-  assert(newestPill, "a send offered its Undo");
-  const pill = newestPill();
-  newestPill = null;
-  pill.props.onUndo();
+  const sending = [...document.querySelectorAll("[data-undo-foot] [data-undo-card]")].filter((card) =>
+    (card.textContent || "").startsWith("Sending in")
+  );
+  const card = sending.at(-1);
+  assert(card, "a send offered its Undo");
+  card.querySelector("[data-undo-slot-button]").click();
 };
 
 const pass = (line) => console.log(`PASS  ${line}`);
@@ -343,6 +336,13 @@ async function main() {
       /name@example\.com/.test(i.getAttribute("placeholder") || "")
     );
     assert(recipientBox, "a forward shows its recipient box");
+    // The caret is in To, every time: one try a frame after Forward missed a
+    // composer that came late (reported 2026-10-28).
+    assert(
+      await waitFor(() => document.activeElement === recipientBox),
+      "Forward puts the caret in To"
+    );
+    pass("Forward opens with the caret in To");
     typeInto(recipientBox, "viggo@torvet.example,");
     await sleep(300);
 

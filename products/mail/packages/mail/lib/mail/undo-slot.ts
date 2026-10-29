@@ -1,27 +1,28 @@
 /*
- * The confirmation of a list action, with its Undo, where the reader is
- * already looking.
+ * The confirmation of an archive, delete, move, snooze or send, with its
+ * Undo, in one place.
  *
- * Archive, delete, move and snooze said so in a toast at the foot of the
- * window, which sat over the thread or the reply being written
- * (2026-10-27). Now the row that left becomes the confirmation, in the
- * place it had. With the list put away there is no row, so it stands in
- * the reader's toolbar, after the buttons that did it. Only when neither is
- * on screen does it fall back to a toast.
+ * They were toasts at the foot of the window, which sat over the thread or
+ * the reply being written. Then (2026-10-27) the row that left became the
+ * confirmation, in its place in the list, but a list scrolled away from that
+ * place hid it, and a send still had a toast of its own. Now (2026-10-28)
+ * all of them stand at the foot of the list, or at the foot of the reader
+ * when the list is put away. Only when neither is on screen does it fall
+ * back to a toast.
  *
- * They stack, newest on top, as the toasts did: the older ones peek out
- * under it, and the pointer on the stack spreads it out. Each goes after
- * UNDO_SLOT_MS of its own, and every time stops while the pointer is on
- * the stack. Command+Z takes back the newest, then the next
- * (mail-undo-stack), and each leaves the stack as it is taken back.
+ * They stack, newest in front, as the toasts did: the older ones peek out
+ * behind it, and the pointer on the stack spreads it out. Each goes after
+ * UNDO_SLOT_MS of its own (a send when it is sent), and every time stops
+ * while the pointer is on the stack. Command+Z takes back the newest, then
+ * the next (mail-undo-stack), and each leaves the stack as it is taken back.
  *
  * Pure: no React. The places that draw it are in undo-slot-row.tsx; the
- * actions that fill it are in use-mail-undo.ts.
+ * actions that fill it are in use-mail-undo.ts and undo-send.tsx.
  */
 
 export const UNDO_SLOT_MS = 8000;
 
-export type UndoSlotAction = "archive" | "trash" | "move" | "snooze";
+export type UndoSlotAction = "archive" | "trash" | "move" | "snooze" | "send" | "discard";
 
 export type UndoSlot = {
   id: string;
@@ -29,16 +30,19 @@ export type UndoSlot = {
   action: UndoSlotAction;
   /** What happened, first and in bold: "Archived", "Snoozed until 18:13". */
   verb: string;
+  /**
+   * A send that waits: the verb is said again each second from the seconds
+   * left until `endsAt` ("Sending in 4…"), and the slot goes when it is sent.
+   */
+  countdown?: { endsAt: number; verb: (left: number) => string };
+  /** How long it stays, when not UNDO_SLOT_MS. */
+  ms?: number;
+  /** Told when it leaves the stack, by Undo or by its time. */
+  onGone?: () => void;
   /** What it happened to: a subject, "GitHub stack (5)", "7 conversations". */
   object: string;
   /** The whole sentence, for the toast it falls back to. */
   label: string;
-  /** The time the row had in the list, which says where it stood. */
-  lastAt: string | null;
-  /** The person whose stack it left, in the people view. */
-  personKey?: string;
-  /** Its own row, so the people view can find the stack it was in. */
-  threadKey?: string;
   undo: () => void;
 };
 
@@ -136,8 +140,11 @@ export function createUndoSlotStore(timers: Timers = realTimers) {
       stop(s.id);
       dropFallback(s.id);
     }
+    // Told after the stack has changed, so a caller can act on it.
+    const told = going.filter((s) => s.onGone);
     if (!state.slots.length || (id && state.slots.length === 1)) held = false;
     set({ slots: id ? state.slots.filter((s) => s.id !== id) : [] });
+    for (const s of told) s.onGone?.();
   }
 
   return {
@@ -154,8 +161,9 @@ export function createUndoSlotStore(timers: Timers = realTimers) {
       for (const old of slots.slice(UNDO_SLOT_MAX)) {
         stop(old.id);
         dropFallback(old.id);
+        old.onGone?.();
       }
-      clocks.set(slot.id, { timer: null, left: UNDO_SLOT_MS, startedAt: 0 });
+      clocks.set(slot.id, { timer: null, left: slot.ms ?? UNDO_SLOT_MS, startedAt: 0 });
       if (!held) run(slot.id);
       set({ slots: slots.slice(0, UNDO_SLOT_MAX) });
       // After the list and the toolbar have drawn: a place that mounts on
@@ -231,35 +239,3 @@ export function describeUndoTargets(
 
 /** The page's one store. A reader window has its own page, and its own. */
 export const mailUndoSlot = createUndoSlotStore();
-
-type Placed = { lastAt: string };
-
-/**
- * Where the slot goes in a list of day groups, newest first: before the
- * first row older than it. The first row of a day is the head of a day that
- * is not its own, so it goes at the end of the day before, which is its
- * day, or the nearest one left. Null when there are no rows to place by.
- *
- * `skip` groups are not looked in (the pinned band).
- */
-export function placeUndoSlot<G extends { items: readonly Placed[] }>(
-  groups: readonly G[],
-  lastAt: string,
-  skip: (group: G) => boolean = () => false
-): { group: number; index: number } | null {
-  const at = Date.parse(lastAt);
-  let lastGroup = -1;
-  for (let g = 0; g < groups.length; g += 1) {
-    if (skip(groups[g])) continue;
-    const items = groups[g].items;
-    const index = items.findIndex((row) => Date.parse(row.lastAt) < at);
-    if (index > 0) return { group: g, index };
-    if (index === 0) {
-      return lastGroup >= 0
-        ? { group: lastGroup, index: groups[lastGroup].items.length }
-        : { group: g, index: 0 };
-    }
-    if (items.length) lastGroup = g;
-  }
-  return lastGroup >= 0 ? { group: lastGroup, index: groups[lastGroup].items.length } : null;
-}

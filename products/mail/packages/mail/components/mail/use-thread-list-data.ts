@@ -611,8 +611,10 @@ export function useListLoad({
         debouncedSearch ? `${debouncedSearch}|${searchScopeKey}` : ""
       );
 
+      /** The list on screen already answers this view, rows or none. */
+      const sameView = threadsKeyRef.current === key;
       /** Rows on screen that answer this view, rather than the last one. */
-      const warmRows = threadsKeyRef.current === key ? threadsRef.current : [];
+      const warmRows = sameView ? threadsRef.current : [];
       threadsKeyRef.current = key;
 
       // Nothing connected yet — don't spin a skeleton waiting on an empty inbox.
@@ -668,6 +670,10 @@ export function useListLoad({
           // in place (don't blank into a skeleton for 15s on a cache-key miss).
           setLoadingList(false);
           setRefreshing(true);
+        } else if (quiet && sameView) {
+          // The poll, over a view with no rows ("Inbox zero"): keep it. The
+          // skeleton flashed over it once a minute (reported 2026-10-28).
+          setLoadingList(false);
         } else {
           setThreads([]);
           setListCursor(null);

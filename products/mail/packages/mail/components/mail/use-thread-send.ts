@@ -714,6 +714,7 @@ export function useSendReply({
         status: "waiting",
       }, original);
       sendWithUndo({
+        object: entry.request.subject,
         label: () => notice,
         onSend: () =>
           void (async () => {
@@ -802,6 +803,7 @@ export function useSendReply({
      * and puts the words back in the box.
      */
     sendWithUndo({
+      object: entry.request.subject,
       onSend: () => {
         // An edit of a scheduled reply, sent now: the original goes first,
         // and if it cannot, this one is put back rather than sent.
@@ -982,6 +984,7 @@ export function useSendOthers({
     setOutbox((prev) => ({ ...prev, [localId]: entry }));
     closeComposer();
     sendWithUndo({
+      object: entry.request.subject,
       onSend: () => {
         void dispatchOutboxSend(localId, entry);
         // And now the card, if this forward was written in one.

@@ -6,6 +6,7 @@
  * order in which their hooks always ran.
  */
 
+import { focusWhenReady } from "@/lib/mail/focus-when-ready";
 import { earlierFromSameSender } from "@/lib/mail/repeat-signature";
 import * as React from "react";
 import { draftThreadProblem } from "@/lib/mail/thread-gone";
@@ -261,7 +262,7 @@ export function useThreadSending({
     // The files on the message go with it, which is what a forward is
     // usually for. The box under the composer takes them off again.
     beginForwardFiles(forwardSource);
-    requestAnimationFrame(() => recipientInputRef.current?.focus());
+    focusWhenReady(() => recipientInputRef.current);
   };
   useThreadKeys({
     account,

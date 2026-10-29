@@ -39,7 +39,7 @@ export const SyncControl = React.memo(function SyncControl() {
         "relative flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
         chromeDark
           ? "text-[var(--mail-chrome-muted)] hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)]"
-          : "text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+          : "text-stone-500 hover:bg-[var(--mail-sidebar-hover)] hover:text-stone-800"
       )}
     >
       <SyncIcon className="h-3.5 w-3.5" spinning={refreshing || syncTurn} />

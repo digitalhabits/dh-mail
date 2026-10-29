@@ -56,7 +56,7 @@ export function StacksSwitch({
         "flex h-7 shrink-0 items-center gap-1.5 rounded-full pl-2.5 pr-1 text-xs font-medium",
         onDark
           ? "text-[var(--mail-chrome-muted)] hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)]"
-          : "text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+          : "text-stone-500 hover:bg-[var(--mail-sidebar-hover)] hover:text-stone-800"
       )}
     >
       <GalleryVerticalEnd className="h-3.5 w-3.5" aria-hidden />

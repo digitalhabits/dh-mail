@@ -1,11 +1,11 @@
 ## What is new
 
-**Undo where you are looking**
-- When you archive, delete, move or snooze a conversation, the row it leaves in the list says so, in its place: "Archived", "Deleted", "Moved to Receipts" or "Snoozed until 18:13", then the subject, with Undo. Before, this was a message at the foot of the window, over what you were reading or writing.
-- With the list hidden, the same line with Undo is in the bar above the conversation. In the narrow list of faces, it is an Undo arrow.
+**Undo in one place**
+- When you archive, delete, move, snooze, send or discard a draft, a line at the foot of the list says so: "Archived", "Deleted", "Moved to Receipts", "Snoozed until 18:13", "Sending in 5…" or "Draft discarded", then the subject, with Undo. Before, these were messages at the foot of the window, over what you were reading or writing.
+- With the list hidden, or in the Reader that fills the window, the same line is at the foot of the conversation.
 - When you act on many conversations at once, one line says what they were: "GitHub stack (5)", "7 conversations" or "3 conversations and Google Ads stack (3)". One Undo, or one Cmd+Z (Ctrl+Z on Windows), brings all of them back.
-- Several actions stack, newest on top, with the ones before peeking out under it. Point at the stack to spread it out, each with its own Undo. Each Cmd+Z (Ctrl+Z on Windows) takes back the newest, then the one before.
-- Each line goes after 8 seconds, and all of them wait while the pointer is on the stack.
+- Several actions stack, newest in front, with the ones before peeking out behind it. Point at the stack to spread it out, each with its own Undo. Each Cmd+Z (Ctrl+Z on Windows) takes back the newest, then the one before.
+- Each line goes after 8 seconds, and all of them wait while the pointer is on the stack. A message you send goes when it is sent.
 
 **An outline of a long conversation**
 - A conversation that does not fit on the screen has a narrow outline at the right: one mark for each message, yours set to the right, unread ones in green, the ones on screen darker.
@@ -24,7 +24,9 @@
 - In the dark theme, the messages you sent are blue and the messages you received are a quiet slate, as in the light theme.
 - The title bar has the same sand colour as the folder list, so the two make one frame round the list and the conversation. The list and the conversation sit in that frame, with a rounded corner at the top left.
 - The search field takes the free width of the title bar, up to a limit, and Sync and the other buttons are beside it. When the window is narrow, the buttons show only their icons.
-- The box that filters the folder list is the colour of the folder list until you click in it.
+- The search field and the box that filters the folder list have no fill and a thin outline until you click in them. Their words are darker, so they are easy to read.
+- The folder you have open is a darker sand, not white. When you point at a folder or a button in the frame, it turns a lighter sand, so it does not look like a second choice.
+- The account tabs above the list stand in a thin outline, not on a grey band.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
 
 **The reply box**
@@ -54,6 +56,7 @@
 - Characters that you type with AltGr, such as } | and @ on a Danish keyboard, now appear. Before, they changed the size of the text in Mail.
 
 **Folders and drafts**
+- Mail you set to send later is in the Scheduled folder in the folder list, while it holds anything, and in its own conversation. It no longer stands above the list. A message that could not be sent is there too, with Try again.
 - In the folder list, Drafts is under Sent, and Archived is at the top of the other column.
 - The drafts folder ("Drafts from other apps" in Settings > Advanced) makes drafts for a hidden mailbox too, and also when the Mail window is behind other windows. For each draft that it makes, Mail writes a receipt with the draft's key in the folder's `made` folder.
 
@@ -66,6 +69,9 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- Forward puts the cursor in To every time. Before, it sometimes went nowhere when the message box opened a moment late.
+- "Inbox zero — enjoy the quiet." no longer disappears for a moment once a minute, when Mail looks for new mail.
+- When you snooze several conversations or a whole stack, the next conversation that opens is one that is still in the list. When none is left, the conversation closes.
 - Escape closes the conversation you have open, so you see the list again. It first closes what is in front: a reply you are writing, Find, or a file you are looking at.
 - A narrow email is in the middle of the Reader that fills the window, not at its left edge.
 - "Load more" with only unread mail shown, or one mailbox's tab open, reads on until it finds mail that shows, or says that the older pages had none. Before, it could load mail that was then hidden, and seem to do nothing.

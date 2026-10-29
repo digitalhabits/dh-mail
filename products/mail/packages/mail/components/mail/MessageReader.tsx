@@ -24,6 +24,7 @@
  * header, as in the thread.
  */
 
+import { UndoSlotFoot } from "@/components/mail/undo-slot-row";
 import { TextSizePopover } from "@/components/mail/ZoomControls";
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -394,6 +395,8 @@ export function MessageReader(props: MessageReaderProps) {
       ) : null}
       </div>
       {place.here ? null : <ReaderActions {...actions} />}
+      {/* It covers the list and its foot: the confirmations stand here. */}
+      <UndoSlotFoot place="strip" over />
     </div>,
     document.body
   );

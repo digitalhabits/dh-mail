@@ -9,6 +9,7 @@
 #
 #   test     first: the typecheck, the app's suites and the native tests, with
 #            no secrets. If one fails, nothing is built or signed.
+#            The native tests run on Windows too, before a Windows build.
 #   mac      one universal .dmg (Apple silicon and Intel), signed, notarized
 #            and stapled. `pnpm --dir apps/mail app:build`.
 #   windows  two NSIS installers, x64 and ARM64, signed with Azure Trusted
@@ -141,6 +142,35 @@ jobs:
       # Through the app's lock file: the mirror carries no lock file of the
       # crate's own, and a test run must use the versions a release uses.
       # The app turns Exchange on, so its tests run too.
+      - name: Test the native part
+        run: cargo test --manifest-path apps/mail/src-tauri/Cargo.toml -p mail-native --lib --locked
+
+  # The native tests again, on Windows. The native part has code that is
+  # compiled only for Windows, and the job above never runs its tests. No
+  # environment and no secrets, as above. Only when something for Windows is
+  # built.
+  test-windows:
+    if: inputs.platform != 'mac' || inputs.store_package
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/mail/src-tauri/target
+          key: cargo-test-windows-${{ hashFiles('apps/mail/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-test-windows-
+
       - name: Test the native part
         run: cargo test --manifest-path apps/mail/src-tauri/Cargo.toml -p mail-native --lib --locked
 
@@ -325,7 +355,7 @@ jobs:
           retention-days: 30
 
   windows:
-    needs: test
+    needs: [test, test-windows]
     if: inputs.platform == 'both' || inputs.platform == 'windows'
     runs-on: windows-latest
     timeout-minutes: 90
@@ -490,7 +520,7 @@ jobs:
   # identity is in build-win-store.ps1. It is not a secret: each package that
   # ships shows it.
   store:
-    needs: test
+    needs: [test, test-windows]
     if: inputs.store_package
     runs-on: windows-latest
     timeout-minutes: 90
@@ -611,7 +641,7 @@ jobs:
   # A draft, and only a draft. It has no public page until a person publishes
   # it. A run for the same version puts the new files over the old ones.
   release:
-    needs: [test, mac, windows]
+    needs: [test, test-windows, mac, windows]
     # Not after failed tests: the builds were skipped then, and there is
     # nothing to put in a release.
     if: ${{ !cancelled() && !failure() && needs.test.result == 'success' && inputs.draft_release }}

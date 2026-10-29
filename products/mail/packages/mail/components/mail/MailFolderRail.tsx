@@ -42,6 +42,7 @@ import {
   Inbox,
   Loader2,
   RotateCwFadingClock,
+  Search,
   Send,
   ShieldAlert,
   Trash2,
@@ -88,6 +89,7 @@ export function MailFolderRail(props: FolderRailProps) {
        * beneath it, and a row half under it is still a drop target. Two
        * boxes, one fixed and one scrolling, cannot overlap at all.
        */
+      data-folder-rail
       className={cn(
         "group/rail flex h-full w-full shrink-0 flex-col overflow-hidden border-[var(--mail-pane-divider)] bg-[var(--mail-sidebar)] px-2 pt-1",
         props.edgeless ? null : side === "right" ? "border-l" : "border-r"
@@ -231,17 +233,24 @@ export function MailFolderRail(props: FolderRailProps) {
           favouriteRows.length ? "mt-3" : "mt-[5px]"
         )}
       >
+        {/* A frame field, as the search is (mail.css): no fill and an
+            outline at rest, white with a stronger edge once in use. */}
+        <label className="relative block">
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--mail-frame-field-ink)]"
+        />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("filterFoldersPlaceholder")}
           aria-label={t("filterFolders")}
-          // The rail's own sand until it is in use: a white box at rest
-          // was the brightest thing in the rail (2026-10-27). White once
-          // it has the focus, or holds words.
           className={cn(
-            "w-full rounded-inner border border-stone-200 px-2 py-1.5 text-sm outline-none placeholder:text-stone-400 focus:border-stone-300 focus:bg-white",
-            query ? "bg-white" : "bg-transparent"
+            "w-full rounded-control border py-1.5 pl-7 pr-2 text-sm text-[var(--mail-chrome-fg)] outline-none placeholder:text-[var(--mail-frame-field-ink)]",
+            "focus:border-[var(--mail-frame-field-focus-edge)] focus:bg-[var(--mail-field-bg)]",
+            query
+              ? "border-[var(--mail-frame-field-focus-edge)] bg-[var(--mail-field-bg)]"
+              : "border-[var(--mail-frame-field-edge)] bg-[var(--mail-frame-field)]"
           )}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -250,6 +259,7 @@ export function MailFolderRail(props: FolderRailProps) {
             }
           }}
         />
+        </label>
       </div>
 
       <div

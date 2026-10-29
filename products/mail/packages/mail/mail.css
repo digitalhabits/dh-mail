@@ -501,7 +501,8 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      two typefaces (2026-10-27). */
   --mail-row-name: #122a33;
   --mail-chrome-faint: #9ea9aa;
-  --mail-chrome-hover: #efeae2;
+  /* Hover in the lighter panes: one step down from #f5f1ea. */
+  --mail-chrome-hover: #efe9df;
   --mail-chrome-selected: #e9e4da;
   --mail-chrome-chip-border: #d2d4d0;
   --mail-chrome-chip-active-bg: #e9e4da;
@@ -560,7 +561,6 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      and to say the message being written is yours. */
   --mail-compose-surface: #f9fcfd;
   --mail-fade-from: #f5f1ea;
-  --mail-title-search-ring: #d2d4d0;
   /*
    * The buttons that do the thing: New mail, and Reply / Reply all /
    * Forward under a thread.
@@ -627,7 +627,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   /* A switch that is on, in the chrome (Stacks): the slate of a chosen
      folder, not the accent, so "on" reads as "chosen" (2026-10-17). */
   --mail-switch-on: #005d53;
-  --mail-folder-active: var(--mail-segment-active);
+  /* The chosen folder: the frame's sand one step deeper, not a white card
+     (mockup 28b, 2026-10-28). */
+  --mail-folder-active: #dcd3c3;
   --mail-folder-active-fg: var(--mail-segment-active-fg);
   --mail-folder-active-icon: var(--mail-segment-active-fg);
   --mail-folder-hover: var(--mail-sidebar-hover);
@@ -638,6 +640,15 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-field-border-soft: #dbdbd7;
   --mail-field-bg: #ffffff;
   --mail-placeholder: #7d8e92;
+  /* A text field on the frame (search, Filter folders): no fill and an
+     outline at rest, as the account tabs have; white with a stronger edge
+     once in use. A fill of its own made a hole in the frame, and a dashed
+     edge was tried and dropped (2026-10-29). Its words and icons dark
+     enough to read: the grey made it look disabled. */
+  --mail-frame-field: transparent;
+  --mail-frame-field-edge: var(--mail-pane-divider);
+  --mail-frame-field-focus-edge: var(--mail-placeholder);
+  --mail-frame-field-ink: #46505c;
 
   /* The one colour that is the same in both themes, and the link text,
      which is not: on navy the same teal is too dark to read. */
@@ -672,7 +683,9 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
    * mail) are the muted grey, 5.8:1 on the cream, not the faint one.
    */
   --mail-sidebar: #ebe4d8;
-  --mail-sidebar-hover: rgba(27, 61, 74, 0.06);
+  /* Hover on the frame's sand: halfway to the chosen folder (#dcd3c3), so
+     it never reads as a second choice (2026-10-28). */
+  --mail-sidebar-hover: #e4dccd;
   --mail-pane-divider: rgba(27, 61, 74, 0.11); /* 16% read heavy round the frame (2026-10-27) */
   --mail-list-muted: #47616a;
 
@@ -769,7 +782,6 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      would glare, and the bubbles stay light for the mail inside them. */
   --mail-compose-surface: #1e2d3e;
   --mail-fade-from: #1a2735;
-  --mail-title-search-ring: rgba(78, 192, 176, 0.55);
   /* Lifted off the chrome, not cut out of it — see the light block. */
   --mail-action: #3d5570;
   --mail-action-border: #64809d;
@@ -813,6 +825,10 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-field-border-soft: #2b3c4f;
   --mail-field-bg: #141e2a;
   --mail-placeholder: #7189a1;
+  --mail-frame-field: transparent;
+  --mail-frame-field-edge: var(--mail-pane-divider);
+  --mail-frame-field-focus-edge: var(--mail-placeholder);
+  --mail-frame-field-ink: var(--mail-chrome-muted);
 
   --mail-accent: #2a9d8f;
   --mail-link: #5fc2b4;
@@ -1760,4 +1776,13 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 }
 .mail-name[data-unread] {
   font-weight: 600;
+}
+
+/*
+ * The frame (title bar, folder rail) is sand: a hover there is the sand's
+ * half step (#e4dccd), not the panes' lighter one, which lightened instead
+ * of darkening (2026-10-28). Light theme only.
+ */
+.mail-shell:not([data-theme="dark"]) :is(.mail-titlebar, [data-folder-rail]) {
+  --mail-chrome-hover: var(--mail-sidebar-hover);
 }

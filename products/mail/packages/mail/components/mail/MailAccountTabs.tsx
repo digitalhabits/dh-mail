@@ -405,7 +405,9 @@ export function MailAccountTabs({
       <div
         className={cn(
           // The tabs' 8px plus 2px: their track stays around them evenly.
-          "w-fit max-w-full overflow-x-auto rounded-[10px] bg-[var(--mail-segment-track)] p-1 [scrollbar-width:thin]"
+          // An outline, not a fill (2026-10-28): lighter on the cream, and
+          // still a track in the dark theme.
+          "w-fit max-w-full overflow-x-auto rounded-[10px] p-1 shadow-[inset_0_0_0_1px_var(--mail-pane-divider)] [scrollbar-width:thin]"
         )}
       >
         <div className="flex w-max items-center gap-1">

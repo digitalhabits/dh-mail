@@ -50,7 +50,7 @@ export function useMailDisplay() {
     "rounded-inner p-1.5",
     chromeDark
       ? "text-[var(--mail-chrome-muted)] hover:bg-[var(--mail-chrome-hover)] hover:text-[var(--mail-chrome-fg)]"
-      : "text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
+      : "text-stone-500 hover:bg-[var(--mail-sidebar-hover)] hover:text-stone-800"
   );
   return {
     listDensity,

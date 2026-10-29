@@ -11,21 +11,20 @@ import { createRoot } from "react-dom/client";
 
 import { setMailApiTransport } from "@/lib/mail/api";
 import { MailPage } from "@/components/mail/MailPage";
-import { toast } from "@/lib/mail/toast";
 
 import { waitFor } from "./mounted-dom.mjs";
 
-/** The Undo of a send, as the countdown pill holds it. See mounted-composer-send. */
-let newestPill = null;
-toast.custom = (render) => {
-  newestPill = render;
-  return "pill";
-};
+/**
+ * The Undo of a send, as the countdown at the foot of the list or the
+ * reader holds it (undo-slot-row): the newest one that is still sending.
+ */
 const pressUndo = () => {
-  assert(newestPill, "a send offered its Undo");
-  const pill = newestPill();
-  newestPill = null;
-  pill.props.onUndo();
+  const sending = [...document.querySelectorAll("[data-undo-foot] [data-undo-card]")].filter((card) =>
+    (card.textContent || "").startsWith("Sending in")
+  );
+  const card = sending.at(-1);
+  assert(card, "a send offered its Undo");
+  card.querySelector("[data-undo-slot-button]").click();
 };
 
 const pass = (line) => console.log(`PASS  ${line}`);

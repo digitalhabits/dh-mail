@@ -301,8 +301,10 @@ setMailApiTransport(async (path, init) => {
 let toasts = [];
 toastSink.push = (t) => toasts.push(t);
 const undoToasts = () => toasts.filter((t) => t.data?.action?.label);
-/** The confirmations standing in the list where rows left it (undo-slot). */
-const listSlots = () => [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
+/** The confirmations at the foot of the list (undo-slot). */
+const listSlots = () => [...document.querySelectorAll("[data-undo-foot=list] [data-undo-slot]")];
+/** The confirmations at the foot of the reader, with no list on screen. */
+const readerSlots = () => [...document.querySelectorAll("[data-undo-foot=strip] [data-undo-slot]")];
 
 const clickEl = (el, init = {}) => {
   for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
@@ -473,11 +475,11 @@ async function toastUndoTakesBackItsOwn() {
   await open(CHOIR);
   clickEl(paneAction("Archive"));
   await sleep(600);
-  const slots = () => [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
-  assert.equal(slots().length, 1, "the archived row became its confirmation, in the list");
+  const slots = listSlots;
+  assert.equal(slots().length, 1, "the archive is confirmed at the foot of the list");
   assert.equal(slots()[0].textContent, `Archived${CHOIR.subject}Undo`, "it says what happened, then to what");
   assert.equal(undoToasts().length, 0, "and no toast at the foot of the window");
-  pass("an archive is confirmed in the list, where the row was, not in a toast");
+  pass("an archive is confirmed at the foot of the list, not in a toast");
 
   // The next row is open now: the loan.
   clickEl(paneAction("Archive"));
@@ -485,14 +487,14 @@ async function toastUndoTakesBackItsOwn() {
   assert.deepEqual(server.postsTo("/api/mail/archive"), ["choir-1", "loan-1"]);
   assert.equal(slots().length, 1, "one stack in the list");
   assert.equal(slots()[0].textContent, `Archived${LOAN.subject}Undo`, "the newest on top, alone in words");
-  assert.equal(slots()[0].querySelectorAll("[data-undo-slot-edge]").length, 1, "the one before peeks out under it");
+  assert.equal(slots()[0].querySelectorAll("[data-undo-slot-edge]").length, 1, "the one before peeks out behind it");
   pass("a second action stacks on the first, as the toasts did");
 
   slots()[0].dispatchEvent(new Event("pointerenter", { bubbles: false }));
   slots()[0].dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
   await waitFor(() => slots()[0]?.querySelectorAll("[data-undo-card]").length === 2);
   const cards = [...slots()[0].querySelectorAll("[data-undo-card]")].map((c) => c.textContent);
-  assert.deepEqual(cards, [`Archived${LOAN.subject}Undo`, `Archived${CHOIR.subject}Undo`]);
+  assert.deepEqual(cards, [`Archived${CHOIR.subject}Undo`, `Archived${LOAN.subject}Undo`], "the newest nearest the foot");
   pass("the pointer on the stack spreads it out, each with its own Undo");
 
   undoKey();
@@ -501,7 +503,7 @@ async function toastUndoTakesBackItsOwn() {
   assert(inList(LOAN) && !inList(CHOIR), "Command+Z took back the newest");
   assert.equal(slots()[0]?.querySelectorAll("[data-undo-card]").length, 1, "and it left the stack");
   assert(slots()[0].textContent.includes(CHOIR.subject), "the older one is on top now");
-  assert.equal(undoToasts().length, 0, "with no toast to say so: the row says it");
+  assert.equal(undoToasts().length, 0, "with no toast to say so: the stack says it");
   pass("Command+Z takes back the newest, and the next is on top");
 
   undoKey();
@@ -523,16 +525,16 @@ async function archiveWithTheListAway() {
   await sleep(400);
   clickEl(paneAction("Archive"));
   await sleep(600);
-  assert.equal(listSlots().length, 0, "no row stands in a list that is put away");
-  const pill = document.querySelector(".mail-chrome-strip [data-undo-slot]");
-  assert(pill, "the confirmation is in the reader's toolbar");
+  assert.equal(listSlots().length, 0, "nothing stands at the foot of a list that is put away");
+  const pill = readerSlots()[0];
+  assert(pill, "the confirmation is at the foot of the reader");
   assert(pill.textContent.includes(CHOIR.subject), `it names the conversation: ${pill.textContent}`);
   assert.equal(undoToasts().length, 0, "and not in a toast");
   clickEl(pill.querySelector("[data-undo-slot-button]"));
   await sleep(600);
   assert.deepEqual(server.postsTo("/api/mail/unarchive"), ["choir-1"]);
-  assert(!document.querySelector(".mail-chrome-strip [data-undo-slot]"), "Undo takes it away");
-  pass("with the list put away, the confirmation and its Undo are in the reader's toolbar");
+  assert.equal(readerSlots().length, 0, "Undo takes it away");
+  pass("with the list put away, the confirmation and its Undo are at the foot of the reader");
 }
 
 async function arrowKeysWalkTheList() {
@@ -649,8 +651,7 @@ async function rangeSelectionArchive() {
   assert(!inList(CHOIR) && !inList(LOAN) && !inList(BIKE));
   assert(inList(GARDEN));
   assert(reading(3), "the row after the range opened");
-  const slots = [...document.querySelectorAll("[data-mail-list-scroller] [data-undo-slot]")];
-  assert.equal(slots.length, 1, "one confirmation for the whole selection, in the list");
+  assert.equal(listSlots().length, 1, "one confirmation for the whole selection, at the foot of the list");
   assert.equal(undoToasts().length, 0, "and no toast");
   pass("Archive on the selection sends one request per thread, then opens the row after it");
 
@@ -694,7 +695,7 @@ async function archiveAPersonThenCommandZ() {
   assert.deepEqual([...server.postsTo("/api/mail/archive")].sort(), ["choir-1", "robes-1"]);
   assert(!personEl("Merle Mikkelsen"), "her row has left the list");
   assert(personEl("Otto Brink"), "the others stay");
-  assert.equal(listSlots().length, 1, "one confirmation for both, in the list");
+  assert.equal(listSlots().length, 1, "one confirmation for both, at the foot of the list");
   assert.equal(listSlots()[0].textContent, "ArchivedMerle Mikkelsen stack (2)Undo", "it names her stack");
   assert.equal(undoToasts().length, 0, "and no toast");
   pass("Archive all in the person pane archives each of that person's threads");
@@ -852,6 +853,59 @@ async function commandClickSelection() {
  * key opens its times there too. A friend could not snooze several at once:
  * only the right-click menu did it (2026-10-17).
  */
+/**
+ * Snoozing the last conversations in the inbox leaves nothing open. One at a
+ * time, each chose another that was leaving too, so a snoozed one stayed open
+ * beside the empty list (reported 2026-10-28).
+ */
+async function snoozeEveryRowLeavesNothingOpen() {
+  await mount();
+  await open(CHOIR);
+  for (const t of [LOAN, BIKE, GARDEN]) clickEl(rowEl(t), { metaKey: true });
+  await sleep(300);
+  clickEl(paneAction("Snooze"));
+  await sleep(500);
+  const tomorrow = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Tomorrow"));
+  assert(tomorrow, "the snooze times are up");
+  clickEl(tomorrow);
+  await sleep(900);
+  assert(![CHOIR, LOAN, BIKE, GARDEN].some(inList), "every row left the list");
+  assert(![0, 1, 2, 3].some(reading), "and no snoozed conversation is open");
+  pass("snoozing every row in the inbox leaves nothing open");
+}
+
+/**
+ * Snoozing a whole stack from its menu, with one of its conversations open,
+ * leaves none of them open. One at a time, each chose the next in the same
+ * stack, which was leaving too (reported 2026-10-28).
+ */
+async function snoozeAStackLeavesNoneOfItOpen() {
+  await mount({ people: true });
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(600);
+  assert(reading(0), "a click on her stack opens her newest conversation");
+  personEl("Merle Mikkelsen").dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 })
+  );
+  await sleep(300);
+  const snooze = [...document.querySelectorAll("[role=menuitem], button")].find((b) =>
+    (b.textContent || "").trim().startsWith("Snooze")
+  );
+  assert(snooze, "her menu has Snooze");
+  clickEl(snooze);
+  await sleep(400);
+  const tomorrow = [...document.querySelectorAll("button, [role=menuitem]")].find((b) =>
+    (b.textContent || "").includes("Tomorrow")
+  );
+  assert(tomorrow, "the snooze times are up");
+  clickEl(tomorrow);
+  await sleep(900);
+  assert.deepEqual(postsOf("/api/mail/snooze").map((p) => p.body.threadId).sort(), ["choir-1", "robes-1"]);
+  assert(!personEl("Merle Mikkelsen"), "her stack left the list");
+  assert(!reading(0) && !reading(4), "and neither of her conversations is open");
+  pass("snoozing a stack with one of its conversations open leaves none of them open");
+}
+
 async function selectionPaneSnooze() {
   await mount();
   await open(CHOIR);
@@ -871,11 +925,13 @@ async function selectionPaneSnooze() {
   assert.deepEqual(snoozed, ["bike-1", "choir-1"]);
   assert(!inList(CHOIR) && !inList(BIKE), "both left the list");
   assert(!(document.body.textContent || "").includes("conversations selected"), "the selection is gone");
+  // The next one open is one that stayed. One at a time, each chose another
+  // that was leaving too (reported 2026-10-28).
   pass("Snooze in the selection pane snoozes every selected conversation");
 
   // One confirmation for both, and one Undo. Each had its own before, so
   // the last covered the first and Command+Z took back one at a time.
-  assert.equal(listSlots().length, 1, "one confirmation in the list");
+  assert.equal(listSlots().length, 1, "one confirmation at the foot of the list");
   assert(/^Snoozed until .+2 conversationsUndo$/.test(listSlots()[0].textContent), listSlots()[0].textContent);
   assert.equal(undoToasts().length, 0, "and no toast");
   undoKey();
@@ -975,10 +1031,10 @@ async function outboxTryAgain() {
   await sleep(500);
   const text = () => document.body.textContent || "";
   // The Outbox is a place in the folder rail while it holds anything.
-  assert(buttonNamed("Outbox"), "the rail shows Outbox while it holds a message");
-  clickEl(buttonNamed("Outbox"));
+  assert(buttonNamed("Scheduled"), "the rail shows Scheduled while it holds a message");
+  clickEl(buttonNamed("Scheduled"));
   await sleep(400);
-  assert(text().includes("Outbox · 1"), "the Outbox shows the held message");
+  assert(text().includes("Scheduled · 1"), "Scheduled shows the held message");
   assert(!inList(CHOIR), "and none of the inbox");
   const again = [...document.querySelectorAll("[role=button]")].find(
     (el) => (el.textContent || "").trim() === "Try again"
@@ -989,9 +1045,9 @@ async function outboxTryAgain() {
   const sent = server.posts.filter((x) => x.path === "/api/mail/scheduled");
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0].body, { account: ACCOUNT, id: "held-1", action: "sendNow" });
-  assert(!text().includes("Outbox ·"), "the Outbox is read again, and is empty");
-  assert(!buttonNamed("Outbox"), "empty, it leaves the rail");
-  pass("the Outbox is in the rail while it holds a message; Try again sends it, and it goes");
+  assert(!text().includes("Scheduled ·"), "Scheduled is read again, and is empty");
+  assert(!buttonNamed("Scheduled"), "empty, it leaves the rail");
+  pass("Scheduled is in the rail while it holds a message; Try again sends it, and it goes");
 }
 
 /** A right-click on an Outbox row gives the app's menu, not the browser's. */
@@ -1002,7 +1058,7 @@ async function outboxRowMenu() {
   server.held = [WAITING];
   window.dispatchEvent(new window.Event("focus"));
   await sleep(500);
-  clickEl(buttonNamed("Outbox"));
+  clickEl(buttonNamed("Scheduled"));
   await sleep(400);
   const row = () => [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("The rota for May"));
   const openMenu = async () => {
@@ -1028,7 +1084,7 @@ async function outboxRowMenu() {
   window.dispatchEvent(new window.Event("focus"));
   await sleep(500);
   // Emptied by the cancel, the Outbox view went back to the inbox.
-  if (buttonNamed("Outbox")) clickEl(buttonNamed("Outbox"));
+  if (buttonNamed("Scheduled")) clickEl(buttonNamed("Scheduled"));
   await sleep(400);
   const kept = await openMenu();
   assert.deepEqual(kept, ["Open"], kept.join(","));
@@ -1715,6 +1771,8 @@ async function main() {
     await rangeSelectionArchive();
     await commandClickSelection();
     await selectionPaneSnooze();
+    await snoozeEveryRowLeavesNothingOpen();
+    await snoozeAStackLeavesNoneOfItOpen();
     await rightClickSelection();
     await archiveAPersonThenCommandZ();
     await archiveKeyOnAPerson();

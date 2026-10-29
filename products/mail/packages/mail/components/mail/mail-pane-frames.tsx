@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { SyncIcon } from "@/components/mail/MailListControls";
 import { listBoxStyle, listInnerStyle } from "@/components/mail/list-box-style";
 import { pinListInPlace, type ListPeek } from "@/components/mail/use-list-peek";
+import { UndoSlotFoot } from "@/components/mail/undo-slot-row";
 
 /** The reading pane's frame: it holds the pane through the expand sweep. */
 export function ReadingPaneFrame({
@@ -79,6 +80,9 @@ export function ReadingPaneFrame({
         }}
       >
         {readingPaneContent}
+        {/* With no list on screen, the confirmations stand at the reader's
+            foot instead (undo-slot-row). */}
+        <UndoSlotFoot place="strip" />
         {/* Shown while the list is dragged far enough to take the pane. */}
         <div className="mail-list-snap-hint" aria-hidden>
           <span>{t("listSnapHint")}</span>

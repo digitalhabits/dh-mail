@@ -30,7 +30,7 @@ import { hideRow, unhideRow, type HiddenRows } from "@/lib/mail/hidden-rows";
 import { everyCopy, rowStandsFor, threadKey, withRowsBack } from "@/lib/mail/thread-copies";
 import { releaseRead } from "@/lib/mail/held-reads";
 import { mailSay } from "@/lib/mail/i18n";
-import { describeTargets, type MailUndoAnchor, type MailUndoWords } from "@/components/mail/use-mail-undo";
+import { describeTargets, type MailUndoWords } from "@/components/mail/use-mail-undo";
 import type { PersonRow } from "@/lib/mail/person-participants";
 import type { MailViewMode } from "@/components/mail/MailListControls";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -74,7 +74,7 @@ export type ThreadActionsInput = {
   ) => string;
   dropMailUndo: (id: string | null) => void;
   /** One Undo for many conversations (use-mail-undo). Returns its id. */
-  pushBatchUndo: (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => string;
+  pushBatchUndo: (label: string, run: () => Promise<void>, words: MailUndoWords) => string;
   /** The people view's rows as painted, to name the stacks acted on. */
   personRowOrderRef: React.RefObject<PersonRow[]>;
   viewMode: MailViewMode;
@@ -792,8 +792,7 @@ export function useSnoozeActions({
   const snoozeMany = React.useCallback(
     async (
       targets: MailThreadSummary[],
-      untilIso: string,
-      anchor?: MailUndoAnchor
+      untilIso: string
     ) => {
       const onSnoozedTab = !activeFolder && tab === "snoozed";
       // One is one, and in Snoozed the rows only take a new time.
@@ -803,6 +802,12 @@ export function useSnoozeActions({
       }
       const before = threads;
       const when = formatSnoozeWakeLabel(untilIso);
+      // All of them leave in one step, so the next one to open is chosen
+      // from what is left. One at a time, each chose another that was
+      // leaving too, and with the last stack gone a snoozed conversation
+      // stayed open instead of the empty inbox (reported 2026-10-28).
+      const keys = targets.map(threadKey);
+      removeThread(keys[0], keys.slice(1));
       const done = Promise.all(targets.map((t) => snoozeOne(t, untilIso, true)));
       // At once, as for one conversation: the rows leave now, so their
       // confirmation stands now. Undo waits for the requests.
@@ -833,7 +838,6 @@ export function useSnoozeActions({
             toast.error(err instanceof Error ? err.message : mailSay("couldNotUndo"));
           }
         },
-        anchor ?? newestAnchor(targets),
         {
           action: "snooze",
           verb: mailSay("slotSnoozedUntil", { when }),
@@ -849,7 +853,7 @@ export function useSnoozeActions({
         toast.error(mailSay("someCouldNotBeSnoozed", { failed, count: targets.length }));
       }
     },
-    [activeFolder, tab, threads, snoozeOne, viewMode, personRowOrderRef, pushBatchUndo, dropMailUndo, hiddenRowsRef, setThreads, viewerId, listCacheKey, setSnoozedCount]
+    [activeFolder, tab, threads, snoozeOne, removeThread, viewMode, personRowOrderRef, pushBatchUndo, dropMailUndo, hiddenRowsRef, setThreads, viewerId, listCacheKey, setSnoozedCount]
   );
   const unsnooze = React.useCallback(
     async (t: { account: string; threadId: string }) => {
@@ -878,14 +882,4 @@ export function useSnoozeActions({
     [threads, removeThread, hiddenRowsRef, setSnoozedCount, setThreads]
   );
   return { snooze, snoozeMany, unsnooze };
-}
-
-/**
- * Where many conversations stood in the list: the newest of them. Its key
- * lets the people view put the confirmation under the person it left.
- */
-function newestAnchor(rows: readonly MailThreadSummary[]): MailUndoAnchor {
-  let newest: MailThreadSummary | null = null;
-  for (const row of rows) if (!newest || Date.parse(row.lastAt) > Date.parse(newest.lastAt)) newest = row;
-  return newest ? { lastAt: newest.lastAt, threadKey: threadKey(newest) } : { lastAt: null };
 }

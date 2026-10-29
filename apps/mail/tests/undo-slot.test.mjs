@@ -1,10 +1,10 @@
 /**
- * The confirmation of an archive, delete, move or snooze stands where the
- * row was, for a while, and the toast is only for when nothing on screen
- * can hold it. Subjects are invented.
+ * The confirmation of an archive, delete, move, snooze or send stands at the
+ * foot of the list or the reader, for a while, and the toast is only for
+ * when neither is on screen. Subjects are invented.
  */
 
-import { createUndoSlotStore, describeUndoTargets, placeUndoSlot, UNDO_SLOT_MS } from "@/lib/mail/undo-slot";
+import { createUndoSlotStore, describeUndoTargets, UNDO_SLOT_MS } from "@/lib/mail/undo-slot";
 import { check, suite } from "./harness.mjs";
 
 /** Timers the suite moves by hand. */
@@ -34,24 +34,9 @@ function fakeTimers() {
   };
 }
 
-const slot = (id, extra = {}) => ({ id, action: "archive", verb: "Archived", object: id, label: `${id} archived`, lastAt: null, undo: () => {}, ...extra });
+const slot = (id, extra = {}) => ({ id, action: "archive", verb: "Archived", object: id, label: `${id} archived`, undo: () => {}, ...extra });
 
 suite(async () => {
-  // Where it goes.
-  const day = (label, date, ...times) => ({ label, items: times.map((t) => ({ lastAt: `${date}T${t}:00Z` })) });
-  const groups = [day("today", "2026-10-27", "15:00", "14:00", "13:00"), day("yesterday", "2026-10-26", "20:00")];
-  const at = (t) => placeUndoSlot(groups, `2026-10-27T${t}:00Z`);
-  check("between the rows it stood between", JSON.stringify(at("14:30")) === JSON.stringify({ group: 0, index: 1 }));
-  check("at the top when it was the newest", JSON.stringify(at("16:00")) === JSON.stringify({ group: 0, index: 0 }));
-  const lastOfToday = placeUndoSlot(groups, "2026-10-27T12:00:00Z");
-  check("the last of its day stays under its own day's heading", JSON.stringify(lastOfToday) === JSON.stringify({ group: 0, index: 3 }));
-  const oldest = placeUndoSlot(groups, "2026-10-01T00:00:00Z");
-  check("at the end when it was the oldest", JSON.stringify(oldest) === JSON.stringify({ group: 1, index: 1 }));
-  check("nowhere in an empty list", placeUndoSlot([], "2026-10-27T12:00:00Z") === null);
-  const withPinned = [{ pinned: true, items: [{ lastAt: "2026-10-01T00:00:00Z" }] }, ...groups];
-  const skipped = placeUndoSlot(withPinned, "2026-10-27T14:30:00Z", (g) => Boolean(g.pinned));
-  check("never in the pinned band", JSON.stringify(skipped) === JSON.stringify({ group: 1, index: 1 }));
-
   // What it names.
   const words = {
     conversations: (n) => (n === 1 ? "1 conversation" : `${n} conversations`),
@@ -131,6 +116,16 @@ suite(async () => {
     check("clear with no name takes them all", store.get().slots.length === 0);
     for (const id of ["1", "2", "3", "4", "5", "6", "7"]) store.show(slot(id));
     check("the stack holds five", store.get().slots.map((x) => x.id).join() === "7,6,5,4,3");
+  }
+  {
+    const timers = fakeTimers();
+    const store = createUndoSlotStore(timers);
+    store.mount("list");
+    store.show(slot("send", { action: "send", ms: 7000 }));
+    timers.advance(6999);
+    check("a send stays its own time", store.get().slot?.id === "send");
+    timers.advance(1);
+    check("and goes after it", store.get().slot === null);
   }
 
   // Where it is drawn.

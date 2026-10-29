@@ -304,9 +304,22 @@ async function main() {
     assert((composerInReader().textContent || "").includes("bo@havn.example"), "the recipient is taken");
     pass("Forward in the Reader opens a forward composer in it");
 
-    /* The floating card, from inside the Reader. Discard the forward first. */
+    /* The floating card, from inside the Reader. Discard the forward first,
+       with a note in it, so there is something to take back. */
+    writeReply(composerInReader(), "<p>A note for Bo.</p>");
+    await sleep(300);
     clickEl(buttonsIn(composerInReader()).find((b) => /^discard/i.test(b.getAttribute("title") || "")));
     assert(await waitFor(() => !composerInReader()), "the bin puts the forward away");
+    // Said where every other confirmation is: the stack at the foot, not a toast.
+    assert(
+      await waitFor(() =>
+        [...document.querySelectorAll("[data-mail-reader] [data-undo-foot] [data-undo-card]")].some((c) =>
+          (c.textContent || "").startsWith("Draft discarded")
+        )
+      ),
+      "Draft discarded stands in the stack at the foot of the Reader"
+    );
+    pass("a discarded draft is confirmed in the stack, with Undo");
     clickEl(readerAction("Reply"));
     assert(await waitFor(() => editorIn(composerInReader())), "Reply opens the composer again");
     writeReply(composerInReader(), "<p>Written while reading.</p>");

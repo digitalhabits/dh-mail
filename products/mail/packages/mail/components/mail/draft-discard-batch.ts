@@ -8,7 +8,7 @@
  * run out, because a Gmail draft cannot be un-deleted.
  */
 
-import { toast } from "@/lib/mail/toast";
+import { confirmWithUndo } from "@/components/mail/undo-confirm";
 
 import {
   draftRowKey,
@@ -59,21 +59,19 @@ export async function discardDraftRows(
     });
   }
   refresh();
-  toast(
-    rows.length === 1
-      ? mailSay("draftDiscarded")
-      : mailSay("draftsDiscardedCount", { count: rows.length }),
-    {
-      duration: DISCARD_UNDO_MS,
-      action: {
-        label: mailSay("undo"),
-        onClick: () => {
-          for (const key of held) cancelPendingDiscard(key);
-          for (const draft of saved) void setDraft(draft);
-          unhideDraftRows(keys);
-          refresh();
-        },
-      },
-    }
-  );
+  const said =
+    rows.length === 1 ? mailSay("draftDiscarded") : mailSay("draftsDiscardedCount", { count: rows.length });
+  confirmWithUndo({
+    action: "discard",
+    verb: said,
+    object: rows.length === 1 ? rows[0].subject ?? "" : "",
+    label: said,
+    ms: DISCARD_UNDO_MS,
+    onUndo: () => {
+      for (const key of held) cancelPendingDiscard(key);
+      for (const draft of saved) void setDraft(draft);
+      unhideDraftRows(keys);
+      refresh();
+    },
+  });
 }

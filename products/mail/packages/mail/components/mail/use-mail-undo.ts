@@ -51,9 +51,6 @@ type MailBatchUndoEntry = {
   run: () => Promise<void>;
 };
 
-/** Where a batch stood in the list, so its confirmation stands there too. */
-export type MailUndoAnchor = { lastAt: string | null; personKey?: string; threadKey?: string };
-
 /** What a batch's confirmation says: the action, and what it was on. */
 export type MailUndoWords = { action: UndoSlotAction; verb: string; object: string };
 
@@ -269,8 +266,6 @@ export function useMailUndo({
         action: kind,
         verb: what ?? slotWhat(kind, folderName),
         object: summary.subject || mailSay("noSubject"),
-        lastAt: summary.lastAt,
-        threadKey: threadKey(summary),
         label,
         undo: () => void undoMailActionById(id),
       });
@@ -304,15 +299,12 @@ export function useMailUndo({
    * and the people view deletes no other way.
    */
   const pushBatchUndo = React.useCallback(
-    (label: string, run: () => Promise<void>, anchor: MailUndoAnchor, words: MailUndoWords) => {
+    (label: string, run: () => Promise<void>, words: MailUndoWords) => {
       const id = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       mailUndoSlot.show({
         id,
         ...words,
         label,
-        lastAt: anchor?.lastAt ?? null,
-        personKey: anchor?.personKey,
-        threadKey: anchor?.threadKey,
         undo: () => void undoMailActionById(id),
       });
       stack.push({ id, kind: "batch", run });

@@ -7,6 +7,7 @@
  * which is why 2,389 lines could leave MailPage without untangling anything.
  */
 
+import { UndoSlotFoot } from "@/components/mail/undo-slot-row";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import { headingWithHeld } from "@/lib/mail/held-thread-header";
 import { createPortal } from "react-dom";
@@ -370,6 +371,9 @@ export function ThreadPane(props: ThreadPaneProps) {
       </ComposerHome>
       </div>
       <ThreadPaneDialogs m={m} />
+      {/* The Reader that fills the window covers the list and its foot:
+          the confirmations stand at its own foot then (undo-slot-row). */}
+      {fullWindow && !floating ? <UndoSlotFoot place="strip" over /> : null}
     </div>
     </ReaderThreadContext.Provider>
   );

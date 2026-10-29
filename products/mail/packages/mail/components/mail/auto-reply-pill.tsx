@@ -53,7 +53,7 @@ export function AutoReplyPill({ onDark = false }: { onDark?: boolean }) {
         "flex h-7 min-w-[2.25rem] shrink items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-medium",
         onDark
           ? "bg-white/10 text-[var(--mail-chrome-fg)] hover:bg-white/15"
-          : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+          : "text-stone-700 hover:bg-[var(--mail-sidebar-hover)]"
       )}
     >
       <AutoReplyMark className="h-3.5 w-3.5 shrink-0" />

@@ -17,7 +17,6 @@ import {
   WIDE_FACE_DOT_TOP,
 } from "@/components/mail/list-row-marks";
 import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
-import { isMailboxScopeAll } from "@/components/mail/mail-list-state";
 import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
 import { openScheduledMessage, useOpenScheduledMessage } from "@/components/mail/ScheduledMessageView";
 import { missedWhen } from "@/components/mail/MissedScheduledDialog";
@@ -55,44 +54,6 @@ import { TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
-import { UndoSlotRow, useUndoSlot, useUndoSlotPlace, useUndoSlotPlacement } from "@/components/mail/undo-slot-row";
-import type { UndoSlot } from "@/lib/mail/undo-slot";
-
-/**
- * The list is on screen to hold the row that left: not put away, and not
- * covered by the reader on a phone.
- */
-function useListHoldsUndoSlot() {
-  const { detailOpen, listCollapsed, listOutForSearch, phone } = usePageLayout();
-  const on = phone ? !detailOpen : !listCollapsed || listOutForSearch;
-  useUndoSlotPlace("list", on);
-}
-
-/** The pinned band is not where a row that left goes back to. */
-const skipPinnedGroup = (group: { pinned?: boolean }) => Boolean(group.pinned);
-
-/**
- * The person whose stack each conversation was in, as last drawn. A
- * conversation that left is gone from the rows, so the people view looks
- * here to put its confirmation under the person it left.
- */
-function useLastPersonOf(rows: readonly PersonRow[]) {
-  // Kept for the life of the list, and only added to: setting the same
-  // pair again on a second render changes nothing.
-  const [map] = React.useState(() => new Map<string, string>());
-  if (map.size > 20000) map.clear();
-  for (const row of rows) for (const th of row.threads) map.set(threadKey(th), row.key);
-  return map;
-}
-
-/** The person the slot belongs under, when that person is still a row. */
-function slotPerson(slot: UndoSlot | null, lastPersonOf: Map<string, string>, rows: readonly PersonRow[]): string | null {
-  if (!slot) return null;
-  const key = slot.personKey ?? (slot.threadKey ? lastPersonOf.get(slot.threadKey) : undefined);
-  if (!key) return null;
-  return rows.some((row) => row.key === key) ? key : null;
-}
-
 
 /** The thread view's rows: the pinned band, then the list by day. */
 export function ThreadRows() {
@@ -108,8 +69,6 @@ export function ThreadRows() {
   const scheduledOpen = Boolean(useOpenScheduledMessage());
   const selected = scheduledOpen ? null : selectedThread;
   const [selectionMenu, setSelectionMenu] = React.useState<SelectionMenuAt | null>(null);
-  useListHoldsUndoSlot();
-  const undoAt = useUndoSlotPlacement(groups);
   return (
     <>
       <>
@@ -209,7 +168,7 @@ export function ThreadRows() {
             }
           }}
         >
-          {groups.map((group, groupIndex) => (
+          {groups.map((group) => (
               <div key={group.label || "results"}>
                 {group.label && !listNarrow ? (
                   <p className={cn(
@@ -229,11 +188,8 @@ export function ThreadRows() {
                     }
                   />
                 )}
-                {group.items.map((t, index) => (
+                {group.items.map((t) => (
                   <React.Fragment key={threadKey(t)}>
-                  {undoAt && undoAt.group === groupIndex && undoAt.index === index ? (
-                    <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} />
-                  ) : null}
                   <ThreadListRow
                     highlight={highlightTerms}
                     thread={t}
@@ -274,9 +230,6 @@ export function ThreadRows() {
                   />
                   </React.Fragment>
                 ))}
-                {undoAt && undoAt.group === groupIndex && undoAt.index === group.items.length ? (
-                  <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} />
-                ) : null}
               </div>
             ))}
         </div>
@@ -322,13 +275,6 @@ function StackThreadMenu({ at, onDismiss }: { at: StackMenuAt; onDismiss: () => 
 /** The people view's rows: one per correspondent, pinned people first, then by day, with the person menu and its snooze times. */
 export function PeopleRows() {
   const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, setStackMenu, snoozeMany, stackMenu, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
-  useListHoldsUndoSlot();
-  const lastPersonOf = useLastPersonOf(personRows);
-  const undoAt = useUndoSlotPlacement(personGroups, skipPinnedGroup);
-  const { slot: undoSlot } = useUndoSlot();
-  // Under the person it left, while they are still a row; else by its time.
-  const undoUnder = slotPerson(undoSlot, lastPersonOf, personRows);
-  const undoRow = undoSlot ? <UndoSlotRow key="undo-stack" narrow={listNarrow} smallFaces={listDensity === "compact" && !listRowWide} /> : null;
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -359,7 +305,7 @@ export function PeopleRows() {
                     "No mail from your contacts right now."}
             </p>
           ) : null}
-          {personGroups.map((group, groupIndex) => (
+          {personGroups.map((group) => (
           <div
             key={group.pinned ? "pinned" : group.label || "people"}
             className={group.pinned ? "relative" : undefined}
@@ -396,7 +342,7 @@ export function PeopleRows() {
                 }
               />
             )}
-          {group.items.map((row, index) => {
+          {group.items.map((row) => {
             const newest = row.threads[0];
             const personHasDraft = row.threads.some((t) =>
               draftKeys.has(threadDraftKey(t.account, t.threadId))
@@ -416,7 +362,6 @@ export function PeopleRows() {
             const painted = paintedNow && !scheduledOpen;
             return (
               <React.Fragment key={row.key}>
-              {!undoUnder && undoAt && undoAt.group === groupIndex && undoAt.index === index ? undoRow : null}
               <PersonListRow archivePerson={archivePerson} chromeDark={chromeDark} clickStack={clickStack} debouncedSearch={debouncedSearch} highlightTerms={highlightTerms} listDensity={listDensity} listExpanded={listExpanded} listNarrow={listNarrow} listRowWide={listRowWide} multiKeys={multiKeys} newest={newest} openPersonWindow={openPersonWindow} painted={painted} personHasDraft={personHasDraft} personHasFile={personHasFile} personTitle={personTitle} purgeFrom={purgeFrom} row={row} setPersonMenuAt={setPersonMenuAt} setSelectionMenu={setSelectionMenu} stackOpen={stackOpen} t={t} togglePersonPin={togglePersonPin} toggleRead={toggleRead} />
               {stackOpen ? (
                 <StackThreads
@@ -430,11 +375,9 @@ export function PeopleRows() {
                   withYear={Boolean(debouncedSearch)}
                 />
               ) : null}
-              {undoUnder === row.key ? undoRow : null}
               </React.Fragment>
             );
           })}
-          {!undoUnder && undoAt && undoAt.group === groupIndex && undoAt.index === group.items.length ? undoRow : null}
           </div>
           ))}
         </div>
@@ -1090,26 +1033,20 @@ export function ListNotices() {
  * mark a pin the same way.
  */
 /**
- * The Outbox: what is held for later, what is being sent, and what the
- * server refused. Its own view, opened from the folder rail while it holds
- * anything.
+ * Scheduled (the Outbox): what is held for later, what is being sent, and
+ * what the server refused. Its own view, opened from the folder rail while
+ * it holds anything. It stood above the list too until 2026-10-28.
  */
-export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
+export function OutboxGroup() {
   const t = useMailT();
   const pageList = usePageList();
   const openHeld = useOpenScheduledMessage();
   const { listNarrow, listExpanded, chromeDark } = usePageLayout();
   const { actOnHeld } = usePageActions();
   const { setSelected } = usePageReader();
-  const { accountEmails, mailboxScopeEmails } = usePageAccounts();
-  // Above the list, on one mailbox's tab: that mailbox's. On All: every
-  // one, a hidden mailbox's too — hiding a mailbox holds its incoming mail,
-  // and what it will send is still the reader's to see.
-  const oneMailbox = onTop && !isMailboxScopeAll(mailboxScopeEmails, accountEmails);
-  const inView = new Set(mailboxScopeEmails.map((e) => e.trim().toLowerCase()));
-  const heldMessages = oneMailbox
-    ? pageList.heldMessages.filter((held) => inView.has(held.account.trim().toLowerCase()))
-    : pageList.heldMessages;
+  // Every mailbox's, a hidden mailbox's too: hiding a mailbox holds its
+  // incoming mail, and what it will send is still the reader's to see.
+  const heldMessages = pageList.heldMessages;
   const [menu, setMenu] = React.useState<OutboxMenuAt | null>(null);
   // A reply opens its thread, where it stands as a dashed bubble. A new
   // message has no thread yet: it opens on a page of its own.
@@ -1131,7 +1068,7 @@ export function OutboxGroup({ onTop = false }: { onTop?: boolean }) {
                 cn(ROW_PAD_LEFT, "pr-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mail-list-muted)]"),
                 listExpanded ? "pt-2" : "pt-4"
               )}>
-                {t(onTop ? "scheduledGroup" : "outbox")} · {heldMessages.length}
+                {t("outbox")} · {heldMessages.length}
               </p>
               {/* The Outbox: what is on its way out, until it has gone.
                   A message waiting for its time, one being sent, and

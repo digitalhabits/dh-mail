@@ -10,6 +10,7 @@
  * hooks run in the same order as before.
  */
 
+import { confirmWithUndo } from "@/components/mail/undo-confirm";
 import { FLOATING_COMPOSE_SIZE_KEY } from "@/lib/mail/storage-keys";
 import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled } from "@/lib/mail/scheduled-events";
@@ -578,20 +579,16 @@ export function useComposeDraft({
       // Named, so a bin pressed by mistake says which message it took: the
       // subject, or whom it was to when it had none yet.
       const name = discardedDraftName(saved);
-      toast(
-        name
-          ? mailSay("draftDiscardedNamed", { name })
-          : mailSay("draftDiscarded"),
-        {
-        action: {
-          label: mailSay("undo"),
-          onClick: () => {
-            discardedKeyRef.current = null;
-            void setDraft(saved);
-          },
+      confirmWithUndo({
+        action: "discard",
+        verb: mailSay("draftDiscarded"),
+        object: name ?? "",
+        label: name ? mailSay("draftDiscardedNamed", { name }) : mailSay("draftDiscarded"),
+        onUndo: () => {
+          discardedKeyRef.current = null;
+          void setDraft(saved);
         },
-        }
-      );
+      });
     })();
     (onDiscarded ?? onClose)();
   }, [onClose, onDiscarded, draftKeyRef]);
@@ -979,6 +976,7 @@ export function useComposeSend({
     // in the composer before anything is scheduled.
     const notice = sendAt ? await sendLaterNotice(from, formatSnoozeWakeLabel(sendAt)) : "";
     sendWithUndo({
+      object: subject,
       ...(sendAt ? { label: () => notice } : null),
       onSend: () => void deliver(),
       // With the key, because a composer opened with nothing looks for the

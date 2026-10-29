@@ -6,6 +6,7 @@
  * useThreadPane calls them in the order in which their hooks always ran.
  */
 
+import { focusWhenReady } from "@/lib/mail/focus-when-ready";
 import * as React from "react";
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
@@ -541,7 +542,7 @@ export function useReplyFlow({
     // The files on the message go with it, as they do for a forward from the
     // header. Without this, a forward from a bubble left them behind.
     beginForwardFiles(findLoadedMessage(thread, olderParts, messageId));
-    requestAnimationFrame(() => recipientInputRef.current?.focus());
+    focusWhenReady(() => recipientInputRef.current);
   }, [openComposer, beginForwardFiles, olderParts, thread, recipientInputRef]);
   return { adoptStoredDraft, bringBackPopout, cardHadComposer, chatStyleBusy, closeDiaryProposal, closeFloatingCardRef, diaryBusy, diaryProposal, discardComposer, dismissDraftNotes, draftNotes, draftReplyWithAssist, draftWorking, draftingReply, floatReply, forwardMessage, popOutThread, popoutOpen, printThread, proposeDiaryFromThread, replyQuoting, replyText, requestDiscard, restoreDraftBrief, setChatStyle, signsReply, startReply, stopDraft, updateRecordsFromThread };
 }

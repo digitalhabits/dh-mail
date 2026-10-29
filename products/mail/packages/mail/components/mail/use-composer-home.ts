@@ -29,6 +29,7 @@
  * in ThreadPane.
  */
 
+import { confirmWithUndo } from "@/components/mail/undo-confirm";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 import { htmlToPlainText } from "@/lib/client-email-html";
@@ -266,43 +267,38 @@ export function useComposerHome(input: {
     }
 
     /* The card waits for the Undo the same way a send does: hidden while
-       the toast stands, back with the words if it is pressed, and gone
-       once the discard is final. */
-    let undone = false;
-    const cardDone = () => {
-      if (!undone) closeFloatingCardRef.current();
-    };
-    toast(mailSay("draftDiscarded"), {
-      duration: DISCARD_UNDO_MS,
-      onAutoClose: cardDone,
-      onDismiss: cardDone,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          undone = true;
-          cancelPendingDiscard(key);
-          discardedKeyRef.current = null;
-          importedDraftRef.current = providerRef;
-          // Not the pick of one message: closing never cleared it, so it
-          // is still what it was.
-          restoreComposer(
-            {
-              mode: snapshot.mode,
-              reply: snapshot.reply,
-              subject: snapshot.subject,
-              toList: snapshot.toList,
-              ccList: snapshot.ccList,
-              showCc: snapshot.showCc,
-              editRecipients: snapshot.editRecipients,
-              includeSignature: snapshot.includeSignature,
-              signatureHtml: snapshot.signatureHtml,
-              fromAccount: snapshot.fromAccount,
-              replyFocus: snapshot.replyFocus,
-              showPreview: false,
-            },
-            restoreAttachments
-          );
-        },
+       the confirmation stands, back with the words if Undo is pressed, and
+       gone once the discard is final. */
+    confirmWithUndo({
+      action: "discard",
+      verb: mailSay("draftDiscarded"),
+      object: snapshot.subject,
+      label: mailSay("draftDiscarded"),
+      ms: DISCARD_UNDO_MS,
+      onGone: () => closeFloatingCardRef.current(),
+      onUndo: () => {
+        cancelPendingDiscard(key);
+        discardedKeyRef.current = null;
+        importedDraftRef.current = providerRef;
+        // Not the pick of one message: closing never cleared it, so it
+        // is still what it was.
+        restoreComposer(
+          {
+            mode: snapshot.mode,
+            reply: snapshot.reply,
+            subject: snapshot.subject,
+            toList: snapshot.toList,
+            ccList: snapshot.ccList,
+            showCc: snapshot.showCc,
+            editRecipients: snapshot.editRecipients,
+            includeSignature: snapshot.includeSignature,
+            signatureHtml: snapshot.signatureHtml,
+            fromAccount: snapshot.fromAccount,
+            replyFocus: snapshot.replyFocus,
+            showPreview: false,
+          },
+          restoreAttachments
+        );
       },
     });
   }, [

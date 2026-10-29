@@ -44,20 +44,20 @@ import { accountPassesMailboxScope, gmailOauthHref, MAIL_OFF_TAB_VIEWS, mailboxS
 import { OlderMailRows } from "@/components/mail/mail-older-rows";
 import { useOlderMail } from "@/components/mail/use-older-mail";
 import { ThreadRows, PeopleRows, ListNotices, OutboxGroup } from "@/components/mail/mail-list-rows";
+import { UndoSlotFoot } from "@/components/mail/undo-slot-row";
 import { HiddenAccountsContext } from "@/components/mail/hidden-account-mark";
 
-/** The scheduled group above the list, in the views it belongs in. */
-function ScheduledOnTop() {
-  const { draftsView } = usePageCompose();
-  const { debouncedSearch, tab } = usePageList();
-  const { accountEmails } = usePageAccounts();
-  if (draftsView || debouncedSearch || !accountEmails.length) return null;
-  if (["outbox", "snoozed", "sent", TRIAGE_TAB].includes(tab)) return null;
-  return <OutboxGroup onTop />;
+/**
+ * The list's foot, while the list is seen: not put away, and not covered by
+ * the reader on a phone.
+ */
+function ListUndoFoot() {
+  const { detailOpen, listCollapsed, listNarrow, listOutForSearch, phone } = usePageLayout();
+  const seen = phone ? !detailOpen : !listCollapsed || listOutForSearch;
+  return <UndoSlotFoot place="list" on={seen} narrow={listNarrow} />;
 }
 
 /** The rows, with the banners over them and the load-more under them. */
-
 export function ThreadListColumn({
   listTabsOrFolder,
   hide,
@@ -99,6 +99,9 @@ export function ThreadListColumn({
           ) : null}
 
         <div className="relative min-h-0 flex-1">
+        {/* Archive, delete, move, snooze and send say so here, with Undo
+            (undo-slot-row). */}
+        <ListUndoFoot />
         <div
           ref={listScrollRef}
           data-mail-list-scroller
@@ -108,10 +111,8 @@ export function ThreadListColumn({
           )}
         >
           <ListNotices />
-          {/* What this computer or the server will send later, at the top
-              of the list, where the reader sees it every time they look —
-              not only in the Outbox view (docs/mail-send-later.md, 4.7). */}
-          <ScheduledOnTop />
+          {/* What will be sent later is in the Scheduled folder, and in its
+              own conversation, not above the list (2026-10-28). */}
           {draftsView ? (
             <DraftsListView />
           ) : loadingList &&

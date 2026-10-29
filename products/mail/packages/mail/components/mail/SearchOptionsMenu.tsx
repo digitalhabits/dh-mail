@@ -47,7 +47,7 @@ export function SearchOptionsMenu({
             "ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
             lit
               ? "bg-teal-50 text-teal-700"
-              : "text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              : "text-[var(--mail-frame-field-ink)] hover:bg-[var(--mail-sidebar-hover)] hover:text-stone-800"
           )}
         >
           <ChevronDown className="h-3.5 w-3.5" />
