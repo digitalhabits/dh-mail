@@ -458,10 +458,13 @@ mod tests {
   #[test]
   fn one_message_is_sent_by_one_worker() {
     let db = MailDb::open_in_memory().unwrap();
-    let now = now_ms();
     let id = db
       .outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], "raw", "Hello", &["ann@x.test".into()], None, None)
       .unwrap();
+    // Read after the message is queued: Windows' clock moves in steps of
+    // about 15 ms, so a time read before could fall before the message's own
+    // and count it as not yet due (CI, 2026-10-30).
+    let now = now_ms();
 
     // Two workers, one message: the first takes it, the second is told it
     // changed nothing and leaves it alone.
