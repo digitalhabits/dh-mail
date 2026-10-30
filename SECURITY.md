@@ -287,16 +287,15 @@ from.
 
 The code here is a snapshot of each release, exported whole from the private
 repository the app is developed in. One commit is one version. Releases are
-tagged `mail-v<version>`, so `git diff mail-v0.3.3 mail-v0.3.4` shows
+tagged `v<version>`, so `git diff v0.11.45 v0.11.47` shows
 everything that changed between two builds.
 
 ## Reporting something
 
 **A security problem:** please email team@digitalhabits.org. Do not open a
-public issue for it. Tell us what you found, how to make it happen, and
-which version you use (see **Settings**). We reply within a week. We tell
-you when a fix is released, and we name you in the release notes if you
-want us to.
+public issue for it. Describe the issue, how to reproduce it, and which
+version you use (see **Settings**). We reply within three days, treat
+security problems as our top priority, and tell you when a fix is released.
 
-**Anything else:** please open an issue at
-<https://github.com/digitalhabits/dh-mail/issues>.
+**Anything else:** either reach out at team@digitalhabits.org or open an
+issue at <https://github.com/digitalhabits/dh-mail/issues>.
