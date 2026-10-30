@@ -43,6 +43,8 @@ export const USAGE_PING_ENABLED_KEY = "mail_usage_ping_enabled";
 export const MAIL_LANG_KEY = "redd-plan-mail-lang";
 /** Light, dark or system. Local. */
 export const MAIL_COLOR_MODE_KEY = "redd-plan-mail-color-mode";
+/** The reader's own colours for the window's surfaces (light theme). Local. */
+export const MAIL_SURFACE_COLORS_KEY = "redd-plan-mail-surface-colors";
 /** The interface scale. Removed when it is 100 %. Local. */
 export const MAIL_UI_SCALE_KEY = "redd-plan-mail-ui-scale";
 /** The zoom of the mail pane. Local. */

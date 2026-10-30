@@ -8,6 +8,7 @@ import { useMailT } from "@/lib/mail/i18n";
 import type { MailDraftRow } from "@/lib/mail/types";
 import { isNativeShell } from "@/lib/native-shell";
 import { cn } from "@/lib/utils";
+import { previewText } from "@/lib/mail/preview-text";
 
 /**
  * What to call the place our own drafts are kept.
@@ -218,7 +219,7 @@ export function MailDraftsList({
               ) : null}
               {row.snippet ? (
                 <span className="truncate text-xs text-[var(--mail-list-muted)]">
-                  {row.snippet}
+                  {previewText(row.snippet)}
                 </span>
               ) : null}
             </button>

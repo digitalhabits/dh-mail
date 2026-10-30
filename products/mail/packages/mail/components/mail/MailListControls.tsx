@@ -20,6 +20,7 @@ import { readUsagePingEnabled, writeUsagePingEnabled } from "@/lib/mail/usage-pi
 import { useShowFolderCounts, writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
 import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
+import { SurfaceColorsSetting } from "@/components/mail/surface-colors-setting";
 import { TeamReadingSettings } from "@/components/mail/team-layer";
 import { DraftsFolderSetting } from "@/components/mail/drafts-folder-setting";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
@@ -290,6 +291,7 @@ export function MailLayoutMenu({
               />
             ) : null}
           </SettingsGroup>
+          <SurfaceColorsSetting />
         </SettingsPane>
       );
       break;

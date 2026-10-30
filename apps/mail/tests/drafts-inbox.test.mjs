@@ -26,6 +26,21 @@ suite(async () => {
   check("a reply names its thread and mode, under the mailbox's own spelling",
     reply.ok && reply.draft.kind === "thread" && reply.draft.threadId === "18f2c4a1b" && reply.draft.mode === "replyAll" && reply.draft.account === "Ulla.Work@kollektiv.example");
 
+  const forward = draftFromInbox(
+    { from: "ulla@aavang.example", to: ["bo@havn.example"], body: "See below.", replyTo: { threadId: "18f2c4a1b", mode: "forward" } },
+    ACCOUNTS
+  );
+  check("a forward is a thread draft in forward mode, of the newest message",
+    forward.ok && forward.draft.kind === "thread" && forward.draft.mode === "forward" && forward.draft.quoteMessageId === null);
+  const forwardOne = draftFromInbox(
+    { from: "ulla@aavang.example", to: ["bo@havn.example"], body: "x", replyTo: { threadId: "18f2c4a1b", mode: "forward", messageId: "m7" } },
+    ACCOUNTS
+  );
+  check("a forward can name the message it carries", forwardOne.ok && forwardOne.draft.kind === "thread" && forwardOne.draft.quoteMessageId === "m7");
+  check("a reply carries no message of its own", reply.ok && reply.draft.kind === "thread" && !("quoteMessageId" in reply.draft));
+  const forwardNoTo = draftFromInbox({ from: "ulla@aavang.example", body: "x", replyTo: { threadId: "1a", mode: "forward" } }, ACCOUNTS);
+  check("a forward with nobody to go to is refused, as a forward", !forwardNoTo.ok && forwardNoTo.reason.includes("forward"));
+
   const notConnected = draftFromInbox({ from: "someone@else.example", to: ["bo@havn.example"], body: "x" }, ACCOUNTS);
   check("a mailbox not connected here is refused, and the connected ones named",
     !notConnected.ok && notConnected.reason.includes("not connected") && notConnected.reason.includes("ulla@aavang.example"));

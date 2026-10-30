@@ -69,8 +69,17 @@ function SlotWords({ slot }: { slot: UndoSlot }) {
       <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--mail-chrome-fg)]" strokeWidth={1.75} />
       <span className="flex min-w-0 flex-1 items-baseline gap-2 text-sm" title={`${verb} ${slot.object}`.trim()}>
         {/* A long verb ("Sends at 14:30, if this computer is on…") gives way
-            too, after the subject, so Undo always shows. */}
-        <span className="min-w-0 shrink truncate font-semibold text-[var(--mail-chrome-fg)]">{verb}</span>
+            too, after the subject, so Undo always shows. A countdown
+            ("Sending in 4…") is short and never gives way: the seconds are
+            the point. */}
+        <span
+          className={cn(
+            "font-semibold text-[var(--mail-chrome-fg)]",
+            slot.countdown ? "shrink-0 whitespace-nowrap tabular-nums" : "min-w-0 shrink truncate"
+          )}
+        >
+          {verb}
+        </span>
         {slot.object ? <span className="min-w-0 shrink-[4] truncate text-[var(--mail-list-muted)]">{slot.object}</span> : null}
       </span>
     </>

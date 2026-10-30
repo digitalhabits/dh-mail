@@ -255,7 +255,7 @@ export function MailAccountTabs({
     if (id === ALL_TAB_ID) {
       const inner = (
         <>
-          <AccountMark provider="unknown" className="h-3.5 w-3.5" />
+          <AccountMark provider="unknown" className="h-3.5 w-3.5 text-current" />
           {t("tabAll")}
         </>
       );

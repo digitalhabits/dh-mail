@@ -19,6 +19,7 @@ import { rowTime } from "@/lib/mail/date-format";
 import { useMailT } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
+import { previewText } from "@/lib/mail/preview-text";
 
 /** "4 threads" in a pill, and a chevron for which way the stack is: open or closed. */
 export function StackCount({
@@ -127,7 +128,7 @@ export function StackThreadRow({
         </span>
         {thread.snippet ? (
           <span className="block truncate text-xs text-[var(--mail-row-preview)]">
-            <Highlighted text={thread.snippet} terms={highlight} onNavy={onNavy} />
+            <Highlighted text={previewText(thread.snippet)} terms={highlight} onNavy={onNavy} />
           </span>
         ) : null}
       </span>
@@ -260,7 +261,7 @@ export function PersonWideBody({
             <Paperclip className="mr-1 inline h-3 w-3 -translate-y-px stroke-[1.5] opacity-80" aria-hidden />
           ) : null}
           <Highlighted
-            text={stack ? threads.map((th) => th.subject).join(" · ") : newest.snippet}
+            text={stack ? threads.map((th) => th.subject).join(" · ") : previewText(newest.snippet)}
             terms={highlight}
             onNavy={onNavy}
           />

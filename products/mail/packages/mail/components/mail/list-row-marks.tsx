@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  * row keeps its own size and the faces and words do not move when it opens.
  */
 export const OPEN_ROW_CARD = cn(
-  "isolate [--mail-person-stack-ring:var(--mail-row-selected-solid)]",
+  "mail-open-row isolate [--mail-person-stack-ring:var(--mail-row-selected-solid)]",
   "before:pointer-events-none before:absolute before:inset-x-2 before:inset-y-[2px] before:-z-10",
   "before:rounded-surface before:bg-[var(--mail-row-selected)] before:shadow-[var(--mail-row-card-shadow)]"
 );
@@ -37,20 +37,22 @@ const LINE_FROM = "after:pointer-events-none after:absolute after:bottom-0 after
 
 export function rowLine({ narrow, smallFace }: { narrow?: boolean; smallFace?: boolean }): string {
   if (narrow) return ROW_LINE;
-  // The edge (24px), the face (36px or 28px) and the gap after it (12px or 10px).
-  return cn(LINE_FROM, smallFace ? "after:left-[62px]" : "after:left-[72px]");
+  // The edge (30px), the face (36px or 28px) and the gap after it (12px or 10px).
+  return cn(LINE_FROM, smallFace ? "after:left-[68px]" : "after:left-[78px]");
 }
 
 /**
- * The row's left padding: 24px, the one edge the list's head, its
- * headings and its faces share. The unread dot hangs in it.
+ * The row's left padding: 30px, the edge the list's headings and its
+ * faces share. The open row's card starts 8px in, and the 22px after that
+ * is the unread dot's own column, so the card holds the dot (2026-10-30).
  */
-export const ROW_PAD_LEFT = "pl-6";
+export const ROW_PAD_LEFT = "pl-[30px]";
 
 /*
- * Where the dot stands: level with the middle of the face, as the new
- * Outlook puts it (Ulrik, 2026-10-21). From the row's top edge to the
- * dot's, in px: the row's padding, half the 36px face, less half the dot.
+ * Where the dot stands: level with the middle of the face (Ulrik,
+ * 2026-10-21, and again 2026-10-30 after a day level with the sender line).
+ * From the row's top edge to the dot's, in px: the row's padding, half the
+ * 36px face, less half the dot.
  */
 /** A row padded 10px at the top (py-2.5): 10 + 18 - 4. */
 export const FACE_DOT_TOP = 24;
@@ -68,8 +70,9 @@ export function UnreadGutterDot({ unread, top }: { unread: boolean | undefined; 
     <span
       aria-hidden
       className={cn(
-        // Centred in the 24px margin, before the face.
-        "pointer-events-none absolute left-2 h-2 w-2 rounded-full bg-[var(--mail-accent)]",
+        // Centred in its own 22px column, inside the open row's card
+        // (which starts 8px in): 8 + 11 - 4.
+        "pointer-events-none absolute left-[15px] h-2 w-2 rounded-full bg-[var(--mail-accent)]",
         top == null && "top-1/2 -translate-y-1/2"
       )}
       style={top == null ? undefined : { top }}

@@ -858,8 +858,18 @@ export async function sendMailMessage(input: {
   // cannot ask sends with the bare address, the way every send did before.
   // A Gmail on an app password has no token: its name was given when it
   // was connected, and it sends through the outbox.
+  //
+  // Through the outbox the token is only for that name, so failing to get
+  // one is not a reason to stop: a reply sent through the outbox failed
+  // with "Load failed" when the token refresh lost its connection, and
+  // nothing was queued (2026-10-30). Send later still needs the token for
+  // its draft, so it still stops.
   const gmailToken = await tokenFor().catch((err: unknown) => {
     if (isGmailAppPasswordError(err)) return undefined;
+    if (viaOutbox && !input.sendAt) {
+      console.warn("mail: no Gmail token for the sender name; sending with the stored one", err);
+      return undefined;
+    }
     throw err;
   });
   const senderName = await senderNameFor(input.account, { token: gmailToken, provider: "gmail" });

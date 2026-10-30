@@ -1,5 +1,11 @@
 ## What is new
 
+**Your own colours**
+- Settings > General > Colours sets the colour of each part of the window: the top bar, the folder list, the mail list, its header, the header of a conversation, and the background behind a conversation. In the light theme only.
+- Right-click the empty background of a part to set its colour there.
+- The colours of the Centre for Digital Habits come first. After them you can pick any colour, and a colour that you use on one part is offered for the other parts too.
+- On a dark colour, such as the green or the navy, the words and icons of that part turn cream.
+
 **Undo in one place**
 - When you archive, delete, move, snooze, send or discard a draft, a line at the foot of the list says so: "Archived", "Deleted", "Moved to Receipts", "Snoozed until 18:13", "Sending in 5…" or "Draft discarded", then the subject, with Undo. Before, these were messages at the foot of the window, over what you were reading or writing.
 - With the list hidden, or in the Reader that fills the window, the same line is at the foot of the conversation.
@@ -22,10 +28,13 @@
 - The files of a conversation follow its number of messages and its dates at the top.
 - When an auto-reply is on, a small "Auto-reply on" beside Sync says so; point at it to see until when, and click it to change it. Each account it is on for has a reply arrow after its name in the tabs, also an account you have hidden. Before, the notice was a line above the tabs, which pushed the list down out of line with the conversation beside it.
 - In the dark theme, the messages you sent are blue and the messages you received are a quiet slate, as in the light theme.
-- The title bar has the same sand colour as the folder list, so the two make one frame round the list and the conversation. The list and the conversation sit in that frame, with a rounded corner at the top left.
+- The title bar and the folder list are a light sand, and so is the background behind a conversation. The list of conversations, its header and the header of a conversation are cream.
 - The search field takes the free width of the title bar, up to a limit, and Sync and the other buttons are beside it. When the window is narrow, the buttons show only their icons.
 - The search field and the box that filters the folder list have no fill and a thin outline until you click in them. Their words are darker, so they are easy to read.
-- The folder you have open is a darker sand, not white. When you point at a folder or a button in the frame, it turns a lighter sand, so it does not look like a second choice.
+- The folder you have open is a darker step of the folder list's colour, not white. When you point at a folder, it turns a step darker too, but less.
+- The conversation you have open is a white card with round corners in the list, and a conversation you point at turns almost white. The green dot of an unread conversation sits inside its row.
+- Point at the names beside a subject to see everyone with a small picture or their initials.
+- The button that opens a conversation in its own chat window is no longer above the conversation. Right-click the conversation in the list, or use its shortcut.
 - The account tabs above the list stand in a thin outline, not on a grey band.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
 
@@ -69,6 +78,13 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- A reply from a Gmail mailbox is sent also when Mail cannot reach Google for a moment. Before, it could fail with "Load failed" and was not kept to send later.
+- Pictures up to 20 MB show in an email. Before, a picture larger than 5 MB showed as a broken frame.
+- The first words of an email in the list no longer show codes such as "&zwnj;".
+- The address of a link in an email signature is no longer cut off when you point at the link.
+- "Sending in 5…" shows its seconds also when the subject is long.
+- After you discard a draft, the next draft is selected in the list but not opened, so Backspace does not type into it. Backspace again discards it.
+- The drafts of a hidden mailbox are hidden too: they are not in Drafts, not counted beside it, and not opened next.
 - A file whose name has a semicolon in it keeps its whole name. Before, Mail cut the name at the semicolon, so a PDF showed as a plain "FILE", and when you forwarded the email, the file went out without ".pdf".
 - A file that comes without an extension, but is a PDF or a picture, opens in the preview, and is saved with ".pdf" (or the picture's extension) on its name.
 - An email whose plain text is a whole web page shows its first words in the list, not "<!DOCTYPE html …".

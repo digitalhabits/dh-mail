@@ -56,6 +56,19 @@ export function draftsScope(
 }
 
 /**
+ * The drafts of the mailboxes on show. A hidden mailbox's drafts go with
+ * it: they are not listed, not counted, and not opened after a discard.
+ * A new message with no From yet belongs to no mailbox, and stays.
+ */
+export function draftsOfShownMailboxes(
+  drafts: MailDraftRow[],
+  shown: readonly string[]
+): MailDraftRow[] {
+  const keep = new Set(shown.map((a) => a.toLowerCase()));
+  return drafts.filter((row) => !row.account || keep.has(row.account.toLowerCase()));
+}
+
+/**
  * The rows the Drafts view shows: every mailbox's, or those in scope, and
  * only those the search box matches. The scope is one mailbox (a Drafts row
  * under an account in the rail), the mailboxes the tabs have picked, or null
@@ -152,6 +165,22 @@ export function openDraftRow(
 }
 
 /**
+ * Give a draft's row in the list the focus, once it is drawn: where the
+ * caret waits after the arrow keys or a discard open a draft.
+ */
+export function focusDraftRow(id: string): void {
+  if (typeof document === "undefined") return;
+  requestAnimationFrame(() => {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-draft-key]")) {
+      if (el.dataset.draftKey !== id) continue;
+      el.focus({ preventScroll: true });
+      el.scrollIntoView({ block: "nearest" });
+      break;
+    }
+  });
+}
+
+/**
  * Where a double-click opens a draft in a window of its own. A new message
  * of ours opens in a composer window; anything with a thread opens that
  * thread's window, where the composer picks the draft up. A provider draft
@@ -207,7 +236,10 @@ export function openDraftAfter(
   );
   const next = successorAfterRemoving(kept, (row) => row === marker);
   if (next) {
-    openDraftRow(next, open);
+    // Opened as the arrow keys open it: the caret stays off the draft and
+    // on its row, so Backspace again discards this one too.
+    openDraftRow(next, open, { keepFocus: true });
+    focusDraftRow(next.id);
     return;
   }
   open.closeCompose();

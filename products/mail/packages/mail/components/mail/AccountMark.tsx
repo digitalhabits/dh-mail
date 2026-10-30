@@ -129,5 +129,6 @@ export function AccountMark({
   if (provider === "gmail") return <GmailMark className={size} />;
   if (provider === "outlook") return <OutlookMark className={size} />;
   if (provider === "exchange") return <ExchangeMark className={size} />;
-  return <Mail className={cn(size, "text-stone-400")} aria-hidden />;
+  // Grey unless the caller names a colour: the All tab draws it in its words' ink.
+  return <Mail className={cn("h-4 w-4 shrink-0 text-stone-400", className)} aria-hidden />;
 }

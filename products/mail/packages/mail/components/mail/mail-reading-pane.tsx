@@ -29,6 +29,7 @@ import {
   draftsInView,
   landAfterThreadDraftDiscarded,
   openDraftAfter,
+  focusDraftRow,
   openDraftRow,
   providerDraftRefFor,
 } from "@/components/mail/draft-opening";
@@ -105,7 +106,10 @@ export function ReadingPaneContent({
           const next = rowAfterSelection(draftRows, isHeld);
           clearDraftSelection();
           void discardDraftRows(held, refreshDrafts);
-          if (next) openDraftRow(next, draftOpeners);
+          if (next) {
+            openDraftRow(next, draftOpeners, { keepFocus: true });
+            focusDraftRow(next.id);
+          }
           else {
             closeCompose();
             setSelected(null);

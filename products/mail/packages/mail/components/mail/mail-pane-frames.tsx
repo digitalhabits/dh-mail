@@ -158,7 +158,7 @@ export const ListResizeHandle = React.memo(function ListResizeHandle() {
           listVertical
             ? "h-2 w-full cursor-row-resize"
             // The line along the panes' top runs across the gap too.
-            : cn("w-2 cursor-col-resize", PANE_TOP_LINE)
+            : cn("mail-resize-gutter w-2 cursor-col-resize", PANE_TOP_LINE)
         )}
         style={{ order: 2 }}
       />
@@ -295,7 +295,7 @@ export function ListPaneFrame({
         className={cn(
           // Explicit border colour + side (listBorderClass) so the divider
           // between list and reader stays visible against cream chrome.
-          "flex overflow-hidden border-[var(--mail-pane-divider)]",
+          "mail-list-card flex overflow-hidden border-[var(--mail-pane-divider)]",
           // Pane behind the rows when they are the reading surface —
           // stacked above/below, or expanded — so chrome cannot bleed
           // into the table.
@@ -321,7 +321,7 @@ export function ListPaneFrame({
           className={cn(
             // Always a column flex so the New email control is a flex item
             // (avoids a ~3px inline-flex whitespace offset in block layout).
-            "mail-chrome-strip flex flex-col px-6",
+            "mail-list-head mail-chrome-strip flex flex-col px-6",
             listSplit
               ? "shrink-0 overflow-y-auto border-r border-[var(--mail-pane-divider)] bg-[var(--mail-chrome)] pb-3 pt-2"
               // No line of its own at the foot: the filter row draws one

@@ -31,6 +31,7 @@ import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
 import type { MailT } from "@/lib/mail/i18n-strings";
+import { previewText } from "@/lib/mail/preview-text";
 
 /** A finger that has moved this far has said which way it is going. */
 const SWIPE_DECIDE_PX = 8;
@@ -557,7 +558,7 @@ function threadRowClass({
     // The open row is a card lifted off the list; see list-row-marks.
     selected
       ? OPEN_ROW_CARD
-      : "hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]"
+      : "mail-hover-row hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]"
   );
 }
 
@@ -1219,7 +1220,7 @@ function StackedRowBody({
             />
           </span>
         ) : null}
-        <span className="min-w-0 truncate"><Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} /></span>
+        <span className="min-w-0 truncate"><Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} /></span>
       </p>
     </div>
   );
@@ -1326,7 +1327,7 @@ function WideRowBody({
             {t.hasAttachments ? (
               <Paperclip className="mr-1 inline h-3.5 w-3.5 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)]" aria-label={say("hasAttachments")} />
             ) : null}
-            {poppedOut ? null : <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />}
+            {poppedOut ? null : <Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} />}
           </p>
         </div>
         {poppedOut ? <PoppedOutBadge /> : null}
@@ -1387,7 +1388,7 @@ function WideRowBody({
           {compact && t.snippet && !poppedOut ? (
             <span className={onNavy ? "text-white/45" : "text-[var(--mail-row-preview)]"}>
               {" — "}
-              <Highlighted text={t.snippet} terms={highlight} onNavy={onNavy} />
+              <Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} />
             </span>
           ) : null}
         </p>

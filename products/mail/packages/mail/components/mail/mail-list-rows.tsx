@@ -54,6 +54,7 @@ import { TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
+import { previewText } from "@/lib/mail/preview-text";
 
 /** The thread view's rows: the pinned band, then the list by day. */
 export function ThreadRows() {
@@ -352,7 +353,7 @@ export function PeopleRows() {
             const personHasFile = row.threads.some((th) => th.hasAttachments);
             const personTitle = [
               row.name,
-              newest.subject || newest.snippet,
+              newest.subject || previewText(newest.snippet),
               personHasDraft ? t("draft") : null,
               row.unread ? t("unread") : null,
             ]
@@ -685,7 +686,7 @@ function PersonListRow({
                           aria-label={t("hasAttachments")}
                         />
                       ) : null}
-                          <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                          <Highlighted text={previewText(newest.snippet)} terms={highlightTerms} onNavy={chromeDark} />
                         </span>
                       ) : null}
                     </span>
@@ -712,7 +713,7 @@ function PersonListRow({
                           aria-label={t("hasAttachments")}
                         />
                       ) : null}
-                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                        <Highlighted text={previewText(newest.snippet)} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       <span className="w-[4.5rem] shrink-0 group-hover:hidden" aria-hidden />
                     </span>
@@ -763,7 +764,7 @@ function PersonListRow({
                           aria-label={t("hasAttachments")}
                         />
                       ) : null}
-                        <Highlighted text={newest.snippet} terms={highlightTerms} onNavy={chromeDark} />
+                        <Highlighted text={previewText(newest.snippet)} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                     </span>
                   )}
@@ -861,7 +862,7 @@ export function ListNotices() {
             .map((s) => (
               <div
                 key={`${s.account}|${s.folder}`}
-                className="border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-2.5"
+                className="px-5 pb-2.5 pt-2.5"
               >
                 {syncPauseKind(s.lastError) === "signIn" ? (
                   /* The sign-in is refused: a grant revoked, a password
@@ -942,7 +943,7 @@ export function ListNotices() {
           for as long as it is true: without this the rows that came
           back read as the whole answer. */}
       {unreadable.length && !listNarrow ? (
-        <div className="space-y-2 border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-3">
+        <div className="space-y-2 px-5 pb-2.5 pt-3">
           {unreadable.map((box, index) => (
             <ListNotice
               key={box.email}

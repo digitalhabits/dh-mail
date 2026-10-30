@@ -20,12 +20,16 @@
  * A file with a `"request"` field is not a draft: it goes to the team
  * layer, which answers it in `answers/<file>` (or says it cannot).
  *
+ * A forward also gets the files of the message it carries, as a person's
+ * forward does (forward-draft-parts).
+ *
  * A reply to a thread that already has a draft is not made: the draft there
  * is the person's own, and a program does not write over it.
  */
 
 import * as React from "react";
 
+import { forwardDraftParts } from "@/components/mail/forward-draft-parts";
 import { handleDraftsFolderRequest } from "@/components/mail/team-layer";
 import { connectedAccountEmails, draftFingerprint, draftPreview } from "@/lib/mail/agent-drafts";
 import { draftFromInbox } from "@/lib/mail/drafts-inbox";
@@ -161,7 +165,20 @@ export function useDraftsInbox(
               toast.error(mailSay("draftsInboxNotMade", { reason }));
               continue;
             }
-            const saved: MailDraft = { ...draft, key, attachments: attachmentsOf(item, key), updatedAt: Date.now() };
+            // A forward carries its message's files, fetched now (forward-draft-parts).
+            const forward = draft.mode === "forward" ? await forwardDraftParts(draft, key) : null;
+            if (forward && !forward.ok) {
+              await reject(item, forward.reason);
+              toast.error(mailSay("draftsInboxNotMade", { reason: forward.reason }));
+              continue;
+            }
+            const saved: MailDraft = {
+              ...draft,
+              ...(forward ? { subject: forward.subject } : null),
+              key,
+              attachments: [...(forward?.files ?? []), ...attachmentsOf(item, key)],
+              updatedAt: Date.now(),
+            };
             await setDraft(saved);
             await note("made", item.name, receiptOf(saved)).catch(() => {});
             last = { kind: "thread", account: draft.account, threadId: draft.threadId };

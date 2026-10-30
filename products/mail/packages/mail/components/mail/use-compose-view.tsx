@@ -1033,7 +1033,14 @@ export function useComposeSend({
         if (active?.closest(TYPING_TARGET)) {
           return;
         }
+        // This draft's row in the Drafts list counts as here: the arrow
+        // keys and a discard leave the caret on it, ready for the next press.
+        const key = draftKeyRef.current;
+        const onOwnRow = Boolean(
+          key && !floating && active?.closest(`[data-draft-key="${CSS.escape(key)}"]`)
+        );
         if (
+          !onOwnRow &&
           !sendsFromHere({
             caretHere: Boolean(composeRef.current?.contains(active)),
             caretNowhere: !active || active === document.body,

@@ -26,6 +26,8 @@ import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { MailPhoneShell, type MailPhoneDetail } from "@/components/mail/MailPhoneShell";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
+import { useApplySurfaceColors } from "@/lib/mail/use-surface-colors";
+import { useSurfaceColorMenu } from "@/components/mail/surface-color-menu";
 import { ConnectedMailboxRhythm } from "@/components/mail/AccountRhythmDialog";
 import { mailBuiltinTabLabels, mailSearchPlaceholder } from "@/components/mail/mail-list-state";
 export { openMailAccountsMenu };
@@ -73,6 +75,10 @@ function titlebarFollowsList(
 }
 export function MailPage(props: MailPageProps) {
   const m = useMailPage(props);
+  // The reader's own surface colours (Settings > General > Colours), and
+  // the right-click on a background that sets one.
+  useApplySurfaceColors();
+  const surfaceColorMenu = useSurfaceColorMenu();
   const {
     accountEmails,
     accountLabels,
@@ -521,6 +527,7 @@ export function MailPage(props: MailPageProps) {
       <FloatingCards sendFrom={sendFrom} />
       {contactDialogs}
       <ConnectedMailboxRhythm />
+      {surfaceColorMenu}
     </div>
     </MailPageSlices>
   );

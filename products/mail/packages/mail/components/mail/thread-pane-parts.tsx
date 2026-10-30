@@ -21,7 +21,7 @@ import {
 import { ChangeTimeMenu } from "@/components/mail/ScheduledMessageView";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import * as React from "react";
-import { Archive, ArchiveRestore, ChevronDown, Clock, Forward, Loader2, Maximize2, MessagesSquare, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, Clock, Forward, Loader2, Maximize2, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
 import { openThreadFullWindow } from "@/components/mail/thread-full-window";
 import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
@@ -1085,7 +1085,6 @@ function ThreadActionStrip({
     onToggleUnread,
     onTrash,
     pinned,
-    popOutThread,
     printThread,
     proposeDiaryFromThread,
     requestDiscard,
@@ -1108,7 +1107,7 @@ function ThreadActionStrip({
     // 5px over a 38px row: the buttons stand 2px above the account tabs'
     // middle, and the line under them meets the foot of the tabs' track
     // (measured in the demo: track 52-88px, line now 87-88px).
-    <div className="mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-[5px]">
+    <div className="mail-thread-toolbar mail-chrome-strip relative z-[1] -ml-2 w-[calc(100%+0.5rem)] border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pt-[5px]">
       <div
         ref={setToolbarRowNode}
         data-tight={tightToolbar ? "" : undefined}
@@ -1299,7 +1298,6 @@ function ThreadActionStrip({
         />
       ) : null}
       {hidden.has("print") &&
-      hidden.has("popOut") &&
       (!mailHasTeamRecords() || !assistOn || hidden.has("records")) ? null : (
         <span
           aria-hidden
@@ -1315,15 +1313,8 @@ function ThreadActionStrip({
           onClick={printThread}
         />
       )}
-      {hidden.has("popOut") ? null : (
-        <ThreadAction
-          label={`${t("popOutChat")} (${formatShortcut(
-            shortcuts.popOut
-          )})`}
-          icon={MessagesSquare}
-          onClick={popOutThread}
-        />
-      )}
+      {/* No Pop out chat button: the row's right-click menu has it, and
+          its shortcut still works (2026-10-30). */}
       {/* The text size beside the Reader, which has an Aa of its own. */}
       {hidden.has("zoom") ? null : (
         <ZoomTextSize zoom={m.zoom} onAdjust={m.adjustZoomFromControls} className={AA_BUTTON_CLASS} />
@@ -1386,7 +1377,6 @@ function ThreadStripEnd({
     onToggleUnread,
     onTrash,
     pinned,
-    popOutThread,
     printThread,
     setAttachmentPreview,
     shortcuts,
@@ -1407,7 +1397,6 @@ function ThreadStripEnd({
           zoom={zoom}
           onZoomAdjust={adjustZoomFromControls}
           onPrint={hidden.has("print") ? printThread : undefined}
-          onPopOut={hidden.has("popOut") ? popOutThread : undefined}
           onOpenReader={hidden.has("reader") ? openThreadFullWindow : undefined}
           pinned={pinned}
           onTogglePin={hidden.has("pin") ? onTogglePin : undefined}

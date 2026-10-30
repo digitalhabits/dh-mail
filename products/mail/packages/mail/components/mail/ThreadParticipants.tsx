@@ -10,6 +10,7 @@ import type { ParticipantChunk } from "@/lib/mail/thread-heading-people";
 import { useMailT } from "@/lib/mail/i18n";
 import { mailSay } from "@/lib/mail/i18n-strings";
 import { AccountMark } from "@/components/mail/AccountMark";
+import { SenderAvatar } from "@/components/mail/SenderAvatar";
 import { useAccountMarks } from "@/lib/mail/account-mark";
 import { mailProviderFor, useIsOutlookAccount } from "@/lib/mail/use-outlook-accounts";
 
@@ -170,6 +171,11 @@ export function ThreadParticipants({
   );
 }
 
+/** Each person in the card: their face, then their name and address, as
+    the list shows them (2026-10-30). */
+const PERSON_ROW = "flex items-center gap-2";
+const FACE_PX = 24;
+
 /** How long the pointer can be off the count and the card before it closes. */
 const CARD_CLOSE_MS = 200;
 
@@ -252,7 +258,8 @@ function EveryoneCard({
           {people.flatMap((chunk) =>
             chunk.kind === "you"
               ? chunk.emails.map((email) => (
-                  <li key={`you:${email}`}>
+                  <li key={`you:${email}`} className={PERSON_ROW}>
+                    <SenderAvatar name="" email={email} size={FACE_PX} />
                     <button
                       type="button"
                       className="text-left hover:underline"
@@ -266,7 +273,8 @@ function EveryoneCard({
                   </li>
                 ))
               : [
-                  <li key={chunk.email}>
+                  <li key={chunk.email} className={PERSON_ROW}>
+                    <SenderAvatar name={chunk.name ?? ""} email={chunk.email} size={FACE_PX} />
                     <ParticipantName chunk={chunk} onAddressMenu={onAddressMenu} />
                   </li>,
                 ]

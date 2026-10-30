@@ -13,9 +13,14 @@
  *     "attachments": ["/Users/you/plan.pdf"],  optional: files Mail reads and attaches
  *     "replyTo": {                        optional: a reply in a thread
  *       "threadId": "18f2c4…",            the thread's id (Gmail's own id)
- *       "mode": "reply"                   or "replyAll"
+ *       "mode": "reply",                  or "replyAll", or "forward"
+ *       "messageId": "…"                  optional: the message a forward carries
  *     }
  *   }
+ *
+ * A forward carries the thread's newest message, or the one `messageId`
+ * names, with its files: Mail fetches them when it makes the draft
+ * (components/mail/use-drafts-inbox), as it does when a person starts one.
  *
  * `bodyHtml` may stand in for `body`. Nothing is sent: the draft lands in
  * Drafts for a person to read and send. A draft that cannot be made comes
@@ -109,8 +114,11 @@ export function draftFromInbox(raw: unknown, accounts: readonly string[]): Draft
     const r = replyTo as Record<string, unknown>;
     const threadId = typeof r.threadId === "string" ? r.threadId.trim() : "";
     if (!threadId) return { ok: false, reason: '"replyTo.threadId" is missing' };
-    const mode = r.mode === "replyAll" ? "replyAll" : "reply";
-    if (!toList.length) return { ok: false, reason: 'A reply needs "to": who it goes to' };
+    const mode = r.mode === "replyAll" || r.mode === "forward" ? r.mode : "reply";
+    if (!toList.length) {
+      return { ok: false, reason: `A ${mode === "forward" ? "forward" : "reply"} needs "to": who it goes to` };
+    }
+    const messageId = typeof r.messageId === "string" && r.messageId.trim() ? r.messageId.trim() : null;
     return {
       ok: true,
       draft: {
@@ -128,6 +136,7 @@ export function draftFromInbox(raw: unknown, accounts: readonly string[]): Draft
         fromAccount: from,
         replyFocus: false,
         attachments: [],
+        ...(mode === "forward" ? { quoteMessageId: messageId } : null),
       },
     };
   }

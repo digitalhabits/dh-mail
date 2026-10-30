@@ -33,7 +33,11 @@ INSTALLED="$(security find-identity -v -p codesigning 2>/dev/null || true)"
 if [[ "$INSTALLED" == *"$IDENTITY"* ]]; then
   # The identifier is the release app's on purpose: one keychain grant then
   # covers the app whether it was built for development or for shipping.
-  codesign --force --sign "$IDENTITY" \
+  #
+  # No timestamp: a dev build does not need one, and when Apple's timestamp
+  # server cannot be reached the signing fails. The binary then stays ad-hoc
+  # signed and the keychain asks for the password again.
+  codesign --force --sign "$IDENTITY" --timestamp=none \
     --identifier org.digitalhabits.mail \
     "$BINARY" >/dev/null 2>&1 || true
 fi

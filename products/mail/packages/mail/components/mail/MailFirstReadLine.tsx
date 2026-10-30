@@ -61,7 +61,7 @@ export function MailFirstReadLine({
         aria-label={`${label}. ${count}. ${stateText}`}
         title={`${label}. ${count}. ${stateText}`}
         data-first-read={line.state}
-        className="border-b border-[var(--mail-chrome-border)] px-1.5 pb-1.5 pt-2"
+        className="px-1.5 pb-1.5 pt-2"
       >
         {bar}
         <p
@@ -78,7 +78,7 @@ export function MailFirstReadLine({
   return (
     <div
       data-first-read={line.state}
-      className="border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-2.5"
+      className="px-5 pb-2.5 pt-2.5"
     >
       <div
         role="progressbar"

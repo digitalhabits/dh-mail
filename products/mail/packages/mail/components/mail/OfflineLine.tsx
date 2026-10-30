@@ -14,7 +14,7 @@ import type { OfflineKind } from "@/lib/mail/use-offline";
 export function OfflineLine({ offline, waiting, t }: { offline: OfflineKind; waiting: number; t: MailT }) {
   if (!offline) return null;
   return (
-    <div className="border-b border-[var(--mail-chrome-border)] px-5 pb-2.5 pt-2.5" data-offline-line>
+    <div className="px-5 pb-2.5 pt-2.5" data-offline-line>
       <ListNotice kind="offline" title={t(offline === "browser" ? "offlineTitle" : "offlineServersTitle")}>
         <p>{t("offlineHelp")}</p>
         {waiting > 0 ? (

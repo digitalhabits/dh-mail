@@ -71,7 +71,7 @@ export function useMailPage(props: MailPageProps) {
   useComposeWarmup();
   const accountsState = useAccountsState(props);
   const displaySettings = useDisplaySettings();
-  const draftsList = useDraftsList();
+  const draftsList = useDraftsList(accountsState.accountEmails);
   const readerState = useReaderState();
   const listQuery = useListQuery();
   const draftsView = useDraftsView({ ...listTabsAndPins, ...accountsState, ...listQuery });

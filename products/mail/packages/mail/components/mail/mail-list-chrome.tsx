@@ -632,7 +632,7 @@ export function FilterRow({
        runs the whole width of the list: the row reaches out over the
        head's padding (px-5) and takes it back. An inset shadow and not a
        border, so the selected tab's underline is drawn over it. */
-    <div className="-mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
+    <div className="mail-filter-row -mx-5 mt-2 flex items-end gap-2 px-5 shadow-[inset_0_-1px_0_var(--mail-chrome-border)]">
       {filtersShowing ? filterChips : null}
       {/* At the right: the organization's build puts who has which thread
           of the team mailbox here, then the unread switch. */}

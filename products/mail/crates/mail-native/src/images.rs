@@ -18,7 +18,10 @@ use std::time::Duration;
 /// `dhmail://localhost/<base64url of the remote address>`
 pub const SCHEME: &str = "dhmail";
 
-const MAX_BYTES: u64 = 5 * 1024 * 1024;
+/// Newsletters send their banners full size: an Oxford Edge banner was
+/// 5.4 MB, past the 5 MB this was, and showed as a broken frame where
+/// Gmail (which shrinks pictures on its own servers) showed it (2026-10-30).
+const MAX_BYTES: u64 = 20 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(12);
 
 /// A remote address taken from a protocol request path.

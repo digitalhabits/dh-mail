@@ -11,6 +11,7 @@ import {
   draftCountForTabs,
   draftOpensHere,
   draftsInView,
+  draftsOfShownMailboxes,
   draftWindowFor,
   isThreadDraftRow,
   openDraftAfter,
@@ -52,6 +53,7 @@ suite(async () => {
   let r = recorder();
   openDraftAfter([a, b, c], (x) => x.id === "compose:a", r.open);
   check("the draft below opens", r.calls.length === 1 && r.calls[0][0] === "compose" && r.calls[0][1].draftKey === "compose:b", r.calls);
+  check("and leaves the caret off it, so the delete key can go again", r.calls[0][1].keepFocus === true, r.calls);
 
   // The last one goes: the one above opens.
   r = recorder();
@@ -105,6 +107,10 @@ suite(async () => {
   check("the tabs' mailboxes keep only their rows", picked.length === 1 && picked[0] === d, picked);
   check("an empty pick keeps no row", draftsInView([a, d, b], []).length === 0);
   // The count beside Drafts at the head of the rail follows the tabs too.
+  const noFrom = row("compose:nofrom", { account: "" });
+  const shown = draftsOfShownMailboxes([a, d, noFrom], ["VERA@example.com"]);
+  check("a hidden mailbox's drafts are hidden with it", shown.length === 2 && !shown.includes(d), shown);
+  check("a new message with no From yet stays", shown.includes(noFrom));
   check("the Drafts count is the tabs' mailboxes'", draftCountForTabs([a, d, b], [otto]) === 1);
   check("with every tab picked, every draft counts", draftCountForTabs([a, d, b], null) === 3);
   check("no draft, no number", draftCountForTabs([], [otto]) === null);

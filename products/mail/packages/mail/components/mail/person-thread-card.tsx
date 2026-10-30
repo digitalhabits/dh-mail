@@ -24,6 +24,7 @@ import type { MailFolder } from "@/lib/mail/folder-types";
 import { useMailT } from "@/lib/mail/i18n";
 import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
+import { previewText } from "@/lib/mail/preview-text";
 
 /** What the row menu needs that a card cannot answer: the page's `rowMenuActions`. */
 export type PersonCardMenu = {
@@ -206,7 +207,7 @@ export function PersonThreadCard({
         {t.messageCount === 1
           ? say("threadMessageOne")
           : say("threadMessageMany", { count: t.messageCount })}{" "}
-        · {t.snippet}
+        · {previewText(t.snippet)}
       </p>
       {menu && menuAt ? (
         // Its clicks are its own, not the card's: the card would open the thread.

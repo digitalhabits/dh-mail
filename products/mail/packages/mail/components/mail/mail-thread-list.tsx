@@ -26,6 +26,7 @@ import { MailDraftsList } from "@/components/mail/MailDraftsList";
 import {
   draftsInView,
   draftWindowFor,
+  focusDraftRow,
   openDraftRow,
   openDraftRowId,
 } from "@/components/mail/draft-opening";
@@ -313,14 +314,7 @@ function useDraftKeys(rows: MailDraftRow[], openKey: string | null, open: (row: 
       if (next === at) return;
       const row = rows[next];
       open(row);
-      requestAnimationFrame(() => {
-        for (const el of document.querySelectorAll<HTMLElement>("[data-draft-key]")) {
-          if (el.dataset.draftKey !== row.id) continue;
-          el.focus({ preventScroll: true });
-          el.scrollIntoView({ block: "nearest" });
-          break;
-        }
-      });
+      focusDraftRow(row.id);
     };
   });
   React.useEffect(() => {

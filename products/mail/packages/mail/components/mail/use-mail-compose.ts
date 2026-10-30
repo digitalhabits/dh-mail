@@ -22,6 +22,7 @@ import { useDraftsInbox } from "@/components/mail/use-drafts-inbox";
 import { useComposeHome } from "@/components/mail/use-compose-home";
 import { pruneExpiredMailDrafts } from "@/lib/mail/local-drafts";
 import { useMailDrafts } from "@/components/mail/use-mail-drafts";
+import { draftsOfShownMailboxes } from "@/components/mail/draft-opening";
 import { preloadRichTextEditor } from "@/components/ui/RichTextEditor";
 import { useThreadDraftKeys } from "@/components/mail/ThreadListRow";
 import { draftsScope } from "@/components/mail/draft-opening";
@@ -45,9 +46,18 @@ export function useComposeWarmup() {
   }, []);
 }
 
-export function useDraftsList() {
-  const { drafts, loading: draftsLoading, refresh: refreshDrafts } =
+/**
+ * Every draft of the mailboxes on show. A hidden mailbox's drafts are
+ * hidden with it: in the list, in the count beside Drafts, and from the
+ * draft that opens after a discard. See draftsOfShownMailboxes.
+ */
+export function useDraftsList(accountEmails: readonly string[]) {
+  const { drafts: all, loading: draftsLoading, refresh: refreshDrafts } =
     useMailDrafts();
+  const drafts = React.useMemo(
+    () => draftsOfShownMailboxes(all, accountEmails),
+    [all, accountEmails]
+  );
   return { drafts, draftsLoading, refreshDrafts };
 }
 
