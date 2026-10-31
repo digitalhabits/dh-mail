@@ -576,18 +576,19 @@ export function ThreadMessages({
             {!thread.hasNewer ? (
               <AnswerLinkLines account={thread.account} links={answerLinks.filter((l) => l.direction === "answeredBy")} t={t} />
             ) : null}
-            {/* Held, not sent. Dashed and dimmed says the same thing the
-                undo count says: this has not gone anywhere yet. */}
+            {/* Held, not sent: your bubble's blue in full inside a strong
+                dashed blue edge, as the Scheduled page draws it, with its
+                time in bold blue (2026-10-31). */}
             {scheduled.map((held) => (
               <div key={held.id} className="flex flex-col items-end gap-1 py-1">
-                <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)]/60 px-3.5 py-2.5">
-                  <p className="whitespace-pre-wrap break-words text-sm text-stone-600">
+                <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border-2 border-dashed border-[var(--mail-compose-edge-focus)] bg-[var(--mail-bubble-own)] px-3.5 py-2.5">
+                  <p className="whitespace-pre-wrap break-words text-[15px] text-stone-800">
                     {held.bodyText}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5 pr-1 text-xs text-stone-500">
-                  <Clock className="h-3.5 w-3.5" aria-hidden />
-                  <span>{t("sendsWhen", { when: formatSnoozeWakeLabel(held.sendAt) })}</span>
+                <div className="flex items-center gap-1.5 pr-1 text-[13px] text-stone-500">
+                  <Clock className="h-3.5 w-3.5 text-[var(--mail-own-ink)]" aria-hidden />
+                  <span className="font-semibold text-[var(--mail-own-ink)]">{t("sendsWhen", { when: formatSnoozeWakeLabel(held.sendAt) })}</span>
                   {held.cancellable === false ? (
                     <>
                       <span aria-hidden className="text-stone-300">·</span>

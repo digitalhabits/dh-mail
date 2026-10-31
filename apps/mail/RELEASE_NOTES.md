@@ -34,6 +34,7 @@
 - The folder you have open is a darker step of the folder list's colour, not white. When you point at a folder, it turns a step darker too, but less.
 - The conversation you have open is a white card with round corners in the list, and a conversation you point at turns almost white. The green dot of an unread conversation sits inside its row.
 - Point at the names beside a subject to see everyone with a small picture or their initials.
+- A scheduled message is easy to tell from one that has gone: it is the blue of your sent messages inside a dashed blue edge, and "Sends at" is in bold blue.
 - The button that opens a conversation in its own chat window is no longer above the conversation. Right-click the conversation in the list, or use its shortcut.
 - The account tabs above the list stand in a thin outline, not on a grey band.
 - The edge of the reply box is the blue of your sent messages. "Show quoted text" is grey, so Send is the one colour in the reply box.
@@ -78,6 +79,7 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
+- A reply that you schedule in a Gmail conversation shows at the end of that conversation, with its words, its time, and Change time, Send now and Cancel. Before, it was only in Scheduled, so you could not see in the conversation what it was going to say.
 - A reply from a Gmail mailbox is sent also when Mail cannot reach Google for a moment. Before, it could fail with "Load failed" and was not kept to send later.
 - Pictures up to 20 MB show in an email. Before, a picture larger than 5 MB showed as a broken frame.
 - The first words of an email in the list no longer show codes such as "&zwnj;".

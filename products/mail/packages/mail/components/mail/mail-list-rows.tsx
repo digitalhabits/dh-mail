@@ -1105,7 +1105,8 @@ export function OutboxGroup() {
                   ) : held.status === "sending" ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-teal-700/75" aria-hidden />
                   ) : (
-                    <Clock className="h-3.5 w-3.5 shrink-0 text-teal-700/75" aria-hidden />
+                    // Your sent-mail blue, as the message waiting in it.
+                    <Clock className="h-3.5 w-3.5 shrink-0 text-[var(--mail-own-ink)]" aria-hidden />
                   )}
                   <span
                     className={cn(

@@ -14,6 +14,7 @@
 import { usePageActions, usePageCompose, type MailComposeSlice } from "@/components/mail/mail-page-slices";
 import * as React from "react";
 import { Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
@@ -198,7 +199,9 @@ export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
       </div>
       <div className="flex flex-col items-end gap-1.5 px-8 py-6">
         <p className="max-w-[85%] self-end truncate text-xs text-stone-500">{people.join(" · ")}</p>
-        <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border border-dashed border-[var(--mail-bubble-own-border)] bg-[var(--mail-bubble-own)]/60 px-4 py-3">
+        {/* Waiting to go, said plainly (2026-10-31): your bubble's blue in
+            full, inside a strong dashed blue edge, as Messages draws one. */}
+        <div className="w-full max-w-[85%] self-end rounded-surface rounded-br-md border-2 border-dashed border-[var(--mail-compose-edge-focus)] bg-[var(--mail-bubble-own)] px-4 py-3">
           {html ? (
             /*
               In the frame the messages are read in, re-lit in the dark as
@@ -215,9 +218,9 @@ export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
             <p className="whitespace-pre-wrap break-words text-[15px] text-stone-800">{held.bodyText}</p>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 pr-1 text-xs text-stone-500">
-          <Clock className="h-3.5 w-3.5 text-teal-700/75" aria-hidden />
-          <span className={late ? "font-semibold text-amber-700" : undefined}>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 pr-1 text-[13px] text-stone-500">
+          <Clock className={cn("h-3.5 w-3.5", late ? "text-amber-700" : "text-[var(--mail-own-ink)]")} aria-hidden />
+          <span className={late ? "font-semibold text-amber-700" : "font-semibold text-[var(--mail-own-ink)]"}>
             {late ? held.error || t("notSent") : t("sendsWhen", { when: formatSnoozeWakeLabel(held.sendAt) })}
           </span>
           {held.reschedulable ? (

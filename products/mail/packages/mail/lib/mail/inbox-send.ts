@@ -156,9 +156,18 @@ export async function listScheduledMailMessages(input: {
     ]);
     return [...held, ...drafts];
   }
-  // Gmail: the drafts this computer sends later. Not the outbox: a message
-  // there is on its way, and the thread shows it already.
-  if (provider !== "outlook") return listScheduledDrafts(input.account, input.threadId);
+  // Gmail: the drafts this computer sends later, and, for one thread, the
+  // outbox messages held in it for a later time. A message the outbox is
+  // sending now is left out: the thread shows it already. One held for later
+  // was left out too, so a scheduled reply could not be seen in its own
+  // conversation (2026-10-31).
+  if (provider !== "outlook") {
+    const [drafts, held] = await Promise.all([
+      listScheduledDrafts(input.account, input.threadId),
+      input.threadId ? heldInOutbox(input.account) : Promise.resolve([]),
+    ]);
+    return [...drafts, ...heldForLaterIn(held, input.threadId ?? "", Date.now())];
+  }
   return listScheduledOutlookMessages(input.account, input.threadId);
 }
 
@@ -183,6 +192,23 @@ async function outboxWords(
   } catch {
     return null;
   }
+}
+
+/**
+ * The outbox messages of one thread that wait for a later time, or that
+ * missed theirs and wait for the person. Not one that goes within the next
+ * half minute: that is a send with its Undo seconds, already in the thread.
+ */
+export function heldForLaterIn(
+  held: MailScheduledMessage[],
+  threadId: string,
+  now: number
+): MailScheduledMessage[] {
+  return held.filter(
+    (m) =>
+      m.threadId === threadId &&
+      (m.missed || (m.status === "waiting" && Date.parse(m.sendAt) > now + 30_000))
+  );
 }
 
 /** Gmail messages the outbox holds for a time, as scheduled rows. */
