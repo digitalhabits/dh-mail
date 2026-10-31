@@ -230,6 +230,7 @@ macro_rules! mail_commands {
       mail_native::sync::mail_sync_send,
       mail_native::sync::mail_sync_outbox,
       mail_native::sync::mail_sync_outbox_words,
+      mail_native::sync::mail_sync_outbox_attachments,
       mail_native::sync::mail_sync_outbox_cancel,
       mail_native::sync::mail_sync_outbox_send_now,
       // Send later from a server draft (docs/mail-send-later.md).

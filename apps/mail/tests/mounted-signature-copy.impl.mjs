@@ -446,7 +446,7 @@ async function main() {
     pass("a changed signature is not lost when the From address changes");
 
     const toBox = [...document.querySelectorAll("input")].find((i) =>
-      /start typing a name/i.test(i.getAttribute("placeholder") || "")
+      /name or email/i.test(i.getAttribute("placeholder") || "")
     );
     assert(toBox, "the new message has a To box");
     typeInto(toBox, "bo@kollektiv.example,");

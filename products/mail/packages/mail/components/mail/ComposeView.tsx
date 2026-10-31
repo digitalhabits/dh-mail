@@ -12,7 +12,6 @@
  * walks in mounted-new-mail-card and mounted-composer-send drive it.
  */
 
-import { EditingScheduledNote } from "@/components/mail/ScheduledMessageView";
 import { useRef, type RefObject } from "react";
 import { formatShortcut } from "@/lib/mail/shortcuts";
 import {
@@ -43,6 +42,7 @@ import { writeComposeFrom } from "@/lib/mail/compose-from";
 import { RecipientCarryProvider, RecipientField } from "@/components/mail/RecipientField";
 import { RecipientDropZone, withRecipient } from "@/components/mail/recipient-carry";
 import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
+import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { DraftAssistMenu, DraftAssistNotes, useAccountAssist } from "@/components/mail/team-layer";
 import { SignatureDialog } from "@/components/mail/SignatureDialog";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
@@ -84,6 +84,9 @@ export function ComposeView(props: ComposeViewProps) {
     ccInputRef,
     ccList,
     discardCompose,
+    discardChanges,
+    deleteScheduled,
+    keepAsDraft,
     draftComposeWithAssist,
     draftPreviewId,
     draftingReply,
@@ -291,6 +294,7 @@ export function ComposeView(props: ComposeViewProps) {
             {...attachPasteHandlers}
           >
             <ComposerDropOverlay visible={attachDragging} />
+            {editingScheduled ? <EditingScheduledHeading original={editingScheduled} armed={armedSendAt} t={t} /> : null}
             <ComposeHeader floatCompose={floatCompose} floating={floating} focusMode={focusMode} onFloat={onFloat} onSubjectKeyDown={onSubjectKeyDown} onToggleFocus={onToggleFocus} setSubject={setSubject} shortcuts={shortcuts} subject={subject} subjectInputRef={subjectInputRef} t={t} />
 
             <div className={rowClass}>
@@ -374,13 +378,12 @@ export function ComposeView(props: ComposeViewProps) {
               ) : null}
             </div>
 
-            <ComposeFoot addAttachFiles={addAttachFiles} armedSendAt={armedSendAt} attachItems={attachItems} bodyText={bodyText} canOpenInOutlook={canOpenInOutlook} canSend={canSend} canSendLater={canSendLater} discardCompose={discardCompose} editorHandle={editorHandle} from={from} handingOver={handingOver} hasRecipient={hasRecipient} openInOutlook={openInOutlook} outlookElsewhere={outlookElsewhere} outlookTarget={outlookTarget} removeAttach={removeAttach} send={send} sending={sending} setArmedSendAt={setArmedSendAt} setDraftPreviewId={setDraftPreviewId} setShowPreview={setShowPreview} shortcuts={shortcuts} t={t} />
+            <ComposeFoot addAttachFiles={addAttachFiles} armedSendAt={armedSendAt} attachItems={attachItems} bodyText={bodyText} canOpenInOutlook={canOpenInOutlook} canSend={canSend} canSendLater={canSendLater} deleteScheduled={deleteScheduled} discardChanges={discardChanges} discardCompose={discardCompose} editing={Boolean(editingScheduled)} keepAsDraft={keepAsDraft} editorHandle={editorHandle} from={from} handingOver={handingOver} hasRecipient={hasRecipient} openInOutlook={openInOutlook} outlookElsewhere={outlookElsewhere} outlookTarget={outlookTarget} removeAttach={removeAttach} send={send} sending={sending} setArmedSendAt={setArmedSendAt} setDraftPreviewId={setDraftPreviewId} setShowPreview={setShowPreview} shortcuts={shortcuts} t={t} />
           {/* Edge / corner handles for resizing the card. None in the
               corner: the card is the size of the card, and a handle that
               cannot move reads as broken. */}
           {floating ? null : <CardResizeHandles start={startCardResize} />}
           </div>
-          <EditingScheduledNote original={editingScheduled} width={cardW * zoom} />
           {/* Under the box, outside the card — where a reply keeps them.
               A signature to write is about the message, not about typing
               it. Preview and Outlook sit on the Send chevron. */}
@@ -560,6 +563,33 @@ function ComposeHeader({
   );
 }
 
+/**
+ * At the top of the card while a scheduled message is edited (2026-10-31):
+ * what is being edited, and that nothing changes until Send is pressed. It
+ * follows the time on Send, which the menu can change.
+ */
+function EditingScheduledHeading({
+  original,
+  armed,
+  t,
+}: {
+  original: { sendAt: string };
+  armed: string | null;
+  t: ReturnType<typeof useComposeView>["t"];
+}) {
+  const button = sendButtonWord(t, { sending: false, armed });
+  const when = formatSnoozeWakeLabel(original.sendAt);
+  const missed = Date.parse(original.sendAt) <= Date.now();
+  return (
+    <div className="rounded-t-[inherit] border-b border-stone-200 bg-[var(--mail-bubble-own)] px-6 py-3">
+      <p className="text-[15px] font-semibold text-stone-900">{t("editingScheduledTitle")}</p>
+      <p className="text-sm text-stone-600">
+        {t(missed ? "editingScheduledMissed" : "editingScheduledUntil", { button, when })}
+      </p>
+    </div>
+  );
+}
+
 /** The From, To, Cc and Bcc rows, and the subject. */
 function ComposeRecipients({
   accounts,
@@ -713,7 +743,11 @@ function ComposeFoot({
   canOpenInOutlook,
   canSend,
   canSendLater,
+  deleteScheduled,
+  discardChanges,
   discardCompose,
+  editing,
+  keepAsDraft,
   editorHandle,
   from,
   handingOver,
@@ -737,7 +771,12 @@ function ComposeFoot({
   canOpenInOutlook: ReturnType<typeof useComposeView>["canOpenInOutlook"];
   canSend: ReturnType<typeof useComposeView>["canSend"];
   canSendLater: ReturnType<typeof useComposeView>["canSendLater"];
+  deleteScheduled: ReturnType<typeof useComposeView>["deleteScheduled"];
+  discardChanges: ReturnType<typeof useComposeView>["discardChanges"];
   discardCompose: ReturnType<typeof useComposeView>["discardCompose"];
+  /** Editing a scheduled message (2026-10-31). */
+  editing: boolean;
+  keepAsDraft: ReturnType<typeof useComposeView>["keepAsDraft"];
   editorHandle: ReturnType<typeof useComposeView>["editorHandle"];
   from: ReturnType<typeof useComposeView>["from"];
   handingOver: ReturnType<typeof useComposeView>["handingOver"];
@@ -790,6 +829,8 @@ function ComposeFoot({
                     onArm={setArmedSendAt}
                     schedule={canSendLater}
                     onPick={(iso) => void send(iso)}
+                    editing={editing}
+                    onKeepAsDraft={editing ? keepAsDraft : undefined}
                     extras={[
                       {
                         id: "preview",
@@ -829,6 +870,16 @@ function ComposeFoot({
                     }
                   />
                 </div>
+                {editing ? (
+                  // The edits go; the scheduled message goes on as it was.
+                  <button
+                    type="button"
+                    className="rounded-control px-2 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                    onClick={discardChanges}
+                  >
+                    {t("discardChanges")}
+                  </button>
+                ) : null}
                 <ComposerToolbar id="mail-compose-toolbar" editorHandle={editorHandle} account={from} />
                 <AttachToolbarButton
                   onPick={addAttachFiles}
@@ -840,10 +891,12 @@ function ComposeFoot({
                 <span className="ml-auto flex items-center gap-3">
                   <button
                     type="button"
-                    title={t("discard")}
-                    aria-label={t("discard")}
+                    // Editing a scheduled message, the bin deletes it: it
+                    // will not be sent. Discard changes drops the edits alone.
+                    title={t(editing ? "deleteScheduledEmail" : "discard")}
+                    aria-label={t(editing ? "deleteScheduledEmail" : "discard")}
                     className="mail-composer-discard rounded p-1 text-stone-400"
-                    onClick={discardCompose}
+                    onClick={editing ? deleteScheduled : discardCompose}
                   >
                     <Trash2 className="h-5 w-5" />
                   </button>

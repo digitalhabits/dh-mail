@@ -136,8 +136,8 @@ survives a restart
 
 Disconnecting an account in Settings removes its token from the credential
 store, its messages, bodies and sync state from the file
-([`db.rs`](/products/mail/crates/mail-native/src/db.rs) `accounts_remove`,
-[`messages.rs`](/products/mail/crates/mail-native/src/messages.rs)
+([`db/accounts.rs`](/products/mail/crates/mail-native/src/db/accounts.rs) `accounts_remove`,
+[`messages/write.rs`](/products/mail/crates/mail-native/src/messages/write.rs)
 `messages_clear_account`), and its cached thread bodies and unsent drafts
 from the two stores above. A few smaller tables — contacts, snoozes, queued
 actions, the outbox — keep their rows until the app's data directory is

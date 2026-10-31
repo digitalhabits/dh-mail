@@ -7,7 +7,7 @@
  */
 
 import { SettingsGroup, SettingsHeading, SettingsRow, SettingsStackedRow } from "@/components/mail/settings-ui";
-import { SURFACE_LABEL, SurfaceColorPicker } from "@/components/mail/surface-color-picker";
+import { SURFACE_LABEL, SurfaceColorPicker, SurfaceColorReset } from "@/components/mail/surface-color-picker";
 import { useMailT } from "@/lib/mail/i18n";
 import { SURFACES, resetSurfaceColors } from "@/lib/mail/surface-colors";
 import { useSurfaceColors } from "@/lib/mail/use-surface-colors";
@@ -22,7 +22,15 @@ export function SurfaceColorsSetting() {
       <p className="mb-2 text-xs text-stone-500">{t("coloursHint")}</p>
       <SettingsGroup>
         {SURFACES.map((surface) => (
-          <SettingsStackedRow key={surface} label={t(SURFACE_LABEL[surface])}>
+          <SettingsStackedRow
+            key={surface}
+            label={
+              <span className="flex items-baseline justify-between gap-2">
+                {t(SURFACE_LABEL[surface])}
+                <SurfaceColorReset surface={surface} />
+              </span>
+            }
+          >
             <SurfaceColorPicker surface={surface} />
           </SettingsStackedRow>
         ))}

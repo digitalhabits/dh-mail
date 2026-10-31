@@ -77,7 +77,7 @@ export function ReadingPaneContent({
   const { closeCompose, composeSeed, composing, drafts, draftsAccount, draftsView, editAsNewFromSource, floatingReply, forwardStarted, pendingForward, refreshDrafts, setFloatingCompose, setFloatingReply, startCompose } = usePageCompose();
   const { openThread, pendingRowAction, selected, selectedPerson, selectedRow, setPendingRowAction, setSelected, setSelectedPersonKey } = usePageReader();
   // A scheduled message opened from the list, while no thread is open.
-  const openHeld = useOpenHeldMessage(pageList.heldMessages, Boolean(selected), selectedPerson?.key);
+  const openHeld = useOpenHeldMessage(pageList.heldMessages, Boolean(selected), selectedPerson?.key, `${listCacheKey}|${tab}`);
   const draftSelection = useDraftSelection();
   // For the Drafts view: a discarded draft opens the next one.
   const draftRows = draftsInView(drafts, draftsAccount, debouncedSearch).filter(

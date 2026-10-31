@@ -56,10 +56,18 @@ export async function listExchangeHeld(account: string, threadId?: string): Prom
   return threadId ? rows.filter((r) => r.threadId === threadId) : rows;
 }
 
-/** Never send it: it goes to Drafts, with no time. */
+/** Never send it: it goes to Drafts, with no time. Unschedule is this. */
 export async function cancelExchangeHeld(account: string, itemId: string): Promise<void> {
   const email = normalize(account);
   await invoke("mail_ews_cancel_held", { account: email, itemId });
+  wakeExchangeSync(email, "all");
+}
+
+/** Never send it, and keep nothing: out of the Outbox to Drafts, then discarded. */
+export async function deleteExchangeHeld(account: string, itemId: string): Promise<void> {
+  const email = normalize(account);
+  const moved = await invoke<{ itemId: string }>("mail_ews_cancel_held", { account: email, itemId });
+  await invoke("mail_ews_delete_draft", { account: email, itemId: moved.itemId, discard: true });
   wakeExchangeSync(email, "all");
 }
 

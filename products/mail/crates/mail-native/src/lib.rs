@@ -24,6 +24,8 @@ pub mod account_exchange;
 pub mod db;
 #[cfg(test)]
 mod db_poison_tests;
+#[cfg(test)]
+mod file_size_tests;
 #[cfg(feature = "exchange")]
 pub mod ews;
 #[cfg(all(feature = "exchange", test))]
@@ -160,7 +162,7 @@ use tauri::Manager;
 /// is written out here rather than taken from a bundle identifier. Both apps
 /// use the same name on purpose: a mailbox connected in one is connected in
 /// the other, on the same Mac. Except a Gmail grant, which the team build
-/// keeps in items of its own: see `vault_key` in db.rs.
+/// keeps in items of its own: see `vault_key` in db/vault.rs.
 pub const KEYCHAIN_SERVICE: &str = "org.digitalhabits.mail";
 
 /// The keychain access group both apps carry in their entitlements, so the

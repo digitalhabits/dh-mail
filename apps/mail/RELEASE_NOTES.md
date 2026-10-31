@@ -5,6 +5,8 @@
 - Right-click the empty background of a part to set its colour there.
 - The colours of the Centre for Digital Habits come first. After them you can pick any colour, and a colour that you use on one part is offered for the other parts too.
 - On a dark colour, such as the green or the navy, the words and icons of that part turn cream.
+- The colours go from light to dark, with White first. "Any colour" is a ring with a "+" that opens the system's colour picker. "Reset" is a word at the top of the colours.
+- To get the usual right-click menu instead of the colours, hold Option (Alt on Windows) when you right-click.
 
 **Undo in one place**
 - When you archive, delete, move, snooze, send or discard a draft, a line at the foot of the list says so: "Archived", "Deleted", "Moved to Receipts", "Snoozed until 18:13", "Sending in 5…" or "Draft discarded", then the subject, with Undo. Before, these were messages at the foot of the window, over what you were reading or writing.
@@ -12,6 +14,14 @@
 - When you act on many conversations at once, one line says what they were: "GitHub stack (5)", "7 conversations" or "3 conversations and Google Ads stack (3)". One Undo, or one Cmd+Z (Ctrl+Z on Windows), brings all of them back.
 - Several actions stack, newest in front, with the ones before peeking out behind it. Point at the stack to spread it out, each with its own Undo. Each Cmd+Z (Ctrl+Z on Windows) takes back the newest, then the one before.
 - Each line goes after 8 seconds, and all of them wait while the pointer is on the stack. A message you send goes when it is sent.
+
+**Send later**
+- A scheduled email has the same actions everywhere: in Scheduled, at the end of its conversation, and in "This email was not sent". They are Delete, Unschedule, Edit, Change time and Send now, each with an icon.
+- Delete and Unschedule say so at the foot of the list, with Undo. The email leaves Scheduled at once. It is changed only when the Undo time is over.
+- Unschedule is new. It keeps the email as an ordinary draft, with its files.
+- Edit opens the scheduled email itself. A heading says: "Your changes apply only when you press Send. Until then, it stays scheduled for 12:27." A time that you pick in the Send menu changes the time on Send. "Don't schedule" in the same menu keeps the email as a draft. Discard changes drops your changes. The bin deletes the scheduled email.
+- With a scheduled email open, Delete or Backspace deletes it, and the next one opens.
+- A draft that you send or schedule leaves Drafts at once. Undo brings it back.
 
 **An outline of a long conversation**
 - A conversation that does not fit on the screen has a narrow outline at the right: one mark for each message, yours set to the right, unread ones in green, the ones on screen darker.
@@ -79,7 +89,11 @@
 - An invite you open, a file you drag out of a message, and a draft handed to Outlook are cleared from the computer's temporary folder after a day. The invite and the Outlook draft stayed there before, under the name of the message they came from.
 
 **Fixes**
-- A reply that you schedule in a Gmail conversation shows at the end of that conversation, with its words, its time, and Change time, Send now and Cancel. Before, it was only in Scheduled, so you could not see in the conversation what it was going to say.
+- A long line at the foot of the list, such as "Sends at 11:08, if this computer is on and Mail is open", wraps. Before, it ran under Undo.
+- A scheduled email that you open from Scheduled closes when you open another folder.
+- In the To field, a click on a recipient that is already selected opens its card. Before, that took a double-click.
+- In a narrow window, the To field's hint ("Name or email") no longer runs under Cc and Bcc.
+- A reply that you schedule in a Gmail conversation shows at the end of that conversation, with its words, its time and its actions. Before, it was only in Scheduled, so you could not see in the conversation what it was going to say.
 - A reply from a Gmail mailbox is sent also when Mail cannot reach Google for a moment. Before, it could fail with "Load failed" and was not kept to send later.
 - Pictures up to 20 MB show in an email. Before, a picture larger than 5 MB showed as a broken frame.
 - The first words of an email in the list no longer show codes such as "&zwnj;".

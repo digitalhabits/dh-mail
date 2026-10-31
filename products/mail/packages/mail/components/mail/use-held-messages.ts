@@ -16,7 +16,8 @@ import * as React from "react";
 
 import { toast } from "@/lib/mail/toast";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
-import { isBeingReplaced, onScheduledChanged, pendingScheduled } from "@/lib/mail/scheduled-events";
+import { isLeavingScheduled, isBeingReplaced, onScheduledChanged, pendingScheduled } from "@/lib/mail/scheduled-events";
+import { deleteHeldWithUndo } from "@/components/mail/scheduled-undo";
 import type { MailScheduledMessage } from "@/lib/mail/types";
 
 export function useHeldMessages() {
@@ -39,7 +40,7 @@ export function useHeldMessages() {
       // stand first; one that is now in the answer gives way to it.
       setHeldMessages([
         ...pendingScheduled(true),
-        ...(json.messages ?? []).filter((m) => !isBeingReplaced(m)),
+        ...(json.messages ?? []).filter((m) => !isBeingReplaced(m) && !isLeavingScheduled(m)),
       ]);
     } catch (err) {
       // No Outlook, or the provider would not say. Show no group. Said in the
@@ -50,7 +51,13 @@ export function useHeldMessages() {
   }, []);
   /** Try a failed message again, or let it go. */
   const actOnHeld = React.useCallback(
-    async (held: MailScheduledMessage, action: "sendNow" | "cancel" | "reschedule", sendAt?: string) => {
+    async (held: MailScheduledMessage, action: "sendNow" | "cancel" | "delete" | "reschedule", sendAt?: string) => {
+      if (action === "delete") {
+        // Gone from the list now, deleted after its Undo (scheduled-delete.ts).
+        setHeldMessages((current) => current.filter((m) => !(m.id === held.id && m.account === held.account)));
+        deleteHeldWithUndo(held);
+        return;
+      }
       try {
         await apiJson("/api/mail/scheduled", {
           method: "POST",
@@ -100,5 +107,14 @@ export function useHeldMessages() {
     };
   }, [loadHeldMessages]);
 
-  return { heldMessages, actOnHeld };
+  // A message being deleted or unscheduled leaves the list the moment it
+  // is hidden, not when the list has been read again (scheduled-undo.ts).
+  const [leavingTick, setLeavingTick] = React.useState(0);
+  React.useEffect(() => onScheduledChanged(() => setLeavingTick((n) => n + 1)), []);
+  const shown = React.useMemo(
+    () => heldMessages.filter((m) => !isLeavingScheduled(m)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [heldMessages, leavingTick]
+  );
+  return { heldMessages: shown, actOnHeld };
 }

@@ -239,7 +239,7 @@ async function main() {
     typeInto(subjectBox, SUBJECT);
     await sleep(200);
     const recipientBox = [...card().querySelectorAll("input")].find((i) =>
-      /start typing a name/i.test(i.getAttribute("placeholder") || "")
+      /name or email/i.test(i.getAttribute("placeholder") || "")
     );
     assert(recipientBox, "the To row is inside the card");
     typeInto(recipientBox, `${TO},`);

@@ -10,17 +10,22 @@
  * message, text, a link, a field or a button, or with text selected: there
  * the system's own menu is the useful one. Light theme only, as the
  * colours are.
+ *
+ * With ⌥ held, a right-click always gets the system's menu: it has Reload
+ * (and Inspect Element in the dev build), which the card took away
+ * (2026-10-31).
  */
 
 import * as React from "react";
 import { createPortal } from "react-dom";
 
-import { SURFACE_LABEL, SurfaceColorPicker } from "@/components/mail/surface-color-picker";
+import { SURFACE_LABEL, SurfaceColorPicker, SurfaceColorReset } from "@/components/mail/surface-color-picker";
 import { useMailT } from "@/lib/mail/i18n";
 import { surfaceAt } from "@/lib/mail/surface-colors";
 import type { Surface } from "@/lib/mail/surface-colors";
 
-const CARD_W = 280;
+// Wide enough for the eight swatches and the ring on one line.
+const CARD_W = 304;
 const CARD_H = 92;
 
 type Open = { surface: Surface; x: number; y: number };
@@ -29,7 +34,7 @@ export function useSurfaceColorMenu(): React.ReactNode {
   const [open, setOpen] = React.useState<Open | null>(null);
   React.useEffect(() => {
     const onContextMenu = (e: MouseEvent) => {
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || e.altKey) return;
       if (window.getSelection()?.toString()) return;
       const surface = surfaceAt(e.target);
       if (!surface) return;
@@ -72,9 +77,12 @@ function SurfaceColorCard({ open, onClose }: { open: Open; onClose: () => void }
       className="fixed z-[200] rounded-surface border border-[rgba(27,61,74,0.08)] bg-white p-3 text-[#1b3d4a] shadow-[0_18px_36px_rgba(27,61,74,0.14)]"
       style={{ left, top, width: CARD_W }}
     >
-      <p className="mb-2 text-xs font-semibold">
-        {t("colourMenuTitle", { part: t(SURFACE_LABEL[open.surface]) })}
-      </p>
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold">
+          {t("colourMenuTitle", { part: t(SURFACE_LABEL[open.surface]) })}
+        </p>
+        <SurfaceColorReset surface={open.surface} />
+      </div>
       <SurfaceColorPicker surface={open.surface} />
     </div>,
     document.body

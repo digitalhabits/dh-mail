@@ -41,10 +41,10 @@ export { RecipientCarryProvider };
  * writing and no help at all when you are checking. Two people share a
  * first name, an old address for the right person is still the wrong
  * address, and a name typed by a sender is not a name anybody verified.
- * Double-click and the chip says the address instead — with where the name
- * came from, and a way to take a copy.
+ * Click a selected chip (or double-click any chip) and the chip says the
+ * address instead — with where the name came from, and a way to take a copy.
  *
- * Double-click rather than a click or a hover: a click selects the chip
+ * Not on the first click or a hover: the first click selects the chip
  * (that is how several are cut or deleted at once), and a tooltip cannot
  * be copied from, which is most of the reason for looking.
  */
@@ -71,6 +71,8 @@ function EmailChip({
 }) {
   const t = useMailT();
   const [open, setOpen] = React.useState(false);
+  /** Whether the chip was already selected when the mouse went down on it. */
+  const wasSelectedRef = React.useRef(false);
   const { openAddressMenu, addressMenu } = useAddressMenu();
   const label = recipient.name || recipient.email;
   const known = contacts.find(
@@ -104,18 +106,24 @@ function EmailChip({
           tabIndex={-1}
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
+            wasSelectedRef.current = selected && !e.shiftKey;
             onSelect(e);
           }}
           onMouseUp={(e) => {
             if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
             onRelease?.();
           }}
-          /* A click selects; the card is for a double-click. The trigger
-             would open it on the click as well, and the card takes the
-             focus with it. Then a chip picked with the mouse cannot be
-             cut or copied, because the keys go to the card. Marking the click
-             handled is what tells the trigger to leave it. */
-          onClick={(e) => e.preventDefault()}
+          /* The first click selects; a click on a chip that is already
+             selected opens the card. The trigger would open it on the
+             first click as well, and the card takes the focus with it.
+             Then a chip picked with the mouse cannot be cut or copied,
+             because the keys go to the card. Marking the click handled is
+             what tells the trigger to leave it. */
+          onClick={(e) => {
+            e.preventDefault();
+            if ((e.target as HTMLElement).closest("[data-chip-remove]")) return;
+            if (wasSelectedRef.current) setOpen(true);
+          }}
           onDoubleClick={(e) => {
             e.preventDefault();
             setOpen(true);
@@ -729,8 +737,9 @@ function RecipientInput({
             // reads as a second thing to press. The field is one click from
             // being whole again, and that click puts the cursor here.
             folding && "sr-only",
+            // Inline: if the window gets very narrow, the placeholder ends with "…".
             variant === "inline"
-              ? "py-0.5 text-[15px] text-stone-800"
+              ? "text-ellipsis py-0.5 text-[15px] text-stone-800"
               : "py-0.5 text-sm"
           )}
           /*

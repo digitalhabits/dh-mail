@@ -618,6 +618,15 @@ export async function cancelScheduledOutlookMessage(
   await deleteOutlookMessage(token, messageId);
 }
 
+/** Take the time off: it stays in Drafts, an ordinary draft with its files. */
+export async function unscheduleScheduledOutlookMessage(
+  account: string,
+  messageId: string
+): Promise<void> {
+  const token = await outlookAccessTokenFor(account);
+  await clearOutlookDeferredSend(token, messageId);
+}
+
 /** Hold it until another time (`rescheduleOutlookDeferredSend`). */
 export async function rescheduleScheduledOutlookMessage(
   account: string,

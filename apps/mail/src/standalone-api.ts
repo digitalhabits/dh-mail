@@ -101,6 +101,8 @@ import {
   listScheduledMailMessages,
   listAllScheduledMailMessages,
   cancelScheduledMailMessage,
+  deleteScheduledMailMessage,
+  unscheduleScheduledMailMessage,
   sendScheduledMailMessageNow,
   rescheduleScheduledMailMessage,
 } from "@/lib/mail/inbox";
@@ -298,7 +300,7 @@ async function scheduled({ q, method, body }: RouteContext): Promise<Response> {
     const input = await body<{
       account?: string;
       id?: string;
-      action?: "cancel" | "sendNow" | "reschedule";
+      action?: "cancel" | "delete" | "unschedule" | "sendNow" | "reschedule";
       sendAt?: string;
     }>();
     if (!input.account || !input.id) {
@@ -307,6 +309,11 @@ async function scheduled({ q, method, body }: RouteContext): Promise<Response> {
     if (input.action === "reschedule") {
       if (!input.sendAt) return failed("sendAt is required", 400);
       await rescheduleScheduledMailMessage({ account: input.account, id: input.id, sendAt: input.sendAt });
+    } else if (input.action === "delete") {
+      await deleteScheduledMailMessage({ account: input.account, id: input.id });
+    } else if (input.action === "unschedule") {
+      // "local" asks the page to make the draft first, then to Cancel.
+      return ok({ success: true, ...(await unscheduleScheduledMailMessage({ account: input.account, id: input.id })) });
     } else if (input.action === "sendNow") {
       await sendScheduledMailMessageNow({
         account: input.account,

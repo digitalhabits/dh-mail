@@ -67,20 +67,15 @@ function SlotWords({ slot }: { slot: UndoSlot }) {
   return (
     <>
       <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--mail-chrome-fg)]" strokeWidth={1.75} />
-      <span className="flex min-w-0 flex-1 items-baseline gap-2 text-sm" title={`${verb} ${slot.object}`.trim()}>
-        {/* A long verb ("Sends at 14:30, if this computer is on…") gives way
-            too, after the subject, so Undo always shows. A countdown
-            ("Sending in 4…") is short and never gives way: the seconds are
-            the point. */}
-        <span
-          className={cn(
-            "font-semibold text-[var(--mail-chrome-fg)]",
-            slot.countdown ? "shrink-0 whitespace-nowrap tabular-nums" : "min-w-0 shrink truncate"
-          )}
-        >
+      <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-sm leading-snug" title={`${verb} ${slot.object}`.trim()}>
+        {/* A long verb ("Sends at 14:30, if this computer is on and Mail is
+            open") wraps, and the notice grows taller, so all of it is read
+            and Undo always shows (2026-10-31). The subject goes on the next
+            line when there is no room, and is cut there. */}
+        <span className={cn("min-w-0 font-semibold text-[var(--mail-chrome-fg)]", slot.countdown && "tabular-nums")}>
           {verb}
         </span>
-        {slot.object ? <span className="min-w-0 shrink-[4] truncate text-[var(--mail-list-muted)]">{slot.object}</span> : null}
+        {slot.object ? <span className="min-w-0 max-w-full truncate text-[var(--mail-list-muted)]">{slot.object}</span> : null}
       </span>
     </>
   );
@@ -132,7 +127,9 @@ function SlotPill({ slot }: { slot: UndoSlot }) {
   return (
     <div
       data-undo-card
-      className="flex min-w-0 items-center gap-2.5 rounded-full border border-[var(--mail-pane-divider)] bg-[var(--mail-pane)] py-1 pl-4 pr-1 shadow-lg"
+      // A fixed radius, not rounded-full: a pill on one line, and a rounded
+      // card when the words wrap to two.
+      className="flex min-w-0 items-center gap-2.5 rounded-[20px] border border-[var(--mail-pane-divider)] bg-[var(--mail-pane)] py-1 pl-4 pr-1 shadow-lg"
     >
       <SlotWords slot={slot} />
       <UndoButton slot={slot} />

@@ -255,6 +255,11 @@ export type MailScheduledMessage = {
    * and the reader is sent to the webmail. Absent means it can.
    */
   cancellable?: boolean;
+  /**
+   * It waits in this computer's outbox, and nowhere else: Unschedule makes
+   * its draft here, with its words and files (components/mail/scheduled-undo).
+   */
+  heldHere?: boolean;
 };
 
 /**

@@ -212,6 +212,25 @@ export async function cancelScheduledDraft(account: string, id: string): Promise
   });
 }
 
+/** Unschedule: the schedule goes, and the draft stays in Drafts with no time. */
+export async function unscheduleScheduledDraft(account: string, id: string): Promise<void> {
+  const invoke = invokeOrThrow();
+  await invoke("mail_scheduled_cancel", { account: account.trim().toLowerCase(), id: rowIdOf(id) });
+}
+
+/**
+ * Delete: the schedule goes, and the draft with it, also a late or refused
+ * one. If the draft cannot be deleted, the reader is told. The schedule
+ * is gone, so the message is never sent, and it stays in Drafts.
+ */
+export async function deleteScheduledDraft(account: string, id: string): Promise<void> {
+  const invoke = invokeOrThrow();
+  const email = account.trim().toLowerCase();
+  const row = (await invoke("mail_scheduled_cancel", { account: email, id: rowIdOf(id) })) as Row | null;
+  if (!row) return;
+  await deleteDraft(email, row.provider, row.draftId);
+}
+
 /** Change the time. A late or refused one is given its chance again. */
 export async function rescheduleScheduledDraft(account: string, id: string, sendAt: string): Promise<void> {
   const at = Date.parse(sendAt);

@@ -11,6 +11,7 @@
  */
 
 import { confirmWithUndo } from "@/components/mail/undo-confirm";
+import { deleteEditedOriginal, keepEditAsDraft } from "@/components/mail/scheduled-undo";
 import { FLOATING_COMPOSE_SIZE_KEY } from "@/lib/mail/storage-keys";
 import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled } from "@/lib/mail/scheduled-events";
@@ -32,6 +33,7 @@ import {
 import { isPublicMailProduct } from "@/lib/mail/product-flavor";
 import { useComposeAssistant } from "@/components/mail/team-layer";
 import { outlookDraftAccount } from "@/lib/mail/outlook-handover";
+import { hideDraftRows, localDraftRowKey, unhideDraftRows } from "@/components/mail/draft-selection-store";
 import {
   ccBackToSelf,
   openReplyInOutlook,
@@ -198,7 +200,7 @@ export function useComposeView(props: ComposeViewProps) {
 } = props;
   const { canOpenInOutlook, canSendLater, from, fromSettledRef, handingOver, outlookElsewhere, outlookTarget, rememberFrom, setFrom, setHandingOver, setRememberFrom, t } = useComposeFrom({ accounts, scope });
   const { addAttachFiles, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachmentPayload, attachmentsReady, bccList, body, card, ccList, composeRef, draftKeyRef, draftPreviewId, editorHandle, editorKey, includeSignature, removeAttach, replaceAttachments, sending, setBccList, setBody, setCcList, setComposeNode, setDraftPreviewId, setEditorKey, setIncludeSignature, setShowBcc, setShowCc, setShowPreview, setSigDialogOpen, setSigSettings, setSignatureHtml, setSubject, setToList, showBcc, showCc, showPreview, sigDialogOpen, sigSettings, signatureHtml, subject, toList } = useComposeContent({ floating, onZoomAdjust, seed });
-  const { armedSendAt, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef } = useComposeDraft({ attachItems, bccList, body, ccList, draftKeyRef, from, includeSignature, onClose, onDiscarded, onFloat, showBcc, showCc, signatureHtml, subject, toList });
+  const { armedSendAt, deleteScheduled, discardChanges, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, keepAsDraft, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef } = useComposeDraft({ attachItems, bccList, body, ccList, draftKeyRef, from, includeSignature, onClose, onDiscarded, onFloat, showBcc, showCc, signatureHtml, subject, toList });
   const { bodyText, canSend, caretGoesTo, draftComposeWithAssist, draftNotes, draftWorking, draftingReply, flatBcc, flatCc, flatTo, hasRecipient, setCaretGoesTo, setDraftNotes, shortcuts, stopDraft } = useComposeDraftLife({ accounts, attachItems, attachmentsReady, bccList, body, ccList, draftDiscardedRef, draftKeyRef, draftReadyRef, draftSaveTimerRef, from, fromSettledRef, includeSignature, persistComposeDraft, replaceAttachments, replacesRef, seed, sending, setArmedSendAt, setBccList, setBody, setCcList, setEditingScheduled, setEditorKey, setFrom, setIncludeSignature, setShowBcc, setShowCc, setSigSettings, setSignatureHtml, setSubject, setToList, showBcc, showCc, sigTouchedRef, signatureHtml, subject, t, toList });
   const { openInOutlook, send } = useComposeSend({ armedSendAt, attachmentPayload, attachmentsReady, body, bodyText, canOpenInOutlook, canSend, composeRef, discardCompose, draftKeyRef, draftSaveTimerRef, flatBcc, flatCc, flatTo, floatCompose, floating, from, handingOver, includeSignature, onClose, onFloat, onSending, onSent, onToggleFocus, onUndoSend, onUnfloat, outlookElsewhere, outlookTarget, replacesRef, setHandingOver, shortcuts, sigSettings, signatureHtml, subject });
   const { cardH, cardShellRef, cardW, ccInputRef, focusBody, fromSelectRef, labelClass, onSubjectKeyDown, rowClass, startCardResize, subjectInputRef, toInputRef } = useComposeForm({ caretGoesTo, composeRef, editorKey, setCaretGoesTo, subject, zoom });
@@ -207,6 +209,9 @@ export function useComposeView(props: ComposeViewProps) {
     armedSendAt,
     setArmedSendAt,
     editingScheduled,
+    deleteScheduled,
+    discardChanges,
+    keepAsDraft,
     accounts,
     addAttachFiles,
     draftNotes,
@@ -448,6 +453,23 @@ export function useComposeContent({
 }
 
 /** The stored draft: its snapshot, its save, floating it, and discarding it; and the scheduled send it replaces. */
+/**
+ * What an edit of a scheduled message said when it was opened, by the
+ * original it edits: Don't schedule asks whether it was changed. Text, not
+ * HTML: the editor rewrites the HTML of a draft it opens.
+ */
+const editOpenedAs = new WeakMap<object, string>();
+function editText(d: {
+  subject: string;
+  body: string;
+  toList: readonly unknown[];
+  ccList: readonly unknown[];
+  bccList: readonly unknown[];
+}): string {
+  const words = d.body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  return JSON.stringify([d.subject.trim(), words, d.toList, d.ccList, d.bccList]);
+}
+
 export function useComposeDraft({
   attachItems,
   bccList,
@@ -560,7 +582,7 @@ export function useComposeDraft({
    * is easy to press by mistake. Nothing here waits for the read: the
    * composer closes at once, and the offer stands for the toast's life.
    */
-  const discardCompose = React.useCallback(() => {
+  const discardDraft = React.useCallback((verbKey: "draftDiscarded" | "changesDiscarded") => {
     const key = draftKeyRef.current;
     // Once for one draft — the bin and the delete key both come here, and
     // the read below is asynchronous, so two runs would both find a draft
@@ -581,9 +603,9 @@ export function useComposeDraft({
       const name = discardedDraftName(saved);
       confirmWithUndo({
         action: "discard",
-        verb: mailSay("draftDiscarded"),
+        verb: mailSay(verbKey),
         object: name ?? "",
-        label: name ? mailSay("draftDiscardedNamed", { name }) : mailSay("draftDiscarded"),
+        label: name && verbKey === "draftDiscarded" ? mailSay("draftDiscardedNamed", { name }) : mailSay(verbKey),
         onUndo: () => {
           discardedKeyRef.current = null;
           void setDraft(saved);
@@ -592,7 +614,60 @@ export function useComposeDraft({
     })();
     (onDiscarded ?? onClose)();
   }, [onClose, onDiscarded, draftKeyRef]);
-  return { armedSendAt, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef };
+  /** The bin. */
+  const discardCompose = React.useCallback(() => discardDraft("draftDiscarded"), [discardDraft]);
+  /** Editing a scheduled message: drop the edits. The original goes as it was. */
+  const discardChanges = React.useCallback(() => discardDraft("changesDiscarded"), [discardDraft]);
+  const stopSaving = React.useCallback(() => {
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+  }, []);
+  /**
+   * Editing a scheduled message, the bin: the scheduled message is deleted,
+   * with Undo, and the edits with it. Undo brings both back.
+   */
+  const deleteScheduled = React.useCallback(() => {
+    const original = replacesRef.current;
+    if (!original) return;
+    const key = draftKeyRef.current;
+    const subject = composeSnapshotRef.current.subject;
+    draftDiscardedRef.current = true;
+    stopSaving();
+    void (async () => {
+      const saved = await getDraft(key).catch(() => null);
+      await deleteDraft(key);
+      deleteEditedOriginal(original, subject, () => {
+        if (saved) void setDraft(saved);
+      });
+    })();
+    (onDiscarded ?? onClose)();
+  }, [draftKeyRef, onClose, onDiscarded, stopSaving]);
+  /**
+   * Editing a scheduled message, Don't schedule: the words as they stand
+   * are kept as a plain draft, and the original is not sent
+   * (scheduled-undo.ts, keepEditAsDraft). Undo makes it an edit again.
+   */
+  const keepAsDraft = React.useCallback(() => {
+    const original = replacesRef.current;
+    if (!original) return;
+    const key = draftKeyRef.current;
+    const snapshot = composeSnapshotRef.current;
+    const changed = editOpenedAs.get(original) !== editText(snapshot);
+    replacesRef.current = null;
+    setEditingScheduled(null);
+    stopSaving();
+    persistComposeDraft();
+    draftDiscardedRef.current = true;
+    keepEditAsDraft(original, snapshot.subject, { draftKey: key, changed }, () => {
+      void getDraft(key).then((draft) => {
+        if (draft?.kind === "compose") void setDraft({ ...draft, replacesScheduled: original });
+      });
+    });
+    onClose();
+  }, [draftKeyRef, onClose, persistComposeDraft, stopSaving]);
+  return { armedSendAt, deleteScheduled, discardChanges, discardCompose, draftDiscardedRef, draftReadyRef, draftSaveTimerRef, editingScheduled, floatCompose, keepAsDraft, persistComposeDraft, replacesRef, setArmedSendAt, setEditingScheduled, sigTouchedRef };
 }
 
 /** Opening and keeping the draft, where the caret goes, whether the message can be sent, and the assistant. */
@@ -717,6 +792,7 @@ export function useComposeDraftLife({
         replaceAttachments(raw.attachments);
         // Opened with Edit on a scheduled message: its time is on Send.
         if (raw.replacesScheduled) {
+          editOpenedAs.set(raw.replacesScheduled, editText(raw));
           replacesRef.current = raw.replacesScheduled;
           setEditingScheduled(raw.replacesScheduled);
           if (Date.parse(raw.replacesScheduled.sendAt) > Date.now()) setArmedSendAt(raw.replacesScheduled.sendAt);
@@ -927,6 +1003,8 @@ export function useComposeSend({
           status: "waiting",
         }, replacesRef.current)
       : null;
+    // Its row in Drafts, by the key this composer writes under.
+    const draftRow = localDraftRowKey(draftKeyRef.current);
     const deliver = async () => {
       try {
         // An edit of a scheduled message: the original goes first, and if
@@ -948,13 +1026,15 @@ export function useComposeSend({
         onSent?.(from);
         // The key this composer writes under, which is not the shared one:
         // deleting that instead left the real draft behind after every send.
-        void deleteDraft(draftKeyRef.current);
+        void deleteDraft(draftKeyRef.current).finally(() => unhideDraftRows([draftRow]));
       } catch (err) {
         /* Retry re-runs this same closure: the payload was captured whole
            when Send was pressed, so it needs nothing from the composer,
            which closed before the count ran out. The draft is still there
            until a send succeeds, so nothing is lost either way. */
         if (pendingId) dropPendingScheduled(pendingId);
+        // Not sent: the draft is still there, so its row comes back.
+        unhideDraftRows([draftRow]);
         const firstTo = flatTo.emails[0] ?? "the recipient";
         toast.error(`Your message to ${firstTo} did not send`, {
           description: err instanceof Error ? err.message : undefined,
@@ -972,6 +1052,10 @@ export function useComposeSend({
     }
     onSending?.();
     onClose();
+    // The draft leaves Drafts now, not when the Undo time is over: it is
+    // sent, or scheduled, as far as the reader can see. Undo brings its
+    // row back, and so does a send that fails (2026-10-31).
+    hideDraftRows([draftRow]);
     // A message for later is held the same few seconds: Undo puts it back
     // in the composer before anything is scheduled.
     const notice = sendAt ? await sendLaterNotice(from, formatSnoozeWakeLabel(sendAt)) : "";
@@ -983,6 +1067,7 @@ export function useComposeSend({
       // shared draft and this one was written under its own.
       onUndo: () => {
         if (pendingId) dropPendingScheduled(pendingId);
+        unhideDraftRows([draftRow]);
         onUndoSend?.(draftKeyRef.current);
       },
     });

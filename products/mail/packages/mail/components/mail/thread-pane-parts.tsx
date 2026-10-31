@@ -19,6 +19,7 @@ import {
   useThreadOutlineShown,
 } from "@/components/mail/thread-outline";
 import { ChangeTimeMenu } from "@/components/mail/ScheduledMessageView";
+import { ScheduledActions } from "@/components/mail/scheduled-actions";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import * as React from "react";
 import { Archive, ArchiveRestore, ChevronDown, Clock, Forward, Loader2, Maximize2, Pin, Printer, Reply, ReplyAll, ShieldCheck, Trash2, X } from "lucide-react";
@@ -595,41 +596,21 @@ export function ThreadMessages({
                       <span>{t("heldCannotCancel")}</span>
                     </>
                   ) : (
-                    <>
-                  <span aria-hidden className="text-stone-300">·</span>
-                  <button
-                    type="button"
-                    className="font-semibold text-teal-700 hover:text-teal-800"
-                    onClick={() => editScheduled(held)}
-                  >
-                    {t("edit")}
-                  </button>
-                  {held.reschedulable ? (
-                    <>
-                      <span aria-hidden className="text-stone-300">·</span>
-                      <ChangeTimeMenu
-                        account={held.account}
-                        onPick={(iso) => void actOnScheduled(held.id, "reschedule", iso)}
-                      />
-                    </>
-                  ) : null}
-                  <span aria-hidden className="text-stone-300">·</span>
-                  <button
-                    type="button"
-                    className="font-semibold text-teal-700 hover:text-teal-800"
-                    onClick={() => void actOnScheduled(held.id, "sendNow")}
-                  >
-                    {t("sendNow")}
-                  </button>
-                  <span aria-hidden className="text-stone-300">·</span>
-                  <button
-                    type="button"
-                    className="font-semibold text-teal-700 hover:text-teal-800"
-                    onClick={() => void actOnScheduled(held.id, "cancel")}
-                  >
-                    {t("cancel")}
-                  </button>
-                    </>
+                    <ScheduledActions
+                      look="links"
+                      onDelete={() => void actOnScheduled(held.id, "delete")}
+                      onUnschedule={() => void actOnScheduled(held.id, "unschedule")}
+                      onEdit={() => editScheduled(held)}
+                      onSendNow={() => void actOnScheduled(held.id, "sendNow")}
+                      changeTime={
+                        held.reschedulable ? (
+                          <ChangeTimeMenu
+                            account={held.account}
+                            onPick={(iso) => void actOnScheduled(held.id, "reschedule", iso)}
+                          />
+                        ) : undefined
+                      }
+                    />
                   )}
                 </div>
               </div>

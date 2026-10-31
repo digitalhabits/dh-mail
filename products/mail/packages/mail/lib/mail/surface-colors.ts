@@ -34,10 +34,11 @@ export const SURFACE_DEFAULTS: Record<Surface, string> = {
  * data-mail-dark).
  */
 export const DESIGN_SYSTEM_SWATCHES: { name: string; value: string }[] = [
+  // Light to dark, white first (Ulrik, 2026-10-31).
+  { name: "White", value: "#ffffff" },
   { name: "Cream", value: "#f5f1ea" },
   // Halfway from cream to sand (Ulrik, 2026-10-30).
   { name: "Light sand", value: "#f0eae1" },
-  { name: "White", value: "#ffffff" },
   // Mail's own sand, as the released app has it, not the website's #e9e4da
   // (Ulrik, 2026-10-30).
   { name: "Sand", value: "#ebe4d8" },

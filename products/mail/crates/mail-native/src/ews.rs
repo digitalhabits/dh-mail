@@ -54,7 +54,7 @@ pub struct EwsSettings {
 }
 
 /// The keychain item for an account. Same form as the token items in
-/// `db.rs`: `<provider>:<email>`.
+/// `db/vault.rs`: `<provider>:<email>`.
 pub fn keychain_account(email: &str) -> String {
   format!("exchange:{}", normalize_email(email))
 }

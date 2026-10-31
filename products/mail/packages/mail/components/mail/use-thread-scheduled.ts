@@ -11,7 +11,8 @@
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
 
-import { notifyScheduledChanged } from "@/lib/mail/scheduled-events";
+import { isLeavingScheduled, notifyScheduledChanged, onScheduledChanged } from "@/lib/mail/scheduled-events";
+import { deleteHeldWithUndo, unscheduleHeldWithUndo } from "@/components/mail/scheduled-undo";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import type { MailScheduledMessage, MailThreadDetail } from "@/lib/mail/types";
 import { mailSay } from "@/lib/mail/i18n";
@@ -42,7 +43,7 @@ export function useThreadScheduled({
           account
         )}&threadId=${encodeURIComponent(threadId)}`
       );
-      setScheduled(json.messages ?? []);
+      setScheduled((json.messages ?? []).filter((m) => !isLeavingScheduled(m)));
     } catch {
       // Nothing held, or the provider would not say. Either way, show none.
       setScheduled([]);
@@ -50,9 +51,17 @@ export function useThreadScheduled({
   }, [account, threadId]);
   React.useEffect(() => {
     void loadScheduled();
+    // Read again when one changes elsewhere: an Undo of a Delete brings
+    // its bubble back here.
+    return onScheduledChanged(() => void loadScheduled());
   }, [loadScheduled]);
   const actOnScheduled = React.useCallback(
-    async (id: string, action: "cancel" | "sendNow" | "reschedule", sendAt?: string) => {
+    async (
+      id: string,
+      action: "cancel" | "delete" | "unschedule" | "sendNow" | "reschedule",
+      sendAt?: string
+    ) => {
+      const held = scheduled.find((m) => m.id === id);
       // Off the screen first: the reader has decided, and a row that lingers
       // while the provider is asked reads as a button that did nothing. A
       // new time keeps it, with the time.
@@ -62,11 +71,22 @@ export function useThreadScheduled({
           : current.filter((m) => m.id !== id)
       );
       try {
-        await apiJson("/api/mail/scheduled", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account, id, action, sendAt }),
-        });
+        if (action === "delete") {
+          // Deleted after its Undo (scheduled-delete.ts). Nothing to wait for.
+          if (held) deleteHeldWithUndo(held);
+          return;
+        }
+        if (action === "unschedule") {
+          // With Undo, as Delete (scheduled-undo.ts).
+          if (held) await unscheduleHeldWithUndo(held);
+          return;
+        } else {
+          await apiJson("/api/mail/scheduled", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ account, id, action, sendAt }),
+          });
+        }
         if (action === "sendNow") {
           toast.success(mailSay("sent"));
           scheduleThreadRefetchAfterSend(account, threadId, setThread);
@@ -84,12 +104,21 @@ export function useThreadScheduled({
         notifyScheduledChanged();
       }, 1500);
     },
-    [account, threadId, loadScheduled, setThread]
+    [account, threadId, loadScheduled, scheduled, setThread]
+  );
+
+  // A message being deleted or unscheduled leaves at once (scheduled-undo.ts).
+  const [leavingTick, setLeavingTick] = React.useState(0);
+  React.useEffect(() => onScheduledChanged(() => setLeavingTick((n) => n + 1)), []);
+  const shown = React.useMemo(
+    () => scheduled.filter((m) => !isLeavingScheduled(m)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scheduled, leavingTick]
   );
 
   return {
     actOnScheduled,
     loadScheduled,
-    scheduled,
+    scheduled: shown,
   };
 }

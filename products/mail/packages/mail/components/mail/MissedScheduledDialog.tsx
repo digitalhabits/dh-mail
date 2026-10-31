@@ -10,14 +10,21 @@
  * Keep as draft", reads as an error and runs out of the row. So Mail asks,
  * in plain words, once per message: one message with a look at what it says, or several with a
  * box each. Not now leaves them in Scheduled, marked as missed.
+ *
+ * One message has the actions its bubble has (scheduled-actions.tsx):
+ * Delete · Unschedule · Edit · Change time · Send now (2026-10-31). Escape
+ * or a click outside is Not now.
  */
 
-import { usePageActions, usePageList } from "@/components/mail/mail-page-slices";
+import { usePageActions, usePageCompose, usePageList } from "@/components/mail/mail-page-slices";
+import { ScheduledActions } from "@/components/mail/scheduled-actions";
+import { editHeldInComposer } from "@/lib/mail/scheduled-held";
+import { unscheduleHeldWithUndo } from "@/components/mail/scheduled-undo";
 import { MISSED_SCHEDULED_ASKED_KEY as ASKED_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
-import { ChangeTimeMenu, openScheduledMessage } from "@/components/mail/ScheduledMessageView";
+import { ChangeTimeMenu } from "@/components/mail/ScheduledMessageView";
 import { currentMailLocale } from "@/lib/mail/i18n-strings";
 import { useMailT } from "@/lib/mail/i18n";
 import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
@@ -71,6 +78,7 @@ function firstLine(held: MailScheduledMessage): string {
 export function MissedScheduledDialog() {
   const pageList = usePageList();
   const pageActions = usePageActions();
+  const { startCompose } = usePageCompose();
   const t = useMailT();
   const [askedNow, setAskedNow] = React.useState(0);
   const missed = React.useMemo(() => {
@@ -138,45 +146,41 @@ export function MissedScheduledDialog() {
               </div>
               <p className="mt-1 truncate text-sm font-semibold text-stone-900">{one.subject || t("noSubject")}</p>
               <p className="truncate text-sm text-stone-600">{firstLine(one)}</p>
-              <button
-                type="button"
-                className="mt-1 text-sm font-semibold text-teal-700 hover:text-teal-800"
-                onClick={() => {
-                  done();
-                  openScheduledMessage(one);
-                }}
-              >
-                {t("openEmail")}
-              </button>
             </div>
-            <div className="mt-5 flex items-center gap-2">
-              <button
-                type="button"
-                className="mr-auto rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-100"
-                onClick={done}
-              >
-                {t(isScheduledDraftId(one.id) ? "keepAsDraft" : "notNow")}
-              </button>
-              {one.reschedulable ? (
-                <ChangeTimeMenu
-                  account={one.account}
-                  asButton
-                  overDialog
-                  label={t("reschedule")}
-                  onPick={(iso) => {
-                    done();
-                    void pageActions.actOnHeld(one, "reschedule", iso);
-                  }}
-                />
-              ) : null}
-              <button
-                type="button"
-                className="rounded-full bg-teal-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-teal-800"
-                onClick={() => sendNow([one])}
-              >
-                {t("sendNow")}
-              </button>
-            </div>
+            <ScheduledActions
+              look="dialog"
+              onDelete={() => {
+                done();
+                void pageActions.actOnHeld(one, "delete");
+              }}
+              onUnschedule={() => {
+                done();
+                void unscheduleHeldWithUndo(one);
+              }}
+              onEdit={
+                one.bodyHtml || one.bodyText
+                  ? () => {
+                      done();
+                      void editHeldInComposer(startCompose, one);
+                    }
+                  : undefined
+              }
+              onSendNow={() => sendNow([one])}
+              changeTime={
+                one.reschedulable ? (
+                  <ChangeTimeMenu
+                    account={one.account}
+                    asButton
+                    overDialog
+                    label={t("reschedule")}
+                    onPick={(iso) => {
+                      done();
+                      void pageActions.actOnHeld(one, "reschedule", iso);
+                    }}
+                  />
+                ) : undefined
+              }
+            />
           </>
         ) : (
           <>

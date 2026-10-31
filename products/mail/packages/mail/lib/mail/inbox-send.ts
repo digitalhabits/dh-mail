@@ -9,18 +9,20 @@
 import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 
-import { cancelExchangeHeld, listExchangeHeld, sendExchangeHeldNow } from "@/lib/mail/exchange-send-later";
+import { cancelExchangeHeld, deleteExchangeHeld, listExchangeHeld, sendExchangeHeldNow } from "@/lib/mail/exchange-send-later";
 import { exchangeSenderName, sendExchangeMessage } from "@/lib/mail/exchange-send";
 import { discardExchangeDraft, discardOwnDraftCopiesInThread } from "@/lib/mail/exchange-drafts";
 import { localStoreServes } from "@/lib/mail/local-store";
 import {
   canScheduleFromDraft,
   cancelScheduledDraft,
+  deleteScheduledDraft,
   isScheduledDraftId,
   listScheduledDrafts,
   rescheduleScheduledDraft,
   scheduleAsDraft,
   sendScheduledDraftNow,
+  unscheduleScheduledDraft,
 } from "@/lib/mail/scheduled-drafts";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 import { sendRawMessage } from "@/lib/gmail/api";
@@ -30,7 +32,7 @@ import {
 } from "@/lib/mail/account-scope";
 import { extractInlineImages } from "@/lib/mail/inline-images";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
-import { draftOutlookMailMessage, sendOutlookMailMessage, listScheduledOutlookMessages, cancelScheduledOutlookMessage, sendScheduledOutlookMessageNow, rescheduleScheduledOutlookMessage } from "@/lib/mail/outlook-inbox";
+import { draftOutlookMailMessage, sendOutlookMailMessage, listScheduledOutlookMessages, cancelScheduledOutlookMessage, sendScheduledOutlookMessageNow, rescheduleScheduledOutlookMessage, unscheduleScheduledOutlookMessage } from "@/lib/mail/outlook-inbox";
 import {
   listConnectedMailAccounts,
   resolveMailProvider,
@@ -247,6 +249,7 @@ async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
         to: row.to,
         cc: words?.cc ?? [],
         signed: true,
+        heldHere: true,
         // Late: past its hour, waiting for the person, as a scheduled draft's.
         status: row.status === "late" ? ("failed" as const) : (row.status ?? "waiting"),
         ...(row.status === "late" ? { missed: true } : null),
@@ -348,6 +351,71 @@ export async function cancelScheduledMailMessage(input: {
   }
   await cancelScheduledOutlookMessage(input.account, input.id);
   invalidateInboxCache();
+}
+
+/**
+ * Delete: never send it, and keep nothing. This is Cancel for every kind
+ * except two. A late scheduled draft also loses its draft. A message
+ * held in an Exchange Outbox is moved to Drafts and then discarded.
+ */
+export async function deleteScheduledMailMessage(input: {
+  account: string;
+  id: string;
+}): Promise<void> {
+  if (isScheduledDraftId(input.id)) {
+    await deleteScheduledDraft(input.account, input.id);
+  } else if ((await resolveMailProvider(input.account)) === "exchange") {
+    await deleteExchangeHeld(input.account, input.id);
+  } else {
+    await cancelScheduledMailMessage(input);
+    return;
+  }
+  invalidateInboxCache();
+}
+
+/**
+ * What Unschedule did. "server": the message is a draft in the mailbox's
+ * own Drafts, with no time. "local": nothing is changed yet. The message
+ * waits in this computer's outbox, and a draft is made from its words and
+ * these files on this computer. Then Cancel takes it out of the outbox.
+ * The draft comes first, so the message is never in neither place.
+ */
+export type UnscheduleResult =
+  | { kept: "server" }
+  | { kept: "local"; attachments: OutboxAttachment[] };
+
+export type OutboxAttachment = { filename: string; mimeType: string; size: number; contentBase64: string };
+
+/** Unschedule: keep it as an ordinary draft, with no time. */
+export async function unscheduleScheduledMailMessage(input: {
+  account: string;
+  id: string;
+}): Promise<UnscheduleResult> {
+  if (isScheduledDraftId(input.id)) {
+    await unscheduleScheduledDraft(input.account, input.id);
+    invalidateInboxCache();
+    return { kept: "server" };
+  }
+  const provider = await resolveMailProvider(input.account);
+  if (provider === "exchange") {
+    await cancelExchangeHeld(input.account, input.id);
+    invalidateInboxCache();
+    return { kept: "server" };
+  }
+  if (provider === "outlook") {
+    await unscheduleScheduledOutlookMessage(input.account, input.id);
+    invalidateInboxCache();
+    return { kept: "server" };
+  }
+  const invoke = tauriInvoke();
+  if (!invoke) throw new PlanError("Only the Mail app holds this message", 400);
+  const files = (await invoke("mail_sync_outbox_attachments", {
+    account: input.account,
+    id: Number(input.id),
+  })) as OutboxAttachment[] | null;
+  // No source: the message has gone, or was taken out elsewhere.
+  if (!files) throw new PlanError("This message is no longer waiting to be sent", 404);
+  return { kept: "local", attachments: files };
 }
 
 /**

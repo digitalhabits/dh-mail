@@ -51,6 +51,11 @@ export function draftRowKey(row: MailDraftRow): string {
   return `${row.origin}:${row.id}`;
 }
 
+/** The row of a draft kept on this computer, by its draft key. */
+export function localDraftRowKey(draftKey: string): string {
+  return `here:${draftKey}`;
+}
+
 /**
  * A click on a row. Returns true when it was a plain click, and the caller
  * opens the draft; false when it changed a selection of several.

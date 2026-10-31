@@ -81,7 +81,9 @@ export function useMailDrafts(): {
       .catch(() => [])
       .then((rows) => {
         if (run !== localRunRef.current) return;
-        setLocal(rows.map(localDraftRow));
+        // An edit of a scheduled message is that message, not a draft of
+        // its own: it shows as the scheduled one, and never in Drafts.
+        setLocal(rows.filter((d) => !(d.kind === "compose" && d.replacesScheduled)).map(localDraftRow));
       });
   }, []);
 

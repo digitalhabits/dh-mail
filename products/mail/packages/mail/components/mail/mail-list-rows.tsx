@@ -1044,7 +1044,17 @@ export function OutboxGroup() {
   const openHeld = useOpenScheduledMessage();
   const { listNarrow, listExpanded, chromeDark } = usePageLayout();
   const { actOnHeld } = usePageActions();
-  const { setSelected } = usePageReader();
+  const { selected, setSelected } = usePageReader();
+  // Open in the reader: a new message on its own page, or a reply in its
+  // conversation. Both are marked, as an open thread's row is.
+  const isOpen = (held: MailScheduledMessage) =>
+    openHeld
+      ? openHeld.id === held.id && openHeld.account === held.account
+      : Boolean(
+          held.threadId &&
+            selected?.threadId === held.threadId &&
+            selected.account.toLowerCase() === held.account.toLowerCase()
+        );
   // Every mailbox's, a hidden mailbox's too: hiding a mailbox holds its
   // incoming mail, and what it will send is still the reader's to see.
   const heldMessages = pageList.heldMessages;
@@ -1083,7 +1093,7 @@ export function OutboxGroup() {
                   className={cn(
                     "relative flex w-full items-center gap-3 py-2 pl-5 pr-[18px] text-left",
                     // Open in the reader: marked as an open thread is, a card.
-                    openHeld?.id === held.id && openHeld.account === held.account
+                    isOpen(held)
                       ? OPEN_ROW_CARD
                       : chromeDark
                         ? "hover:bg-white/5"

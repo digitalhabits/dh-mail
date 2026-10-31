@@ -83,3 +83,27 @@ export function isBeingReplaced(message: { account: string; id: string }): boole
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// A scheduled message being deleted or unscheduled, during its seconds of
+// Undo. Nothing is done yet (components/mail/scheduled-undo.ts), but the
+// reader has said it, so its row and its bubble go now. Undo brings them
+// back.
+// ---------------------------------------------------------------------------
+
+const leaving = new Set<string>();
+const leavingKey = (m: { account: string; id: string }) => `${m.account.trim().toLowerCase()}|${m.id}`;
+
+export function hideLeavingScheduled(message: { account: string; id: string }): void {
+  leaving.add(leavingKey(message));
+  notifyScheduledChanged();
+}
+
+/** Undo, or the action failed: it is shown again. */
+export function unhideLeavingScheduled(message: { account: string; id: string }): void {
+  if (leaving.delete(leavingKey(message))) notifyScheduledChanged();
+}
+
+export function isLeavingScheduled(message: { account: string; id: string }): boolean {
+  return leaving.has(leavingKey(message));
+}

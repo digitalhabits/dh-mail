@@ -370,6 +370,30 @@ pub fn outbox_words(raw: &str) -> Value {
   json!({ "text": parsed.text.unwrap_or_default(), "html": parsed.html, "cc": cc })
 }
 
+/// The files a held message carries, whole, for Unschedule: the message
+/// becomes a draft on this computer, and a draft without its files would
+/// lose them. Each file is its name, its type, its size and its bytes in
+/// base64, as a draft keeps an attachment.
+pub fn outbox_attachments(raw: &str) -> Value {
+  use base64::Engine;
+  let bytes = raw.as_bytes();
+  let parsed = crate::mime::parse_message(bytes);
+  let files: Vec<Value> = parsed
+    .attachments
+    .iter()
+    .filter_map(|part| {
+      let (data, kind, name) = crate::mime::part_by_section(bytes, &part.section)?;
+      Some(json!({
+        "filename": name.unwrap_or_else(|| part.filename.clone()),
+        "mimeType": kind,
+        "size": data.len(),
+        "contentBase64": base64::engine::general_purpose::STANDARD.encode(&data),
+      }))
+    })
+    .collect();
+  Value::Array(files)
+}
+
 pub fn row_json(row: &OutboxRow) -> Value {
   let mut value = serde_json::to_value(row).unwrap_or(json!({}));
   if let Some(map) = value.as_object_mut() {
@@ -393,6 +417,28 @@ mod tests {
     let id = db.outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], raw, "Later", &["ann@x.test".into()], Some(now_ms() + 60_000), None).unwrap();
     assert_eq!(db.outbox_source("vera@example.com", id).unwrap().as_deref(), Some(raw));
     assert_eq!(db.outbox_source("other@example.com", id).unwrap(), None);
+  }
+
+  #[test]
+  fn a_held_message_gives_its_files_whole() {
+    let raw = concat!(
+      "From: Vera <vera@example.com>\r\nTo: ann@x.test\r\nSubject: Later\r\nMIME-Version: 1.0\r\n",
+      "Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n",
+      "--m\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\nSee the plan.\r\n",
+      "--m\r\nContent-Type: text/plain; name=\"plan.txt\"\r\n",
+      "Content-Disposition: attachment; filename=\"plan.txt\"\r\n",
+      "Content-Transfer-Encoding: base64\r\n\r\nU3RlcCBvbmUu\r\n",
+      "--m--\r\n"
+    );
+    let files = outbox_attachments(raw);
+    let files = files.as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["filename"], "plan.txt");
+    assert_eq!(files[0]["mimeType"], "text/plain");
+    assert_eq!(files[0]["size"], 9);
+    // "Step one." in base64.
+    assert_eq!(files[0]["contentBase64"], "U3RlcCBvbmUu");
+    assert_eq!(outbox_attachments("Subject: none\r\n\r\nJust words.\r\n"), json!([]));
   }
 
   #[test]

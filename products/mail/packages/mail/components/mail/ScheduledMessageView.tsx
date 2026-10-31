@@ -11,22 +11,25 @@
  * it: Send now, Change time, Edit, Cancel (docs/mail-send-later.md, 4.7).
  */
 
-import { usePageActions, usePageCompose, type MailComposeSlice } from "@/components/mail/mail-page-slices";
+import { usePageActions, usePageCompose, usePageList } from "@/components/mail/mail-page-slices";
+import { ScheduledActions } from "@/components/mail/scheduled-actions";
+import { editHeldInComposer, nextHeldAfterDelete } from "@/lib/mail/scheduled-held";
+import { unscheduleHeldWithUndo } from "@/components/mail/scheduled-undo";
 import * as React from "react";
-import { Clock } from "lucide-react";
+import { CalendarClock, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
 import { SendLaterMenu } from "@/components/mail/SendLaterMenu";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
-import { plainTextToEditorHtml } from "@/lib/client-email-html";
-import { dropOwnInkForEditing, dropRemoteImagesForEditing } from "@/lib/mail/editor-html";
 import { sanitizeEmailHtml } from "@/lib/mail/email-html";
 import { useMailT } from "@/lib/mail/i18n";
 import { useMailColorMode } from "@/lib/mail/theme";
-import { newComposeDraftKey, saveComposeDraft } from "@/lib/mail/local-drafts";
 import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
+import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
+import { actionForEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
+import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import type { MailScheduledMessage } from "@/lib/mail/types";
 
 // ---------------------------------------------------------------------------
@@ -56,15 +59,24 @@ export function useOpenScheduledMessage(): MailScheduledMessage | null {
 
 /**
  * The scheduled message open in the reader, as the list has it now. It goes
- * when a thread is opened, when another person is picked in Stacks, and
- * when it has been sent or let go.
+ * when a thread is opened, when another person is picked in Stacks, when
+ * another folder, tab or search is opened (2026-10-31: it stood over the
+ * Inbox), and when it has been sent or let go.
  */
 export function useOpenHeldMessage(
   held: readonly MailScheduledMessage[],
   threadOpen: boolean,
-  personKey?: string | null
+  personKey?: string | null,
+  viewKey?: string
 ): MailScheduledMessage | null {
   const open = useOpenScheduledMessage();
+  // Not on the first run: a message opened from a row stays open.
+  const viewSeen = React.useRef(viewKey);
+  React.useEffect(() => {
+    if (viewSeen.current === viewKey) return;
+    viewSeen.current = viewKey;
+    openScheduledMessage(null);
+  }, [viewKey]);
   React.useEffect(() => {
     if (threadOpen) openScheduledMessage(null);
   }, [threadOpen]);
@@ -107,7 +119,8 @@ export function ChangeTimeMenu({
             {word}
           </Button>
         ) : (
-          <button type="button" className="font-semibold text-teal-700 hover:text-teal-800">
+          <button type="button" className="inline-flex items-center gap-1 font-semibold text-teal-700 hover:text-teal-800">
+            <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
             {word}
           </button>
         )
@@ -116,53 +129,6 @@ export function ChangeTimeMenu({
   );
 }
 
-/**
- * Edit: the words in a new composer, with the original's time on Send. The
- * original stays scheduled until the edited one is sent; discard the
- * composer and it goes as it was (lib/mail/scheduled-replace).
- */
-async function editInComposer(
-  startCompose: MailComposeSlice["startCompose"],
-  held: MailScheduledMessage
-): Promise<void> {
-  const key = newComposeDraftKey();
-  const asRecipients = (list: string[]) => list.map((email) => ({ kind: "email" as const, email }));
-  await saveComposeDraft({
-    key,
-    kind: "compose",
-    from: held.account,
-    subject: held.subject,
-    body: held.bodyHtml
-      ? dropOwnInkForEditing(dropRemoteImagesForEditing(held.bodyHtml))
-      : plainTextToEditorHtml(held.bodyText),
-    toList: asRecipients(held.to),
-    ccList: asRecipients(held.cc),
-    bccList: asRecipients(held.bcc ?? []),
-    showCc: held.cc.length > 0,
-    showBcc: Boolean(held.bcc?.length),
-    attachments: [],
-    // A draft's words were kept without the signature, which goes on at the
-    // send. An outbox message's words carry it already.
-    includeSignature: !held.signed,
-    replacesScheduled: { account: held.account, id: held.id, sendAt: held.sendAt },
-  });
-  openScheduledMessage(null);
-  startCompose({ to: [], subject: "", continuedFromLabel: "", draftKey: key });
-}
-
-function Action({ onClick, children, danger = false }: { onClick: () => void; children: React.ReactNode; danger?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={danger ? "font-semibold text-red-700 hover:text-red-800" : "font-semibold text-teal-700 hover:text-teal-800"}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-const Dot = () => <span aria-hidden className="text-stone-300">·</span>;
 
 /**
  * The page: the subject as a thread's heading, who it goes to, and the
@@ -171,15 +137,53 @@ const Dot = () => <span aria-hidden className="text-stone-300">·</span>;
  */
 export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
   const pageActions = usePageActions();
+  const pageList = usePageList();
+  const shortcuts = useMailShortcuts();
   const { startCompose } = usePageCompose();
   const t = useMailT();
   const late = held.status === "failed";
   const hasWords = Boolean(held.bodyHtml || held.bodyText);
   const html = React.useMemo(() => (held.bodyHtml ? sanitizeEmailHtml(held.bodyHtml) : ""), [held.bodyHtml]);
   const dark = useMailColorMode() === "dark";
-  const act = (action: "sendNow" | "cancel") => {
+  /**
+   * Delete, with Undo, and open the next scheduled message in the list, or
+   * the one before it. When none is left, the reader is empty (2026-10-31).
+   * The next one opens on this page, a reply too: here the Delete key
+   * deletes a scheduled message, never a conversation.
+   */
+  const deleteAndMoveOn = React.useCallback(() => {
+    const next = nextHeldAfterDelete(pageList.heldMessages, held, isPendingScheduledId);
+    void pageActions.actOnHeld(held, "delete");
+    openScheduledMessage(next);
+  }, [held, pageActions, pageList.heldMessages]);
+  React.useEffect(() => {
+    if (held.cancellable === false) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(TYPING_TARGET)) return;
+      if (target?.closest('[role="dialog"][aria-modal="true"]')) return;
+      if (actionForEvent(event, shortcuts) !== "delete") return;
+      event.preventDefault();
+      // One press, one delete: a held key must not take the next ones.
+      if (event.repeat) return;
+      deleteAndMoveOn();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [held.cancellable, shortcuts, deleteAndMoveOn]);
+  const act = (action: "sendNow" | "delete") => {
     openScheduledMessage(null);
     void pageActions.actOnHeld(held, action);
+  };
+  // As Delete: it leaves, with Undo, and the next one opens.
+  const unschedule = () => {
+    const next = nextHeldAfterDelete(pageList.heldMessages, held, isPendingScheduledId);
+    void unscheduleHeldWithUndo(held);
+    openScheduledMessage(next);
+  };
+  const edit = async () => {
+    openScheduledMessage(null);
+    await editHeldInComposer(startCompose, held);
   };
   const people = [
     `${t("fieldTo")} ${held.to.join(", ")}`,
@@ -223,27 +227,19 @@ export function ScheduledMessageView({ held }: { held: MailScheduledMessage }) {
           <span className={late ? "font-semibold text-amber-700" : "font-semibold text-[var(--mail-own-ink)]"}>
             {late ? held.error || t("notSent") : t("sendsWhen", { when: formatSnoozeWakeLabel(held.sendAt) })}
           </span>
-          {held.reschedulable ? (
-            <>
-              <Dot />
-              <ChangeTimeMenu account={held.account} onPick={(iso) => void pageActions.actOnHeld(held, "reschedule", iso)} />
-            </>
-          ) : null}
           {held.cancellable === false ? null : (
-            <>
-              {hasWords ? (
-                <>
-                  <Dot />
-                  <Action onClick={() => void editInComposer(startCompose, held)}>{t("edit")}</Action>
-                </>
-              ) : null}
-              <Dot />
-              <Action onClick={() => act("sendNow")}>{t("sendNow")}</Action>
-              <Dot />
-              <Action danger onClick={() => act("cancel")}>
-                {late && isScheduledDraftId(held.id) ? t("keepAsDraft") : t("cancel")}
-              </Action>
-            </>
+            <ScheduledActions
+              look="links"
+              onDelete={deleteAndMoveOn}
+              onUnschedule={unschedule}
+              onEdit={hasWords ? () => void edit() : undefined}
+              onSendNow={() => act("sendNow")}
+              changeTime={
+                held.reschedulable ? (
+                  <ChangeTimeMenu account={held.account} onPick={(iso) => void pageActions.actOnHeld(held, "reschedule", iso)} />
+                ) : undefined
+              }
+            />
           )}
         </div>
         {isScheduledDraftId(held.id) && !late ? (

@@ -57,6 +57,8 @@ export function SendLaterMenu({
   schedule = false,
   extras,
   contentClassName,
+  editing = false,
+  onKeepAsDraft,
 }: {
   /** The mailbox it goes from: it decides who keeps it until the time. */
   account?: string;
@@ -84,6 +86,14 @@ export function SendLaterMenu({
   extras?: SendMenuExtra[];
   /** For a menu opened over a dialog: a layer above it. */
   contentClassName?: string;
+  /**
+   * The composer edits a scheduled message (2026-10-31). A time picked
+   * then sets the time on Send ("Send at …") and in the heading, as Edit
+   * opened it, and nothing goes until Send is pressed.
+   */
+  editing?: boolean;
+  /** Editing a scheduled message: "Don't schedule", keep it as a draft. */
+  onKeepAsDraft?: () => void;
 }) {
   const t = useMailT();
   const holder = useSendLaterHolder(account);
@@ -121,7 +131,8 @@ export function SendLaterMenu({
   }, [open]);
   const choose = (iso: string) => {
     setMenuOpen(false);
-    onPick?.(iso);
+    if (editing && onArm) onArm(iso);
+    else onPick?.(iso);
   };
   /** The calendar opens on today, an hour from now: the first time offered. */
   const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000);
@@ -181,6 +192,20 @@ export function SendLaterMenu({
                 <span className="font-semibold text-stone-800">{t("sendNowInstead")}</span>
               </button>
             ) : null}
+            {onKeepAsDraft ? (
+              <button
+                type="button"
+                className="flex w-full items-baseline justify-between gap-3 rounded-control px-2.5 py-1.5 text-left text-sm hover:bg-stone-100"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onKeepAsDraft();
+                }}
+              >
+                <span className="font-semibold text-stone-800">{t("dontSchedule")}</span>
+                <span className="text-stone-500">{t("dontScheduleDetail")}</span>
+              </button>
+            ) : null}
+            {(armed && onArm) || onKeepAsDraft ? <div className="mx-1.5 my-1 border-t border-stone-100" /> : null}
             {options.map((option) => (
               <PresetRow key={option.id} label={option.label} detail={option.detail} onClick={() => choose(option.iso)} />
             ))}
