@@ -1,5 +1,8 @@
 ## What is new
 
+**Fixes**
+- When you snooze several conversations at once, the next conversation opens, as it does when you archive them. If none is left, the empty inbox shows. Before, the conversation that was open before you picked them came back.
+
 **Settings, easier to read**
 - Settings is one page, with a list of its parts at the left. General comes first, then Accounts.
 - Each part stands on a white card, with larger words.

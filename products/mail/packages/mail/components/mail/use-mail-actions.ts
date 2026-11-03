@@ -158,6 +158,7 @@ export function useActionsMore({
   setSelected,
   setSelectedPersonKey,
   setThreads,
+  snoozeMany,
   successorAfterSelection,
   t,
   threads,
@@ -170,12 +171,13 @@ export function useActionsMore({
   Pick<ReturnType<typeof useListView>, "inJunkView" | "inTrashView"> &
   Pick<ReturnType<typeof useListData>, "loadThreads" | "setThreads" | "threads" | "threadsRef"> &
   Pick<ReturnType<typeof useVisibleRows>, "listScrollRef" | "personRowOrderRef"> &
-  Pick<ReturnType<typeof useActionsCore>, "dropMailUndo" | "hideRemovedRows" | "noteLeftOpenFolder" | "pushBatchUndo" | "removeThread" | "unhideRows"> &
+  Pick<ReturnType<typeof useActionsCore>, "dropMailUndo" | "hideRemovedRows" | "noteLeftOpenFolder" | "pushBatchUndo" | "removeThread" | "snoozeMany" | "unhideRows"> &
   Pick<ReturnType<typeof useSelectionPart>, "clearMultiSelection" | "selectedThreadsNow" | "successorAfterSelection">) {
   const {
     archivePerson,
     trashPerson,
     actOnSelection,
+    snoozeSelection,
     dragCarriesSelection,
     moveManyToFolder,
   } = useBatchActions({
@@ -196,6 +198,7 @@ export function useActionsMore({
     successorAfterSelection,
     clearMultiSelection,
     personRowOrderRef,
+    snoozeMany,
   });
   const {
     personMenuAt,
@@ -227,7 +230,7 @@ export function useActionsMore({
       clearMultiSelection,
       loadThreads,
     });
-  return { actOnSelection, archivePerson, askDeleteForever, askPersonSnooze, cancelPurge, capturePinFlip, dragCarriesSelection, moveManyToFolder, onPersonSnoozeOpenChange, personMenuAt, personSnooze, personSnoozeSignal, purgeAsk, purgeFrom, runPurge, setPersonMenuAt, setPersonSnooze, togglePersonPin, togglePin, trashPerson };
+  return { actOnSelection, snoozeSelection, archivePerson, askDeleteForever, askPersonSnooze, cancelPurge, capturePinFlip, dragCarriesSelection, moveManyToFolder, onPersonSnoozeOpenChange, personMenuAt, personSnooze, personSnoozeSignal, purgeAsk, purgeFrom, runPurge, setPersonMenuAt, setPersonSnooze, togglePersonPin, togglePin, trashPerson };
 }
 
 export function useRowActions({
@@ -379,6 +382,7 @@ export function usePageActionsSlice({
   setThreadJunk,
   snooze,
   snoozeMany,
+  snoozeSelection,
   togglePersonPin,
   togglePin,
   toggleRead,
@@ -386,7 +390,7 @@ export function usePageActionsSlice({
   trashPerson,
   unsnooze,
 }: Pick<ReturnType<typeof useActionsCore>, "archive" | "markUnread" | "moveToFolder" | "moveToInbox" | "restoreFromTrash" | "setThreadJunk" | "snooze" | "snoozeMany" | "toggleRead" | "trash" | "unsnooze"> &
-  Pick<ReturnType<typeof useActionsMore>, "actOnSelection" | "archivePerson" | "askDeleteForever" | "askPersonSnooze" | "cancelPurge" | "capturePinFlip" | "dragCarriesSelection" | "moveManyToFolder" | "onPersonSnoozeOpenChange" | "personMenuAt" | "personSnooze" | "personSnoozeSignal" | "purgeAsk" | "purgeFrom" | "runPurge" | "setPersonMenuAt" | "setPersonSnooze" | "togglePersonPin" | "togglePin" | "trashPerson"> &
+  Pick<ReturnType<typeof useActionsMore>, "actOnSelection" | "archivePerson" | "askDeleteForever" | "askPersonSnooze" | "cancelPurge" | "capturePinFlip" | "dragCarriesSelection" | "moveManyToFolder" | "onPersonSnoozeOpenChange" | "personMenuAt" | "personSnooze" | "personSnoozeSignal" | "purgeAsk" | "purgeFrom" | "runPurge" | "setPersonMenuAt" | "setPersonSnooze" | "snoozeSelection" | "togglePersonPin" | "togglePin" | "trashPerson"> &
   Pick<ReturnType<typeof useOutbox>, "actOnHeld"> &
   Pick<ReturnType<typeof useRowActions>, "markThreadInPeople" | "rowMenuActions">) {
   const actions = useMemoObject({
@@ -394,7 +398,7 @@ export function usePageActionsSlice({
     cancelPurge, capturePinFlip, dragCarriesSelection, markThreadInPeople, markUnread,
     moveManyToFolder, moveToFolder, moveToInbox, onPersonSnoozeOpenChange, personMenuAt,
     personSnooze, personSnoozeSignal, purgeAsk, purgeFrom, restoreFromTrash, rowMenuActions,
-    runPurge, setPersonMenuAt, setPersonSnooze, setThreadJunk, snooze, snoozeMany, togglePersonPin, togglePin,
+    runPurge, setPersonMenuAt, setPersonSnooze, setThreadJunk, snooze, snoozeMany, snoozeSelection, togglePersonPin, togglePin,
     toggleRead, trash, trashPerson, unsnooze,
   });
   return actions;

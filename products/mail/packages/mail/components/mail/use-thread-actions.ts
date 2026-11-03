@@ -792,12 +792,15 @@ export function useSnoozeActions({
   const snoozeMany = React.useCallback(
     async (
       targets: MailThreadSummary[],
-      untilIso: string
+      untilIso: string,
+      /** Called once the rows have left the list (not in Snoozed, where they stay). */
+      onLeft?: () => void
     ) => {
       const onSnoozedTab = !activeFolder && tab === "snoozed";
       // One is one, and in Snoozed the rows only take a new time.
       if (targets.length <= 1 || onSnoozedTab) {
         for (const t of targets) void snoozeOne(t, untilIso, false);
+        if (!onSnoozedTab) onLeft?.();
         return;
       }
       const before = threads;
@@ -808,6 +811,7 @@ export function useSnoozeActions({
       // stayed open instead of the empty inbox (reported 2026-10-28).
       const keys = targets.map(threadKey);
       removeThread(keys[0], keys.slice(1));
+      onLeft?.();
       const done = Promise.all(targets.map((t) => snoozeOne(t, untilIso, true)));
       // At once, as for one conversation: the rows leave now, so their
       // confirmation stands now. Undo waits for the requests.

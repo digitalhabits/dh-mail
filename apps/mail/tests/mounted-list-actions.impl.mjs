@@ -875,6 +875,30 @@ async function snoozeEveryRowLeavesNothingOpen() {
 }
 
 /**
+ * Snoozing a selection opens the row after it, as Archive does. Before,
+ * the pane went back to the conversation open before the rows were
+ * picked, even with the list empty (reported 2026-11-03).
+ */
+async function snoozeSelectionOpensTheRowAfter() {
+  await mount();
+  await open(CHOIR);
+  for (const t of [LOAN, BIKE]) clickEl(rowEl(t), { metaKey: true });
+  clickEl(rowEl(CHOIR), { metaKey: true });
+  await sleep(300);
+  assert((document.body.textContent || "").includes("2 conversations selected"), "two picked, not the open one");
+  clickEl(paneAction("Snooze"));
+  await sleep(500);
+  const tomorrow = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Tomorrow"));
+  assert(tomorrow, "the snooze times are up");
+  clickEl(tomorrow);
+  await sleep(900);
+  assert(!inList(LOAN) && !inList(BIKE), "the picked rows left");
+  assert(!reading(0), "the conversation open before is not shown again");
+  assert(reading(3), "the row after the selection opened");
+  pass("snoozing a selection opens the row after it, not the one open before");
+}
+
+/**
  * Snoozing a whole stack from its menu, with one of its conversations open,
  * leaves none of them open. One at a time, each chose the next in the same
  * stack, which was leaving too (reported 2026-10-28).
@@ -1772,6 +1796,7 @@ async function main() {
     await commandClickSelection();
     await selectionPaneSnooze();
     await snoozeEveryRowLeavesNothingOpen();
+    await snoozeSelectionOpensTheRowAfter();
     await snoozeAStackLeavesNoneOfItOpen();
     await rightClickSelection();
     await archiveAPersonThenCommandZ();

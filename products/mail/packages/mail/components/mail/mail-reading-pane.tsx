@@ -71,7 +71,7 @@ export function ReadingPaneContent({
   const t = useMailT();
   const pageList = usePageList();
   const { accountEmails, mailboxScopeEmails } = usePageAccounts();
-  const { actOnSelection, archive, archivePerson, askDeleteForever, markThreadInPeople, markUnread, moveToFolder, moveToInbox, purgeFrom, restoreFromTrash, rowMenuActions, togglePersonPin, setThreadJunk, snooze, snoozeMany, togglePin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
+  const { actOnSelection, archive, archivePerson, askDeleteForever, markThreadInPeople, markUnread, moveToFolder, moveToInbox, purgeFrom, restoreFromTrash, rowMenuActions, togglePersonPin, setThreadJunk, snooze, snoozeSelection, togglePin, toggleRead, trash, trashPerson, unsnooze } = usePageActions();
   const { activeFolder, clearMultiSelection, debouncedSearch, folders, hereNow, inJunkView, inTrashView, listCacheKey, multiSelectedCount, pinKeySet, pins, scheduleSentRefreshForAccount, highlightTerms, personRows, selectedThreadsNow, setThreads, tab, threads, viewMode, viewerId } = usePageList();
   const { adjustZoom, listCollapsed, phone, setListCollapsed, zoom } = usePageLayout();
   const { closeCompose, composeSeed, composing, drafts, draftsAccount, draftsView, editAsNewFromSource, floatingReply, forwardStarted, pendingForward, refreshDrafts, setFloatingCompose, setFloatingReply, startCompose } = usePageCompose();
@@ -180,8 +180,7 @@ export function ReadingPaneContent({
             onArchive={() => void actOnSelection("archive")}
             onDelete={() => void actOnSelection("trash")}
             onSnooze={(untilIso) => {
-              void snoozeMany(selectedThreadsNow(), untilIso);
-              clearMultiSelection();
+              snoozeSelection(untilIso);
             }}
             onCancelSnooze={
               selectedThreadsNow().some((th) => th.snoozedUntil)

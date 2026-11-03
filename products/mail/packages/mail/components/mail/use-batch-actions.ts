@@ -83,6 +83,7 @@ export function useBatchActions({
   successorAfterSelection,
   clearMultiSelection,
   personRowOrderRef,
+  snoozeMany,
 }: {
   threads: MailThreadSummary[];
   setThreads: React.Dispatch<React.SetStateAction<MailThreadSummary[]>>;
@@ -103,7 +104,33 @@ export function useBatchActions({
   clearMultiSelection: () => void;
   /** The people rows as painted, to land on the next one. */
   personRowOrderRef: React.RefObject<PersonRow[]>;
+  snoozeMany: (targets: MailThreadSummary[], untilIso: string, onLeft?: () => void) => Promise<void>;
 }) {
+  /**
+   * After picked rows leave: open the conversation after them, or none.
+   * Without this the pane went back to the conversation that was open
+   * before the rows were picked (reported for snooze, 2026-11-03).
+   */
+  const openAfterSelection = React.useCallback(
+    (successor: MailThreadSummary | null) => {
+      if (viewMode === "people") {
+        setSelected(null);
+        setSelectedPersonKey(null);
+        return;
+      }
+      setSelected(
+        successor
+          ? {
+              account: successor.account,
+              threadId: successor.threadId,
+              inPeople: successor.tab === "people",
+              focusMessageId: successor.focusMessageId,
+            }
+          : null
+      );
+    },
+    [viewMode, setSelected, setSelectedPersonKey]
+  );
   /**
    * Archive every conversation with someone.
    *
@@ -317,21 +344,7 @@ export function useBatchActions({
       for (const rowKey of targetKeys) removeThread(rowKey);
       hideRemovedRows(targetKeys);
       clearMultiSelection();
-      if (people) {
-        setSelected(null);
-        setSelectedPersonKey(null);
-      } else {
-        setSelected(
-          successor
-            ? {
-                account: successor.account,
-                threadId: successor.threadId,
-                inPeople: successor.tab === "people",
-                focusMessageId: successor.focusMessageId,
-              }
-            : null
-        );
-      }
+      openAfterSelection(successor);
 
       const path = kind === "archive" ? "/api/mail/archive" : "/api/mail/trash";
       const undoPath =
@@ -404,10 +417,24 @@ export function useBatchActions({
       pushBatchUndo,
       dropMailUndo,
       setThreads,
-      setSelected,
-      setSelectedPersonKey,
+      openAfterSelection,
       personRowOrderRef,
     ]
+  );
+
+  /**
+   * Snooze the picked conversations, then open the one after them, as
+   * archive and delete do. `picked`: the rows a menu held, when not the
+   * selection as it is now.
+   */
+  const snoozeSelection = React.useCallback(
+    (untilIso: string, picked: MailThreadSummary[] = selectedThreadsNow()) => {
+      if (!picked.length) return;
+      const successor = viewMode === "people" ? null : successorAfterSelection();
+      clearMultiSelection();
+      void snoozeMany(picked, untilIso, () => openAfterSelection(successor));
+    },
+    [selectedThreadsNow, viewMode, successorAfterSelection, clearMultiSelection, snoozeMany, openAfterSelection]
   );
 
   /**
@@ -504,6 +531,7 @@ export function useBatchActions({
     archivePerson,
     trashPerson,
     actOnSelection,
+    snoozeSelection,
     dragCarriesSelection,
     moveManyToFolder,
   };
