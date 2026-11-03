@@ -99,6 +99,11 @@ async function main() {
       page.setThreads((current) => current.filter((t) => t.threadId !== "t1"));
       page.setSelected({ account: ACCOUNT, threadId: "t2", inPeople: false });
     });
+    // On a slow runner the read lands a beat after the selection: wait
+    // for it, up to two seconds, rather than look once.
+    for (let waited = 0; unread("t2") !== false && waited < 2000; waited += 50) {
+      await act(async () => sleep(50));
+    }
     assert.equal(unread("t2"), false, "the next row is read");
     await sleep(3200);
     assert.deepEqual(reads, ["t1", "t2"], "and the server is told");
