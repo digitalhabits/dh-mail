@@ -28,12 +28,12 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Moon } from "lucide-react";
+import { EyeOff, Pause } from "lucide-react";
 
 import { AccountMark } from "@/components/mail/AccountMark";
 import { AutoReplyMark } from "@/components/mail/AutoReplyMark";
 import { AccountHoursMenu, type PauseControls } from "@/components/mail/account-hours-menu";
-import { hiddenStatusText } from "@/components/mail/hidden-status";
+import { hiddenStatusText, hiddenUntilLabel } from "@/components/mail/hidden-status";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { useAccountMarks } from "@/lib/mail/account-mark";
 import type { AccountChipLabel } from "@/lib/mail/account-labels";
@@ -309,23 +309,21 @@ export function MailAccountTabs({
     const awayTip = autoReplyOn?.get(email.trim().toLowerCase());
     const inner = (
       <>
+        {/* Paused: a pause mark before the mailbox's mark. */}
         {quietTip ? (
-          <Moon
-            className="h-3 w-3 shrink-0 text-stone-400"
+          <Pause
+            data-tab-paused=""
+            className="h-3 w-3 shrink-0 opacity-60"
             aria-label={quietTip}
           />
         ) : null}
+        {/* Not greyed while paused: greyed is for hidden, which is a
+            different thing (Ulrik, 2026-11-02). The pause mark says it. */}
         <AccountMark
           mark={marks[email.trim().toLowerCase()]}
           provider={mailProviderFor(email, isOutlookAccount)}
-          className={quietTip ? "opacity-60" : undefined}
         />
-        <span
-          className={cn(
-            "max-w-[10rem] truncate",
-            quietTip && "text-stone-400"
-          )}
-        >
+        <span className="max-w-[10rem] truncate">
           {label?.primary ?? email}
         </span>
         {/* After the name, as a word would be: the corner badge sat on
@@ -338,7 +336,7 @@ export function MailAccountTabs({
       </>
     );
     const title = quietTip ?? email;
-    const className = cn(tab(active), quietTip && !active && "opacity-70");
+    const className = tab(active);
     if (!sortable) {
       return (
         <button
@@ -433,7 +431,13 @@ export function MailAccountTabs({
           {!selectOnly && hide
             ? hiddenIds.map((email) => {
                 const status = hide.statusOf(email);
-                const title = hiddenStatusText(status, t);
+                // "team · 18:00": when it shows again, on the tab itself.
+                const until = hiddenUntilLabel(status);
+                // Who hid it, as the menu says it: by hand, or the schedule.
+                const title =
+                  status.byHand || !until
+                    ? status.byHand ? t("hoursStateHiddenByYouNoEnd") : hiddenStatusText(status, t)
+                    : t(status.reason === "until" ? "hoursStateHiddenByYou" : "hoursStateHiddenBySchedule", { time: until });
                 const openMenu = (x: number, y: number) => setMenu({ account: email, x, y });
                 return (
                   <button
@@ -451,6 +455,9 @@ export function MailAccountTabs({
                       openMenu(event.clientX, event.clientY);
                     }}
                   >
+                    {/* Hidden: a closed eye before its mark, as a paused
+                        tab has its pause mark. */}
+                    <EyeOff data-tab-hidden="" className="h-3 w-3 shrink-0" aria-label={title} />
                     <AccountMark
                       mark={marks[email.trim().toLowerCase()]}
                       provider={mailProviderFor(email, isOutlookAccount)}
@@ -458,6 +465,11 @@ export function MailAccountTabs({
                     <span className="max-w-[10rem] truncate">
                       {labels.get(email)?.primary ?? email.split("@")[0]}
                     </span>
+                    {until ? (
+                      <span data-tab-hidden-until="" className="shrink-0 tabular-nums">
+                        · {until}
+                      </span>
+                    ) : null}
                     {/* A hidden mailbox still answers on its own. */}
                     {autoReplyOn?.get(email.trim().toLowerCase()) ? (
                       <span title={autoReplyOn.get(email.trim().toLowerCase())} className="-ml-0.5 flex shrink-0">

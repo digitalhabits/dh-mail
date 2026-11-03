@@ -61,7 +61,8 @@ export function MailPauseMenu({
   accounts: string[];
   labels: Map<string, AccountChipLabel>;
   isOutlookAccount: (email: string) => boolean;
-  onPause: (until: number, account?: string | null) => void;
+  /** `from`: where it was asked, for the diagnostics log. */
+  onPause: (until: number, account?: string | null, from?: string) => void;
   onResume: (account?: string | null) => void;
   onQuietHoursChange: (
     windows: MailQuietWindow[],
@@ -219,7 +220,7 @@ export function MailPauseMenu({
                 type="button"
                 className="mail-menu-pick flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-stone-800"
                 onClick={() => {
-                  onPause(option.until, scope);
+                  onPause(option.until, scope, `phone menu: ${option.id}`);
                   setOpen(false);
                   warnFriction();
                 }}
@@ -248,7 +249,7 @@ export function MailPauseMenu({
                 onClick={() => {
                   const at = new Date(custom).getTime();
                   if (!Number.isFinite(at) || at <= Date.now()) return;
-                  onPause(at, scope);
+                  onPause(at, scope, "phone menu: until a time");
                   setOpen(false);
                   warnFriction();
                 }}

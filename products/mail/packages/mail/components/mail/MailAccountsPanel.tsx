@@ -189,9 +189,9 @@ function SortableAccountRow({
         // Out of office still colours the row, but as a bar down its left
         // rather than a border: a border would fight the hairlines between
         // rows, and it moved everything by a pixel when it appeared.
-        // Its own block, in the same cream as every other settings group, so
-        // the gap between rows shows the panel behind.
-        "relative bg-[var(--mail-chrome)]",
+        // On the section's card: white on the Settings page, as the other
+        // cards there (Ulrik, 2026-11-02: cream on cream was hard to read).
+        "relative",
         away && "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-emerald-400",
         isDragging && "z-10 rounded-surface bg-white shadow-md"
       )}
@@ -265,9 +265,11 @@ function SortableAccountRow({
         {autoReply !== undefined && !away ? (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-stone-900"
+            // A button, as the mockup has it, not a word in grey: dashed
+            // where the account cannot set one.
+            className="h-8 px-3 text-sm font-medium text-stone-800 disabled:border-dashed"
             title={autoReply.unavailable ?? t("outOfOfficeReply")}
             disabled={Boolean(autoReply.unavailable)}
             onPointerDown={stopDrag}
@@ -955,7 +957,7 @@ export function MailAccountsPanel({
       {/* One card for the section: the accounts, and the two ways to add
           another. Adding a mailbox belongs to this list, so the buttons sit on
           the same surface rather than floating below it. */}
-      <div className="overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
+      <div className="mail-settings-group overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
       {displayAccounts.length ? (
         <DndContext
           sensors={sensors}
@@ -970,12 +972,9 @@ export function MailAccountsPanel({
                 a list that scrolls inside a panel that scrolls means the
                 wheel does one thing over the accounts and another an inch
                 above them. */}
-            {/* A gap between accounts rather than a hairline. Each account
-                carries a name, a state, and sometimes an out-of-office line,
-                so a rule between them was doing the work of a paragraph
-                break. The gap shows the panel through, which is what
-                separates one account from the next. */}
-            <ul className="flex flex-col gap-[4px] bg-white">
+            {/* A hairline between accounts, as between the rows of the
+                other cards on the page. */}
+            <ul className="flex flex-col divide-y divide-stone-200">
               {displayAccounts.map((account) => (
                 <SortableAccountRow
                   key={`${account.provider}:${account.email}`}
@@ -1023,15 +1022,9 @@ export function MailAccountsPanel({
         </p>
       )}
 
-      {/* The strip that separates one account from the next, continued under
-          the last one — adding a mailbox is one more item in this card, not a
-          footer under it.
-
-          A block carrying the list's own background rather than a white
-          border. `border-white` is white in both themes, and on the dark one
-          it was a bright white rule across the card; `bg-white` is the same
-          class the gaps above are drawn with, and the theme answers it. */}
-      <div aria-hidden className="h-[4px] bg-white" />
+      {/* The same hairline under the last account: adding a mailbox is one
+          more item in this card, not a footer under it. */}
+      <div aria-hidden className="border-t border-stone-200" />
       {/* macOS asks for a password when the token goes to the Keychain.
           Say so before the sheet, or a careful person quits — but only
           while a connect is under way, since that is when the sheet comes;

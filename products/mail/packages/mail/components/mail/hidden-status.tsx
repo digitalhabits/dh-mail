@@ -13,7 +13,7 @@
 
 import { EyeOff } from "lucide-react";
 
-import { formatSnoozeClock, formatSnoozeDayTime } from "@/components/mail/SnoozeMenu";
+import { formatSnoozeClock, formatSnoozeDayTime, formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { useOnHoursWords } from "@/components/mail/pause-panels";
 import { onHoursSummary } from "@/lib/mail/account-rhythm";
 import { SCHEDULE_DAY_LABELS } from "@/lib/mail/custom-lists";
@@ -38,6 +38,14 @@ export function hiddenStatusText(
   if (days <= 0) return t("hiddenShownAgainAt", { time: formatSnoozeClock(at) });
   if (days === 1) return t("hiddenShownAgainTomorrow", { time: formatSnoozeClock(at) });
   return t("hiddenShownAgainOn", { when: formatSnoozeDayTime(at) });
+}
+
+/** When a hidden mailbox shows again, short: "18:00", "Tue 08:00". Null by hand or with no end. */
+export function hiddenUntilLabel(status: HiddenStatusOf): string | null {
+  if (status.byHand || !status.hidden) return null;
+  const at = status.reason === "until" ? status.until : (status.endsAt ?? null);
+  if (at) return formatSnoozeWakeLabel(at.toISOString());
+  return status.untilClock ?? null;
 }
 
 /** The closed eye and the words. */

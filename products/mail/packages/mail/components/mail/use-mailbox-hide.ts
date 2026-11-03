@@ -7,6 +7,7 @@
  * and what the tabs' menus do. The rules are lib/mail/mailbox-hide.
  */
 
+import { diagEvent, diagHours, diagTime, mailboxNumber } from "@/lib/mail/diagnostics";
 import { MAILBOX_HIDE_KEY as KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
@@ -83,7 +84,8 @@ export type MailboxHideControls = {
   statusOf: (email: string) => MailboxHideStatus;
   hoursOf: (email: string) => MailQuietWindow[];
   showWords: number;
-  hideUntil: (email: string, until: number) => void;
+  /** `from`: where it was asked, for the log ("menu: for 1 hour"). */
+  hideUntil: (email: string, until: number, from?: string) => void;
   hideByHand: (email: string) => void;
   setHours: (email: string, windows: MailQuietWindow[]) => void;
   showNow: (email: string) => void;
@@ -274,11 +276,13 @@ export function useMailboxHide({
     statusOf,
     hoursOf: (email) => state.accounts[hideKey(email)]?.hours ?? [],
     showWords,
-    hideUntil: (email, until) => {
+    hideUntil: (email, until, from) => {
+      diagEvent("hide set", { mailbox: mailboxNumber(email), until: diagTime(until), from: from ?? "unknown" });
       patchRow(email, (row) => ({ ...row, hiddenUntil: until, shownUntil: undefined }));
       toast.success(t("mailboxHiddenFor", { email }));
     },
     hideByHand: (email) => {
+      diagEvent("hide set", { mailbox: mailboxNumber(email), until: "shown by hand" });
       // By hand: no clock shows it again.
       patchRow(email, (row) => ({ ...row, hiddenUntil: undefined, autoHidden: undefined }));
       void flip(email, false)
@@ -286,11 +290,13 @@ export function useMailboxHide({
         .catch((err: unknown) => toast.error(err instanceof Error ? err.message : t("couldNotUpdate")));
     },
     setHours: (email, windows) => {
+      diagEvent("hidden hours set", { mailbox: mailboxNumber(email), hidden: diagHours(windows) });
       // A schedule set again is a schedule meant: a "show now" from before
       // no longer holds it off, and the clock hides it if a window is on.
       patchRow(email, (row) => ({ ...row, hours: windows.length ? windows : undefined, shownUntil: undefined }));
     },
     resumeSchedule: (email) => {
+      diagEvent("schedule resumed", { mailbox: mailboxNumber(email) });
       // The clock does the hiding: with shownUntil gone, the window hides it.
       patchRow(email, (row) => ({ ...row, shownUntil: undefined }));
       toast.success(t("mailboxHiddenFor", { email }));
@@ -335,6 +341,7 @@ export function useMailboxHide({
           });
           if (!ok) return;
         }
+        diagEvent("shown early", { mailbox: mailboxNumber(email), until: diagTime(shownEnd), words: verdict.hidden && words > 0 });
         patchRow(email, (r) => ({
           ...r,
           hiddenUntil: verdict.reason === "until" && againMinutes > 0 ? r.hiddenUntil : undefined,

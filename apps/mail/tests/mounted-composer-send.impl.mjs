@@ -916,7 +916,7 @@ async function main() {
     assert.equal(sends[sends.length - 1].threadId, "bench-1", "a plain reply joins its thread");
     pass("Command+Enter sends the reply the caret is in");
 
-    /* Edit subject, in the row under the box, opens the subject. */
+    /* Edit subject, in the ··· menu beside the bin, opens the subject. */
     clickEl(byTitle(/^reply \(/i));
     await sleep(1500);
     const subjectFields = () =>
@@ -924,25 +924,27 @@ async function main() {
         (f) => f.getAttribute("placeholder") === `Re: ${BENCH_SUBJECT}`
       );
     assert.equal(subjectFields().length, 0, "no subject field at first");
+    clickEl(buttons().find((b) => b.getAttribute("aria-label") === "Message options"));
+    await sleep(300);
     const editSubject = buttons().find((b) => (b.textContent || "").trim() === "Edit subject");
-    assert(editSubject, "the row under the box offers Edit subject");
+    assert(editSubject, "the ··· menu offers Edit subject");
     clickEl(editSubject);
     await sleep(300);
     assert.equal(subjectFields().length, 1, "Edit subject opens it");
-    pass("Edit subject, under the box, opens the subject of a reply");
+    pass("Edit subject, in the ··· menu, opens the subject of a reply");
 
     /* The history that goes with the reply, folded under the box. */
     const historyBox = () => document.querySelector("[data-reply-history]");
     assert(historyBox(), "a reply shows the quoted history under the box");
-    const showQuoted = [...historyBox().querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Show quoted text");
-    assert(showQuoted, "folded, with Show quoted text");
+    const showQuoted = [...historyBox().querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Show quoted text");
+    assert(showQuoted, "folded, behind the ••• pill");
     clickEl(showQuoted);
     await sleep(300);
     assert(
-      [...historyBox().querySelectorAll("button")].some((b) => (b.textContent || "").trim() === "Hide quoted text"),
+      [...historyBox().querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Hide quoted text"),
       "opened, it offers Hide quoted text"
     );
-    clickEl([...historyBox().querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Hide quoted text"));
+    clickEl([...historyBox().querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Hide quoted text"));
     await sleep(200);
     pass("a reply shows its quoted history under the box, folded, as a forward shows its message");
 

@@ -779,7 +779,9 @@ export function ThreadListRow({
   // Hover (or an open snooze menu) shows the actions over the time, not in
   // its place: there, wider or narrower than the time, they moved what is
   // beside it. In the row's own solid fill, so nothing shows through. The
-  // slot is as wide as the actions (min-w-[5rem]), so they cover only the time.
+  // slot is only as wide as the time, so the actions also cover the end of
+  // the name, as Gmail's do: a slot kept as wide as the actions left a gap
+  // before every time that was wider than the time.
   const rowActionsClass = cn(
     "absolute right-0 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-inner bg-[var(--mail-person-stack-ring,transparent)] pl-1 group-hover:flex",
     snoozeOpen ? "flex" : "hidden"
@@ -983,7 +985,7 @@ export function ThreadListRow({
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </p>
           </div>
-          <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
+          <span className="relative flex shrink-0 items-center justify-end">
             {t.snoozedUntil && onSnooze ? (
               <span
                 className={atRestClass}
@@ -1123,7 +1125,7 @@ function StackedRowBody({
           {hasDraft ? <DraftBadge /> : null}
         </div>
         {/* At rest: time (or wake time). On hover: read / snooze / pin. */}
-        <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
+        <span className="relative flex shrink-0 items-center justify-end">
           {t.snoozedUntil && onSnooze ? (
             <span
               className={atRestClass}
@@ -1260,7 +1262,7 @@ function WideRowBody({
   rowActions: React.JSX.Element;
 }) {
   const time = (
-    <span className="relative flex min-w-[5rem] shrink-0 items-center justify-end">
+    <span className="relative flex shrink-0 items-center justify-end">
       {t.snoozedUntil && onSnooze ? (
         <span
           className={atRestClass}
@@ -1287,10 +1289,9 @@ function WideRowBody({
         <p
           className={cn(
             atRestClass,
-            // At least this wide, so the dates line up; wider, on one line,
-            // for the hidden-account eye before one.
-            "min-w-[4.5rem] whitespace-nowrap text-right text-xs tabular-nums",
-            withYear && "min-w-[6rem]",
+            // Right-aligned, so the dates line up at their ends; on one
+            // line, for the hidden-account eye before one.
+            "whitespace-nowrap text-right text-xs tabular-nums",
             onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
           )}
         >

@@ -50,7 +50,7 @@ export function SettingsHeading({
   return (
     <p
       className={cn(
-        "mb-1.5 mt-6 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400 first:mt-0",
+        "mail-settings-group-heading mb-1.5 mt-6 text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 first:mt-0",
         className
       )}
     >
@@ -79,7 +79,7 @@ export function SettingsGroup({
         // The cream the title bar and the thread list are painted in, so a
         // panel over them is the same surface rather than a grey card on top.
         // The variable, not the colour: it is what turns navy in dark mode.
-        "divide-y divide-stone-200 overflow-hidden rounded-surface bg-[var(--mail-chrome)]",
+        "mail-settings-group divide-y divide-stone-200 overflow-hidden rounded-surface bg-[var(--mail-chrome)]",
         className
       )}
     >
@@ -105,16 +105,16 @@ export function SettingsRow({
   const body = (
     <>
       <span className="flex min-w-0 flex-col gap-0.5 text-left">
-        <span className="text-sm text-stone-800">{label}</span>
+        <span className="mail-settings-label text-sm text-stone-900">{label}</span>
         {hint ? (
-          <span className="text-xs leading-snug text-stone-500">{hint}</span>
+          <span className="mail-settings-hint text-xs leading-snug text-stone-500">{hint}</span>
         ) : null}
       </span>
       {control ? <span className="shrink-0">{control}</span> : null}
     </>
   );
   const shape = cn(
-    "flex w-full items-center justify-between gap-3 px-4 py-3",
+    "mail-settings-row flex w-full items-center justify-between gap-3 px-4 py-3",
     className
   );
   if (onClick) {
@@ -147,10 +147,10 @@ export function SettingsStackedRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="px-4 py-3">
-      <p className="text-sm text-stone-800">{label}</p>
+    <div className="mail-settings-row px-4 py-3">
+      <p className="mail-settings-label text-sm text-stone-900">{label}</p>
       {hint ? (
-        <p className="mt-0.5 text-xs leading-snug text-stone-500">{hint}</p>
+        <p className="mail-settings-hint mt-0.5 text-xs leading-snug text-stone-500">{hint}</p>
       ) : null}
       <div className="mt-2">{children}</div>
     </div>
@@ -296,8 +296,8 @@ export function SettingsLanguageRow() {
     (option) => option !== lang
   );
 
-  // A click anywhere else, or Escape, shuts the list. The settings panel is
-  // itself a popover, so this cannot use one of those without nesting them.
+  // A click anywhere else, or Escape, shuts the list. Escape stops here, so
+  // it does not also close the Settings page.
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -391,44 +391,40 @@ export const settingsSecondaryButton =
   "rounded-control border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-60";
 
 /**
- * One category's page in Settings.
+ * One section of the Settings page.
  *
- * A title, a line that says what the category is for, the rows, and a footer
- * with Done. The rows scroll and the footer does not, so the way out stays on
- * screen however long the list gets. Every category has the same frame, so
- * moving along the rail changes only what is in it.
+ * Settings is one page that scrolls, as in To-Do: each section has a large
+ * heading, a line that says what it is for, and its rows. Buttons for one
+ * section only, such as a reset, go under its rows. The way out is the
+ * back button at the top of the page, so a section has no Done of its own.
  */
 export function SettingsPane({
   title,
   description,
-  onDone,
   footerStart,
   children,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
-  onDone: () => void;
-  /** Buttons for this category only, such as a reset, left of Done. */
+  /** Buttons for this section only, such as a reset, under its rows. */
   footerStart?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const t = useMailT();
   return (
-    <>
-      <div className="px-6 pb-3 pt-5">
-        <h2 className="font-serif text-2xl font-bold text-stone-900">{title}</h2>
+    <div className="flex flex-col gap-3.5">
+      <div>
+        <h2 className="mail-settings-heading font-serif text-[2rem] font-medium leading-[1.15] tracking-[-0.01em] text-stone-900">
+          {title}
+        </h2>
         {description ? (
-          <p className="mt-1 text-sm leading-snug text-stone-500">{description}</p>
+          <p className="mail-settings-lead mt-2.5 text-[15px] leading-snug text-stone-600">{description}</p>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">{children}</div>
-      <div className="flex items-center gap-2 border-t border-stone-200 px-6 py-3">
-        <div className="mr-auto flex min-w-0 items-center gap-2">{footerStart}</div>
-        <button type="button" className={settingsSecondaryButton} onClick={onDone}>
-          {t("done")}
-        </button>
-      </div>
-    </>
+      <div>{children}</div>
+      {footerStart ? (
+        <div className="flex flex-wrap items-center gap-2">{footerStart}</div>
+      ) : null}
+    </div>
   );
 }
 

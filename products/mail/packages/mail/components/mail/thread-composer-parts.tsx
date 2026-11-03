@@ -12,7 +12,10 @@
 import { EditingScheduledNote } from "@/components/mail/ScheduledMessageView";
 import { forwardSizeWarning } from "@/lib/mail/forward-size";
 import { useSenderProvider } from "@/lib/mail/use-outlook-accounts";
-import { Check, Expand, Maximize2, Minimize2, Minus, PictureInPicture2 } from "lucide-react";
+import { Check, Expand, Maximize2, Minimize2, Minus, MoreHorizontal, PictureInPicture2 } from "lucide-react";
+import * as React from "react";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { useComposerMinimise } from "@/components/mail/composer-minimise";
 
 import { DraftAssistMenu, SendFollowUpToggle, useAccountAssist } from "@/components/mail/team-layer";
@@ -135,8 +138,32 @@ export function ComposerPreview({
   );
 }
 
-/** The row under the box: send, send later, files, and the other tools of the message. */
-export function ComposerFooter({
+/**
+ * Under the box: only what needs saying about this message — a scheduled
+ * send being edited, a forward near the provider's limit. The options
+ * that used to stand here are in the ··· menu on the send row.
+ */
+export function ComposerFooter({ m }: { m: ThreadPaneModel }) {
+  const { attachTotalBytes, editingScheduled, forwarding, fromAccount } = m;
+  const sizeWarning = forwardSizeWarning(useSenderProvider(fromAccount), attachTotalBytes);
+  return (
+    <>
+      <EditingScheduledNote original={editingScheduled} />
+      {/* Providers refuse a mail past their limit: see forward-size.ts. */}
+      {forwarding && sizeWarning ? (
+        <p className="w-full text-[11px] leading-snug text-amber-700">{sizeWarning}</p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The ··· on the send row, beside the bin: signature, subject, quote
+ * history, the forward's files, and a build's own tools. Facts about the
+ * message rather than the writing of it, so they wait behind one button
+ * and the box keeps one row for everyone.
+ */
+export function ComposerMoreMenu({
   m,
   chatStyle,
 }: {
@@ -144,7 +171,6 @@ export function ComposerFooter({
   chatStyle: boolean;
 }) {
   const {
-    attachTotalBytes,
     chatStyleBusy,
     composerSnapshotRef,
     draftReplyWithAssist,
@@ -174,27 +200,45 @@ export function ComposerFooter({
     t,
     updateRecordsAfterSend,
     setUpdateRecordsAfterSend,
-    editingScheduled,
   } = m;
-  const sizeWarning = forwardSizeWarning(useSenderProvider(fromAccount), attachTotalBytes);
   // Off for a mailbox whose owner keeps it private (Settings → Accounts).
   const assistOn = useAccountAssist(fromAccount);
+  const [open, setOpen] = React.useState(false);
+  const close = () => setOpen(false);
   return (
-    <>
-      <EditingScheduledNote original={editingScheduled} />
-      {/* Under the box, outside the card.
-          Facts about the message, not the writing of it. Preview,
-          Outlook and a build's own actions sit on the Send chevron. */}
-      <div className="mt-1.5 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={t("messageOptions")}
+          aria-label={t("messageOptions")}
+          className="mail-composer-tool rounded p-1 text-stone-500"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <MailPopoverContent
+        align="end"
+        side="top"
+        collisionPadding={8}
+        className="flex w-72 flex-col items-start gap-2.5 rounded-surface p-3"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <SignatureMetaControls
           account={fromAccount}
           configured={Boolean(sigSettings?.signature)}
           included={includeSignature}
           onAdd={() => {
             if (sigSettings?.signature) setIncludeSignature(true);
-            else setSigDialogOpen(true);
+            else {
+              close();
+              setSigDialogOpen(true);
+            }
           }}
-          onEdit={() => setSigDialogOpen(true)}
+          onEdit={() => {
+            close();
+            setSigDialogOpen(true);
+          }}
           onRemove={() => setIncludeSignature(false)}
         />
         {/* A reply under a subject that no longer fits.
@@ -209,6 +253,7 @@ export function ComposerFooter({
             title={t("changeSubjectHint")}
             className="text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
             onClick={() => {
+              close();
               setSubjectDraft(replySubject);
               setSubjectOpen(true);
               /*
@@ -300,14 +345,14 @@ export function ComposerFooter({
               : t("includeAttachmentsCount", { count: forwardSource.attachments.length })}
           </label>
         ) : null}
-        {/* Quiet, on the right: the draft is about the whole mail,
-            the same kind of thing this row already holds. The box
-            before it asks for the records' follow-up when it has gone. */}
+        {/* The draft is about the whole mail, the same kind of thing
+            this menu already holds. The box before it asks for the
+            records' follow-up when it has gone. */}
         {mailHasTeamRecords() &&
         assistOn &&
         !forwarding &&
         (mode === "reply" || mode === "replyAll") ? (
-          <span className="ml-auto flex items-center gap-3">
+          <span className="flex flex-col items-start gap-2.5 border-t border-stone-200 pt-2.5">
             <SendFollowUpToggle
               checked={updateRecordsAfterSend}
               onChange={setUpdateRecordsAfterSend}
@@ -322,17 +367,13 @@ export function ComposerFooter({
             />
           </span>
         ) : null}
-        {/* Providers refuse a mail past their limit: see forward-size.ts. */}
-        {forwarding && sizeWarning ? (
-          <p className="w-full text-[11px] leading-snug text-amber-700">{sizeWarning}</p>
-        ) : null}
         {!forwarding && mode === "reply" && chatStyle ? (
           <p className="text-[11px] text-stone-400">
             {t("rememberedForConversation")}
           </p>
         ) : null}
-      </div>
-    </>
+      </MailPopoverContent>
+    </Popover>
   );
 }
 

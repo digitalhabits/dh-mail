@@ -51,6 +51,8 @@ pub const OPEN_SETTINGS_EVENT: &str = "open-settings";
 /// What the page listens for when Add Account… is chosen: Settings, on its
 /// Accounts page. See apps/mail/src/main.tsx.
 pub const OPEN_ACCOUNTS_EVENT: &str = "open-accounts";
+/// Help → Save Diagnostics…: the page builds the report and shows it.
+pub const SAVE_DIAGNOSTICS_EVENT: &str = "save-diagnostics";
 
 /// What the page listens for when a menu item gives a key back. See apps/mail/src/main.tsx.
 pub const MENU_KEY_EVENT: &str = "menu-key";
@@ -174,6 +176,13 @@ pub fn install(app: &App) -> tauri::Result<()> {
         true,
         None::<&str>,
       )?;
+      let diagnostics = MenuItem::with_id(
+        app,
+        "help_save_diagnostics",
+        "Save Diagnostics…",
+        true,
+        None::<&str>,
+      )?;
       let contact =
         MenuItem::with_id(app, "help_contact_us", "Contact us", true, None::<&str>)?;
       let who_we_are =
@@ -182,6 +191,7 @@ pub fn install(app: &App) -> tauri::Result<()> {
       help.append(&PredefinedMenuItem::separator(app)?)?;
       help.append(&version)?;
       help.append(&report)?;
+      help.append(&diagnostics)?;
       help.append(&contact)?;
       help.append(&who_we_are)?;
     }
@@ -244,6 +254,16 @@ pub fn install(app: &App) -> tauri::Result<()> {
         if let Some((label, _)) = focused {
           if let Err(err) = app.emit_to(label.as_str(), MENU_KEY_EVENT, "mod+shift+a") {
             log::warn!("menu: could not give the archive key to the page: {err}");
+          }
+        }
+        return;
+      }
+      "help_save_diagnostics" => {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+          let _ = window.show();
+          let _ = window.set_focus();
+          if let Err(err) = app.emit_to(MAIN_WINDOW, SAVE_DIAGNOSTICS_EVENT, ()) {
+            log::warn!("menu: could not ask the page for diagnostics: {err}");
           }
         }
         return;

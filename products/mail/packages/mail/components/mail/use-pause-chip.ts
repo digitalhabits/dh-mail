@@ -69,8 +69,10 @@ export function usePauseChip({
     accountEmails.length > 0 && fetchingNow.length === 0;
   /** How many mailboxes are paused now, by a pause or by quiet hours. */
   const pausedCount = accountEmails.length - fetchingNow.length;
+  /** Every mailbox paused: when they come back, as the Sync button says it. */
+  const allPausedLabel = noneFetching ? everyPausedLabel(pauseState, accountEmails, pauseNow, t) : null;
   /** "Quiet until 12:00", or "team quiet until Mon" for one mailbox. */
-  const pausedLabel = pauseChip.paused
+  const pausedLabel = allPausedLabel ?? (pauseChip.paused
     ? pauseChipUntil
       ? pauseChip.account
         ? t("mailPausedAccountUntil", {
@@ -79,7 +81,7 @@ export function usePauseChip({
           })
         : t("mailPausedUntil", { time: pauseChipUntil })
       : t("mailNotFetching")
-    : "";
+    : "");
   const quietUntilByAccount = React.useMemo(() => {
     const map = new Map<string, string>();
     for (const email of accountEmails) {
@@ -89,9 +91,10 @@ export function usePauseChip({
         ? formatSnoozeWakeLabel(local.until.toISOString())
         : local.untilClock;
       if (!time) continue;
+      // Who paused it: the reader, or their schedule (Ulrik, 2026-11-02).
       map.set(
         email.trim().toLowerCase(),
-        t("quietUntilTooltip", { time })
+        t(local.reason === "pause" ? "hoursStatePausedByYou" : "hoursStatePausedBySchedule", { time })
       );
     }
     return map;
@@ -127,4 +130,27 @@ export function usePauseChip({
     quietUntilByAccount,
     resumeFetching,
   };
+}
+
+/**
+ * Every mailbox paused, in the Sync button's words: "Paused · until Mon
+ * 08:00" when they all come back at once, "All paused · next at 18:00"
+ * when they come back one by one (the first), "All paused" with no end.
+ */
+function everyPausedLabel(
+  state: Parameters<typeof mailPauseVerdictForAccount>[0],
+  accounts: string[],
+  now: Date,
+  t: ReturnType<typeof useMailT>
+): string {
+  const ends = accounts.map((email) => {
+    const verdict = mailPauseVerdictForAccount(state, email, now);
+    return verdict.until ?? verdict.endsAt ?? null;
+  });
+  const known = ends.filter((end): end is Date => end != null).map((end) => end.getTime());
+  if (!known.length) return t("syncAllPaused");
+  const first = Math.min(...known);
+  const time = formatSnoozeWakeLabel(new Date(first).toISOString());
+  const together = known.length === ends.length && known.every((end) => end === first);
+  return together ? t("syncPausedUntil", { time }) : t("syncAllPausedNext", { time });
 }

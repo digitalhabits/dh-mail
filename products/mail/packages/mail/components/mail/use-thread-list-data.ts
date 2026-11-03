@@ -9,6 +9,7 @@
  * thread honest; what comes back is the list and the levers.
  */
 
+import { diagEvent, mailboxNumber } from "@/lib/mail/diagnostics";
 import { noteListRead, noteLiveRead, showsInbox, usePausedSnoozeWakes } from "@/components/mail/use-paused-snooze-wakes";
 import {
   SEARCH_HIDDEN_MAILBOXES_KEY as SEARCH_HIDDEN_KEY,
@@ -55,6 +56,28 @@ import type { MailPauseState } from "@/lib/mail/quiet-hours";
  * and a lost grant is fixed by connecting the mailbox again. Anything
  * else is shown as it came, without the JSON.
  */
+/**
+ * A mailbox that could not be read goes into the diagnostics log once, when
+ * it starts failing, and once more when it is read again: the list is read
+ * every minute, and a line a minute would bury everything else.
+ */
+function useUnreadableLog(unreadable: { email: string; reason: string }[]) {
+  const failingRef = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    const now = new Set(unreadable.map((row) => row.email.toLowerCase()));
+    for (const row of unreadable) {
+      const key = row.email.toLowerCase();
+      if (!failingRef.current.has(key)) {
+        diagEvent("mailbox not read", { mailbox: mailboxNumber(row.email), reason: row.reason.slice(0, 120) });
+      }
+    }
+    for (const key of failingRef.current) {
+      if (!now.has(key)) diagEvent("mailbox read again", { mailbox: mailboxNumber(key) });
+    }
+    failingRef.current = now;
+  }, [unreadable]);
+}
+
 function plainFailure(failure: { email: string; reason: string }): {
   email: string;
   reason: string;
@@ -393,6 +416,7 @@ export function useListReach({
   const [unreadable, setUnreadable] = React.useState<
     { email: string; reason: string }[]
   >([]);
+  useUnreadableLog(unreadable);
   return { hiddenOnlyEmails, listEmails, listError, pastPause, pauseStateRef, pausedRef, refreshing, resultsQuery, searchHidden, sentHiddenEmails, setListError, setRefreshing, setResultsQuery, setSearchHidden, setUnreadable, unreadable };
 }
 

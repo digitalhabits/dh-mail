@@ -66,6 +66,13 @@ export function formatDateKey(key: string): string {
   return `${parsed.day} ${MONTHS[parsed.month]} ${parsed.year}`;
 }
 
+/** "31 Oct 2026": the month cut to three letters, for a line of small print. */
+export function formatDateKeyShort(key: string): string {
+  const parsed = parseDateKey(key);
+  if (!parsed) return "";
+  return `${parsed.day} ${MONTHS[parsed.month].slice(0, 3)} ${parsed.year}`;
+}
+
 export function daysInMonth(year: number, month: number): number {
   // Day 0 of the next month is the last day of this one.
   return new Date(year, month + 1, 0).getDate();

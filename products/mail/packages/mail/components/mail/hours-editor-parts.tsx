@@ -107,7 +107,10 @@ export function LockedSaveBar({
   hiding,
   onCancel,
   onSave,
+  bare = false,
 }: {
+  /** In a footer that draws its own line above it. */
+  bare?: boolean;
   words: number;
   hiding: boolean;
   onCancel: () => void;
@@ -123,6 +126,35 @@ export function LockedSaveBar({
         onUnlocked={onSave}
         onCancel={() => setAsking(false)}
       />
+    );
+  }
+  if (bare) {
+    // In a page's footer, where Done stands: one row, the notice on the
+    // left, and Unlock to save in Done's place and Done's shape.
+    return (
+      <div className="flex items-center justify-between gap-4">
+        <p className="flex min-w-0 items-start gap-2 text-sm leading-snug text-stone-700">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
+          {t(hiding ? "hoursMoreShown" : "hoursMoreNewMail")}
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            className="rounded-control px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100"
+            onClick={onCancel}
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-control bg-[var(--mail-hours-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
+            onClick={() => setAsking(true)}
+          >
+            <Lock className="h-3.5 w-3.5" aria-hidden />
+            {t("unlockToSave")}
+          </button>
+        </div>
+      </div>
     );
   }
   return (

@@ -10,12 +10,9 @@
 
 import {
   FORWARD_SOURCE_OPEN_KEY as FORWARD_OPEN_KEY,
-  REPLY_HISTORY_OPEN_KEY as HISTORY_OPEN_KEY,
 } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-import { useComposerRoom } from "@/components/mail/composer-room";
-import { useComposerDrag } from "@/components/mail/composer-drag";
 import { ChevronDown, ChevronUp, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
 
 import { DraftAssistNotes } from "@/components/mail/team-layer";
@@ -31,6 +28,7 @@ import { currentMailLocale } from "@/lib/mail/i18n";
 import { formatShortcut } from "@/lib/mail/shortcuts";
 import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
+import { COMPOSER_TOOLBAR_BUTTON } from "@/components/mail/TextStyleMenu";
 import { EmailHtmlView } from "@/components/mail/EmailHtmlView";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { readImageChoices, useLoadImagesByDefault } from "@/components/mail/MailBubble";
@@ -47,39 +45,41 @@ import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { teamWord } from "@/lib/mail/i18n-team";
 import { cn } from "@/lib/utils";
 import type { ThreadPaneModel } from "@/components/mail/use-thread-pane";
-import { ComposerPreview, ComposerFooter, ComposerAddressRow, ComposerCardButtons } from "@/components/mail/thread-composer-parts";
+import { ComposerPreview, ComposerFooter, ComposerMoreMenu, ComposerAddressRow, ComposerCardButtons } from "@/components/mail/thread-composer-parts";
 import { ComposerMinimiseProvider } from "@/components/mail/composer-minimise";
 import { ComposerFieldRows } from "@/components/mail/thread-composer-rows";
 import { useComposerCardFloor, useComposerMoreBelow } from "@/components/mail/use-composer-more-below";
 
 
-/**
- * The band over the end of the thread, with nothing of its own to show:
- * the email is seen around the card and scrolls under it (composer-room).
- * Only the card takes the pointer.
- */
-const BAND_UNDER_CARD = "pointer-events-none absolute inset-x-0 bottom-0 z-20";
-/** The band across the pane: the Reader, the floating card, focus. */
+/** The band across the foot of the pane, wherever the reply is written. */
 const BAND_ACROSS = "border-t border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)]";
-/** The reply as a card lifted off the bottom of the pane. */
-const COMPOSER_CARD =
-  "pointer-events-auto cursor-grab [&_.ql-editor]:cursor-text [&_button]:cursor-pointer rounded-surface border border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] px-4 pb-3 pt-3 shadow-xl";
 
 /**
- * A card on the thread's own ground, not a band across the pane. Not in
- * the Reader, the floating card, or while the reply has the whole pane,
- * where the box already stands on its own.
+ * The reply under the thread, not in the Reader, the floating card or
+ * focus. It stands on the foot of the pane like the others: it used to
+ * float over the end of the thread as a card with a shadow, and was
+ * docked again on 2026-11-02.
  */
-function composerLook(p: {
+function isInlineReply(p: {
   inReader: boolean;
   floating?: boolean;
   bandFills: boolean;
   replyFocusSliding: boolean;
-}): { band: string; card?: string; floats: boolean } {
-  const floats = !p.inReader && !p.floating && !p.bandFills && !p.replyFocusSliding;
-  return floats
-    ? { band: BAND_UNDER_CARD, card: COMPOSER_CARD, floats }
-    : { band: BAND_ACROSS, floats };
+}): boolean {
+  return !p.inReader && !p.floating && !p.bandFills && !p.replyFocusSliding;
+}
+
+/**
+ * The widest one's own message may be in the thread: `.mail-bubble-column`
+ * in mail.css, the same expression, so the reply lines up with what it
+ * will become. A width dragged for messages is followed here too.
+ */
+const OWN_MESSAGE_WIDTH =
+  "min(calc(100% - 14px), var(--mail-bubble-user-width, max(340px, min(75%, 640px))))";
+
+function replyCardWidth(wholeWidth: boolean, pct: number | null): string {
+  if (wholeWidth) return "100%";
+  return pct == null ? OWN_MESSAGE_WIDTH : `${pct}%`;
 }
 
 /** The composer band under the thread: the reply, reply-all or forward being written, with its recipients, subject, tools and send. */
@@ -106,6 +106,7 @@ export function ThreadComposerBand({
     composerHeight,
     composerHeightSet,
     composerWidthPct,
+    resetComposerWidth,
     dismissDraftNotes,
     editRecipients,
     editorKey,
@@ -142,13 +143,22 @@ export function ThreadComposerBand({
   // The letter: the one part of the card that scrolls.
   const letterRef = React.useRef<HTMLDivElement | null>(null);
   /* In the Reader the column is the measure: the box takes all of it, and
-     there are no edges to drag. */
+     there are no edges to drag. A pane under 900px keeps the edges: the
+     reply is docked to the foot now, and its width is still the writer's
+     to choose. Only under 700px is there no room for a narrower box. */
   const wholeWidth =
-    inReader || compactComposer || fullWidthComposer || card.full || forwarding;
-  const look = composerLook({ inReader, floating, bandFills, replyFocusSliding });
-  useComposerRoom(replyBandRef, Boolean(mode) && look.floats);
-  const drag = useComposerDrag(look.floats, zoom);
-  const minimiseValue = useBandMinimise(look.floats, bandFills, mode, card.minimised);
+    inReader || compactComposer || card.full || forwarding;
+  const inline = isInlineReply({ inReader, floating, bandFills, replyFocusSliding });
+  const minimiseValue = useBandMinimise(inline, bandFills, mode, card.minimised);
+  const held = useHeldHeight(inline, mode);
+  const startHeightDrag = (event: React.PointerEvent) => {
+    const band = replyBandRef.current;
+    held.hold(band ? band.getBoundingClientRect().height / (zoom || 1) : 0);
+    startComposerHeightResize(event);
+  };
+  const ceiling = composerHeightSet
+    ? `${composerHeight / (zoom || 1)}px`
+    : `${COMPOSER_MAX_SHARE / (zoom || 1)}vh`;
   const moreBelow = useComposerMoreBelow(
     letterRef,
     `${mode}|${showPreview}|${bandFills}|${editorKey}`
@@ -193,8 +203,10 @@ export function ThreadComposerBand({
           data-mail-reply-open=""
           onWheel={bandFills ? undefined : scrollComposerFromBand}
           className={cn(
-            "mail-composer-region relative flex min-h-0 flex-col pb-4 pt-3",
-            look.band,
+            "mail-composer-region relative flex min-h-0 flex-col pb-4",
+            // Under the thread, the seam above is already air enough.
+            inline ? "pt-1.5" : "pt-3",
+            BAND_ACROSS,
             /* Edge to edge at this width, all but the right: the box was
                ending exactly where the window does, and the words in it
                ran up to the glass. The left has the list beside it to
@@ -265,11 +277,8 @@ export function ThreadComposerBand({
                 ? ({ zoom } as React.CSSProperties)
                 : ({
                     zoom,
-                    maxHeight: composerHeightSet
-                      ? `${composerHeight / (zoom || 1)}px`
-                      : `${COMPOSER_MAX_SHARE / (zoom || 1)}vh`,
-                    // Where the reply card was dragged (composer-drag).
-                    transform: drag.transform,
+                    maxHeight: ceiling,
+                    ...held.style(ceiling),
                   } as React.CSSProperties)
           }
         >
@@ -294,34 +303,26 @@ export function ThreadComposerBand({
               aria-orientation="horizontal"
               aria-label={t("resizeReplyHeight")}
               title={t("dragToResize")}
-              onPointerDown={startComposerHeightResize}
+              onPointerDown={startHeightDrag}
               className="absolute inset-x-0 top-0 z-10 h-3 -translate-y-1/2 cursor-ns-resize touch-none"
             />
           )}
           {/* Full-width measure root so % width is of the content box, not padding. */}
           <div className="flex min-h-0 w-full flex-1 flex-col items-end">
-          {/* Width matches own bubbles; right-aligned; drag either edge to resize. */}
+          {/* Right-aligned at the width of one's own messages, until an
+              edge is dragged; a double-click on one goes back to that. */}
           <div
-            className={cn("relative flex min-h-0 flex-1 flex-col", look.card)}
-            {...drag.handlers}
+            className="relative flex min-h-0 flex-1 flex-col"
             // Its dragged width, until there is not enough pane for a
             // width to be worth choosing.
             style={{
-              width:
-                /* The card given the whole window is all for this message,
-                   so the box takes it — right-aligned at a share of a pane
-                   that wide, it stood with half the dialog empty beside
-                   it. */
-                wholeWidth
-                  ? "100%"
-                  : `${composerWidthPct}%`,
+              /* The card given the whole window is all for this message,
+                 so the box takes it — right-aligned at a share of a pane
+                 that wide, it stood with half the dialog empty beside it. */
+              width: replyCardWidth(wholeWidth, composerWidthPct),
               maxWidth: "100%",
             }}
           >
-          {/* The card's own top edge sizes its height too: standing over the
-              thread, the band's seam is above the card, where nobody looks
-              for it. */}
-          <CardTopHandle m={m} available={minimiseValue.available} />
           {/* No edges to drag while the box is the whole pane: there is
               nowhere for either to go, and a handle that cannot move is a
               handle that reads as broken. */}
@@ -333,6 +334,7 @@ export function ThreadComposerBand({
                 aria-label={t("resizeReplyWidth")}
                 title={t("dragToResize")}
                 onPointerDown={startComposerResize("left")}
+                onDoubleClick={resetComposerWidth}
                 className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1/2 cursor-col-resize touch-none"
               />
               <div
@@ -341,6 +343,7 @@ export function ThreadComposerBand({
                 aria-label={t("resizeReplyWidth")}
                 title={t("dragToResize")}
                 onPointerDown={startComposerResize("right")}
+                onDoubleClick={resetComposerWidth}
                 className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1/2 cursor-col-resize touch-none"
               />
             </>
@@ -392,6 +395,9 @@ export function ThreadComposerBand({
             {...attachPasteHandlers}
           >
               <ComposerDropOverlay visible={attachDragging} />
+              {/* The box's own top edge sizes it too: it is the edge the
+                  hand goes to, more than the seam above the recipients. */}
+              <BoxTopHandle m={m} shown={inline} onPointerDown={startHeightDrag} />
               {editRecipients ? <ComposerFieldRows m={m} /> : null}
               {/* Where the words go. No light island: what you write is
                   shown in the thread on a dark bubble now, so writing it on
@@ -467,12 +473,12 @@ export function ThreadComposerBand({
                 <ReplyHistoryQuote m={m} html={m.historyAppendix.html} />
               ) : null}
               </div>
-            <ComposerSendBar key={editorKey} m={m} overText={moreBelow} />
+            <ComposerSendBar key={editorKey} m={m} chatStyle={chatStyle} overText={moreBelow} />
           </div>
           {/* Under the card. flow-root keeps the gap above the links
               inside it. */}
           <div className="flow-root shrink-0">
-            <ComposerFooter m={m} chatStyle={chatStyle} />
+            <ComposerFooter m={m} />
           </div>
           </div>
           <ComposerPreview m={m} chatStyle={chatStyle} />
@@ -696,20 +702,13 @@ function ForwardSourceQuote({
   );
 }
 
-function readHistoryOpen(): boolean {
-  try {
-    return window.localStorage.getItem(HISTORY_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The quoted history under a reply, as the recipient will get it.
  *
  * A forward always showed the message it carries. A reply sent up to 25
- * earlier messages with nothing on screen to say so. Folded by default, as
- * the history is long; the choice is kept, as the forward's is.
+ * earlier messages with nothing on screen to say so. Folded behind a •••
+ * pill, as Gmail does, and folded again on every new reply: the history is
+ * long, and a choice kept from one reply opened it under every reply after.
  */
 /** What EmailHtmlView needs to draw a quote on the dark box. */
 function useQuoteInTheDark(): { bodyColor?: string; darkRecolor?: boolean } {
@@ -719,36 +718,29 @@ function useQuoteInTheDark(): { bodyColor?: string; darkRecolor?: boolean } {
 
 function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
   const { t, zoom } = m;
-  const [open, setOpenState] = React.useState(readHistoryOpen);
+  const [open, setOpen] = React.useState(false);
   const [loadImagesByDefault] = useLoadImagesByDefault();
   // The quote is drawn for white paper; on the dark box its colours are
   // re-lit, as a message's are in the thread, or it read dark on dark.
   const inTheDark = useQuoteInTheDark();
-  const setOpen = (next: boolean) => {
-    setOpenState(next);
-    try {
-      window.localStorage.setItem(HISTORY_OPEN_KEY, next ? "1" : "0");
-    } catch {
-      /* not kept: the choice holds for this reply */
-    }
-  };
-  // As the links under the box (Add signature, Edit subject): the one
-  // colour in the box is Send.
-  const link = "whitespace-nowrap text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline";
+  const label = t(open ? "hideQuotedText" : "showQuotedText");
   return (
-    <div data-reply-history="" className="mx-3 mb-3 border-l-2 border-stone-200 pl-3 text-[13px] text-stone-600">
+    <div data-reply-history="" className="mx-3 mb-2.5 text-[13px] text-stone-600">
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-expanded={open}
+        className="inline-flex h-4 items-center rounded-full bg-stone-200/80 px-2 text-[10px] leading-none tracking-[0.15em] text-stone-600 hover:bg-stone-300"
+        onClick={() => setOpen(!open)}
+      >
+        <span aria-hidden>•••</span>
+      </button>
       {open ? (
-        <>
+        <div className="mt-2 border-l-2 border-stone-200 pl-3">
           <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} {...inTheDark} />
-          <button type="button" className={cn(link, "mt-1")} onClick={() => setOpen(false)}>
-            {t("hideQuotedText")}
-          </button>
-        </>
-      ) : (
-        <button type="button" className={link} onClick={() => setOpen(true)}>
-          {t("showQuotedText")}
-        </button>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -759,9 +751,11 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
  */
 function ComposerSendBar({
   m,
+  chatStyle,
   overText,
 }: {
   m: ThreadPaneModel;
+  chatStyle: boolean;
   /** The letter runs on below the frame: a soft shadow says there is more. */
   overText: boolean;
 }) {
@@ -915,13 +909,19 @@ function ComposerSendBar({
             would overwrite them on the next render and leave the
             buttons unstyled.
 
-            The lists live in Aa. On this row they wrap it off the
-            pane long before B, I, U and the link run out of room. */}
-        <ComposerToolbar id="mail-reply-toolbar" editorHandle={replyEditorHandle} account={fromAccount} />
-        <AttachToolbarButton
-          onPick={addAttachFiles}
-          disabled={sending}
-        />
+            The lists have their own buttons on it; the rest of the
+            formats wait behind Aa. */}
+        {/* The paperclip with the formatting buttons, in their rhythm:
+            the row's own gap stood between it and Aa, twice the gap
+            between any two buttons before it. */}
+        <span className="flex items-center">
+          <ComposerToolbar id="mail-reply-toolbar" editorHandle={replyEditorHandle} account={fromAccount} />
+          <AttachToolbarButton
+            onPick={addAttachFiles}
+            disabled={sending}
+            className={COMPOSER_TOOLBAR_BUTTON}
+          />
+        </span>
         {/* No size line: the chips above the row name every file
             already, and the compose box says it once too. What is
             left of a warning is the one below, which speaks only
@@ -929,9 +929,9 @@ function ComposerSendBar({
         {/* One row, so the bin sits level with Send rather than on
             a line of its own under it. There were two rows because
             the second held Add signature, Preview and Chat style
-            as well; those are under the card now, and what is left
-            belongs beside the buttons it is one of. */}
+            as well; those are behind the ··· beside the bin now. */}
         <span className="ml-auto flex items-center gap-1">
+          <ComposerMoreMenu m={m} chatStyle={chatStyle} />
           {/* The bin only bins. Escape is what asks first, and
               what it asks with is the dialog at the foot of this
               component — over the whole reader rather than in the
@@ -954,14 +954,14 @@ function ComposerSendBar({
 }
 
 /**
- * Put away to a bar (composer-minimise). Only the card over the thread:
+ * Put away to a bar (composer-minimise). Only the reply under the thread:
  * the Reader's and focus mode's reply is the page. A new reply opens: the
  * state is reset as the mode changes, in the render, not after it.
  */
-function useBandMinimise(floats: boolean, bandFills: boolean, mode: unknown, cardMinimised: boolean) {
+function useBandMinimise(inline: boolean, bandFills: boolean, mode: unknown, cardMinimised: boolean) {
   const [state, setState] = React.useState({ mode, minimised: false });
   if (state.mode !== mode) setState({ mode, minimised: false });
-  const available = floats && !bandFills;
+  const available = inline && !bandFills;
   const minimised = available && state.mode === mode && state.minimised;
   const setMinimised = React.useCallback((next: boolean) => setState((s) => ({ ...s, minimised: next })), []);
   return React.useMemo(
@@ -970,19 +970,60 @@ function useBandMinimise(floats: boolean, bandFills: boolean, mode: unknown, car
   );
 }
 
-/** The card's top edge, to size its height. Only for the card over the thread. */
-function CardTopHandle({ m, available }: { m: ThreadPaneModel; available: boolean }) {
-  if (!available) return null;
+/** The top edge of the box you type in, to size the reply's height. */
+function BoxTopHandle({
+  m,
+  shown,
+  onPointerDown,
+}: {
+  m: ThreadPaneModel;
+  shown: boolean;
+  onPointerDown: (event: React.PointerEvent) => void;
+}) {
+  if (!shown) return null;
   return (
     <div
       role="separator"
       aria-orientation="horizontal"
       aria-label={m.t("resizeReplyHeight")}
       title={m.t("dragToResize")}
-      onPointerDown={m.startComposerHeightResize}
+      onPointerDown={onPointerDown}
       className="absolute inset-x-3 top-0 z-20 h-2 -translate-y-1/2 cursor-ns-resize touch-none"
     />
   );
+}
+
+/**
+ * A height dragged for this reply. The kept height is a ceiling, so a new
+ * reply still opens small; but a drag during a reply is a wish for this
+ * one, and an empty reply under a ceiling did not move at all. Gone when
+ * the next reply opens.
+ *
+ * Taller than it opened, the reply goes up over the end of the thread
+ * rather than pushing it: a negative top margin as tall as what was added
+ * keeps the thread's room, and so the email, where it was. Opening a reply
+ * still makes room for it; only the drag after that covers.
+ */
+function useHeldHeight(inline: boolean, mode: unknown) {
+  const [state, setState] = React.useState({ mode, held: false, base: 0 });
+  if (state.mode !== mode) setState({ mode, held: false, base: 0 });
+  /** `base`: the band's height when the first drag began, in its own pixels. */
+  const hold = React.useCallback(
+    (base: number) => setState((s) => (s.held ? s : { ...s, held: true, base })),
+    []
+  );
+  const held = inline && state.mode === mode && state.held;
+  const style = (height: string): React.CSSProperties =>
+    held
+      ? {
+          height,
+          // Never below zero: a reply dragged shorter than it opened gives
+          // the room back to the thread rather than leaving a gap.
+          marginTop: `min(0px, calc(${state.base}px - ${height}))`,
+          zIndex: 20,
+        }
+      : {};
+  return { held, hold, style };
 }
 
 /**

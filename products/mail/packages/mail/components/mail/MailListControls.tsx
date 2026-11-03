@@ -1,29 +1,29 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { openDiagnostics } from "@/components/mail/DiagnosticsDialog";
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { useMailTheme, type MailTheme } from "@/lib/mail/theme";
+import { useMailColorMode, useMailTheme, type MailTheme } from "@/lib/mail/theme";
 import { MailAccountsPanel } from "@/components/mail/MailAccountsPanel";
 import { ExchangeSettingsPane, useExchangeConnectRequest } from "@/components/mail/ExchangeConnectForm";
 import { useLoadImagesByDefault } from "@/components/mail/MailBubble";
 import { useMailListPlacement } from "@/components/mail/use-mail-layout";
-import { BookOpen, ChevronDown, Command, Mail, Moon, RefreshCw, Search, Settings, Settings2, Users, Wrench, type LucideIcon } from "lucide-react";
-import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
+import { ChevronDown, ChevronLeft, RefreshCw, Settings } from "lucide-react";
+import { beginNativeWindowDragOnMove, openExternalUrl } from "@/lib/native-shell";
 import { type AutoReplyDto } from "@/components/mail/AutoReplyDialog";
 import { ContactSourcesPanel } from "@/components/mail/ContactSourcesDialog";
 import { setMailListPlacement, type MailListPlacement } from "@/lib/mail/layout";
-import { Popover, PopoverTrigger } from "@/components/ui/popover";
-import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import { MailShortcutsPanel } from "@/components/mail/MailShortcutsDialog";
 import { SnoozeOptionsPanel } from "@/components/mail/SnoozeOptionsPanel";
 import { readUsagePingEnabled, writeUsagePingEnabled } from "@/lib/mail/usage-ping";
 import { useShowFolderCounts, writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
 import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
-import { SurfaceColorsSetting } from "@/components/mail/surface-colors-setting";
 import { TeamReadingSettings } from "@/components/mail/team-layer";
 import { DraftsFolderSetting } from "@/components/mail/drafts-folder-setting";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
+import { useSettingsPage } from "@/components/mail/use-settings-page";
 import { OPEN_MAIL_ACCOUNTS_EVENT, isMailSettingsCategory, type MailSettingsCategory } from "@/lib/mail/open-mail-accounts-menu";
 import { MAILBOX_CONNECTED_EVENT } from "@/lib/mail/mailbox-connected";
 import { MAIL_APP_VERSION } from "@/lib/mail/app-version";
@@ -173,8 +173,6 @@ export function ListDensityToggle({
 export type MailLayoutMenuProps = {
   /** Trigger sits on the navy list chrome. */
   onNavy?: boolean;
-  /** Popover alignment — use `end` when the trigger is on the right of the title bar. */
-  align?: "start" | "end" | "center";
   knownEmails: string[];
   onVisibilityChange: (email: string, inMailTab: boolean) => void;
   onAccountsChanged: () => void;
@@ -188,10 +186,22 @@ export type MailLayoutMenuProps = {
   }) => void;
 };
 
-/** Pane position, display prefs, and connected mailboxes. */
+/** Where "Open an issue" goes, under the sidebar. */
+const MAIL_ISSUES_URL = "https://github.com/digitalhabits/dh-mail/issues";
+const MAIL_TEAM_EMAIL = "team@digitalhabits.org";
+
+/**
+ * The Settings button, and Settings as a page.
+ *
+ * Settings is laid out as To-Do lays out its own (TodoSettingsModal): one
+ * page over the whole window, with "‹ Settings" at the top to go back.
+ * Every section is on one scroll. Wide enough, a sidebar beside it lists the
+ * sections, and marks the one being read. The feedback line and the version
+ * stand at the sidebar's foot. Narrower, there is no sidebar, and the foot
+ * comes after the last section.
+ */
 export function MailLayoutMenu({
   onNavy = false,
-  align = "start",
   knownEmails,
   onVisibilityChange,
   onAccountsChanged,
@@ -201,341 +211,343 @@ export function MailLayoutMenu({
   ownIdentity,
   onOwnIdentityChange,
 }: MailLayoutMenuProps) {
-  const { close, exchange, loadImagesByDefault, matches, open, placement, query, setCategory, setLoadImagesByDefault, setOpen, setQuery, setTheme, setUsagePing, showFolderCounts, shown, t, theme, usagePing } = useSettingsMenuState({ knownEmails });
+  const { close, exchange, loadImagesByDefault, open, placement, sections, setLoadImagesByDefault, setOpen, setTheme, setUsagePing, showFolderCounts, t, target, theme, usagePing } = useSettingsMenuState();
+  const { pageRef, scrollRef, wide, current: currentSection, goTo } = useSettingsPage(
+    sections.map((s) => s.id),
+    close,
+    open
+  );
+  const colorMode = useMailColorMode();
 
-  let pane: React.ReactNode;
-  switch (shown) {
-    case "accounts":
-      pane = exchange.request ? (
-        <ExchangeSettingsPane request={exchange.request} onClose={exchange.clear} onDone={close} />
-      ) : (
-        <SettingsPane
-          title={t("accounts")}
-          description={t("settingsAccountsHint")}
-          onDone={close}
-        >
-          <MailAccountsPanel
-            knownEmails={knownEmails}
-            onVisibilityChange={onVisibilityChange}
-            onChanged={onAccountsChanged}
-            autoReplies={autoReplies}
-            onSetUpAutoReply={onSetUpAutoReply}
-            onEndAutoReply={onEndAutoReply}
-            onRequestClose={close}
-            ownIdentity={ownIdentity}
-            onOwnIdentityChange={onOwnIdentityChange}
+  // Opened on one section (the mailbox filter, a dialog that goes back):
+  // the page starts there.
+  React.useLayoutEffect(() => {
+    if (open && target) goTo(target.id, false);
+  }, [open, target, goTo]);
+
+  const panes: Record<MailSettingsCategory, React.ReactNode> = {
+    accounts: exchange.request ? (
+      <ExchangeSettingsPane request={exchange.request} onClose={exchange.clear} />
+    ) : (
+      <SettingsPane title={t("accounts")} description={t("settingsAccountsHint")}>
+        <MailAccountsPanel
+          knownEmails={knownEmails}
+          onVisibilityChange={onVisibilityChange}
+          onChanged={onAccountsChanged}
+          autoReplies={autoReplies}
+          onSetUpAutoReply={onSetUpAutoReply}
+          onEndAutoReply={onEndAutoReply}
+          onRequestClose={close}
+          ownIdentity={ownIdentity}
+          onOwnIdentityChange={onOwnIdentityChange}
+        />
+      </SettingsPane>
+    ),
+    general: (
+      <SettingsPane title={t("general")} description={t("settingsGeneralHint")}>
+        <SettingsGroup>
+          {/* Language first: it decides what every row below it says. Then
+              appearance, running colour → size. */}
+          <SettingsLanguageRow />
+          <SettingsRow
+            label={t("theme")}
+            control={
+              // A menu, not three buttons. The operating system draws it, so
+              // it is the list a Mac reader already knows, with the current
+              // choice ticked — and it stays one line however many there are.
+              <span className="relative inline-flex items-center">
+                <select
+                  aria-label={t("theme")}
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value as MailTheme)}
+                  className="cursor-pointer appearance-none rounded-inner border border-stone-200 bg-white py-1 pl-2.5 pr-7 text-xs text-stone-700 outline-none hover:bg-stone-50"
+                >
+                  <option value="system">{t("themeSystem")}</option>
+                  <option value="light">{t("themeLight")}</option>
+                  <option value="dark">{t("themeDark")}</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-stone-400" />
+              </span>
+            }
           />
-        </SettingsPane>
-      );
-      break;
-    case "general":
-      pane = (
-        <SettingsPane
-          title={t("general")}
-          description={t("settingsGeneralHint")}
-          onDone={close}
-        >
-          <SettingsGroup>
-            {/* Language first: it decides what every row below it says. Then
-                appearance, running colour → size. */}
-            <SettingsLanguageRow />
+          <SettingsTextSizeRow />
+          {/* Only where the count can run: a Mac or Windows release build,
+              where apps/mail/src/usage-ping.ts sets the flag. */}
+          {(window as unknown as { __MAIL_USAGE_PING__?: string }).__MAIL_USAGE_PING__ ? (
             <SettingsRow
-              label={t("theme")}
-              control={
-                // A menu, not three buttons. The operating system draws it, so
-                // it is the list a Mac reader already knows, with the current
-                // choice ticked — and it stays one line however many there are.
-                <span className="relative inline-flex items-center">
-                  <select
-                    aria-label={t("theme")}
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value as MailTheme)}
-                    className="cursor-pointer appearance-none rounded-inner border border-stone-200 bg-white py-1 pl-2.5 pr-7 text-xs text-stone-700 outline-none hover:bg-stone-50"
-                  >
-                    <option value="system">{t("themeSystem")}</option>
-                    <option value="light">{t("themeLight")}</option>
-                    <option value="dark">{t("themeDark")}</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-stone-400" />
-                </span>
-              }
-            />
-            <SettingsTextSizeRow />
-            <SettingsRow
-              label={t("showFolderCounts")}
-              hint={t("showFolderCountsHint")}
+              label={t("sendUsageCount")}
+              hint={t("sendUsageCountHint")}
               control={
                 <SettingsToggle
-                  checked={showFolderCounts}
-                  onChange={writeShowFolderCounts}
-                  label={t("showFolderCounts")}
+                  checked={usagePing}
+                  onChange={(enabled) => {
+                    setUsagePing(enabled);
+                    writeUsagePingEnabled(enabled);
+                  }}
+                  label={t("sendUsageCount")}
                 />
               }
             />
-            {/* Only where the count can run: a Mac or Windows release build,
-                where apps/mail/src/usage-ping.ts sets the flag. */}
-            {(window as unknown as { __MAIL_USAGE_PING__?: string }).__MAIL_USAGE_PING__ ? (
-              <SettingsRow
-                label={t("sendUsageCount")}
-                hint={t("sendUsageCountHint")}
-                control={
-                  <SettingsToggle
-                    checked={usagePing}
-                    onChange={(enabled) => {
-                      setUsagePing(enabled);
-                      writeUsagePingEnabled(enabled);
-                    }}
-                    label={t("sendUsageCount")}
-                  />
-                }
+          ) : null}
+        </SettingsGroup>
+      </SettingsPane>
+    ),
+    reading: (
+      <SettingsPane title={t("settingsReading")} description={t("settingsReadingHint")}>
+        <SettingsGroup>
+          <SettingsRow
+            label={t("readingPane")}
+            hint={t("readingPaneHint")}
+            control={
+              <span className="flex gap-1">
+                {MAIL_LIST_LAYOUTS.map((option) => {
+                  const selected = placement === option.id;
+                  const label = t(option.label);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      title={label}
+                      aria-label={label}
+                      aria-pressed={selected}
+                      onClick={() => setMailListPlacement(option.id)}
+                      className={cn(
+                        "rounded-inner p-1 transition-colors",
+                        selected ? "bg-teal-50" : "hover:bg-stone-100"
+                      )}
+                    >
+                      <MailListLayoutDiagram diagram={option.diagram} selected={selected} />
+                    </button>
+                  );
+                })}
+              </span>
+            }
+          />
+          <SettingsRow
+            label={t("loadImages")}
+            hint={t("loadImagesHint")}
+            control={
+              <SettingsToggle
+                checked={loadImagesByDefault}
+                onChange={setLoadImagesByDefault}
+                label={t("loadImages")}
               />
-            ) : null}
-          </SettingsGroup>
-          <SurfaceColorsSetting />
-        </SettingsPane>
-      );
-      break;
-    case "advanced":
-      pane = (
-        <SettingsPane
-          title={t("settingsAdvanced")}
-          description={t("settingsAdvancedHint")}
-          onDone={close}
+            }
+          />
+          <ReaderLinesSetting />
+          <SettingsRow
+            label={t("showFolderCounts")}
+            hint={t("showFolderCountsHint")}
+            control={
+              <SettingsToggle
+                checked={showFolderCounts}
+                onChange={writeShowFolderCounts}
+                label={t("showFolderCounts")}
+              />
+            }
+          />
+          <TeamReadingSettings />
+        </SettingsGroup>
+      </SettingsPane>
+    ),
+    snooze: <SnoozeOptionsPanel />,
+    contacts: <ContactSourcesPanel />,
+    shortcuts: <MailShortcutsPanel />,
+    advanced: (
+      <SettingsPane title={t("settingsAdvanced")} description={t("settingsAdvancedHint")}>
+        <SettingsGroup>
+          <DraftsFolderSetting />
+        </SettingsGroup>
+        {/* Here as well as in the Help menu: Windows has no Help menu. */}
+        <SettingsGroup>
+          <SettingsRow
+            label={t("diagnosticsTitleShort")}
+            hint={t("diagnosticsMenuHint")}
+            control={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  close();
+                  openDiagnostics();
+                }}
+              >
+                {t("diagnosticsMenu")}
+              </Button>
+            }
+          />
+        </SettingsGroup>
+      </SettingsPane>
+    ),
+  };
+
+  const foot = (
+    <div className="flex flex-col gap-3 text-[13px] leading-normal text-stone-500">
+      <p>
+        {t("settingsFeedback")}{" "}
+        <a
+          href={MAIL_ISSUES_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-700 underline underline-offset-2"
+          onClick={(e) => {
+            // The desktop app opens a link in the browser through the shell.
+            e.preventDefault();
+            void openExternalUrl(MAIL_ISSUES_URL).then((opened) => {
+              if (!opened) window.open(MAIL_ISSUES_URL, "_blank", "noopener,noreferrer");
+            });
+          }}
         >
-          <SettingsGroup>
-            <DraftsFolderSetting />
-          </SettingsGroup>
-        </SettingsPane>
-      );
-      break;
-    case "reading":
-      pane = (
-        <SettingsPane
-          title={t("settingsReading")}
-          description={t("settingsReadingHint")}
-          onDone={close}
+          {t("settingsOpenIssue")}
+        </a>{" "}
+        {t("settingsOrEmail")}{" "}
+        <a
+          href={`mailto:${MAIL_TEAM_EMAIL}`}
+          className="text-teal-700 underline underline-offset-2"
         >
-          <SettingsGroup>
-            <SettingsRow
-              label={t("readingPane")}
-              hint={t("readingPaneHint")}
-              control={
-                <span className="flex gap-1">
-                  {MAIL_LIST_LAYOUTS.map((option) => {
-                    const selected = placement === option.id;
-                    const label = t(option.label);
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        title={label}
-                        aria-label={label}
-                        aria-pressed={selected}
-                        onClick={() => setMailListPlacement(option.id)}
-                        className={cn(
-                          "rounded-inner p-1 transition-colors",
-                          selected ? "bg-teal-50" : "hover:bg-stone-100"
-                        )}
-                      >
-                        <MailListLayoutDiagram
-                          diagram={option.diagram}
-                          selected={selected}
-                        />
-                      </button>
-                    );
-                  })}
-                </span>
-              }
-            />
-            <SettingsRow
-              label={t("loadImages")}
-              hint={t("loadImagesHint")}
-              control={
-                <SettingsToggle
-                  checked={loadImagesByDefault}
-                  onChange={setLoadImagesByDefault}
-                  label={t("loadImages")}
-                />
-              }
-            />
-            <ReaderLinesSetting />
-            <TeamReadingSettings />
-          </SettingsGroup>
-        </SettingsPane>
-      );
-      break;
-    case "snooze":
-      pane = <SnoozeOptionsPanel onDone={close} />;
-      break;
-    case "contacts":
-      pane = <ContactSourcesPanel onDone={close} />;
-      break;
-    case "shortcuts":
-      pane = <MailShortcutsPanel onDone={close} />;
-      break;
-  }
+          {MAIL_TEAM_EMAIL}
+        </a>
+      </p>
+      {MAIL_APP_VERSION ? (
+        <p>
+          {t("version")} {MAIL_APP_VERSION}
+        </p>
+      ) : null}
+    </div>
+  );
 
   return (
-    <Popover modal open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title={t("settings")}
-          aria-label={t("settings")}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          className={cn(
-            "rounded-inner p-1.5",
-            onNavy
-              ? open
-                ? "bg-white/15 text-white"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
-              : open
-                ? "bg-stone-200/70 text-stone-900"
-                : "text-stone-500 hover:bg-stone-200/60 hover:text-stone-800"
-          )}
-          onPointerDown={beginNativeWindowDragOnMove}
-        >
-          {/* A cog: the sign for settings that people already know. A
-              step larger than the row's 14px marks: at the end of the row
-              it is the one control drawn with no word. */}
-          <Settings className="h-[18px] w-[18px]" aria-hidden />
-        </button>
-      </PopoverTrigger>
-      {/*
-        Dim what is behind the settings panel.
-
-        This one panel holds most of what the app can be told, so it is worth
-        setting apart from the mail behind it. The other menus are one
-        decision each and would be smothered by this.
-
-        A popover has no overlay of its own, so this is one. It goes on
-        `body`, because the trigger sits in the title bar and an element
-        rendered there would be dimming from inside the thing it dims.
-      */}
+    <>
+      <button
+        type="button"
+        title={t("settings")}
+        aria-label={t("settings")}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={cn(
+          "rounded-inner p-1.5",
+          onNavy
+            ? open
+              ? "bg-white/15 text-white"
+              : "text-white/70 hover:bg-white/10 hover:text-white"
+            : open
+              ? "bg-stone-200/70 text-stone-900"
+              : "text-stone-500 hover:bg-stone-200/60 hover:text-stone-800"
+        )}
+        onPointerDown={beginNativeWindowDragOnMove}
+        onClick={() => setOpen(!open)}
+      >
+        {/* A cog: the sign for settings that people already know. A
+            step larger than the row's 14px marks: at the end of the row
+            it is the one control drawn with no word. */}
+        <Settings className="h-[18px] w-[18px]" aria-hidden />
+      </button>
       {open && typeof document !== "undefined"
         ? createPortal(
-            // The same wash the settings dialogs already use, so opening
-            // Contact sources from here does not change the shade.
-            <div className="fixed inset-0 z-40 bg-[#1b3d4a]/20" aria-hidden />,
+            <div
+              ref={pageRef}
+              role="dialog"
+              aria-label={t("settings")}
+              // The shell's colours, which a portal leaves behind: as
+              // SettingsDialog. Under the dialogs (z-50) that the page opens.
+              data-theme={colorMode}
+              className={cn(
+                "mail-shell mail-settings-page fixed inset-0 z-[45] flex flex-col bg-[var(--mail-chrome)] text-stone-800",
+                wide && "is-wide"
+              )}
+            >
+              {/* Where the window's title bar is: its empty part moves the
+                  window, and it keeps clear of the Mac's traffic lights. */}
+              <div
+                data-tauri-drag-region="deep"
+                className="mail-reader-topbar flex h-12 shrink-0 items-center border-b border-stone-200 pr-4"
+              >
+                {/* The chevron and the word are one button: a press on
+                    "Settings" goes back too. */}
+                <button
+                  type="button"
+                  aria-label={t("back")}
+                  onClick={close}
+                  className="flex h-[34px] min-w-0 items-center gap-1.5 rounded-control pl-1.5 pr-2.5 text-stone-900 hover:bg-stone-200/50"
+                >
+                  <ChevronLeft className="h-5 w-5 shrink-0" aria-hidden />
+                  <span className="truncate font-serif text-[1.35rem] font-medium leading-tight">
+                    {t("settings")}
+                  </span>
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1">
+                {wide ? (
+                  <nav
+                    aria-label={t("settings")}
+                    className="flex w-[210px] shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-stone-200 px-2 pb-4 pt-5"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      {sections.map(({ id, label }) => {
+                        const current = currentSection === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            aria-current={current ? "true" : undefined}
+                            onClick={() => goTo(id)}
+                            className={cn(
+                              "w-full rounded-control border px-3 py-2 text-left text-base transition-colors",
+                              // The open section: a white pill with a fine
+                              // line round it, as the cards (mockups, 2026-11-03).
+                              current
+                                ? "border-stone-200 bg-white font-semibold text-stone-900 shadow-sm"
+                                : "border-transparent text-stone-600 hover:bg-stone-200/50 hover:text-stone-900"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="px-3">{foot}</div>
+                  </nav>
+                ) : null}
+                <div
+                  ref={scrollRef}
+                  className={cn(
+                    "min-w-0 flex-1 overflow-y-auto overscroll-contain",
+                    wide ? "px-10 pb-12 pt-7" : "px-[18px] pb-8 pt-5"
+                  )}
+                >
+                  {/* A fine line between sections, and air either side of it. */}
+                  <div className="flex max-w-[760px] flex-col divide-y divide-stone-200">
+                    {sections.map(({ id }) => (
+                      <section key={id} data-settings-section={id} className="py-11 first:pt-0">
+                        {panes[id]}
+                      </section>
+                    ))}
+                    {/* Narrow: no sidebar, so its foot comes at the end. */}
+                    {wide ? null : foot}
+                  </div>
+                </div>
+              </div>
+            </div>,
             document.body
           )
         : null}
-      <MailPopoverContent
-        align={align}
-        /**
-         * A category rail and the page it has open.
-         *
-         * One long list had grown past what anybody would scroll through, so
-         * each kind of setting has its own page. The panel is one size for
-         * every page, so moving along the rail does not make it jump.
-         *
-         * As tall as the space under the button, and no taller. Radix
-         * measures that gap in window pixels; under the CSS-zoom fallback the
-         * panel lays out in zoomed ones, so the gap is divided by the zoom.
-         * In the desktop app the variable is unset and it divides by one.
-         *
-         * On a narrow window the rail goes above the page as one row.
-         */
-        className="flex h-[40rem] max-h-[calc(var(--radix-popover-content-available-height)/var(--mail-css-zoom,1))] w-[54rem] max-w-[calc(100vw-24px)] flex-col overflow-hidden p-0 md:flex-row"
-        collisionPadding={12}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        /*
-          A menu this panel opened is not somewhere else.
-
-          The mark menu hangs on <body> so it can escape this panel's
-          scroll, which to Radix looks like a press outside — so the panel
-          closed on the way down and the click never reached the item it
-          was aimed at. Nothing here was clickable at all.
-        */
-        onInteractOutside={(event) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest("[data-mail-mark-menu]")) event.preventDefault();
-        }}
-      >
-        <nav
-          aria-label={t("settings")}
-          className="flex shrink-0 flex-col gap-2 border-b border-stone-200 bg-[var(--mail-chrome)] p-3 md:w-52 md:border-b-0 md:border-r"
-        >
-          <div className="flex items-baseline justify-between gap-2 px-1.5 md:block md:pt-1">
-            <h2 className="font-serif text-xl font-bold text-stone-900">
-              {t("settings")}
-            </h2>
-            {MAIL_APP_VERSION ? (
-              <p className="text-xs text-stone-400">
-                {t("version")} {MAIL_APP_VERSION}
-              </p>
-            ) : null}
-          </div>
-          <label className="relative flex items-center md:mt-1">
-            <Search
-              className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-stone-400"
-              aria-hidden
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("settingsSearch")}
-              aria-label={t("settingsSearch")}
-              className="h-8 w-full rounded-control border border-stone-200 bg-white pl-8 pr-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            />
-          </label>
-          <ul className="-mx-0.5 flex gap-1 overflow-x-auto px-0.5 pb-0.5 md:flex-col md:overflow-visible">
-            {matches.map(({ id, label, Icon, count }) => {
-              const selected = id === shown;
-              return (
-                <li key={id} className="shrink-0">
-                  <button
-                    type="button"
-                    aria-current={selected ? "page" : undefined}
-                    onClick={() => setCategory(id)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left text-sm transition-colors",
-                      selected
-                        ? "bg-white font-semibold text-stone-900 shadow-sm"
-                        : "text-stone-700 hover:bg-stone-200/50"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-inner",
-                        selected ? "bg-teal-700 text-white" : "bg-stone-200/70 text-stone-500"
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" aria-hidden />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {count ? (
-                      <span className="text-xs tabular-nums text-stone-400">{count}</span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
-            {matches.length === 0 ? (
-              <li className="px-2 py-1.5 text-sm text-stone-400">{t("settingsNoMatch")}</li>
-            ) : null}
-          </ul>
-        </nav>
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">{pane}</section>
-      </MailPopoverContent>
-    </Popover>
+    </>
   );
 }
 
-/** The Settings menu's state: open, the page shown, the search, the settings it reads, and connecting Exchange. */
-export function useSettingsMenuState({
-  knownEmails,
-}: { knownEmails: MailLayoutMenuProps["knownEmails"] }) {
-  const [open, setOpen] = React.useState(false);
+/** The Settings page's state: open, the sections, the section to start on, the settings it reads, and connecting Exchange. */
+export function useSettingsMenuState() {
+  const [open, setOpenState] = React.useState(false);
   /**
-   * The page the rail has open. It is kept when Settings closes: the rail
-   * shows which page it is, so opening on the last one is not a surprise, and
-   * it is where somebody who just closed Settings wants to be again.
+   * The section to start on, when Settings was opened on one. A new object
+   * each time, so a second request for the same section goes there again.
    */
-  const [category, setCategory] = React.useState<MailSettingsCategory>("accounts");
-  const [query, setQuery] = React.useState("");
+  const [target, setTarget] = React.useState<{ id: MailSettingsCategory } | null>(null);
+  const setOpen = React.useCallback((next: boolean) => {
+    setOpenState(next);
+    if (!next) setTarget(null);
+  }, []);
   const placement = useMailListPlacement();
   const [loadImagesByDefault, setLoadImagesByDefault] =
     useLoadImagesByDefault();
@@ -546,15 +558,13 @@ export function useSettingsMenuState({
     typeof window !== "undefined" && Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
   const t = useMailT();
   /*
-    The Exchange connect form is a page of Settings, not a dialog over it.
-    Settings is a modal popover that keeps the keyboard inside itself, so a
-    form laid over it got no typing. A request opens Settings on Accounts,
-    and the Accounts page shows the form until it is answered.
+    The Exchange connect form is the Accounts section of Settings, not a
+    dialog over it. A request opens Settings at Accounts, and the Accounts
+    section shows the form until it is answered.
   */
   const exchange = useExchangeConnectRequest(() => {
-    setQuery("");
-    setCategory("accounts");
-    setOpen(true);
+    setTarget({ id: "accounts" });
+    setOpenState(true);
   });
   const cancelExchange = exchange.cancel;
   // Settings shut with the form open: the answer is "no".
@@ -562,106 +572,42 @@ export function useSettingsMenuState({
     if (!open) cancelExchange();
   }, [open, cancelExchange]);
   // Opened from the mailbox filter next to search, the app menu, or a dialog
-  // that goes back to one page. One menu is mounted, so this cannot open two
-  // at once.
+  // that goes back to one section. One page is mounted, so this cannot open
+  // two at once.
   React.useEffect(() => {
     const onOpen = (event: Event) => {
       const wanted =
         event instanceof CustomEvent
           ? (event.detail as { category?: unknown } | null)?.category
           : undefined;
-      if (isMailSettingsCategory(wanted)) setCategory(wanted);
-      setOpen(true);
+      setTarget(isMailSettingsCategory(wanted) ? { id: wanted } : null);
+      setOpenState(true);
     };
     window.addEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_MAIL_ACCOUNTS_EVENT, onOpen);
   }, []);
   /*
     A new mailbox asks how it should fit the week (AccountRhythmDialog), and
-    Settings, where it was connected, goes out of its way. The menu is modal:
-    while it is open nothing outside it takes a click, so a question drawn
-    on top of it cannot be answered.
+    Settings, where it was connected, goes out of its way, so that the
+    question is the one thing on the screen.
   */
   React.useEffect(() => {
     const onConnected = () => setOpen(false);
     window.addEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
     return () => window.removeEventListener(MAILBOX_CONNECTED_EVENT, onConnected);
-  }, []);
-  // A search is for this visit. Settings opens again with the whole rail.
-  React.useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
-  const close = () => setOpen(false);
-  /**
-   * The rail. Each category lists the words of the settings on its page, so
-   * a search for "theme" finds General, where the theme is.
-   */
-  const categories: {
-    id: MailSettingsCategory;
-    label: string;
-    Icon: LucideIcon;
-    count?: number;
-    words: string[];
-  }[] = [
-    {
-      id: "accounts",
-      label: t("accounts"),
-      Icon: Mail,
-      count: knownEmails.length || undefined,
-      words: [t("yourOtherAddresses"), t("colleagueDomains"), t("autoReply"), "Gmail", "Outlook"],
-    },
-    {
-      id: "general",
-      label: t("general"),
-      Icon: Settings2,
-      words: [t("language"), t("theme"), t("themeDark"), t("themeLight"), t("textSize")],
-    },
-    {
-      id: "reading",
-      label: t("settingsReading"),
-      Icon: BookOpen,
-      words: [t("stackThreads"), t("readingPane"), t("loadImages"), t("readerLines")],
-    },
-    {
-      id: "snooze",
-      label: t("settingsSnoozeSchedule"),
-      Icon: Moon,
-      words: [t("snooze"), t("snoozeOptions"), t("sendLater"), t("pauseFetching"), t("pauseSection")],
-    },
-    {
-      id: "contacts",
-      label: t("settingsContacts"),
-      Icon: Users,
-      words: [t("contactSources"), t("sourceMailHistory"), t("sourceMacContacts")],
-    },
-    {
-      id: "shortcuts",
-      label: t("keyboardShortcuts"),
-      Icon: Command,
-      words: [],
-    },
+  }, [setOpen]);
+  const close = React.useCallback(() => setOpen(false), [setOpen]);
+  /** The sections, in the order the page shows them. */
+  const sections: { id: MailSettingsCategory; label: string }[] = [
+    // General first, then the accounts (Ulrik, 2026-11-03).
+    { id: "general", label: t("general") },
+    { id: "accounts", label: t("accounts") },
+    { id: "reading", label: t("settingsReading") },
+    { id: "snooze", label: t("settingsSnoozeSchedule") },
+    { id: "contacts", label: t("settingsContacts") },
+    { id: "shortcuts", label: t("keyboardShortcuts") },
     // Only in the desktop app: the drafts folder is a folder on this Mac.
-    ...(hasDesktopShell
-      ? [
-          {
-            id: "advanced" as const,
-            label: t("settingsAdvanced"),
-            Icon: Wrench,
-            words: [t("draftsFolder")],
-          },
-        ]
-      : []),
+    ...(hasDesktopShell ? [{ id: "advanced" as const, label: t("settingsAdvanced") }] : []),
   ];
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = needle
-    ? categories.filter((c) =>
-        [c.label, ...c.words].some((word) => word.toLocaleLowerCase().includes(needle))
-      )
-    : categories;
-  // The page follows the search: when the open page is filtered out, the
-  // first page that matches is shown instead.
-  const shown = matches.some((c) => c.id === category)
-    ? category
-    : (matches[0]?.id ?? category);
-  return { close, exchange, loadImagesByDefault, matches, open, placement, query, setCategory, setLoadImagesByDefault, setOpen, setQuery, setTheme, setUsagePing, showFolderCounts, shown, t, theme, usagePing };
+  return { close, exchange, loadImagesByDefault, open, placement, sections, setLoadImagesByDefault, setOpen, setTheme, setUsagePing, showFolderCounts, t, target, theme, usagePing };
 }

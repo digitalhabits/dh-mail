@@ -225,7 +225,24 @@ suite(async () => {
 
   // ---- (c) The upgrade runner --------------------------------------------
 
-  check("the shipped list of steps is empty today", STORAGE_UPGRADE_STEPS.length === 0);
+  check(
+    "the shipped steps are numbered 1, 2, 3 … in order",
+    STORAGE_UPGRADE_STEPS.every((step, i) => step.version === i + 1)
+  );
+  {
+    // Step 1: the window colours the reader chose are forgotten.
+    const kept = new Map([["redd-plan-mail-surface-colors", '{"top":"#005d53"}'], ["redd-plan-mail-pause", "{}"]]);
+    const fake = {
+      getItem: (k) => (kept.has(k) ? kept.get(k) : null),
+      setItem: (k, v) => kept.set(k, String(v)),
+      removeItem: (k) => kept.delete(k),
+    };
+    STORAGE_UPGRADE_STEPS[0].run(fake);
+    check(
+      "step 1 forgets the chosen window colours and nothing else",
+      !kept.has("redd-plan-mail-surface-colors") && kept.has("redd-plan-mail-pause")
+    );
+  }
   check(
     "the version key is in the registry",
     values.has(STORAGE_VERSION_KEY),

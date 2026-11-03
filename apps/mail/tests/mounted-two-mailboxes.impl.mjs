@@ -172,6 +172,12 @@ async function main() {
     await sleep(300);
     clickEl(buttonWith(/^ulla$/));
     await sleep(200);
+    // A paused mailbox's menu opens on its new mail; this part is about showing.
+    const shownTab = [...document.querySelectorAll('[role="tab"]')].find((tab) => /Shown in Mail|Hidden/.test(tab.textContent || ""));
+    if (shownTab && shownTab.getAttribute("aria-selected") !== "true") {
+      clickEl(shownTab);
+      await sleep(150);
+    }
     assert(text().includes("Hide for a while") && text().includes("Schedule"), `a second press on an account opens its menu: ${text().slice(0, 300)}`);
     assert(!text().includes("Choose a picture"), "without the picture: that is in Settings and the setup dialog now");
     assert(text().includes("Hide for a while"), "and Hide for a while, while it is shown");

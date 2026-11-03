@@ -500,6 +500,14 @@ export type RichTextEditorHandle = {
   format: (name: string, value: string | boolean) => void;
   /** The inline formats at the selection, for showing which one is on. */
   activeFormats: () => Record<string, unknown>;
+  /**
+   * Open the link box on the selection, as the link key does. For a link
+   * control in a popover. False when no words are selected, so there is
+   * nothing to make a link of.
+   */
+  openLink: () => boolean;
+  /** Whether words are selected, so that a link can be made of them. */
+  hasSelection: () => boolean;
 };
 
 /**
@@ -1187,6 +1195,23 @@ export function RichTextEditor({
       },
       activeFormats: () =>
         quillRef.current?.getEditor()?.getFormat() ?? {},
+      openLink: () => {
+        const editor = quillRef.current?.getEditor();
+        if (!editor) return false;
+        // As format: take the focus back with the range the writer selected.
+        const range = editor.getSelection(true);
+        if (!range || !range.length) return false;
+        linkToolbarHandler.call({ quill: editor } as unknown as ToolbarHandlerContext, true);
+        return true;
+      },
+      hasSelection: () => {
+        // The popover has the focus, so the live selection is gone; Quill
+        // keeps the last one it saw.
+        const editor = quillRef.current?.getEditor() as unknown as
+          | { selection?: { savedRange?: { length: number } } }
+          | undefined;
+        return (editor?.selection?.savedRange?.length ?? 0) > 0;
+      },
     };
     return () => {
       handleRef.current = null;

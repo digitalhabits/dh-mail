@@ -1,12 +1,26 @@
 ## What is new
 
-**Your own colours**
-- Settings > General > Colours sets the colour of each part of the window: the top bar, the folder list, the mail list, its header, the header of a conversation, and the background behind a conversation. In the light theme only.
-- Right-click the empty background of a part to set its colour there.
-- The colours of the Centre for Digital Habits come first. After them you can pick any colour, and a colour that you use on one part is offered for the other parts too.
-- On a dark colour, such as the green or the navy, the words and icons of that part turn cream.
-- The colours go from light to dark, with White first. "Any colour" is a ring with a "+" that opens the system's colour picker. "Reset" is a word at the top of the colours.
-- To get the usual right-click menu instead of the colours, hold Option (Alt on Windows) when you right-click.
+**Settings, easier to read**
+- Settings is one page, with a list of its parts at the left. General comes first, then Accounts.
+- Each part stands on a white card, with larger words.
+- "Show counts beside folders" is now under Reading.
+- You can no longer pick the colours of the window. Mail uses the colours of the Centre for Digital Habits.
+
+**Diagnostics**
+- Help > Save diagnostics (or Settings > Advanced) makes a report that helps us find a problem. It holds no mail, no addresses and no names: mailboxes are "mailbox 1", "mailbox 2", and so on.
+- You can save the report as a file, or send it to us. "Send to us…" opens an email to team@digitalhabits.org with the report attached, which you can read before you send it.
+- If Mail closed unexpectedly the last time, it offers the report when it starts again.
+
+**Paused and hidden mailboxes**
+- A paused mailbox has a pause mark on its tab, and a hidden one has a closed eye. A paused mailbox is no longer greyed out.
+- The mailbox menu says whether you paused or hid it, or your schedule did, and until when.
+- Sync says how many mailboxes are paused, and when they come back.
+- The words to type to change a locked schedule stay in a small box that scrolls as you type. One unlock holds until you close the menu.
+
+**The reply box**
+- A reply under a conversation sits at the foot of the pane. Drag its edges to make it wider or taller. A taller reply covers the email; it does not push it up.
+- The buttons are on one row: Send, emoji, Aa, B, I, U, bullet list, numbered list, attach, ··· and the bin.
+- The quoted history of a reply folds behind a ••• button, as in Gmail.
 
 **Undo in one place**
 - When you archive, delete, move, snooze, send or discard a draft, a line at the foot of the list says so: "Archived", "Deleted", "Moved to Receipts", "Snoozed until 18:13", "Sending in 5…" or "Draft discarded", then the subject, with Undo. Before, these were messages at the foot of the window, over what you were reading or writing.

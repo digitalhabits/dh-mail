@@ -193,7 +193,7 @@ suite(async () => {
 
   check(
     "and by its width too, rather than a share of it",
-    pane.includes("compactComposer || fullWidthComposer || card.full")
+    pane.includes("compactComposer || card.full")
   );
 
   check(

@@ -118,9 +118,28 @@ export function UnpauseChallengeHost() {
 }
 
 /**
+ * Scroll the words so a point in them sits about a third of the way down,
+ * as Blocker does (override-challenge.js). Set on scrollTop, snapped to
+ * whole lines: a fractional scroll while the text changes drew a smeared
+ * line in WebKit until the next key.
+ */
+function scrollWordsTo(box: HTMLElement, contentY: number): void {
+  const view = box.clientHeight;
+  if (view <= 0) return;
+  const style = getComputedStyle(box);
+  const line = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 14) * 1.6;
+  const snapped = Math.round((contentY - view * 0.35) / line) * line;
+  const next = Math.max(0, Math.min(box.scrollHeight - view, snapped));
+  if (Math.abs(box.scrollTop - next) >= 0.5) box.scrollTop = next;
+}
+
+/**
  * The words, and the box to type them in: the typed part marked, the first
  * wrong letter in red, pasting and dropping refused. The dialog uses it, and
  * so do the pause panels when a change would loosen a running pause.
+ *
+ * The words are held to 120px and follow the typing, as in Blocker: a
+ * hundred words stood as a wall taller than the menu around them.
  */
 export function ChallengeTyping({
   target,
@@ -141,13 +160,35 @@ export function ChallengeTyping({
   const t = useMailT();
   const correct = correctPrefixLength(typed, target);
   const wrongAt = correct < typed.length ? correct : -1;
+  const wordsRef = React.useRef<HTMLDivElement | null>(null);
+  const markRef = React.useRef<HTMLSpanElement | null>(null);
+  // After the paint, in the next frame, as Blocker does: the mark has its
+  // place by then.
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const box = wordsRef.current;
+      const mark = markRef.current;
+      if (!box || !mark) return;
+      if (correct >= target.length) {
+        box.scrollTop = box.scrollHeight;
+        return;
+      }
+      const top = mark.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      scrollWordsTo(box, box.scrollTop + top);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [correct, target]);
   return (
     <>
-      <p
+      <div
+        ref={wordsRef}
+        data-challenge-words=""
         aria-hidden
-        className="mt-3 select-none break-words rounded-control bg-stone-100 px-3 py-2.5 font-mono text-sm leading-relaxed text-stone-600"
+        className="mt-3 max-h-[120px] select-none overflow-y-auto whitespace-pre-wrap break-words rounded-control bg-stone-100 px-3 py-2.5 font-mono text-sm leading-relaxed text-stone-900 [scrollbar-gutter:stable] [transform:translateZ(0)]"
       >
         <span className="mail-typed-right">{target.slice(0, correct)}</span>
+        {/* Where the typing has got to: what the box keeps in view. */}
+        <span ref={markRef} />
         {wrongAt >= 0 ? (
           <>
             {/* As Blocker marks it. A space has no ink, so a wrong space
@@ -165,7 +206,7 @@ export function ChallengeTyping({
         ) : (
           target.slice(correct)
         )}
-      </p>
+      </div>
       <textarea
         autoFocus
         rows={rows}

@@ -552,7 +552,7 @@ export function AttachToolbarButton({
         aria-label={t("attachFiles")}
         disabled={disabled}
         className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40",
+          "mail-composer-tool inline-flex h-7 w-7 items-center justify-center rounded text-stone-500 disabled:opacity-40",
           className
         )}
         onClick={() => inputRef.current?.click()}

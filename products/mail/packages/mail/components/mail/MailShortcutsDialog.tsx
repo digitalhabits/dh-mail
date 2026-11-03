@@ -90,7 +90,7 @@ const SHORTCUT_ICONS: Partial<
  * surface in a different place, so the panel looks as if it jumped. The
  * list needs no new place, only a new panel in the same popover.
  */
-export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
+export function MailShortcutsPanel() {
   const t = useMailT();
   const shortcuts = useMailShortcuts();
   const [capturing, setCapturing] = React.useState<MailShortcutAction | null>(
@@ -146,10 +146,9 @@ export function MailShortcutsPanel({ onDone }: { onDone: () => void }) {
     <SettingsPane
       title={t("keyboardShortcuts")}
       description={t("settingsShortcutsHint")}
-      onDone={onDone}
       footerStart={
-        // Reset all sits away from Done, on the left, because the two are
-        // not a pair — one undoes every binding on the list.
+        // Reset all sits under the list, because it undoes every binding
+        // on it.
         <button
           type="button"
           className={settingsSecondaryButton}

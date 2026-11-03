@@ -183,6 +183,55 @@
 html[data-dh-os="windows"] .mail-reader-topbar {
   padding-left: 1.25rem;
 }
+/* Settings as a page (MailLayoutMenu), as in To-Do: the page is cream, and
+   each section's rows stand on a white card. In a dialog the rows stay on
+   cream, because the dialog itself is white. */
+.mail-settings-page .mail-settings-group {
+  background-color: #ffffff;
+  border: 1px solid rgba(27, 61, 74, 0.09);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04);
+}
+.mail-shell[data-theme="dark"].mail-settings-page .mail-settings-group {
+  background-color: var(--mail-u-surface);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+/*
+ * On the page, written to be read (mockups, 2026-11-03): rows with more air,
+ * a label at text size and a hint a step under it, the section heading
+ * bolder and its lead darker, the small capitals over a group larger. Sizes
+ * and weights only: the colours are the classes', which the dark theme
+ * turns. A dialog keeps the smaller rows it was drawn with.
+ */
+.mail-settings-page .mail-settings-row {
+  padding: 16px 20px;
+  gap: 16px;
+}
+.mail-settings-page .mail-settings-label {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.mail-settings-page .mail-settings-hint {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mail-settings-page .mail-settings-heading {
+  font-size: 2.4rem;
+  font-weight: 600;
+}
+.mail-settings-page .mail-settings-lead {
+  font-size: 16px;
+}
+.mail-settings-page .mail-settings-group-heading {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+}
+/* Narrow: no sidebar, and smaller section headings. */
+.mail-settings-page:not(.is-wide) .mail-settings-heading {
+  font-size: 1.6rem;
+}
 /* Reply or Forward in the Reader: the composer comes up from the bottom. */
 @keyframes mail-reader-composer-up {
   from {
@@ -1329,6 +1378,13 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 .mail-shell .mail-composer-discard:hover {
   color: var(--mail-u-danger, #dc2626);
 }
+/* The row's buttons that are not in Quill's toolbar element — the
+   paperclip and the ··· — answer the pointer as the toolbar's own do: the
+   accent, and no fill behind them. */
+.mail-shell .mail-composer-tool:hover {
+  color: var(--mail-u-accent, #0d9488);
+  background-color: transparent;
+}
 
 .mail-shell .mail-composer-toolbar button:hover .ql-fill,
 .mail-shell .mail-composer-toolbar button:focus .ql-fill,
@@ -1801,30 +1857,27 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 /* The frame (title bar, folder rail) keeps its sand, with main's hover
    and chosen folder; the list and the reader are inside it. */
 .mail-shell:not([data-theme="dark"]) {
-  /* Each of these can be set in Settings > General > Colours, which puts
-     a --mail-user-* variable on <html> (lib/mail/surface-colors.ts). The
-     fallbacks are the defaults. */
-  /* The defaults are the colours Ulrik settled on (2026-10-30): light sand
-     for the top bar, the folder rail and behind a thread; cream for the
-     mail list, its header and the thread's header. The rail's hover and
-     chosen folder are darker steps of its colour, in its own hue, as
-     lib/mail/surface-colors makes them for a colour that is set. */
-  --mail-sidebar: var(--mail-user-rail, #f0eae1);
-  --mail-sidebar-hover: var(--mail-user-rail-hover, oklch(from #f0eae1 calc(l - 0.025) calc(c * 1.15) h));
-  --mail-folder-active: var(--mail-user-rail-active, oklch(from #f0eae1 calc(l - 0.05) calc(c * 1.3) h));
-  --mail-thread: var(--mail-user-reader, #f0eae1);
-  --mail-thread-chrome: var(--mail-user-reader, #f0eae1);
+  /* The colours Ulrik settled on (2026-10-30): light sand for the top
+     bar, the folder rail and behind a thread; cream for the mail list, its
+     header and the thread's header. The rail's hover and chosen folder are
+     darker steps of its colour, in its own hue. They could be changed in
+     Settings until 2026-11-02, when choosing colours was taken out. */
+  --mail-sidebar: #f0eae1;
+  --mail-sidebar-hover: oklch(from #f0eae1 calc(l - 0.025) calc(c * 1.15) h);
+  --mail-folder-active: oklch(from #f0eae1 calc(l - 0.05) calc(c * 1.3) h);
+  --mail-thread: #f0eae1;
+  --mail-thread-chrome: #f0eae1;
 }
 
 /* The thread's header (the row of actions and the subject) has its own
    colour: cream, over the light sand behind the thread. */
 .mail-shell:not([data-theme="dark"]) :is(.mail-thread-header, .mail-thread-toolbar) {
-  background-color: var(--mail-user-reader-head, #f5f1ea);
+  background-color: #f5f1ea;
 }
 
 /* The top bar has its own colour, light sand to start with, as the rail. */
 .mail-shell:not([data-theme="dark"]) .mail-titlebar {
-  background-color: var(--mail-user-top, #f0eae1);
+  background-color: #f0eae1;
 }
 
 /* No lines across the reader: on one cream they only cut it up. */
@@ -1834,8 +1887,8 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 }
 
 .mail-shell:not([data-theme="dark"]) [data-list-expanded] {
-  --mail-chrome: var(--mail-user-list, #f5f1ea);
-  --mail-fade-from: var(--mail-user-list, #f5f1ea);
+  --mail-chrome: #f5f1ea;
+  --mail-fade-from: #f5f1ea;
   /* Hover is almost white: a step toward the open row's white card. */
   --mail-chrome-hover: #fcfbf8;
   --mail-row-hover: #fcfbf8;
@@ -1861,7 +1914,7 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
   /* The title bar's line is the top edge: two lines there read as one
      thick one. So this edge is the head's own colour; clear, it showed the
      sand behind it as a 1px stripe. */
-  border-top-color: var(--mail-user-list-head, #f5f1ea);
+  border-top-color: #f5f1ea;
   /* The edges are drawn over the cream, as every other line is, not over
      the list's white, where the same ink reads lighter. */
   background-clip: padding-box;
@@ -1955,78 +2008,7 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 /* The head of the list (account tabs, filters) stands in the cream with
    the rest of the frame: white is for the list of mails alone. */
 .mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-list-head {
-  background-color: var(--mail-user-list-head, #f5f1ea);
-}
-
-/*
- * A part of the window set to a dark colour (lib/mail/surface-colors marks
- * it on <html> as data-mail-dark): its words, icons and controls go cream,
- * as on the website's green bands. Hover, the chosen folder and the open
- * row become a light veil, not sand. Cards that stand on the part (New
- * email, a message, the composer) keep their own ink.
- */
-html[data-mail-dark~="top"] .mail-shell:not([data-theme="dark"]) .mail-titlebar,
-html[data-mail-dark~="rail"] .mail-shell:not([data-theme="dark"]) [data-folder-rail],
-html[data-mail-dark~="listHead"] .mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-list-head,
-html[data-mail-dark~="list"] .mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-list-card > :not(.mail-list-head),
-html[data-mail-dark~="readerHead"] .mail-shell:not([data-theme="dark"]) :is(.mail-thread-header, .mail-thread-toolbar) {
-  color: #f5f1ea;
-  --mail-thread-fg: #f5f1ea;
-  --mail-thread-meta: rgba(245, 241, 234, 0.85);
-}
-html[data-mail-dark~="top"] .mail-shell:not([data-theme="dark"]) .mail-titlebar,
-html[data-mail-dark~="rail"] .mail-shell:not([data-theme="dark"]) [data-folder-rail],
-html[data-mail-dark~="listHead"] .mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-list-head,
-html[data-mail-dark~="list"] .mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-list-card > :not(.mail-list-head),
-html[data-mail-dark~="readerHead"] .mail-shell:not([data-theme="dark"]) :is(.mail-thread-header, .mail-thread-toolbar),
-html[data-mail-dark~="reader"] .mail-shell:not([data-theme="dark"]) .mail-reading-pane {
-  --mail-chrome-fg: #f5f1ea;
-  --mail-chrome-muted: rgba(245, 241, 234, 0.78);
-  --mail-chrome-faint: rgba(245, 241, 234, 0.55);
-  --mail-chrome-hover: rgba(255, 255, 255, 0.1);
-  --mail-thread-muted: rgba(245, 241, 234, 0.75);
-  --mail-row-name: #f5f1ea;
-  --mail-row-preview: rgba(245, 241, 234, 0.82);
-  --mail-row-hover: rgba(255, 255, 255, 0.08);
-  --mail-row-line: rgba(245, 241, 234, 0.16);
-  --mail-row-selected: rgba(255, 255, 255, 0.16);
-  --mail-list-muted: rgba(245, 241, 234, 0.72);
-  --mail-folder-hover: rgba(255, 255, 255, 0.1);
-  --mail-folder-active: rgba(255, 255, 255, 0.16);
-  --mail-folder-active-fg: #f5f1ea;
-  --mail-folder-active-icon: #f5f1ea;
-  --mail-segment-track: rgba(255, 255, 255, 0.08);
-  --mail-segment-fg: rgba(245, 241, 234, 0.78);
-  --mail-segment-active: rgba(255, 255, 255, 0.18);
-  --mail-segment-active-fg: #f5f1ea;
-  --mail-tab-active: #f5f1ea;
-  --mail-frame-field-ink: #f5f1ea;
-  --mail-frame-field-edge: rgba(245, 241, 234, 0.35);
-  --mail-frame-field-focus-edge: rgba(245, 241, 234, 0.7);
-  --mail-placeholder: rgba(245, 241, 234, 0.65);
-  /* A field in use is a lighter veil, not white, so its cream words show. */
-  --mail-field-bg: rgba(255, 255, 255, 0.14);
-  --mail-pane-divider: rgba(245, 241, 234, 0.18);
-  --mail-switch-on: #a7ded2;
-}
-/* The fixed greys (Tailwind's stone, mapped to ink) in a dark part, except
-   on a card of its own. */
-html[data-mail-dark~="top"] .mail-shell:not([data-theme="dark"]) .mail-titlebar :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900):not([class*="mail-action"] *),
-html[data-mail-dark~="rail"] .mail-shell:not([data-theme="dark"]) [data-folder-rail] :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900),
-html[data-mail-dark~="listHead"] .mail-shell:not([data-theme="dark"]) .mail-list-head :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900),
-html[data-mail-dark~="list"] .mail-shell:not([data-theme="dark"]) .mail-list-card > :not(.mail-list-head) :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900),
-html[data-mail-dark~="readerHead"] .mail-shell:not([data-theme="dark"]) :is(.mail-thread-header, .mail-thread-toolbar) :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900),
-html[data-mail-dark~="reader"] .mail-shell:not([data-theme="dark"]) .mail-reading-pane :is(.text-stone-300, .text-stone-400, .text-stone-500, .text-stone-600, .text-stone-700, .text-stone-800, .text-stone-900):not(:is(.mail-thread-header, .mail-thread-toolbar, [class*="mail-bubble"], [class*="bg-white"], [class*="mail-compose"], [class*="mail-action"], [role="dialog"], [role="menu"]) *) {
-  color: rgba(245, 241, 234, 0.82);
-}
-/* A dark thread under a light header: the header keeps its ink. */
-html[data-mail-dark~="reader"]:not([data-mail-dark~="readerHead"]) .mail-shell:not([data-theme="dark"]) :is(.mail-thread-header, .mail-thread-toolbar) {
-  --mail-chrome-fg: #1b3d4a;
-  --mail-chrome-muted: #47616a;
-  --mail-chrome-faint: #9ea9aa;
-  --mail-chrome-hover: #efe9df;
-  --mail-thread-muted: #586f77;
-  --mail-pane-divider: rgba(27, 61, 74, 0.11);
+  background-color: #f5f1ea;
 }
 
 /* The 8px gutter between the list and the reader draws no line along the

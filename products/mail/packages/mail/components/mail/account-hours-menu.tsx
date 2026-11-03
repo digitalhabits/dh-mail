@@ -25,7 +25,7 @@ import { ChevronRight, Eye, EyeOff, Lock, Pause, RefreshCw } from "lucide-react"
 import { AccountMark } from "@/components/mail/AccountMark";
 import { HoursSchedulePage } from "@/components/mail/hours-schedule-page";
 import { CalendarTimePicker, MenuHeading } from "@/components/mail/date-time-pick";
-import { hiddenStatusText, useHoursLine } from "@/components/mail/hidden-status";
+import { hiddenStatusText, hiddenUntilLabel, useHoursLine } from "@/components/mail/hidden-status";
 import { HoursFrictionPage, useFriction } from "@/components/mail/hours-friction-page";
 import { PointerMenu } from "@/components/mail/PointerMenu";
 import { formatSnoozeClock, formatSnoozeDayTime, formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
@@ -41,6 +41,7 @@ import {
   accountPauseRow,
   mailPauseOptions,
   mailPauseVerdictForAccount,
+  mailPauseVerdictForScope,
   quietHoursForAccount,
   unpauseWordsFor,
   type MailPauseState,
@@ -53,7 +54,7 @@ import { cn } from "@/lib/utils";
 export type PauseControls = {
   state: MailPauseState;
   now: Date;
-  pauseUntil: (until: number, account?: string | null) => void;
+  pauseUntil: (until: number, account?: string | null, from?: string) => void;
   /** Asks for the words first, when there are any. */
   resume: (account?: string | null) => void;
   setQuietHours: (windows: MailQuietWindow[], account?: string | null) => void;
@@ -93,8 +94,14 @@ export function AccountHoursMenu({
   onDismiss: () => void;
 }) {
   const t = useMailT();
-  const [tab, setTab] = React.useState<HoursTab>("shown");
+  const state = menuStateOf(account, accounts, hide, pause);
+  // Opened on what is not as usual: a paused mailbox that is shown opens
+  // on its new mail, where the pause is.
+  const [tab, setTab] = React.useState<HoursTab>(() => (state.paused && !state.hidden ? "fetch" : "shown"));
   const [page, setPage] = React.useState<Page>({ kind: "main" });
+  /** The words were typed once: nothing more is asked while this menu is open. */
+  const [unlocked, setUnlocked] = React.useState(false);
+  const unlock = () => setUnlocked(true);
   const answers = useHoursAnswers({ accounts, labels, hide, pause });
   const who = (email: string | null) => (email ? formatAccountChipLabel(email, labels) : t("pauseAllAccounts"));
   const toMain = () => setPage({ kind: "main" });
@@ -123,7 +130,8 @@ export function AccountHoursMenu({
           kept={spec.kept}
           current={spec.current}
           shown={spec.shown}
-          lock={spec.lock}
+          lock={unlocked ? undefined : spec.lock}
+          onUnlock={unlock}
           onBack={toMain}
           onSave={(save) => {
             spec.save(save);
@@ -148,6 +156,8 @@ export function AccountHoursMenu({
           // From an account's row on All's page, back is All's page.
           onBack={() => (page.account && !account ? setPage({ kind: "friction", account: null }) : toMain())}
           onOpenAccount={(email) => setPage({ kind: "friction", account: email })}
+          unlocked={unlocked}
+          onUnlock={unlock}
         />
       </PointerMenu>
     );
@@ -161,8 +171,8 @@ export function AccountHoursMenu({
           onBack={toMain}
           onPick={(until) => {
             onDismiss();
-            if (tab === "shown") for (const email of account ? [account] : accounts) hide.hideUntil(email, until);
-            else pause.pauseUntil(until, account);
+            if (tab === "shown") for (const email of account ? [account] : accounts) hide.hideUntil(email, until, "menu: until a time");
+            else pause.pauseUntil(until, account, "menu: until a time");
           }}
         />
       </PointerMenu>
@@ -171,7 +181,18 @@ export function AccountHoursMenu({
 
   return (
     <PointerMenu key="main" x={x} y={y} onDismiss={onDismiss} backdrop className="w-[24rem] max-w-[calc(100vw-16px)] py-0">
-      <ScheduleTabs tab={tab} onTab={setTab} />
+      {account ? null : (
+        <NotAsUsual
+          accounts={accounts}
+          labels={labels}
+          isOutlookAccount={isOutlookAccount}
+          hide={hide}
+          pause={pause}
+          onDone={onDismiss}
+        />
+      )}
+      <ScheduleTabs tab={tab} onTab={setTab} state={state} />
+      {account ? <WhoLine tab={tab} account={account} hide={hide} pause={pause} /> : null}
       <Section title={forAWhileTitle(tab, account, hide, pause, t)}>
         <ForAWhile
           tab={tab}
@@ -249,9 +270,45 @@ function forAWhileTitle(
   return t(own && own > pause.now.getTime() ? "hoursMenuGetMailTitle" : "hoursMenuPauseForAWhile");
 }
 
-/** Shown in Mail | New mail arrives. */
-function ScheduleTabs({ tab, onTab }: { tab: HoursTab; onTab: (tab: HoursTab) => void }) {
+type MenuState = { hidden: boolean; hiddenUntil: string | null; paused: boolean };
+
+/**
+ * Whether this tab's mailbox is hidden or paused now. All is hidden when
+ * every mailbox is, and paused by its own pause or hours.
+ */
+function menuStateOf(
+  account: string | null,
+  accounts: string[],
+  hide: MailboxHideControls,
+  pause: PauseControls
+): MenuState {
+  if (account) {
+    const status = hide.statusOf(account);
+    return {
+      hidden: status.hidden,
+      hiddenUntil: hiddenUntilLabel(status),
+      paused: mailPauseVerdictForAccount(pause.state, account, pause.now).paused,
+    };
+  }
+  return {
+    hidden: accounts.length > 0 && accounts.every((email) => hide.statusOf(email).hidden),
+    hiddenUntil: null,
+    paused: mailPauseVerdictForScope(pause.state, null, pause.now).paused,
+  };
+}
+
+/**
+ * Shown in Mail | New mail arrives, or what is so instead: "Hidden until
+ * 18:00", "New mail paused". The state is the first thing the menu says,
+ * on the tab itself, not a line to find under it.
+ */
+function ScheduleTabs({ tab, onTab, state }: { tab: HoursTab; onTab: (tab: HoursTab) => void; state: MenuState }) {
   const t = useMailT();
+  const shownLabel = !state.hidden
+    ? t("hoursShownTitle")
+    : state.hiddenUntil
+      ? t("hoursTabHiddenUntil", { time: state.hiddenUntil })
+      : t("hoursTabHidden");
   const option = (id: HoursTab, icon: React.ReactNode, label: string) => (
     <button
       type="button"
@@ -272,8 +329,16 @@ function ScheduleTabs({ tab, onTab }: { tab: HoursTab; onTab: (tab: HoursTab) =>
   return (
     <div className="p-2 pb-0">
       <div role="tablist" className="flex gap-1 rounded-surface bg-[var(--mail-segment-track,rgba(0,0,0,0.05))] p-1">
-        {option("shown", <Eye className="h-3.5 w-3.5" aria-hidden />, t("hoursShownTitle"))}
-        {option("fetch", <RefreshCw className="h-3.5 w-3.5" aria-hidden />, t("hoursNewMailTitle"))}
+        {option(
+          "shown",
+          state.hidden ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />,
+          shownLabel
+        )}
+        {option(
+          "fetch",
+          state.paused ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />,
+          t(state.paused ? "hoursTabPaused" : "hoursNewMailTitle")
+        )}
       </div>
     </div>
   );
@@ -343,9 +408,9 @@ function MenuRow({
 
 /**
  * An account's schedule: its name (or, on its own menu, its answer) and its
- * hours, with a closed eye (or a pause) in front while it is hidden (or
- * paused) now. Not "Shown now" or "Shown again at …": the eye says it, and
- * the hours say the rest.
+ * hours. On its own menu a closed eye (or a pause) stands in front while it
+ * is hidden (or paused) now. On All the row is the hours alone: what is not
+ * as usual is listed at the top of the menu (NotAsUsual).
  */
 function ScheduleRow({
   tab,
@@ -394,18 +459,105 @@ function ScheduleRow({
       }
       title={name}
       detail={
-        <>
-          {mark && off ? (
-            <span className="shrink-0 text-stone-700" title={title}>
-              {hiding ? <EyeOff className="h-3.5 w-3.5" aria-label={title} /> : <Pause className="h-3.5 w-3.5" aria-label={title} />}
-            </span>
-          ) : null}
-          <span className="truncate" title={title}>{hours}</span>
-        </>
+        <span className="truncate" title={title}>{hours}</span>
       }
-      locked={off && words > 0 && !(hiding && status.byHand)}
+      locked={!mark && off && words > 0 && !(hiding && status.byHand)}
       onClick={onOpen}
     />
+  );
+}
+
+/**
+ * On All, above the tabs, under "Status": the mailboxes hidden or paused
+ * now, each saying who did it (you, or your schedule) and with what it needs — Show, or Get new mail — and a line
+ * for the rest. So what is different is the first thing the menu says,
+ * not a closed eye to find beside someone's hours (Ulrik, 2026-11-02).
+ * Nothing when every mailbox is as usual.
+ */
+function NotAsUsual({
+  accounts,
+  labels,
+  isOutlookAccount,
+  hide,
+  pause,
+  onDone,
+}: {
+  accounts: string[];
+  labels: Map<string, AccountChipLabel>;
+  isOutlookAccount: (email: string) => boolean;
+  hide: MailboxHideControls;
+  pause: PauseControls;
+  onDone: () => void;
+}) {
+  const t = useMailT();
+  const marks = useAccountMarks();
+  const rows = accounts
+    .map((email) => ({
+      email,
+      status: hide.statusOf(email),
+      verdict: mailPauseVerdictForAccount(pause.state, email, pause.now),
+    }))
+    .filter((row) => row.status.hidden || row.verdict.paused);
+  if (!rows.length) return null;
+  const others = accounts.length - rows.length;
+  const button =
+    "inline-flex shrink-0 items-center gap-1.5 rounded-control border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-800 hover:bg-stone-50";
+  return (
+    <div className="border-b border-stone-100 bg-stone-50 px-3.5 pb-2.5 pt-2.5" data-not-as-usual="">
+      <p className="pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">{t("hoursMenuNotAsUsual")}</p>
+      {rows.map(({ email, status, verdict }) => {
+        const ownPause = (accountPauseRow(pause.state, email)?.pausedUntil ?? 0) > pause.now.getTime();
+        // The one thing it needs: shown again, or its own pause ended.
+        // Hours that pause it have no way round yet, so no button.
+        const action = status.hidden
+          ? { label: t("show"), words: status.byHand ? 0 : hide.showWordsOf(email), run: () => hide.showNow(email) }
+          : ownPause
+            ? { label: t("hoursMenuGetMailAction"), words: unpauseWordsFor(pause.state, email), run: () => pause.resume(email) }
+            : null;
+        return (
+          <div key={email} className="flex items-center gap-3 py-1.5">
+            <AccountMark
+              mark={marks[email.trim().toLowerCase()]}
+              provider={mailProviderFor(email, isOutlookAccount)}
+              className="h-5 w-5"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-stone-900">{formatAccountChipLabel(email, labels)}</span>
+              {status.hidden ? (
+                <span className="flex min-w-0 items-center gap-1 text-xs text-stone-500">
+                  <EyeOff className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">{whoWords("shown", email, hide, pause, t)}</span>
+                </span>
+              ) : null}
+              {verdict.paused ? (
+                <span className="flex min-w-0 items-center gap-1 text-xs text-stone-500">
+                  <Pause className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">{whoWords("fetch", email, hide, pause, t)}</span>
+                </span>
+              ) : null}
+            </span>
+            {action ? (
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  onDone();
+                  action.run();
+                }}
+              >
+                {action.words > 0 ? <Lock className="h-3 w-3" aria-hidden /> : null}
+                {action.label}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+      {others > 0 ? (
+        <p className="pt-1 text-xs text-stone-500">
+          {others === 1 ? t("hoursMenuOtherUsual") : t("hoursMenuOthersUsual", { count: others })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -413,6 +565,54 @@ function pausedUntil(verdict: ReturnType<typeof mailPauseVerdictForAccount>): st
   if (verdict.until) return formatSnoozeWakeLabel(verdict.until.toISOString());
   if (verdict.endsAt) return formatSnoozeWakeLabel(verdict.endsAt.toISOString());
   return verdict.untilClock ?? "";
+}
+
+/**
+ * Who did it, under the tabs: "Hidden by you until 18:31", "Hidden by your
+ * schedule until Tue 07:30", and the same for new mail. The tab says that
+ * it is so; this says why, which decides how it ends (Ulrik, 2026-11-02:
+ * the tab did not tell a schedule from a time set by hand).
+ */
+function WhoLine({
+  tab,
+  account,
+  hide,
+  pause,
+}: {
+  tab: HoursTab;
+  account: string;
+  hide: MailboxHideControls;
+  pause: PauseControls;
+}) {
+  const t = useMailT();
+  const words = whoWords(tab, account, hide, pause, t);
+  if (!words) return null;
+  return (
+    <p data-hours-who="" className="flex items-center gap-1.5 px-3.5 pt-2.5 text-xs text-stone-600">
+      {tab === "shown" ? <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <Pause className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+      <span className="min-w-0">{words}</span>
+    </p>
+  );
+}
+
+function whoWords(
+  tab: HoursTab,
+  account: string,
+  hide: MailboxHideControls,
+  pause: PauseControls,
+  t: ReturnType<typeof useMailT>
+): string | null {
+  if (tab === "shown") {
+    const status = hide.statusOf(account);
+    if (!status.hidden) return null;
+    const time = hiddenUntilLabel(status);
+    if (status.byHand || !time) return t("hoursStateHiddenByYouNoEnd");
+    return t(status.reason === "until" ? "hoursStateHiddenByYou" : "hoursStateHiddenBySchedule", { time });
+  }
+  const verdict = mailPauseVerdictForAccount(pause.state, account, pause.now);
+  if (!verdict.paused) return null;
+  const time = pausedUntil(verdict);
+  return t(verdict.reason === "pause" ? "hoursStatePausedByYou" : "hoursStatePausedBySchedule", { time });
 }
 
 /** The words to type to go round the hours: this account's, or every account's. */
@@ -476,10 +676,10 @@ function ForAWhile({
     fn();
   };
   const row = "flex w-full items-center justify-between gap-3 px-3.5 py-2 text-left text-sm text-stone-900 hover:bg-stone-100";
-  const timeRows = (onPick: (until: number) => void, byHand?: () => void) => (
+  const timeRows = (onPick: (until: number, from: string) => void, byHand?: () => void) => (
     <>
       {options.map((option) => (
-        <button key={option.id} type="button" role="menuitem" className={row} onClick={act(() => onPick(option.until))}>
+        <button key={option.id} type="button" role="menuitem" className={row} onClick={act(() => onPick(option.until, `menu: ${option.id}`))}>
           <span>{option.label}</span>
           <span className="text-xs tabular-nums text-stone-500">{option.detail}</span>
         </button>
@@ -509,13 +709,13 @@ function ForAWhile({
             <button type="button" role="menuitem" className={row} onClick={act(() => hide.resumeSchedule(account))}>
               <span>{t("resumeMailboxSchedule", { time: status.shownEarlyUntil })}</span>
             </button>
-            {timeRows((until) => hide.hideUntil(account, until), () => hide.hideByHand(account))}
+            {timeRows((until, from) => hide.hideUntil(account, until, from), () => hide.hideByHand(account))}
           </>
         );
       }
     }
     return timeRows(
-      (until) => targets.forEach((email) => hide.hideUntil(email, until)),
+      (until, from) => targets.forEach((email) => hide.hideUntil(email, until, from)),
       () => targets.forEach((email) => hide.hideByHand(email))
     );
   }
@@ -539,7 +739,7 @@ function ForAWhile({
       {verdict?.paused && verdict.untilClock ? (
         <p className="px-3.5 pb-1 text-xs text-stone-500">{t("hoursMenuArrivesAgain", { time: verdict.untilClock })}</p>
       ) : null}
-      {timeRows((until) => pause.pauseUntil(until, account))}
+      {timeRows((until, from) => pause.pauseUntil(until, account, from))}
     </>
   );
 }

@@ -17,7 +17,7 @@
  */
 
 import * as React from "react";
-import { ChevronsUpDown, GripVertical, Plus, X } from "lucide-react";
+import { ChevronDown, GripVertical, Plus, X } from "lucide-react";
 
 import { SettingsHeading, SettingsPane } from "@/components/mail/settings-ui";
 import { currentMailLocale, useMailT, type MailT } from "@/lib/mail/i18n";
@@ -119,7 +119,8 @@ const UNIT_LABEL: Record<TimedUnit, Parameters<MailT>[0]> = {
 };
 
 const fieldClass =
-  "h-8 w-full min-w-0 rounded-control border border-stone-200 bg-white px-2.5 text-sm text-stone-800 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
+  // Cream-filled on the white card, as the mockups have it (2026-11-03).
+  "h-9 w-full min-w-0 rounded-control border border-stone-200 bg-[var(--mail-chrome)] px-2.5 text-[15px] text-stone-900 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20";
 
 /**
  * A box whose text can be half typed. It keeps what is typed, saves it once it
@@ -226,9 +227,9 @@ function UnitSelect<T extends string | number>({
           </option>
         ))}
       </select>
-      <ChevronsUpDown
+      <ChevronDown
         aria-hidden
-        className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-stone-400"
+        className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-stone-500"
       />
     </span>
   );
@@ -320,7 +321,7 @@ function TimedOptionsEditor({
   };
 
   return (
-    <div className="overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
+    <div className="mail-settings-group overflow-hidden rounded-surface bg-[var(--mail-chrome)]">
       <div ref={listRef} className="divide-y divide-stone-200">
         {options.length === 0 ? (
           <p className="px-4 py-3 text-sm text-stone-500">{emptyText}</p>
@@ -338,7 +339,7 @@ function TimedOptionsEditor({
                 // wraps under it, rather than running off the edge. The
                 // settings rail takes part of the width, so the one-line
                 // layout waits for a large window.
-                "grid grid-cols-[1.125rem_minmax(0,1fr)_1.5rem] items-center gap-x-2 gap-y-1.5 px-3 py-2.5 lg:grid-cols-[1.125rem_minmax(6.5rem,1fr)_1.75rem_4.5rem_6rem_1.5rem_5rem_1.5rem]",
+                "grid grid-cols-[1.125rem_minmax(0,1fr)_1.5rem] items-center gap-x-2.5 gap-y-1.5 px-4 py-3 lg:grid-cols-[1.125rem_minmax(6.5rem,1fr)_1.75rem_4.5rem_6rem_1.5rem_5rem_1.5rem]",
                 dragId === option.id && "bg-stone-200/60"
               )}
             >
@@ -394,7 +395,7 @@ function TimedOptionsEditor({
               <div className="col-start-2 flex flex-wrap items-center gap-2 lg:contents [&>*]:shrink-0">
                 <span
                   className={cn(
-                    "text-center text-sm text-stone-400",
+                    "text-center text-[15px] text-stone-500",
                     option.unit === "today" && "hidden lg:block"
                   )}
                 >
@@ -440,7 +441,7 @@ function TimedOptionsEditor({
                   </>
                 ) : (
                   <>
-                    <span className="text-center text-sm text-stone-400">{t("snoozeWordAt")}</span>
+                    <span className="text-center text-[15px] text-stone-500">{t("snoozeWordAt")}</span>
                     <OptionTimeField
                       ariaLabel={t("snoozeTimeAria")}
                       unit={option.unit}
@@ -470,7 +471,8 @@ function TimedOptionsEditor({
           );
         })}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-stone-200 px-4 py-2.5">
+      {/* The card's foot, a shade off the rows: adding, and going back. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-stone-200 bg-stone-50 px-5 py-3">
         <button
           type="button"
           className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800"
@@ -479,10 +481,10 @@ function TimedOptionsEditor({
           <Plus className="h-4 w-4" aria-hidden />
           {t("snoozeAddOption")}
         </button>
-        <span className="text-xs text-stone-500">{t("snoozeLeftOutNote")}</span>
+        <span className="text-sm text-stone-500">{t("snoozeLeftOutNote")}</span>
         <button
           type="button"
-          className="ml-auto text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline disabled:pointer-events-none disabled:opacity-40"
+          className="ml-auto text-sm text-stone-700 underline underline-offset-4 hover:text-stone-900 disabled:pointer-events-none disabled:opacity-50"
           disabled={!customised}
           onClick={() => {
             setNotice(null);
@@ -496,20 +498,19 @@ function TimedOptionsEditor({
   );
 }
 
-export function SnoozeOptionsPanel({ onDone }: { onDone: () => void }) {
+export function SnoozeOptionsPanel() {
   const t = useMailT();
   return (
     <SettingsPane
       title={t("settingsSnoozeSchedule")}
       description={t("settingsSnoozeScheduleHint")}
-      onDone={onDone}
     >
       <SettingsHeading>{t("snoozeOptions")}</SettingsHeading>
-      <p className="-mt-0.5 mb-2 text-xs text-stone-500">{t("snoozeSectionHint")}</p>
+      <p className="-mt-1 mb-3 text-sm text-stone-500">{t("snoozeSectionHint")}</p>
       <TimedOptionsEditor store={SNOOZE_OPTIONS} emptyText={t("snoozeNoOptions")} />
 
       <SettingsHeading>{t("pauseSection")}</SettingsHeading>
-      <p className="-mt-0.5 mb-2 text-xs text-stone-500">{t("pauseSectionHint")}</p>
+      <p className="-mt-1 mb-3 text-sm text-stone-500">{t("pauseSectionHint")}</p>
       <TimedOptionsEditor store={PAUSE_OPTIONS} emptyText={t("pauseNoOptions")} />
     </SettingsPane>
   );

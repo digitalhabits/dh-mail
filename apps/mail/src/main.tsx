@@ -17,6 +17,8 @@ import "./storage-upgrade-boot";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { openDiagnostics } from "@/components/mail/DiagnosticsDialog";
+import { installPageErrorLog } from "@/lib/mail/diagnostics";
 import { Toaster } from "sonner";
 
 import { useMailColorMode } from "@/lib/mail/theme";
@@ -228,6 +230,8 @@ function applyWindowTheme() {
   document.documentElement.dataset.theme = readMailColorMode();
 }
 applyWindowTheme();
+// Errors nobody caught, into the log (diagnostics.ts): every window.
+installPageErrorLog();
 // After `data-dh-os` is set above — it reads it to decide whether to run.
 showScrollbarsWhileScrolling();
 ignoreStrayFileDrops();
@@ -260,6 +264,8 @@ if (!isPopout && !isReader) {
   void tauriEvent
     ?.listen?.("open-accounts", () => openMailAccountsMenu({ category: "accounts" }))
     .catch(() => {});
+  // Help → Save Diagnostics…: the page's report dialog (DiagnosticsDialog).
+  void tauriEvent?.listen?.("save-diagnostics", openDiagnostics).catch(() => {});
 }
 
 /**

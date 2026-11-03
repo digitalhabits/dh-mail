@@ -1,9 +1,10 @@
 "use client";
 
+import { DiagnosticsDialog } from "@/components/mail/DiagnosticsDialog";
 import { sendFromAccounts } from "@/lib/mail/account-scope";
 import * as React from "react";
 import { TeamLayerHost } from "@/components/mail/team-layer";
-import { Moon, Pause } from "lucide-react";
+import { Pause } from "lucide-react";
 import { AutoReplyDialog } from "@/components/mail/AutoReplyDialog";
 import { FOLDER_RAIL_MAX_WIDTH, FOLDER_RAIL_MIN_WIDTH } from "@/lib/mail/folder-rail";
 import { CONTACTS_CHANGED_EVENT, ContactSourcesDialogHost } from "@/components/mail/ContactSourcesDialog";
@@ -26,8 +27,6 @@ import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { MailPhoneShell, type MailPhoneDetail } from "@/components/mail/MailPhoneShell";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { cn } from "@/lib/utils";
-import { useApplySurfaceColors } from "@/lib/mail/use-surface-colors";
-import { useSurfaceColorMenu } from "@/components/mail/surface-color-menu";
 import { ConnectedMailboxRhythm } from "@/components/mail/AccountRhythmDialog";
 import { mailBuiltinTabLabels, mailSearchPlaceholder } from "@/components/mail/mail-list-state";
 export { openMailAccountsMenu };
@@ -77,8 +76,6 @@ export function MailPage(props: MailPageProps) {
   const m = useMailPage(props);
   // The reader's own surface colours (Settings > General > Colours), and
   // the right-click on a background that sets one.
-  useApplySurfaceColors();
-  const surfaceColorMenu = useSurfaceColorMenu();
   const {
     accountEmails,
     accountLabels,
@@ -226,6 +223,15 @@ export function MailPage(props: MailPageProps) {
       <ContactSourcesDialogHost />
       {/* The words to type before ending a pause early. */}
       <UnpauseChallengeHost />
+      {/* Help → Save Diagnostics…, and Settings → Advanced. */}
+      <DiagnosticsDialog
+        accounts={[...m.accounts.accountEmails, ...m.accounts.hide.hidden]}
+        sendFrom={sendFromAccounts(m.accounts.accountEmails, m.accounts.hide.hidden)}
+        startCompose={startCompose}
+        isOutlookAccount={isOutlookAccount}
+        pauseState={pauseState}
+        hide={m.accounts.hide}
+      />
       <MacContactsAskCard
         trigger={macAskTrigger}
         onGranted={() =>
@@ -294,11 +300,9 @@ export function MailPage(props: MailPageProps) {
                   pauseChip.paused ? "text-indigo-600" : "text-teal-700"
                 )}
               >
-                {pauseChip.paused ? (
-                  <Moon className="h-4 w-4" aria-hidden />
-                ) : (
-                  <Pause className="h-4 w-4" aria-hidden />
-                )}
+                {/* Paused: the pause mark in the paused colour. Not paused:
+                    the same mark, as the way to pause. */}
+                <Pause className="h-4 w-4" aria-hidden />
               </button>
             }
           />
@@ -527,7 +531,6 @@ export function MailPage(props: MailPageProps) {
       <FloatingCards sendFrom={sendFrom} />
       {contactDialogs}
       <ConnectedMailboxRhythm />
-      {surfaceColorMenu}
     </div>
     </MailPageSlices>
   );

@@ -52,7 +52,7 @@ const SATURDAY_NOON = new Date(2026, 9, 10, 12);
 const arrives = (at) => !mailPauseVerdict({ quietHours: windows }, at).paused;
 const byText = (text) => [...document.querySelectorAll("button")].find((b) => b.textContent === text);
 const text = () => document.body.textContent || "";
-const challengeWords = () => document.querySelector("p[aria-hidden].font-mono")?.textContent ?? "";
+const challengeWords = () => document.querySelector("[data-challenge-words]")?.textContent ?? "";
 function typeInto(el, value) {
   const proto = el instanceof window.HTMLTextAreaElement ? window.HTMLTextAreaElement : window.HTMLInputElement;
   Object.getOwnPropertyDescriptor(proto.prototype, "value").set.call(el, value);

@@ -7,10 +7,9 @@ import {
   COMPOSER_TOOLBAR_BUTTON,
   TextStyleMenu,
 } from "@/components/mail/TextStyleMenu";
-import { useMailT } from "@/lib/mail/i18n";
-import { FORMAT_SHORTCUTS, formatShortcut } from "@/lib/mail/shortcuts";
-import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
+import { useMailT } from "@/lib/mail/i18n";
+import { FORMAT_SHORTCUTS } from "@/lib/mail/shortcuts";
 
 /**
  * The formatting row a mail message is written with.
@@ -25,6 +24,10 @@ import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
  * once in the composer and once in the reply, identical but for the name of
  * the handle — and the out-of-office had Quill's own bar instead, with a
  * different set of buttons in a different order.
+ *
+ * The emoji picker, bold, italic, underline and Aa stand on the row, so the
+ * composer keeps Send, its tools and the bin on one line in a narrow pane.
+ * The link and the lists are in Aa, and their keys still work.
  *
  * The emoji picker and the Aa menu carry no `ql-` class, so Quill passes over
  * both: they are in the row for the look of it, and reach the editor through
@@ -42,8 +45,6 @@ export function ComposerToolbar({
   account?: string | null;
 }) {
   const t = useMailT();
-  // Link's key can be changed in the settings; the tooltip says the one set.
-  const linkKey = formatShortcut(useMailShortcuts().insertLink);
   return (
     <div id={id} className="mail-composer-toolbar">
       <span className="ql-formats">
@@ -65,11 +66,6 @@ export function ComposerToolbar({
           className="ql-underline"
           aria-label={t("underline")}
           title={`${t("underline")} (${FORMAT_SHORTCUTS.underline})`}
-        />
-        <button
-          className="ql-link"
-          aria-label={t("link")}
-          title={`${t("link")} (${linkKey})`}
         />
         <TextStyleMenu
           editorHandle={editorHandle}

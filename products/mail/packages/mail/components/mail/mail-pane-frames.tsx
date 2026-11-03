@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import { isInteractiveDoubleClickTarget, MAX_CONTROLS_WIDTH, MAX_LIST_ARIA, MIN_CONTROLS_WIDTH, MIN_LIST_HEIGHT, NARROW_LIST_WIDTH } from "@/components/mail/use-mail-layout";
-import { ArrowLeft, Moon, PanelLeft, PanelRight, Pin } from "lucide-react";
+import { ArrowLeft, PanelLeft, PanelRight, Pause, Pin } from "lucide-react";
 import { beginNativeWindowDragOnMove } from "@/lib/native-shell";
 import { useMailT } from "@/lib/mail/i18n";
 import { usePageAccounts, usePageLayout, usePageList, usePageSync } from "@/components/mail/mail-page-slices";
@@ -490,7 +490,7 @@ function NarrowListControls({
         onClick={noneFetching ? resumeFetching : syncNow}
       >
         {noneFetching ? (
-          <Moon className="h-4 w-4" />
+          <Pause className="h-4 w-4" />
         ) : (
           <SyncIcon className="h-4 w-4" spinning={refreshing || syncTurn} />
         )}

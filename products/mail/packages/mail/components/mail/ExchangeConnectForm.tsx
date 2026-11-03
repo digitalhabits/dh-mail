@@ -185,22 +185,20 @@ function useExchangeForm(request: ExchangeConnectRequest, onClose: () => void) {
 }
 
 /**
- * The form as the Accounts page of Settings. Done shuts Settings, and
- * Settings answers "no" when it shuts with the form open.
+ * The form as the Accounts section of Settings. Settings answers "no"
+ * when it shuts with the form open.
  */
 export function ExchangeSettingsPane({
   request,
   onClose,
-  onDone,
 }: {
   request: ExchangeConnectRequest;
   onClose: () => void;
-  onDone: () => void;
 }) {
   const t = useMailT();
   const title = useExchangeFormTitle(request);
   return (
-    <SettingsPane title={title} description={t("exchangeFormBody")} onDone={onDone}>
+    <SettingsPane title={title} description={t("exchangeFormBody")}>
       <ExchangeConnectForm request={request} onClose={onClose} />
     </SettingsPane>
   );
@@ -221,8 +219,9 @@ export function ExchangeConnectForm({ request, onClose }: { request: ExchangeCon
       aria-label={title}
       onSubmit={(e) => void submit(e)}
       onKeyDown={(e) => {
-        // Escape answers "no". In Settings, the popover may also close.
+        // Escape answers "no", and does not also close Settings.
         if (e.key === "Escape" && !busy) {
+          e.preventDefault();
           e.stopPropagation();
           finish(null);
         }

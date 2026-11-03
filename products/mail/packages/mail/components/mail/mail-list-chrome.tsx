@@ -948,9 +948,6 @@ export const LayoutMenu = React.memo(function LayoutMenu() {
   return (
           <MailLayoutMenu
             onNavy={chromeDark}
-            // It opens below the button, not off the right edge, so it
-            // lines up with its left side.
-            align="start"
             knownEmails={accountEmails}
             onVisibilityChange={onMailboxVisibilityChange}
             onAccountsChanged={() => {

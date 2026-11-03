@@ -1,12 +1,9 @@
 "use client";
 
 /**
- * Font, size, colour, highlight, lists and the marks in between, behind
- * one button.
- *
- * On the toolbar, lists wrap the row off the pane long before the other
- * marks run out of room. So they live here with the rest of the
- * less-clicked formats. B, I, U and the link stay on the row.
+ * The less-clicked formats behind one button: strikethrough and the
+ * scripts, the lists, the link, colour, highlight, font and size. Bold,
+ * italic and underline stand on the row beside it.
  *
  * Laid out as labelled rows rather than a column of sections: five headings
  * with their options stacked underneath make a menu taller than the composer
@@ -19,12 +16,14 @@
  */
 
 import * as React from "react";
-import { List, ListOrdered } from "lucide-react";
+import { Link2, List, ListOrdered } from "lucide-react";
 
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { MailPopoverContent } from "@/components/mail/MailPopoverContent";
 import type { RichTextEditorHandle } from "@/components/ui/RichTextEditor";
 import { useMailT, type MailStringKey } from "@/lib/mail/i18n";
+import { formatShortcut } from "@/lib/mail/shortcuts";
+import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import { fontFromStyle, fontStack, noteRecentFont, sizeFromStyle } from "@/lib/mail/text-style";
 import { DefaultLine, FontPanel, FontRow, PILL, PILL_OFF, PILL_ON, SizeRow } from "@/components/mail/text-style-font";
 import { useTextStyleDefault } from "@/components/mail/use-text-style";
@@ -273,6 +272,9 @@ export function TextStyleMenu({
   /** The font list, in the rows' place; gone again when the menu closes. */
   const [fontList, setFontList] = React.useState(false);
   const [active, setActive] = React.useState<Record<string, unknown>>({});
+  const [canLink, setCanLink] = React.useState(false);
+  // Link's key can be changed in the settings; the tooltip says the one set.
+  const linkKey = formatShortcut(useMailShortcuts().insertLink);
   const defaults = useTextStyleDefault(account);
   const currentFont = fontFromStyle(active.font) ?? defaults.font;
   const currentSize = sizeFromStyle(active.size) ?? defaults.size;
@@ -281,7 +283,9 @@ export function TextStyleMenu({
   // and reading it on every render would ask the editor for the caret far
   // more often than the answer can change.
   React.useEffect(() => {
-    if (open) setActive(editorHandle.current?.activeFormats() ?? {});
+    if (!open) return;
+    setActive(editorHandle.current?.activeFormats() ?? {});
+    setCanLink(editorHandle.current?.hasSelection() ?? false);
   }, [open, editorHandle]);
 
   const apply = (name: string, value: string | boolean) => {
@@ -297,10 +301,10 @@ export function TextStyleMenu({
   };
 
   const striking = active.strike === true;
-  /** Quill keeps both under one format, so they take turns rather than stack. */
-  const script = active.script;
   /** Same one-at-a-time rule: a line is a bullet list, a numbered list, or neither. */
   const list = active.list;
+  /** Quill keeps both under one format, so they take turns rather than stack. */
+  const script = active.script;
 
   return (
     <Popover
@@ -338,7 +342,7 @@ export function TextStyleMenu({
         /*
           Applying a format takes the caret back, which is a focus leaving
           the menu, which Radix reads as "done here" and shuts it. But this
-          menu is five rows of choices — a size and then a colour is one
+          menu is rows of choices — a size and then a colour is one
           visit, not two — and every pick was closing it. A press outside
           still closes it; only the focus following the format does not.
         */
@@ -356,42 +360,6 @@ export function TextStyleMenu({
           />
         ) : (
         <>
-        <Row label={t("lists")}>
-          <button
-            type="button"
-            aria-pressed={list === "bullet"}
-            title={t("bulletList")}
-            aria-label={t("bulletList")}
-            className={cn(
-              PILL,
-              "inline-flex items-center gap-1.5",
-              list === "bullet" ? PILL_ON : PILL_OFF
-            )}
-            onClick={() =>
-              apply("list", list === "bullet" ? false : "bullet")
-            }
-          >
-            <List className="h-3.5 w-3.5" aria-hidden />
-            {t("bulletList")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={list === "ordered"}
-            title={t("numberedList")}
-            aria-label={t("numberedList")}
-            className={cn(
-              PILL,
-              "inline-flex items-center gap-1.5",
-              list === "ordered" ? PILL_ON : PILL_OFF
-            )}
-            onClick={() =>
-              apply("list", list === "ordered" ? false : "ordered")
-            }
-          >
-            <ListOrdered className="h-3.5 w-3.5" aria-hidden />
-            {t("numberedList")}
-          </button>
-        </Row>
         <Row label={t("style")}>
           <button
             type="button"
@@ -424,6 +392,47 @@ export function TextStyleMenu({
             }
           >
             x<sup className="text-[10px]">2</sup>
+          </button>
+        </Row>
+        <Row label={t("lists")}>
+          <button
+            type="button"
+            aria-pressed={list === "bullet"}
+            title={t("bulletList")}
+            aria-label={t("bulletList")}
+            className={cn(PILL, "inline-flex items-center gap-1.5", list === "bullet" ? PILL_ON : PILL_OFF)}
+            onClick={() => apply("list", list === "bullet" ? false : "bullet")}
+          >
+            <List className="h-3.5 w-3.5" aria-hidden />
+            {t("bulletList")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={list === "ordered"}
+            title={t("numberedList")}
+            aria-label={t("numberedList")}
+            className={cn(PILL, "inline-flex items-center gap-1.5", list === "ordered" ? PILL_ON : PILL_OFF)}
+            onClick={() => apply("list", list === "ordered" ? false : "ordered")}
+          >
+            <ListOrdered className="h-3.5 w-3.5" aria-hidden />
+            {t("numberedList")}
+          </button>
+        </Row>
+        <Row label={t("link")}>
+          {/* The link box opens in the message, on the words, so the menu
+              closes first. With no words selected there is nothing to link. */}
+          <button
+            type="button"
+            disabled={!canLink}
+            title={canLink ? `${t("link")} (${linkKey})` : t("linkSelectFirst")}
+            className={cn(PILL, PILL_OFF, "inline-flex items-center gap-1.5 disabled:cursor-default disabled:opacity-50")}
+            onClick={() => {
+              setOpen(false);
+              editorHandle.current?.openLink();
+            }}
+          >
+            <Link2 className="h-3.5 w-3.5" aria-hidden />
+            {t("link")}
           </button>
         </Row>
         <Row label={t("highlight")}>

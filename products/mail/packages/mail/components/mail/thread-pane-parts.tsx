@@ -324,8 +324,8 @@ const ARROW_ICON_CLASS =
 
 /** Room at the end of the thread for the reply tray floating over it. */
 const REPLY_TRAY_ROOM = "pb-24";
-/** Room at the end for the reply card floating over it (composer-room). */
-const COMPOSER_ROOM = "pb-[calc(var(--mail-composer-room,0px)+1.25rem)]";
+/** Air at the end above the reply, which stands under the thread. */
+const COMPOSER_ROOM = "pb-5";
 
 /** The thread's messages, as bubbles or as mail, with the marks between them. */
 export function ThreadMessages({
@@ -651,7 +651,7 @@ export function ThreadMessages({
                under the pointer, and this is the one being aimed at. */
             "absolute right-5 z-30 flex h-9 w-9 items-center justify-center rounded-full",
             // Over the reply tray while it floats in the same corner.
-            !m.mode && !m.popoutOpen ? "bottom-24" : "bottom-[calc(var(--mail-composer-room,0px)+1rem)]",
+            !m.mode && !m.popoutOpen ? "bottom-24" : "bottom-4",
             "border border-stone-200 bg-white text-stone-600 shadow-md",
             "transition-opacity hover:bg-stone-50 hover:text-stone-900",
             /* Scrolled up, or looking at a window that does not reach the

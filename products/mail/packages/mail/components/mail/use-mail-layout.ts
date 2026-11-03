@@ -99,7 +99,6 @@ function showListSnap(state: "near" | "go" | null): void {
 const LIST_DIVIDER_PX = 8;
 const MIN_COMPOSER_PCT = 40;
 const MAX_COMPOSER_PCT = 100;
-const DEFAULT_COMPOSER_PCT = 82;
 /** Two lines and the room to see they are two. */
 const MIN_COMPOSER_HEIGHT = 80;
 const MAX_COMPOSER_HEIGHT = 900;
@@ -169,7 +168,11 @@ export function useComposerHeightPx(): {
         ? Math.min(MAX_COMPOSER_HEIGHT, Math.round(pane.clientHeight * 0.66))
         : MAX_COMPOSER_HEIGHT;
       const startY = event.clientY;
-      const startHeight = height;
+      // From the height the reply stands at, not the ceiling kept for it:
+      // a short reply under a tall ceiling jumped to the ceiling on the
+      // first move. Both are screen pixels, zoom and all.
+      const band = handle.closest("[data-mail-reply-open]");
+      const startHeight = band ? Math.round(band.getBoundingClientRect().height) : height;
       const clamp = (dy: number) =>
         Math.min(
           Math.max(ceiling, MIN_COMPOSER_HEIGHT),
@@ -203,16 +206,19 @@ export function useComposerHeightPx(): {
 }
 
 /**
- * Reply-box width as a % of the reading pane, resizable by dragging its
- * edges; persisted across sessions. Message bubbles keep a fixed max width.
+ * Reply-box width as a % of the reading pane, once dragged by an edge;
+ * persisted across sessions. Null until then: the reply then lines up with
+ * one's own messages (see OWN_MESSAGE_WIDTH). A double-click on an edge
+ * goes back to that.
  */
 export function useComposerWidthPct(): {
-  pct: number;
+  pct: number | null;
+  reset: () => void;
   startResize: (
     edge: "left" | "right"
   ) => (event: React.PointerEvent) => void;
 } {
-  const [pct, setPct] = React.useState(DEFAULT_COMPOSER_PCT);
+  const [pct, setPct] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     try {
@@ -241,7 +247,8 @@ export function useComposerWidthPct(): {
       if (!available) return;
 
       const startX = event.clientX;
-      const startPct = pct;
+      // From the width it stands at, which is not a percent until dragged.
+      const startPct = box ? (box.offsetWidth / available) * 100 : pct ?? 100;
 
       const onMove = (e: PointerEvent) => {
         // Left-aligned box: right-edge drag grows with +dx; left-edge with -dx.
@@ -277,7 +284,16 @@ export function useComposerWidthPct(): {
     [pct]
   );
 
-  return { pct, startResize };
+  const reset = React.useCallback(() => {
+    setPct(null);
+    try {
+      localStorage.removeItem(MAIL_COMPOSER_WIDTH_KEY);
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  return { pct, reset, startResize };
 }
 /** True when a double-click landed on a control (don't also toggle expand). */
 /**

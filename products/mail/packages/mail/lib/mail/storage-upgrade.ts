@@ -24,7 +24,7 @@
  * - Read and write only through the `storage` argument.
  */
 
-import { STORAGE_VERSION_KEY } from "@/lib/mail/storage-keys";
+import { OLD_MAIL_SURFACE_COLORS_KEY, STORAGE_VERSION_KEY } from "@/lib/mail/storage-keys";
 
 export type StorageUpgradeStep = {
   /** 1 for the first step, then 2, 3 and so on. */
@@ -35,7 +35,7 @@ export type StorageUpgradeStep = {
 };
 
 /**
- * The steps, in order. There are none today.
+ * The steps, in order.
  *
  * An example step that renames a key:
  *
@@ -54,7 +54,15 @@ export type StorageUpgradeStep = {
  * `renameStorageKey` copies the old value to the new key, then removes the
  * old key.
  */
-export const STORAGE_UPGRADE_STEPS: readonly StorageUpgradeStep[] = [];
+export const STORAGE_UPGRADE_STEPS: readonly StorageUpgradeStep[] = [
+  {
+    version: 1,
+    // Choosing colours was taken out (2026-11-02): what was chosen goes, so
+    // nothing is left that no setting can change.
+    name: "forget the window colours the reader chose",
+    run: (storage) => storage.removeItem(OLD_MAIL_SURFACE_COLORS_KEY),
+  },
+];
 
 /**
  * Copy the value of `from` to `to`, then remove `from`.

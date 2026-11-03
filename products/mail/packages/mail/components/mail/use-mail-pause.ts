@@ -1,6 +1,7 @@
 "use client";
 
 import { MAIL_PAUSE_KEY as KEY } from "@/lib/mail/storage-keys";
+import { diagEvent, diagHours, diagTime, mailboxNumber } from "@/lib/mail/diagnostics";
 import * as React from "react";
 
 import {
@@ -124,7 +125,8 @@ export function useMailPause(): {
   /**
    * Pause until this moment. No address is All. An address is that mailbox.
    */
-  pauseUntil: (until: number, account?: string | null) => void;
+  /** `from`: where it was asked, for the log ("menu: rest of today"). */
+  pauseUntil: (until: number, account?: string | null, from?: string) => void;
   /** Clear the pause on All, or on one mailbox. Hours stay. */
   resume: (account?: string | null) => void;
   setQuietHours: (windows: MailQuietWindow[], account?: string | null) => void;
@@ -166,7 +168,8 @@ export function useMailPause(): {
     state,
     verdict,
     now,
-    pauseUntil: (until, account) => {
+    pauseUntil: (until, account, from) => {
+      diagEvent("pause set", { mailbox: account ? mailboxNumber(account) : "all", until: diagTime(until), from: from ?? "unknown" });
       if (!account) {
         const next = { ...read(), pausedUntil: until };
         write(next);
@@ -186,6 +189,7 @@ export function useMailPause(): {
       every night from here on.
     */
     resume: (account) => {
+      diagEvent("pause ended", { mailbox: account ? mailboxNumber(account) : "all" });
       if (!account) {
         const { pausedUntil, ...rest } = read();
         void pausedUntil;
@@ -202,6 +206,7 @@ export function useMailPause(): {
       setState(next);
     },
     setQuietHours: (windows, account) => {
+      diagEvent("new-mail hours set", { mailbox: account ? mailboxNumber(account) : "all", quiet: diagHours(windows) });
       if (!account) {
         const next = { ...read(), quietHours: windows };
         write(next);
@@ -218,6 +223,7 @@ export function useMailPause(): {
     setUnpauseWords: (count, account) =>
       setState(account ? setMailUnpauseWordsFor(account, count) : setMailUnpauseWords(count)),
     setFollowAllHours: (account, follow) => {
+      diagEvent("new-mail hours follow all", { mailbox: mailboxNumber(account), follow });
       const next = withAccountRow(read(), account, (row) => {
         if (follow) {
           const { quietHours, ...rest } = row;

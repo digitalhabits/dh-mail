@@ -3,6 +3,8 @@ use tauri::Manager;
 
 #[cfg(target_os = "macos")]
 mod menu;
+// Diagnostics: the page's events into the log, and the report saved.
+mod diagnostics;
 
 // The native side of mail lives in the shared crate; see products/mail/crates.
 #[cfg(target_os = "macos")]
@@ -187,6 +189,10 @@ macro_rules! mail_commands {
   ($($platform:path),* $(,)?) => {
     tauri::generate_handler![
       open_calendar_invite,
+      diagnostics::mail_diag_log,
+      diagnostics::mail_diagnostics_log,
+      diagnostics::mail_diagnostics_save,
+      diagnostics::mail_diagnostics_last_crash,
       mail_native::backdrop::set_window_backdrop,
       // The installed fonts, for the composer's font list.
       mail_native::fonts::list_system_fonts,
@@ -481,8 +487,19 @@ pub fn run() {
       app.handle().plugin(
         tauri_plugin_log::Builder::default()
           .level(log::LevelFilter::Info)
+          // Held to about 5 MB on disk: four files of 1.25 MB, the oldest
+          // dropped. Enough days for a diagnostics report, never a log
+          // that grows without end on somebody's Mac.
+          .max_file_size(1_250_000)
+          // The computer's own time, as the page's diagnostics lines
+          // write theirs: a log in UTC beside "until 00:00" in local time
+          // is an hour out in Denmark, in a bug about times.
+          .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+          .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
           .build(),
       )?;
+      // After the log, so a panic from here on is written down.
+      diagnostics::install_crash_log(app.handle());
       #[cfg(target_os = "macos")]
       magnify::install(app.handle().clone());
 
@@ -582,6 +599,10 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
     .run(|_app, _event| {
+      // A normal quit takes the "running" marker away (diagnostics.rs).
+      if let tauri::RunEvent::Exit = &_event {
+        diagnostics::mark_clean_exit(_app);
+      }
       // A downloaded update nobody clicked goes in on the way out, after
       // the writes below have drained. Builds with an updater only.
       #[cfg(any(feature = "team-updater", feature = "public-updater"))]

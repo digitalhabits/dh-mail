@@ -48,6 +48,7 @@ import { SignatureDialog } from "@/components/mail/SignatureDialog";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { ZoomTextSize } from "@/components/mail/ZoomControls";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
+import { COMPOSER_TOOLBAR_BUTTON } from "@/components/mail/TextStyleMenu";
 import { textStyleVars, useTextStyleDefault } from "@/components/mail/use-text-style";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Button } from "@/components/ui/button";
@@ -880,11 +881,17 @@ function ComposeFoot({
                     {t("discardChanges")}
                   </button>
                 ) : null}
-                <ComposerToolbar id="mail-compose-toolbar" editorHandle={editorHandle} account={from} />
-                <AttachToolbarButton
-                  onPick={addAttachFiles}
-                  disabled={sending}
-                />
+                {/* The paperclip with the formatting buttons, in their rhythm:
+                    the row's own gap stood between it and Aa, twice the gap
+                    between any two buttons before it. */}
+                <span className="flex items-center">
+                  <ComposerToolbar id="mail-compose-toolbar" editorHandle={editorHandle} account={from} />
+                  <AttachToolbarButton
+                    onPick={addAttachFiles}
+                    disabled={sending}
+                    className={COMPOSER_TOOLBAR_BUTTON}
+                  />
+                </span>
                 {/* No size line here: the chips above the row already name
                     every file, and the row said the same thing twice. The
                     bin ends the row, level with the formatting buttons. */}

@@ -374,15 +374,15 @@ async function pauseFromSyncAndResume() {
   localStorage.setItem("redd-plan-mail-pause", JSON.stringify({ pausedUntil: Date.now() + 3_600_000, quietHours: [] }));
   window.dispatchEvent(new Event("redd-plan-mail-pause-changed"));
   await sleep(200);
-  const sync = byText(/^Sync$/);
-  assert(sync && /^Inbox paused · /.test(sync.getAttribute("aria-label") || ""), "all paused, Sync stays Sync and says the pause in its label");
-  assert(sync.querySelector(".bg-amber-500"), "with an amber dot");
+  const sync = byText(/^Paused · until /);
+  assert(sync && /^Paused · until /.test(sync.closest("button").getAttribute("aria-label") || ""), "all paused at once, Sync says until when");
+  assert(sync.closest("button").querySelector("[data-sync-paused]"), "with the pause mark");
   localStorage.setItem("redd-plan-mail-pause", JSON.stringify({ quietHours: [] }));
   window.dispatchEvent(new Event("redd-plan-mail-pause-changed"));
   await sleep(200);
   assert(byLabel("Sync inbox"), "resumed, Sync is plain again");
-  assert(!byText(/^Sync$/).querySelector(".bg-amber-500"), "with no dot");
-  pass("Sync is one button: no ▾, and a dot and a label while paused");
+  assert(!byText(/^Sync$/).closest("button").querySelector("[data-sync-paused]"), "with no pause mark");
+  pass("Sync is one button: no ▾, and says until when while all are paused");
 }
 
 /**

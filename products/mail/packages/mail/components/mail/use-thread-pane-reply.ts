@@ -231,7 +231,7 @@ export function useReplySpace({
   const [draftPreviewId, setDraftPreviewId] = React.useState<string | null>(
     null
   );
-  const { pct: composerWidthPct, startResize: startComposerResize } =
+  const { pct: composerWidthPct, reset: resetComposerWidth, startResize: startComposerResize } =
     useComposerWidthPct();
   const {
     height: composerHeight,
@@ -239,7 +239,7 @@ export function useReplySpace({
     startResize: startComposerHeightResize,
   } = useComposerHeightPx();
   const forwarding = mode === "forward";
-  return { addAttachFiles, addressMenu, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachTotalBytes, attachmentPayload, attachmentPreview, attachmentsReady, beginForwardFiles, ccInputRef, clearAttachments, composerColumnRef, composerHeight, composerHeightSet, composerWidthPct, draftPreviewId, forwardFiles, forwardFilesBusy, forwarding, openAddressMenu, originalOf, recipientInputRef, removeAttach, replaceAttachments, replyBandRef, replyBandRestRef, replyEditorHandle, replyFocusSliding, replyGrown, replyRef, restoreForwardBoxes, scrollComposerFromBand, scrollRef, setAttachmentPreview, setDraftPreviewId, setForwardIncludeFiles, setOriginalOf, setScrollNode, startComposerHeightResize, startComposerResize, streamNode };
+  return { addAttachFiles, addressMenu, attachDragging, attachDropHandlers, attachItems, attachPasteHandlers, attachTotalBytes, attachmentPayload, attachmentPreview, attachmentsReady, beginForwardFiles, ccInputRef, clearAttachments, composerColumnRef, composerHeight, composerHeightSet, composerWidthPct, resetComposerWidth, draftPreviewId, forwardFiles, forwardFilesBusy, forwarding, openAddressMenu, originalOf, recipientInputRef, removeAttach, replaceAttachments, replyBandRef, replyBandRestRef, replyEditorHandle, replyFocusSliding, replyGrown, replyRef, restoreForwardBoxes, scrollComposerFromBand, scrollRef, setAttachmentPreview, setDraftPreviewId, setForwardIncludeFiles, setOriginalOf, setScrollNode, startComposerHeightResize, startComposerResize, streamNode };
 }
 
 /** Starting a reply, quoting, printing, the chat style and the assistant. */

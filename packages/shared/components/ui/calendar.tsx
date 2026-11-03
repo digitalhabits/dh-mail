@@ -26,7 +26,7 @@ import {
   MONTHS,
   WEEKDAYS,
   daysInMonth,
-  formatDateKey,
+  formatDateKey, formatDateKeyShort,
   monthCells,
   parseDateKey,
   stepMonth,
@@ -231,6 +231,7 @@ export function DateField({
   align = "start",
   friendly = false,
   modal = false,
+  short = false,
 }: {
   value: string;
   onChange: (key: string) => void;
@@ -250,9 +251,11 @@ export function DateField({
    * shows and cannot be clicked.
    */
   modal?: boolean;
+  /** "31 Oct 2026", not "31 October 2026". */
+  short?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
-  const label = value ? formatDateKey(value) : placeholder;
+  const label = value ? (short ? formatDateKeyShort(value) : formatDateKey(value)) : placeholder;
 
   return (
     <Popover modal={modal} open={open} onOpenChange={setOpen}>

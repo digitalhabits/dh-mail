@@ -7,8 +7,8 @@
  *
  * The answer standing now carries "Current". Nothing is saved until Done.
  * While the account is locked (hidden or paused, with words set), a change
- * that gives it more time asks for the words first; a change that gives it
- * less is saved at once.
+ * that gives it more time says so at once, and Done becomes Unlock to save;
+ * a change that gives it less is saved with Done as usual.
  */
 
 import * as React from "react";
@@ -48,6 +48,7 @@ export function HoursSchedulePage({
   lock,
   onBack,
   onSave,
+  onUnlock,
 }: {
   /** About when the account is shown, not when new mail comes in. */
   hiding: boolean;
@@ -68,11 +69,12 @@ export function HoursSchedulePage({
   lock?: PauseLock;
   onBack: () => void;
   onSave: (save: ScheduleSave) => void;
+  /** The words were typed: the rest of this visit to the menu needs none. */
+  onUnlock?: () => void;
 }) {
   const t = useMailT();
   const [rows, setRows] = React.useState(() => onRowsOf(kept));
   const [choice, setChoice] = React.useState<string | null>(current);
-  const [confirming, setConfirming] = React.useState(false);
   const marked = answers.map((answer) => (answer.id === current ? { ...answer, badge: t("hoursMenuCurrent") } : answer));
   const nextKept = keptFromOnHours(rows);
   const changed = choice !== current || !sameWeek(nextKept, kept);
@@ -105,33 +107,38 @@ export function HoursSchedulePage({
             badge: current === null ? t("hoursMenuCurrent") : null,
           }}
           choice={choice}
-          onChoose={(id) => {
-            setChoice(id);
-            setConfirming(false);
-          }}
+          onChoose={(id) => setChoice(id)}
           rows={rows}
-          onRows={(next) => {
-            setRows(next);
-            setConfirming(false);
-          }}
+          onRows={setRows}
           shown={shown}
           previewHint={previewHint}
         />
       </div>
       <div className="border-t border-stone-100 px-5 py-3">
-        {loosens && confirming && lock ? (
-          <LockedSaveBar words={lock.words} hiding={hiding} onCancel={() => setConfirming(false)} onSave={save} />
+        {/* Said as soon as the choice needs it, not after Done: Done that
+            turned out to ask for words was a surprise (Ulrik, 2026-11-02).
+            Cancel puts the choice back as it stands. */}
+        {loosens && lock ? (
+          <LockedSaveBar
+            bare
+            words={lock.words}
+            hiding={hiding}
+            onCancel={() => {
+              setRows(onRowsOf(kept));
+              setChoice(current);
+            }}
+            onSave={() => {
+              onUnlock?.();
+              save();
+            }}
+          />
         ) : (
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-stone-500">{changed ? t("hoursMenuNotSaved") : t("hoursMenuNoChanges")}</span>
             <button
               type="button"
               className="rounded-control bg-[var(--mail-hours-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"
-              onClick={() => {
-                if (!changed) onBack();
-                else if (loosens) setConfirming(true);
-                else save();
-              }}
+              onClick={() => (changed ? save() : onBack())}
             >
               {t("done")}
             </button>

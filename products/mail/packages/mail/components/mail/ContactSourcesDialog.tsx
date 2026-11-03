@@ -150,7 +150,7 @@ function SourceToggle({
       onClick={() => onChange(!enabled)}
       className={cn("shrink-0 rounded-full", disabled && "opacity-60")}
     >
-      <SwitchTrack on={enabled} className={enabled ? "bg-teal-700" : "bg-stone-300"} />
+      <SwitchTrack on={enabled} className={enabled ? "bg-[var(--mail-switch-on)]" : "bg-stone-300"} />
     </button>
   );
 }
@@ -429,8 +429,13 @@ function ContactSourcesList({
   connecting,
   connect,
   toggle,
-}: ReturnType<typeof useContactSources>) {
+  footer,
+}: ReturnType<typeof useContactSources> & {
+  /** On the Settings page: the rows go on one white card, with this as its foot. */
+  footer?: React.ReactNode;
+}) {
   const t = useMailT();
+  const card = footer != null;
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const flip = (key: string) =>
     setExpanded((prev) => {
@@ -448,8 +453,8 @@ function ContactSourcesList({
       </div>
     );
   }
-  return (
-    <ul className="flex flex-col gap-2">
+  const list = (
+    <ul className={card ? "divide-y divide-stone-200" : "flex flex-col gap-2"}>
       {sources.map((source) => {
         const link = editLink(source, t);
         const reconnect = reconnectTarget(source);
@@ -493,11 +498,11 @@ function ContactSourcesList({
           <li
             key={source.key}
             className={cn(
-              "rounded-surface bg-[var(--mail-chrome)]",
+              !card && "rounded-surface bg-[var(--mail-chrome)]",
               !source.enabled && "opacity-55"
             )}
           >
-            <div className="flex items-center gap-3 px-4 py-3">
+            <div className={cn("flex items-center gap-3", card ? "px-5 py-4" : "px-4 py-3")}>
               <button
                 type="button"
                 aria-expanded={hasDetail ? open : undefined}
@@ -505,14 +510,23 @@ function ContactSourcesList({
                 className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 onClick={() => hasDetail && flip(source.key)}
               >
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-900">
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-stone-900",
+                    card ? "text-[15px]" : "text-sm font-semibold"
+                  )}
+                >
                   {name}
                 </span>
                 {status ? (
                   <span
                     className={cn(
                       "shrink-0 text-sm tabular-nums",
-                      status.tone === "warn" ? "text-amber-700" : "text-stone-500"
+                      status.tone !== "warn"
+                        ? "text-stone-500"
+                        : card
+                          ? "rounded-full bg-red-50 px-3 py-0.5 font-medium text-red-700"
+                          : "text-amber-700"
                     )}
                   >
                     {status.text}
@@ -551,7 +565,10 @@ function ContactSourcesList({
             {open && hasDetail ? (
               <div
                 id={detailId}
-                className="mx-4 border-t border-stone-200 pb-3.5 pt-3 text-sm leading-relaxed text-stone-500"
+                className={cn(
+                  "border-t border-stone-200 pb-3.5 pt-3 text-sm leading-relaxed text-stone-500",
+                  card ? "mx-5" : "mx-4"
+                )}
               >
                 <p>
                   {explanation}
@@ -609,6 +626,16 @@ function ContactSourcesList({
       })}
     </ul>
   );
+  if (!card) return list;
+  return (
+    <div className="mail-settings-group overflow-hidden rounded-surface bg-white">
+      {list}
+      {/* The card's foot, a shade off the rows, as in Snooze & schedule. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-stone-200 bg-stone-50 px-5 py-3">
+        {footer}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -617,27 +644,25 @@ function ContactSourcesList({
  * A second dialog in the middle of the window made the same surface jump.
  * This one is a page of the settings popover, under the Settings button.
  */
-export function ContactSourcesPanel({ onDone }: { onDone: () => void }) {
+export function ContactSourcesPanel() {
   const book = useContactSources(true);
   const t = book.t;
   return (
-    <SettingsPane
-      title={t("contactSources")}
-      description={t("settingsContactsHint")}
-      onDone={onDone}
-      footerStart={
-        <>
-          <p className="min-w-0 text-xs leading-relaxed text-stone-400">
-            <ContactSourcesFooterLine book={book} />
-          </p>
-          <ContactSourcesSyncButton
-            syncing={book.syncing}
-            onSync={() => void book.sync()}
-          />
-        </>
-      }
-    >
-      <ContactSourcesList {...book} />
+    <SettingsPane title={t("contactSources")} description={t("settingsContactsHint")}>
+      <ContactSourcesList
+        {...book}
+        footer={
+          <>
+            <p className="min-w-0 flex-1 text-sm leading-relaxed text-stone-500">
+              <ContactSourcesFooterLine book={book} />
+            </p>
+            <ContactSourcesSyncButton
+              syncing={book.syncing}
+              onSync={() => void book.sync()}
+            />
+          </>
+        }
+      />
     </SettingsPane>
   );
 }

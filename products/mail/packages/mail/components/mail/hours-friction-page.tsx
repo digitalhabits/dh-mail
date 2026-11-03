@@ -11,6 +11,9 @@
  *
  * While an account is hidden (or paused) with words set, fewer words or a
  * longer "Hide again after" waits for the words, as a looser schedule does.
+ * The slider and the list show the change at once while the words are
+ * asked; typed once, they hold for the rest of this visit to the menu
+ * (`unlocked`), so the next nudge of the slider does not lock it again.
  */
 
 import * as React from "react";
@@ -72,6 +75,9 @@ export function useFriction(tab: HoursTab, hide: MailboxHideControls, pause: Pau
   };
 }
 
+/** A looser change waiting for the words: fewer words, a longer hide again. */
+type Held = { words?: number; again?: number };
+
 export function HoursFrictionPage({
   tab,
   account,
@@ -82,6 +88,8 @@ export function HoursFrictionPage({
   pause,
   onBack,
   onOpenAccount,
+  unlocked = false,
+  onUnlock,
 }: {
   tab: HoursTab;
   /** One account, or null for every account. */
@@ -93,6 +101,9 @@ export function HoursFrictionPage({
   pause: PauseControls;
   onBack: () => void;
   onOpenAccount: (email: string) => void;
+  /** The words were typed once in this visit to the menu: nothing waits now. */
+  unlocked?: boolean;
+  onUnlock?: () => void;
 }) {
   const t = useMailT();
   const marks = useAccountMarks();
@@ -104,13 +115,21 @@ export function HoursFrictionPage({
   };
   const words = account ? f.words(account) : same(f.words);
   const again = account ? f.again(account) : same(f.again);
-  const locked = account ? f.locked(account) : accounts.some(f.locked);
-  /** A looser change, held until the words are typed. */
-  const [waiting, setWaiting] = React.useState<(() => void) | null>(null);
-  const attempt = (looser: boolean, apply: () => void) => {
-    if (locked && looser) setWaiting(() => apply);
-    else apply();
-  };
+  const locked = (account ? f.locked(account) : accounts.some(f.locked)) && !unlocked;
+  /** The words a looser change waits behind: the ones in force now. */
+  const [barrier] = React.useState(() => (account ? f.words(account) : Math.max(0, ...accounts.map(f.words))));
+  /** Looser changes, shown at once and held until the words are typed. */
+  const [pending, setPending] = React.useState<Held | null>(null);
+  const hold = (change: Held) => setPending((p) => ({ ...p, ...change }));
+  /** A change that needs no words goes through, and drops a held one of its kind. */
+  const drop = (kind: keyof Held) =>
+    setPending((p) => {
+      if (!p) return p;
+      const rest: Held = { ...p, [kind]: undefined };
+      return rest.words === undefined && rest.again === undefined ? null : rest;
+    });
+  const shownWords = pending?.words ?? words;
+  const shownAgain = pending?.again ?? again;
 
   return (
     <div>
@@ -170,7 +189,7 @@ export function HoursFrictionPage({
           <span className="flex items-baseline justify-between gap-2 text-sm text-stone-800">
             <span>{t("pauseFrictionHowMany")}</span>
             <span className="text-xs tabular-nums text-teal-700">
-              {words ? `${words} · ~${unpauseMinutes(words)} min` : t("pauseFrictionOff")}
+              {shownWords ? `${shownWords} · ~${unpauseMinutes(shownWords)} min` : t("pauseFrictionOff")}
             </span>
           </span>
           <input
@@ -178,10 +197,15 @@ export function HoursFrictionPage({
             min={0}
             max={MAX_UNPAUSE_WORDS}
             step={1}
-            value={words}
+            value={shownWords}
             onChange={(e) => {
               const next = Number(e.target.value);
-              attempt(next < words, () => f.setWords(account, next));
+              if (locked && next < words) {
+                hold({ words: next });
+                return;
+              }
+              f.setWords(account, next);
+              drop("words");
             }}
             className="mt-2 w-full accent-teal-700"
           />
@@ -191,21 +215,31 @@ export function HoursFrictionPage({
             <span className="text-sm text-stone-800">{t("hideAgainAfter")}</span>
             <MenuSelect
               ariaLabel={t("hideAgainAfter")}
-              value={again}
+              value={shownAgain}
               options={HIDE_AGAIN_OPTIONS.map((minutes) => ({ value: minutes, label: hideAgainLabel(minutes, t) }))}
-              onChange={(next) => attempt(next === 0 ? again !== 0 : again !== 0 && next > again, () => f.setAgain(account, next))}
+              onChange={(next) => {
+                const looser = next === 0 ? again !== 0 : again !== 0 && next > again;
+                if (locked && looser) {
+                  hold({ again: next });
+                  return;
+                }
+                f.setAgain(account, next);
+                drop("again");
+              }}
               className="shrink-0"
             />
           </div>
         ) : null}
-        {waiting ? (
+        {pending ? (
           <UnlockBox
-            words={account ? f.words(account) : Math.max(...accounts.map(f.words))}
+            words={barrier}
             onUnlocked={() => {
-              waiting();
-              setWaiting(null);
+              if (pending.words !== undefined) f.setWords(account, pending.words);
+              if (pending.again !== undefined) f.setAgain(account, pending.again);
+              setPending(null);
+              onUnlock?.();
             }}
-            onCancel={() => setWaiting(null)}
+            onCancel={() => setPending(null)}
           />
         ) : null}
       </div>

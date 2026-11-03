@@ -43,8 +43,11 @@ export const USAGE_PING_ENABLED_KEY = "mail_usage_ping_enabled";
 export const MAIL_LANG_KEY = "redd-plan-mail-lang";
 /** Light, dark or system. Local. */
 export const MAIL_COLOR_MODE_KEY = "redd-plan-mail-color-mode";
-/** The reader's own colours for the window's surfaces (light theme). Local. */
-export const MAIL_SURFACE_COLORS_KEY = "redd-plan-mail-surface-colors";
+/**
+ * Old: only read by an upgrade step. The reader's own colours for the
+ * window's parts, until choosing colours was taken out (2026-11-02).
+ */
+export const OLD_MAIL_SURFACE_COLORS_KEY = "redd-plan-mail-surface-colors";
 /** The interface scale. Removed when it is 100 %. Local. */
 export const MAIL_UI_SCALE_KEY = "redd-plan-mail-ui-scale";
 /** The zoom of the mail pane. Local. */
@@ -68,8 +71,12 @@ export const MAIL_LIST_WIDTH_KEY = "redd-plan-mail-list-width";
 export const MAIL_LIST_HEIGHT_KEY = "redd-plan-mail-list-height";
 /** The width of the controls column, in pixels. Local. */
 export const MAIL_CONTROLS_WIDTH_KEY = "redd-plan-mail-controls-width";
-/** The width of the composer, as a percent of the pane. Local. */
-export const MAIL_COMPOSER_WIDTH_KEY = "redd-plan-mail-composer-width-pct";
+/**
+ * The width of the reply, as a percent of the pane, once the writer has
+ * dragged one. Local. A new name since the reply was docked (2026-11-02):
+ * widths dragged for the floating card were not widths for this.
+ */
+export const MAIL_COMPOSER_WIDTH_KEY = "dh-mail-reply-width-pct";
 /** The height of the composer, in pixels. Local. */
 export const MAIL_COMPOSER_HEIGHT_KEY = "redd-plan-mail-composer-height-px";
 /** "1" when the reader hid the list (peek mode). Local. */
@@ -184,8 +191,6 @@ export const READER_SIZE_KEY = "redd-plan-mail-reader-size";
 export const READER_WIDTH_KEY = "redd-plan-mail-reader-width";
 /** "1" when the forwarded message is open in the composer. Local. */
 export const FORWARD_SOURCE_OPEN_KEY = "dh-mail-forward-source-open";
-/** "1" when the history of the thread is open under a reply. Local. */
-export const REPLY_HISTORY_OPEN_KEY = "dh-mail-reply-history-open";
 
 // ---------------------------------------------------------------------------
 // Pause, hide and snooze
@@ -193,6 +198,11 @@ export const REPLY_HISTORY_OPEN_KEY = "dh-mail-reply-history-open";
 
 /** The pause of the mail, and until when. Local. */
 export const MAIL_PAUSE_KEY = "redd-plan-mail-pause";
+/**
+ * Each mailbox's number in the diagnostics ("mailbox 2"), by its address.
+ * Local, and never in a report: the number stands in for the address.
+ */
+export const MAIL_DIAG_MAILBOX_NUMBERS_KEY = "dh-mail-diag-mailbox-numbers";
 /** The mailboxes that are hidden, and until when. Local. */
 export const MAILBOX_HIDE_KEY = "redd-plan-mail-hide";
 /** The snooze options that the reader changed. Local. */
