@@ -210,11 +210,12 @@
   cursor: pointer;
 }
 
-/* 2px lower, to line up with the box; a transform moves nothing else. */
+/* The first line's middle is the box's middle: 24px line, 20px box 2px
+   down. The 2px push this had sat the words low with the design
+   system's font (2026-11-04). */
 .mail-shell.mail-welcome #eula-onboarding .legal-onboarding-checkbox-text {
   flex: 1;
   min-width: 0;
-  transform: translateY(2px);
 }
 
 .mail-shell.mail-welcome #eula-onboarding .modal-btn.primary-btn {

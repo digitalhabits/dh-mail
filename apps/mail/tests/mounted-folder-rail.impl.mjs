@@ -48,6 +48,8 @@ function mount(openFolder = null) {
       openFolder,
       systemView: null,
       draftCount: 2,
+      outboxCount: 3,
+      onOpenOutbox: note("openOutbox"),
       onOpenFolder: note("openFolder"),
       onOpenSent: note("openSent"),
       onOpenDrafts: note("openDrafts"),
@@ -119,10 +121,17 @@ async function viewsAndFolders() {
   // Counts are opt-in (Settings > General): none by default.
   assert(!/7$/.test((receiptsRow().textContent || "").trim()), `Receipts shows no count by default: ${receiptsRow().textContent}`);
   pass("a folder shows no count by default");
+  // Scheduled too: the row is there while mail waits, without a number.
+  const scheduledRow = () =>
+    [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim().startsWith("Scheduled"));
+  assert(scheduledRow(), "Scheduled has a row while mail waits");
+  assert.equal((scheduledRow().textContent || "").trim(), "Scheduled", "and no count by default");
+  pass("Scheduled shows no count by default, as the folders do");
   writeShowFolderCounts(true);
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert(/7$/.test((receiptsRow().textContent || "").trim()), `Receipts shows its count: ${receiptsRow().textContent}`);
-  pass("with counts turned on, a folder shows its count");
+  assert(/3$/.test((scheduledRow().textContent || "").trim()), `Scheduled shows its count: ${scheduledRow().textContent}`);
+  pass("with counts turned on, a folder and Scheduled show their counts");
   writeShowFolderCounts(false);
   await new Promise((resolve) => setTimeout(resolve, 50));
 

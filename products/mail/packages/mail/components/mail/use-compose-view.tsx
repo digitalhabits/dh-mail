@@ -10,6 +10,7 @@
  * hooks run in the same order as before.
  */
 
+import { plainMailError } from "@/lib/mail/plain-mail-error";
 import { confirmWithUndo } from "@/components/mail/undo-confirm";
 import { deleteEditedOriginal, keepEditAsDraft } from "@/components/mail/scheduled-undo";
 import { FLOATING_COMPOSE_SIZE_KEY } from "@/lib/mail/storage-keys";
@@ -1037,7 +1038,7 @@ export function useComposeSend({
         unhideDraftRows([draftRow]);
         const firstTo = flatTo.emails[0] ?? "the recipient";
         toast.error(`Your message to ${firstTo} did not send`, {
-          description: err instanceof Error ? err.message : undefined,
+          description: plainMailError(err),
           duration: 15_000,
           action: { label: "Retry", onClick: () => void deliver() },
         });

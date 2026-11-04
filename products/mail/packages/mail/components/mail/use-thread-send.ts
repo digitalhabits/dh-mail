@@ -28,6 +28,7 @@
  * New work on sending goes in this file, not in ThreadPane.
  */
 
+import { plainMailError } from "@/lib/mail/plain-mail-error";
 import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { sendLaterNotice } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
@@ -436,8 +437,7 @@ export function useSendOutbox({
         const firstTo = entry.request.to[0] ?? "the thread";
         const what = entry.forward ? "forward" : "reply";
         toast.error(`Your ${what} to ${firstTo} did not send`, {
-          description:
-            err instanceof Error ? err.message : undefined,
+          description: plainMailError(err),
           duration: 15_000,
           action: {
             label: "Retry",

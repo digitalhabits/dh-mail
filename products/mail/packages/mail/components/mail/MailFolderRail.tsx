@@ -799,7 +799,8 @@ function RailMailboxSections({
 export function useFolderRailView({
   props,
 }: { props: FolderRailProps }) {
-  // Counts are opt-in (Settings > General); the Outbox keeps its own.
+  // Counts are opt-in (Settings > Reading), Scheduled's too: the row is
+  // there only while something waits to be sent, which says enough.
   const showCounts = useShowFolderCounts();
   const {
     accountDrag,
@@ -1056,7 +1057,7 @@ export function useFolderRailView({
       <SystemRow
         icon={Clock}
         label={t("outbox")}
-        count={props.outboxCount}
+        count={showCounts ? props.outboxCount : null}
         active={systemView === "outbox"}
         drop={dragging ? "dim" : "rest"}
         dragOver={dragOver}

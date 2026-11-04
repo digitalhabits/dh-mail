@@ -65,7 +65,8 @@ export type TeamRoster = {
 
 export type TeamMailbox = {
   mailboxes: string[];
-  members: { name: string; email: string; emails: string[] }[];
+  /** `photo`: a link to their picture, signed for an hour, when they have one. */
+  members: { name: string; email: string; emails: string[]; photo?: string }[];
   me?: string;
 };
 

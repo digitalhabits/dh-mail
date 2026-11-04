@@ -21,6 +21,9 @@ import { resolveMailProvider } from "@/lib/mail/providers";
 import { PlanError } from "@/lib/plan/errors";
 import { base64ToBytes, base64UrlToBytes } from "@/lib/base64";
 
+/** How long to wait before asking Exchange for a file a second time. */
+const EXCHANGE_PART_RETRY_MS = 1500;
+
 /** Streamable attachment bytes for preview/download. */
 /*
   Files already read, kept for the life of the window.
@@ -101,7 +104,18 @@ async function readMailAttachment(input: {
       throw new PlanError("This file has no part name in the local copy. Open the message again.", 404);
     }
     const section = input.attachmentId.slice(IMAP_ATTACHMENT_PREFIX.length);
-    const part = await fetchExchangePart(input.account, input.messageId, section);
+    /*
+      Once more, after a pause, when the server gave no message. The KU
+      server does that now and then for an item it knows: the same file
+      opened a moment later, in the message's own window (Mikkel,
+      2026-11-04). A message that is really gone fails the second time
+      too, and the reader is told in plain words (plain-mail-error.ts).
+    */
+    const part = await fetchExchangePart(input.account, input.messageId, section).catch(async (err) => {
+      if (!isStaleExchangeItem(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, EXCHANGE_PART_RETRY_MS));
+      return fetchExchangePart(input.account, input.messageId, section);
+    });
     return { bytes: base64ToBytes(part.bytesBase64) };
   }
   // A file the copy named by its IMAP section: fetched by that section.

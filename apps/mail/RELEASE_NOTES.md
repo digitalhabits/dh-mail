@@ -1,6 +1,12 @@
 ## What is new
 
 **Fixes**
+- A conversation you open no longer moves up and down by a pixel or two for its first seconds.
+- Error messages are in plain words. A reply that did not send says to check the internet connection, with no web address. A file that did not come says so, with no code.
+- If an Exchange server does not send a file the first time, Mail asks for it once more before it tells you.
+- "Scheduled" shows its count only when folder counts are on.
+- The words in the mail list are darker, so they are easier to read.
+- On the welcome screen, the line next to the agreement box is in line with the box.
 - When you snooze several conversations at once, the next conversation opens, as it does when you archive them. If none is left, the empty inbox shows. Before, the conversation that was open before you picked them came back.
 
 **Settings, easier to read**

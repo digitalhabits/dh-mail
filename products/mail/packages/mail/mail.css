@@ -548,11 +548,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-chrome-muted: #47616a;
   /* A row's preview line in the list: ink at 85% over the cream. The
      muted grey above read too faint there (2026-10-27). */
-  --mail-row-preview: #3c5862;
+  --mail-row-preview: #1f363e; /* darker, easier to read (2026-11-04) */
   /* A sender's name and the subject under it: one ink, a step past the
      system's, so the two differ by weight alone. In two inks they read as
      two typefaces (2026-10-27). */
-  --mail-row-name: #122a33;
+  --mail-row-name: #0b1f26;
   --mail-chrome-faint: #9ea9aa;
   /* Hover in the lighter panes: one step down from #f5f1ea. */
   --mail-chrome-hover: #efe9df;
@@ -740,7 +740,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
      it never reads as a second choice (2026-10-28). */
   --mail-sidebar-hover: #e4dccd;
   --mail-pane-divider: rgba(27, 61, 74, 0.11); /* 16% read heavy round the frame (2026-10-27) */
-  --mail-list-muted: #47616a;
+  --mail-list-muted: #3a535b; /* a step darker (2026-11-04) */
 
   /* A person or a list, as a chip in an address field. */
   --mail-chip: #e9e4da;

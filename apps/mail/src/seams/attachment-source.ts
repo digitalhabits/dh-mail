@@ -13,6 +13,7 @@
 import { toast } from "@/lib/mail/toast";
 
 import { mailApiFetch } from "@/lib/mail/api";
+import { plainMailError } from "@/lib/mail/plain-mail-error";
 import type { AttachmentSource } from "@/lib/mail/host/contracts";
 import { bytesToBase64 } from "@/lib/base64";
 import { nameWithFoundExtension } from "@/lib/mail/attachment-mime";
@@ -36,7 +37,7 @@ export async function openAttachmentSource(
   const res = await mailApiFetch(path);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(detail || `Couldn't read the attachment (${res.status})`);
+    throw new Error(plainMailError(detail, `Couldn't read the attachment (${res.status})`));
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -86,7 +87,7 @@ export async function saveAttachment(input: {
     const res = await mailApiFetch(input.path);
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(detail || `Couldn't read the attachment (${res.status})`);
+      throw new Error(plainMailError(detail, `Couldn't read the attachment (${res.status})`));
     }
     const bytes = new Uint8Array(await res.arrayBuffer());
     await saveAttachmentBytes({
@@ -218,7 +219,7 @@ async function stageAttachment(input: {
   const res = await mailApiFetch(input.path);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(detail || `Couldn't read the attachment (${res.status})`);
+    throw new Error(plainMailError(detail, `Couldn't read the attachment (${res.status})`));
   }
   const bytes = new Uint8Array(await res.arrayBuffer());
 

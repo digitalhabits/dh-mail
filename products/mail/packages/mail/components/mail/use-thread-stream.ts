@@ -1151,6 +1151,8 @@ export function useStreamOpenPosition({
     */
     const zoomAtOpen = zoomRef.current;
     let placed = -1;
+    /** Where the landing message's top was on screen after the last placing. */
+    let placedTop = Number.NaN;
     // Read once, at the open: reading the thread marks it read.
     const landOn = openLandingMessageId(thread.messages, newestMessageId);
     /*
@@ -1212,6 +1214,22 @@ export function useStreamOpenPosition({
       } else if (bubbles.length === 1) {
         el.scrollTop = 0;
       } else {
+        /*
+          Still where it was put, and the scroll not moved: nothing above
+          grew, so there is nothing to do. Placed again, the browser
+          rounds the place afresh from where the scroll is now, and at a
+          zoom it lands a pixel or two off, one way and then the other.
+          Every heartbeat did that for the whole ten seconds, so the open
+          message wiggled up and down (Mikkel, 2026-11-04; the 1px case
+          below did not catch a 2px step).
+        */
+        if (
+          placed >= 0 &&
+          Math.round(el.scrollTop) === placed &&
+          Math.abs(target.getBoundingClientRect().top - placedTop) < 2
+        ) {
+          return;
+        }
         // The strip above, in screen pixels; the margin is drawn zoomed.
         const air = Math.min(96, Math.max(48, el.clientHeight * 0.12));
         const before = el.scrollTop;
@@ -1227,6 +1245,7 @@ export function useStreamOpenPosition({
         if (Math.abs(el.scrollTop - before) <= 1) el.scrollTop = before;
       }
       placed = Math.round(el.scrollTop);
+      placedTop = target.getBoundingClientRect().top;
     };
 
     const onScroll = () => {
