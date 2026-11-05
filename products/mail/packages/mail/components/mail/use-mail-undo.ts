@@ -115,10 +115,12 @@ function saidBack(message: string) {
 
 /** No list and no reader toolbar on screen: the toast, as before. */
 mailUndoSlot.setFallback((slot) => {
-  const id = toast(slot.label, {
-    action: { label: mailSay("undo"), onClick: slot.undo },
-    duration: 8000,
-  });
+  const id = slot.undo
+    ? toast(slot.label, {
+        action: { label: mailSay("undo"), onClick: slot.undo },
+        duration: 8000,
+      })
+    : toast.success(slot.label, { duration: slot.ms });
   return () => toast.dismiss(id);
 });
 

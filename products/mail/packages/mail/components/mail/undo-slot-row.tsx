@@ -81,16 +81,18 @@ function SlotWords({ slot }: { slot: UndoSlot }) {
   );
 }
 
-/** The navy Undo. */
+/** The navy Undo. None on a notice that cannot be taken back. */
 function UndoButton({ slot }: { slot: UndoSlot }) {
   const t = useMailT();
+  const undo = slot.undo;
+  if (!undo) return null;
   return (
     <button
       type="button"
       data-undo-slot-button
       onClick={(e) => {
         e.stopPropagation();
-        slot.undo();
+        undo();
       }}
       className="shrink-0 rounded-full bg-[#1b2432] px-3 py-[3px] text-sm font-semibold text-white hover:bg-[#2a3546]"
     >
@@ -129,7 +131,11 @@ function SlotPill({ slot }: { slot: UndoSlot }) {
       data-undo-card
       // A fixed radius, not rounded-full: a pill on one line, and a rounded
       // card when the words wrap to two.
-      className="flex min-w-0 items-center gap-2.5 rounded-[20px] border border-[var(--mail-pane-divider)] bg-[var(--mail-pane)] py-1 pl-4 pr-1 shadow-lg"
+      className={cn(
+        "flex min-w-0 items-center gap-2.5 rounded-[20px] border border-[var(--mail-pane-divider)] bg-[var(--mail-pane)] py-1 pl-4 shadow-lg",
+        // With no Undo, the same room at both ends, and the height an Undo gives.
+        slot.undo ? "pr-1" : "min-h-[36px] pr-4"
+      )}
     >
       <SlotWords slot={slot} />
       <UndoButton slot={slot} />
@@ -197,9 +203,13 @@ export function UndoSlotFoot({
       className={cn("pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center", narrow ? "px-1" : "px-3")}
     >
       {narrow ? (
-        <div data-undo-slot role="status" className="flex">
-          <NarrowUndo slots={slots} />
-        </div>
+        // The narrow list is an Undo arrow and nothing else: a notice with
+        // no Undo has nothing to show there.
+        slots.some((s) => s.undo) ? (
+          <div data-undo-slot role="status" className="flex">
+            <NarrowUndo slots={slots.filter((s) => s.undo)} />
+          </div>
+        ) : null
       ) : (
         <div
           data-undo-slot

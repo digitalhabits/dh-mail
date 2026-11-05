@@ -33,6 +33,7 @@ import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/sch
 import { sendLaterNotice } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
+import { sayDone } from "@/lib/mail/undo-slot";
 import { promisesAnAttachment } from "@/lib/mail/attachment-hint";
 import {
   quotedReplyMessage,
@@ -396,9 +397,9 @@ export function useSendOutbox({
         // The thread has no bubble for these, so the toast is all there is
         // to say it went.
         if (entry.forward) {
-          toast.success(mailSay("forwardedTo", { who: entry.forward.who }));
+          sayDone(mailSay("forwardedTo", { who: entry.forward.who }));
         } else if (entry.startsNewThread) {
-          toast.success(mailSay("sent"));
+          sayDone(mailSay("sent"));
         }
         onSent?.(entry.request.account);
         scheduleThreadRefetchAfterSend(account, threadId, setThread);

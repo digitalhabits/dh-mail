@@ -4,7 +4,7 @@
  * when neither is on screen. Subjects are invented.
  */
 
-import { createUndoSlotStore, describeUndoTargets, UNDO_SLOT_MS } from "@/lib/mail/undo-slot";
+import { createUndoSlotStore, DONE_SLOT_MS, describeUndoTargets, mailUndoSlot, sayDone, UNDO_SLOT_MS } from "@/lib/mail/undo-slot";
 import { check, suite } from "./harness.mjs";
 
 /** Timers the suite moves by hand. */
@@ -153,5 +153,18 @@ suite(async () => {
     check("the toast when nothing on screen can hold it", toasts.join() === "c");
     store.clear("c");
     check("and the toast goes with it", toasts.length === 0);
+  }
+
+  {
+    // A forward that has gone says so where its count stood, with no Undo
+    // (a KU tester, 2026-11-05: it was a green toast in the far corner).
+    const leave = mailUndoSlot.mount("list");
+    sayDone("Forwarded to Asta Holm");
+    const done = mailUndoSlot.get().slot;
+    check("the notice stands with the confirmations", done?.verb === "Forwarded to Asta Holm" && done.action === "send");
+    check("it has no Undo", done?.undo === undefined);
+    check("and stays a short while", done?.ms === DONE_SLOT_MS && DONE_SLOT_MS < UNDO_SLOT_MS);
+    mailUndoSlot.clear();
+    leave();
   }
 });

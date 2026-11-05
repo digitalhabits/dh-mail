@@ -8,6 +8,7 @@ import "@/styles/quill.snow.css";
 import "@/styles/quill.bubble.css";
 import { readClipboardText } from "@/lib/native-shell";
 import { useRichTextShortcuts } from "@/components/ui/rich-text-shortcuts";
+import { bindLinkBoxPaste } from "./link-box-paste";
 import {
   copyImageToClipboard,
   ImageContextMenu,
@@ -1049,6 +1050,11 @@ export function RichTextEditor({
     root.addEventListener("dh-paste-plain", onPastePlainAsked);
     // "Link…" in the right-click menu (apps/mail/src/main.tsx).
     root.addEventListener("dh-insert-link", openLinkFromKey);
+    // Cmd+V in the link box, which is outside `root` (link-box-paste.ts).
+    const linkBox = (
+      editor as unknown as { theme?: { tooltip?: { textbox?: HTMLInputElement } } }
+    ).theme?.tooltip?.textbox;
+    const unbindLinkBox = linkBox ? bindLinkBoxPaste(linkBox) : () => {};
     root.addEventListener("keydown", onKeyDown, true);
     root.addEventListener("paste", onPaste, true);
     root.addEventListener("keyup", clear);
@@ -1058,6 +1064,7 @@ export function RichTextEditor({
       root.removeEventListener("keyup", clear);
       root.removeEventListener("dh-paste-plain", onPastePlainAsked);
       root.removeEventListener("dh-insert-link", openLinkFromKey);
+      unbindLinkBox();
     };
   });
 

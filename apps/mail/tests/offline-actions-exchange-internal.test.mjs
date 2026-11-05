@@ -156,12 +156,17 @@ function storeCall(op, args) {
     case "messages.removeMessages":
       rows = rows.filter((r) => !args.messageIds.includes(r.messageId));
       return null;
+    case "sync.set":
+      syncSets.push(args.state ?? args);
+      return null;
     default:
       return null;
   }
 }
 
 const refusals = [];
+/** Folders whose sync state was set, so that they are read again. */
+const syncSets = [];
 globalThis.fetch = async () => new Response("{}", { status: 500 });
 globalThis.window = {
   __TAURI__: {
@@ -297,9 +302,17 @@ suite(async () => {
   online = true;
   await flushExchangeActions(EX);
   check("the item that is gone: the action is dropped", queue.rows.length === 0);
-  check("its row is put back as it was", rowOf("i30")?.labels.join(",") === "INBOX", rowOf("i30")?.labels);
+  // Put back, it stayed in the Inbox for good, and on the KU server each
+  // Delete after it failed the same way (2026-11-05). Mended instead: the
+  // row goes, and the folder it was in is read again from the start.
+  check("its row is taken out, not put back in the inbox", rowOf("i30") === undefined, rowOf("i30")?.labels);
   check("the other item went to Deleted Items", [...server.entries()].some(([id, v]) => id.startsWith("i31~") && v.folder === "f-trash"));
-  check("and the reader is told", refusals.length === 1 && refusals[0].kind === "trash" && refusals[0].account === EX, JSON.stringify(refusals));
+  check("and nothing is said: there is nothing left to delete", refusals.length === 0, JSON.stringify(refusals));
+  check(
+    "the Inbox is read again from the start, where a message with a new id would be",
+    syncSets.some((st) => st.folder === "f-inbox" && st.phase === "none"),
+    JSON.stringify(syncSets)
+  );
 
   // ---- Refused by the server --------------------------------------------------------------
   refusals.length = 0;

@@ -43,7 +43,11 @@ export type UndoSlot = {
   object: string;
   /** The whole sentence, for the toast it falls back to. */
   label: string;
-  undo: () => void;
+  /**
+   * Takes it back. None for a notice of something done that cannot be
+   * taken back, such as a forward that has gone (`sayDone`).
+   */
+  undo?: () => void;
 };
 
 export type UndoSlotState = {
@@ -239,3 +243,23 @@ export function describeUndoTargets(
 
 /** The page's one store. A reader window has its own page, and its own. */
 export const mailUndoSlot = createUndoSlotStore();
+
+/** How long a notice with no Undo stays. */
+export const DONE_SLOT_MS = 4000;
+
+/**
+ * Say that something is done, where the confirmations stand: "Forwarded to
+ * Asta Holm", after its "Sending in…" has gone. It was a green toast in
+ * the window's corner, away from where the count had been (2026-11-05).
+ * With no list or reader on screen, the toast it falls back to says it.
+ */
+export function sayDone(verb: string, object = ""): void {
+  mailUndoSlot.show({
+    id: `done-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    action: "send",
+    verb,
+    object: object.trim(),
+    label: `${verb} ${object}`.trim(),
+    ms: DONE_SLOT_MS,
+  });
+}

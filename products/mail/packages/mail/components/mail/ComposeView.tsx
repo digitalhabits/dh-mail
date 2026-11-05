@@ -329,9 +329,12 @@ export function ComposeView(props: ComposeViewProps) {
             {/* Where the words go. No light island: a message is shown in
                 the thread on a dark bubble now, so writing it on a white one
                 would be the odd half of the pair. */}
+            {/* The message and the signature scroll as one (mail.css,
+                `.mail-compose-letter`): the signature is the end of the
+                letter, not a lid on it. */}
             <div
               className={cn(
-                "min-h-0",
+                "mail-compose-letter min-h-0",
                 floating || cardH != null
                   ? "flex flex-1 flex-col overflow-y-auto"
                   : undefined

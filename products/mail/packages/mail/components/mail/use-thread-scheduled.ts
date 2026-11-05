@@ -10,6 +10,7 @@
 
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
+import { sayDone } from "@/lib/mail/undo-slot";
 
 import { isLeavingScheduled, notifyScheduledChanged, onScheduledChanged } from "@/lib/mail/scheduled-events";
 import { deleteHeldWithUndo, unscheduleHeldWithUndo } from "@/components/mail/scheduled-undo";
@@ -88,7 +89,7 @@ export function useThreadScheduled({
           });
         }
         if (action === "sendNow") {
-          toast.success(mailSay("sent"));
+          sayDone(mailSay("sent"));
           scheduleThreadRefetchAfterSend(account, threadId, setThread);
         }
       } catch (err) {

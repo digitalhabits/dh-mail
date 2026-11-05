@@ -20,6 +20,7 @@ import * as React from "react";
 import { formatShortcut, sendsFromHere, shortcutMatchesEvent, TYPING_TARGET } from "@/lib/mail/shortcuts";
 import { useMailShortcuts } from "@/lib/mail/use-mail-shortcuts";
 import { toast } from "@/lib/mail/toast";
+import { sayDone } from "@/lib/mail/undo-slot";
 
 import {
   useComposerFileDrop,
@@ -1022,7 +1023,7 @@ export function useComposeSend({
         // A message for later had its notice in the Undo pill: one is enough.
         if (pendingId) settlePendingScheduled(pendingId);
         if (!sendAt) {
-          toast.success(mailSay("sent"));
+          sayDone(mailSay("sent"));
         }
         onSent?.(from);
         // The key this composer writes under, which is not the shared one:

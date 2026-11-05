@@ -392,6 +392,17 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
 }
 
 /*
+ * The same for a new message. Its editor took the reply's ceiling above and
+ * scrolled by itself, under a signature that did not: in a long letter, an
+ * edit higher up left its last lines hidden just over the signature
+ * (a KU tester, 2026-11-05). The box round the message and the signature
+ * scrolls instead, or the pane does.
+ */
+.mail-composer-card .mail-compose-letter .mail-message-editor .ql-editor {
+  max-height: none;
+}
+
+/*
  * Reply focus mode: the box is the pane, and the letter scrolls in it.
  *
  * The chain below is react-quill's wrapper included — the `.quill` div has

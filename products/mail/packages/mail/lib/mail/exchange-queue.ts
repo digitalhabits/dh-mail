@@ -28,6 +28,7 @@ import {
   setExchangeRead,
 } from "@/lib/mail/exchange-native";
 import { createActionQueue, type QueueDelivery, type QueueFailure } from "@/lib/mail/action-queue";
+import { mendStaleExchangeItem } from "@/lib/mail/exchange-heal";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
 import { notifySyncChanged } from "@/lib/mail/local-store";
 import { mailStore } from "@/lib/mail/store";
@@ -211,7 +212,8 @@ async function deliver(email: string, action: MailPendingAction): Promise<QueueD
       action.kind === "read" || action.kind === "unread"
         ? await setExchangeRead(email, ids, action.kind === "read")
         : await setExchangeFlag(email, ids, action.kind === "star");
-    return { putBack: back(change.failed, change.gone ?? []) };
+    await mendGone(email, action, change.gone ?? []);
+    return { putBack: back(change.failed, []) };
   }
   if (!payload.target) throw new Error(`ews:invalid: No folder to move to.`);
   const result = await moveExchangeItems(email, ids, payload.target);
@@ -227,7 +229,34 @@ async function deliver(email: string, action: MailPendingAction): Promise<QueueD
     const arrived = rows.map((r) => asRow(r, { messageId: newIds[r.messageId], labels: relabel(r, payload.targetLabel ?? null) }));
     if (arrived.length) await store.messages.upsertMany(email, arrived);
   }
-  return { putBack: back(result.failed, gone), newIds };
+  await mendGone(email, action, gone);
+  return { putBack: back(result.failed, []), newIds };
+}
+
+/**
+ * Items the server says it does not have.
+ *
+ * Put back as they were, they came back in the Inbox for good: on the KU
+ * server a row can keep an id the server no longer knows while the message
+ * is still in the folder under another id (exchange-heal.ts). Each Delete
+ * then failed the same way, and the message "kept coming back" (a KU
+ * tester, 2026-11-05). So the row takes its old place again, for one
+ * moment, and is mended from there: it is taken out, and the folder it was
+ * in is read again from the start. A message that is still there comes
+ * back under the id the server has now, and the next Delete works. One
+ * that is gone stays gone.
+ */
+async function mendGone(email: string, action: MailPendingAction, gone: string[]): Promise<void> {
+  if (!gone.length) return;
+  const before = ((action.payload as QueuedPayload).before ?? {}) as Record<string, unknown>;
+  const was = Object.fromEntries(gone.filter((id) => id in before).map((id) => [id, before[id]]));
+  const store = mailStore();
+  if (Object.keys(was).length) await store.actions.restore(email, was);
+  for (const id of gone) {
+    await mendStaleExchangeItem(email, id, action.threadId).catch((err) => {
+      console.warn(`[mail-sync] ${email}: could not mend ${id}:`, err);
+    });
+  }
 }
 
 /** The items the server refused, or found gone: put back, and why. */
