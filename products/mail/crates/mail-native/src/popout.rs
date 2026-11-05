@@ -410,10 +410,14 @@ pub fn chat_popout_open(app: tauri::AppHandle, account: String, thread_id: Strin
     would now answer yes for ever, and the reader would be told they were
     answering in a window that is not on the screen.
   */
-  app
-    .get_webview_window(&chat_popout_label(&account, &thread_id))
-    .and_then(|w| w.is_visible().ok())
-    .unwrap_or(false)
+  let shown = |label: String| {
+    app
+      .get_webview_window(&label)
+      .and_then(|w| w.is_visible().ok())
+      .unwrap_or(false)
+  };
+  // A reply popped out into a window of its own is the thread's pop-out too.
+  shown(chat_popout_label(&account, &thread_id)) || shown(reply_window_label(&account, &thread_id))
 }
 
 /// Bring the pop-out for this thread to the front. "Show", from the strip.
@@ -423,6 +427,11 @@ pub fn focus_chat_popout(
   account: String,
   thread_id: String,
 ) -> Result<(), String> {
+  if let Some(window) = app.get_webview_window(&reply_window_label(&account, &thread_id)) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    return window.set_focus().map_err(|e| e.to_string());
+  }
   let Some(window) = app.get_webview_window(&chat_popout_label(&account, &thread_id))
   else {
     return Ok(());
@@ -465,7 +474,10 @@ pub fn hand_back_chat_popout(
   thread_id: String,
 ) -> Result<(), String> {
   use tauri::Emitter;
-  let Some(window) = app.get_webview_window(&chat_popout_label(&account, &thread_id))
+  // A reply's window closes itself on it (ReplyReaderWindow).
+  let Some(window) = app
+    .get_webview_window(&chat_popout_label(&account, &thread_id))
+    .or_else(|| app.get_webview_window(&reply_window_label(&account, &thread_id)))
   else {
     return Ok(());
   };
@@ -510,6 +522,50 @@ pub fn close_chat_popout(
 /// conversation; the reader resizes it like any window after that.
 const READER_WINDOW_WIDTH: f64 = 840.0;
 const READER_WINDOW_HEIGHT: f64 = 900.0;
+/// A reply alone: the size the floating reply card had, a little taller.
+const REPLY_WINDOW_WIDTH: f64 = 620.0;
+const REPLY_WINDOW_HEIGHT: f64 = 600.0;
+
+/// The window a thread's reply pops out into (ReplyReaderWindow). One per
+/// thread. The main window counts it as the thread's pop-out: see
+/// `chat_popout_open`.
+fn reply_window_label(account: &str, thread_id: &str) -> String {
+  format!("{REPLY_WINDOW_PREFIX}{}", window_safe_thread_key(account, thread_id))
+}
+
+const REPLY_WINDOW_PREFIX: &str = "reader-reply-";
+
+/// True for the label of a popped-out reply window.
+pub fn is_reply_window(label: &str) -> bool {
+  label.starts_with(REPLY_WINDOW_PREFIX)
+}
+
+/// True when a popped-out reply other than `except` is on screen.
+///
+/// While one is, closing the main window hides it and the app stays
+/// (Ulrik, 2026-11-05).
+pub fn reply_window_showing(app: &tauri::AppHandle, except: Option<&str>) -> bool {
+  app.webview_windows().iter().any(|(label, window)| {
+    is_reply_window(label)
+      && Some(label.as_str()) != except
+      && window.is_visible().unwrap_or(false)
+  })
+}
+
+/// The reply window `closing` goes. If the main window was hidden while
+/// replies were popped out and this was the last one, the main window
+/// comes back.
+pub fn show_main_after_last_reply(app: &tauri::AppHandle, closing: &str) {
+  if reply_window_showing(app, Some(closing)) {
+    return;
+  }
+  if let Some(main_window) = app.get_webview_window("main") {
+    if !main_window.is_visible().unwrap_or(true) {
+      let _ = main_window.show();
+      let _ = main_window.set_focus();
+    }
+  }
+}
 
 fn reader_window_label(
   account: &str,
@@ -586,13 +642,21 @@ pub async fn open_mail_reader_window(
   subject: String,
   person: Option<String>,
   draft: Option<String>,
+  reply: Option<bool>,
   user_agent: String,
 ) -> Result<(), String> {
   use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
   let origin = document_origin(&webview)?;
-  let label = reader_window_label(&account, &thread_id, person.as_deref(), draft.as_deref());
-  let url = reader_url(
+  // The thread's reply alone, in a window that stays on top: see
+  // `reply_window_label`.
+  let reply = reply.unwrap_or(false) && person.is_none() && draft.is_none();
+  let label = if reply {
+    reply_window_label(&account, &thread_id)
+  } else {
+    reader_window_label(&account, &thread_id, person.as_deref(), draft.as_deref())
+  };
+  let mut url = reader_url(
     &origin,
     &account,
     &thread_id,
@@ -602,6 +666,9 @@ pub async fn open_mail_reader_window(
     person.as_deref(),
     draft.as_deref(),
   );
+  if reply {
+    url.push_str("&reply=1");
+  }
   let parsed: tauri::Url = url.parse().map_err(|e| format!("Bad reader URL: {e}"))?;
 
   // One window per thread. An ordinary window does not outlive its close the
@@ -630,6 +697,45 @@ pub async fn open_mail_reader_window(
     // not inherit the main window's `dragDropEnabled: false`.
     .disable_drag_drop_handler()
     .user_agent(&user_agent);
+  /*
+    The traffic lights in the top of the page, as in the main window
+    (tauri.conf.json), not over a grey title bar of their own. The page
+    keeps the strip clear for them (reader-window-strip.tsx).
+  */
+  #[cfg(target_os = "macos")]
+  {
+    builder = builder
+      .title_bar_style(tauri::TitleBarStyle::Overlay)
+      .hidden_title(true)
+      .traffic_light_position(tauri::LogicalPosition::new(16.0, 21.0));
+  }
+
+  /*
+    A reply stays over the other windows: it is written while the
+    thread, or something else, is read beside it. Smaller than a reader,
+    in the bottom right of the screen, where the floating reply card
+    stood.
+  */
+  if reply {
+    builder = builder
+      .inner_size(REPLY_WINDOW_WIDTH, REPLY_WINDOW_HEIGHT)
+      .min_inner_size(420.0, 320.0)
+      .always_on_top(true)
+      .visible_on_all_workspaces(true);
+    if let Ok(Some(monitor)) = webview.window().current_monitor() {
+      let scale = monitor.scale_factor();
+      let size = monitor.size().to_logical::<f64>(scale);
+      let pos = monitor.position().to_logical::<f64>(scale);
+      let height = REPLY_WINDOW_HEIGHT.min(size.height - 80.0);
+      builder = builder.inner_size(REPLY_WINDOW_WIDTH, height).position(
+        pos.x + (size.width - REPLY_WINDOW_WIDTH - 32.0).max(0.0),
+        pos.y + (size.height - height - 48.0).max(24.0),
+      );
+    }
+    let window = builder.build().map_err(|e| e.to_string())?;
+    let _ = window.set_focus();
+    return Ok(());
+  }
 
   // Centred on the current monitor, stepping down per open reader so a
   // second thread does not open exactly over the first.
@@ -921,5 +1027,18 @@ mod popout_tests {
     let one = reader_window_label("", "", None, Some("compose:1"));
     assert!(one.starts_with("reader-draft-"), "{one}");
     assert_ne!(one, reader_window_label("", "", None, Some("compose:2")));
+  }
+
+  #[test]
+  fn a_reply_window_is_its_own_and_one_per_thread() {
+    // Not the thread's reader window: both can be open at once.
+    let reply = reply_window_label("a@x.com", "t1");
+    assert!(reply.starts_with("reader-"), "the reader windows' permissions cover it");
+    assert_ne!(reply, reader_window_label("a@x.com", "t1", None, None));
+    assert_ne!(reply, reply_window_label("a@x.com", "t2"));
+    assert_eq!(reply, reply_window_label("a@x.com", "t1"));
+    assert!(is_reply_window(&reply));
+    assert!(!is_reply_window("main"));
+    assert!(!is_reply_window(&reader_window_label("a@x.com", "t1", None, None)));
   }
 }

@@ -278,3 +278,26 @@ export function signalMailChanged(account: string, threadId: string): void {
   } catch {}
   void notifyMailChanged({ account, threadId }).catch(() => {});
 }
+
+/**
+ * Open a thread's reply in a window of its own that stays over the others
+ * (ReplyReaderWindow). The reply's draft
+ * is stored first by the caller (`floatReply`); only the thread travels.
+ * False outside the desktop app, where the reply floats as a card instead.
+ */
+export async function openMailReplyWindow(input: {
+  account: string;
+  threadId: string;
+  subject: string;
+}): Promise<boolean> {
+  if (!isNativeShell()) return false;
+  await openMailReaderWindow({
+    account: input.account,
+    threadId: input.threadId,
+    name: "",
+    email: "",
+    subject: input.subject,
+    reply: true,
+  });
+  return true;
+}

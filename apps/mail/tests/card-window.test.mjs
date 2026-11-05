@@ -34,6 +34,9 @@ const drag = src("use-card-drag.ts");
 suite(async () => {
   const normal = cardWindowClass("normal");
   const away = cardWindowClass("minimised");
+  // A reply in a window of its own (ReplyReaderWindow) fills that window.
+  const own = cardWindowClass("window");
+  check("a card in its own window fills it, with no corners or shadow", own.includes("inset-0") && own.includes("rounded-none") && own.includes("shadow-none"), own);
   const full = cardWindowClass("full");
 
   check(
@@ -188,7 +191,7 @@ suite(async () => {
   );
   check(
     "a full card is filled by the message, as focus mode is",
-    pane.includes("(Boolean(cardSize.height) || card.full)")
+    pane.includes('(Boolean(cardSize.height) || card.full || card.view === "window")')
   );
 
   check(

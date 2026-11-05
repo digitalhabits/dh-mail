@@ -125,7 +125,8 @@ export function useThreadChrome({
     Boolean(floating),
     FLOATING_REPLY_SIZE_KEY,
     props.floatingStartsFull,
-    props.floatingStartsFull ? onUnfloatReply : undefined
+    props.floatingStartsFull ? onUnfloatReply : undefined,
+    props.floatingInWindow
   );
   const { cardRef, size: cardSize } = card;
   /**
@@ -135,7 +136,7 @@ export function useThreadChrome({
    */
   const bandFills =
     replyFocus ||
-    (Boolean(floating) && (Boolean(cardSize.height) || card.full));
+    (Boolean(floating) && (Boolean(cardSize.height) || card.full || card.view === "window"));
   /* The pane's measured width and what it decides — see
      use-thread-pane-geometry.ts. */
   const {

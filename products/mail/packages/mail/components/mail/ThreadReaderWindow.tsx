@@ -23,6 +23,7 @@ import { toast } from "@/lib/mail/toast";
 import { TeamLayerHost } from "@/components/mail/team-layer";
 import { useMailFolders } from "@/components/mail/MailFolders";
 import { ThreadPane } from "@/components/mail/ThreadPane";
+import { ReaderWindowStrip, useOwnWindowTop } from "@/components/mail/reader-window-strip";
 import { useMailZoom } from "@/components/mail/use-mail-layout";
 import { useZoomKeys } from "@/components/mail/use-zoom-keys";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
@@ -80,6 +81,19 @@ export function ThreadReaderWindow({
   recordsDialogAbove?: boolean;
 }) {
   const t = useMailT();
+  // The Mac app: the window's top is the page's (reader-window-strip.tsx).
+  const ownTop = useOwnWindowTop();
+  const back = onBack ? (
+    <button
+      type="button"
+      title={t("back")}
+      className="inline-flex min-w-0 items-center gap-1.5 text-sm text-teal-700 hover:underline"
+      onClick={onBack}
+    >
+      <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+      <span className="truncate">{backLabel || t("back")}</span>
+    </button>
+  ) : null;
   const colorMode = useMailColorMode();
   const [zoom, adjustZoom] = useMailZoom();
   useZoomKeys(zoom, adjustZoom);
@@ -215,17 +229,12 @@ export function ThreadReaderWindow({
       className="mail-shell mail-surface-root fixed inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--mail-thread-bg,#fff)]"
       data-theme={colorMode}
     >
-      {onBack ? (
+      {ownTop ? (
+        /* The way back stands after the traffic lights. */
+        <ReaderWindowStrip>{back}</ReaderWindowStrip>
+      ) : onBack ? (
         <div className="flex shrink-0 items-center border-b border-stone-200 bg-[var(--mail-thread)] px-3 py-1.5">
-          <button
-            type="button"
-            title={t("back")}
-            className="inline-flex min-w-0 items-center gap-1.5 text-sm text-teal-700 hover:underline"
-            onClick={onBack}
-          >
-            <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="truncate">{backLabel || t("back")}</span>
-          </button>
+          {back}
         </div>
       ) : null}
       <ThreadPane

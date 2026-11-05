@@ -455,9 +455,18 @@ export function useComposerHome(input: {
   replyFloatingRef.current = replyFloating;
   const adoptStoredDraft = React.useCallback(() => {
     if (replyText.trim() || replyFloatingRef.current) return;
-    void getDraft(threadDraftKey(account, threadId)).then((raw) => {
+    void (async () => {
+      /*
+        Nor while the reply is in a window of its own (ReplyReaderWindow):
+        that window is where it is written, and coming back to this one
+        must not open it here as well. Not asked in that window itself,
+        which is the reply's home.
+      */
+      if (!floating && (await isChatPopoutOpen({ account, threadId }))) return null;
+      return getDraft(threadDraftKey(account, threadId));
+    })().then((raw) => {
       // Asked again: the reply can go to the card while the store answers.
-      if (replyFloatingRef.current) return;
+      if (!raw || replyFloatingRef.current) return;
       if (raw?.kind !== "thread" || !raw.body.trim()) return;
       restoreComposer(
         {
@@ -479,7 +488,7 @@ export function useComposerHome(input: {
       );
       focusReply(raw.caret ?? null);
     });
-  }, [account, threadId, replyText, focusReply, restoreComposer]);
+  }, [account, threadId, replyText, focusReply, restoreComposer, floating]);
 
   /**
    * Bring the answer back here: the pop-out hands its draft over and goes.

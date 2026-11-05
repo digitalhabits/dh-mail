@@ -1,12 +1,15 @@
 ## What is new
 
-**Fixes**
+**Pop-out windows**
+- A reply you pop out opens in a window of its own, which stays in front of your other windows. Before, it was a card over the main window.
+- If you close the main window while a reply is popped out, Mail stays open with the reply. When you close the reply, the main window comes back. A click on Mail in the Dock also brings it back.
+- A conversation, a person's mail or a new message that you pop out has the window buttons at the top of the page, as the main window has.
+
+**Earlier fixes**
 - On an Exchange mailbox, a message you delete no longer comes back to the inbox. If it comes back once more, delete it again.
 - In a long new message, the last lines no longer hide behind the signature when you change something higher up. The message and the signature scroll together.
 - ⌘V pastes into the link box that ⌘K opens.
 - "Forwarded to …" and "Sent" show at the foot of the list, where "Sending in…" was. Before, they showed in the corner of the window.
-
-**Earlier fixes**
 - A mailbox you hide by hand goes back to its schedule. If it has one, your hide lasts until the schedule next changes, and then the schedule decides again. Before, it stayed hidden until you showed it. The menu says until when: "Hidden by you until 18:00, then by your schedule".
 - With a PDF or a picture open in the preview, ⌘P prints that file. Before, it printed the message under it. Other files say to open them in their own app to print.
 - The preview line in the mail list is a little lighter than the names again.

@@ -23,6 +23,7 @@ import { useMailT } from "@/lib/mail/i18n";
 import { signalPopoutSend } from "@/lib/mail/popout";
 import { useMailColorMode } from "@/lib/mail/theme";
 import { closeMailReaderWindow, isNativeShell } from "@/lib/native-shell";
+import { ReaderWindowStrip } from "@/components/mail/reader-window-strip";
 
 function closeSelf(): void {
   if (isNativeShell()) {
@@ -62,6 +63,8 @@ export function ComposeDraftWindow({
       className="mail-shell mail-surface-root fixed inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--mail-thread-bg,#fff)]"
       data-theme={colorMode}
     >
+      {/* Over the room above the card: nothing moves down. */}
+      <ReaderWindowStrip overlay />
       {sending ? (
         <p className="m-auto text-sm text-stone-500">{t("sending")}</p>
       ) : (

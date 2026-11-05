@@ -105,6 +105,8 @@ const person = params.get("person") ?? "";
 // A new message's stored draft in a reader window — see ComposeDraftWindow.
 // With it set, no thread is named either.
 const draft = params.get("draft") ?? "";
+// A thread's reply alone in a reader window — see ReplyReaderWindow.
+const reply = params.get("reply") === "1";
 const account = params.get("account") ?? "";
 const threadId = params.get("thread") ?? "";
 
@@ -160,6 +162,7 @@ function Root() {
         subject={params.get("subject") ?? ""}
         person={person || undefined}
         draft={draft || undefined}
+        reply={reply}
       />
     );
   }

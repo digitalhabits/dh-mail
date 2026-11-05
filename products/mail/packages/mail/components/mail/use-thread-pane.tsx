@@ -137,6 +137,8 @@ export type ThreadPaneProps = {
   onFloatReply?: (opts?: { full?: boolean }) => void;
   /** This pane IS the floating card, and it opens over the whole window. */
   floatingStartsFull?: boolean;
+  /** The floating reply fills a window of its own (ReplyReaderWindow). */
+  floatingInWindow?: boolean;
   /**
    * This thread's reply is in the floating card right now. The pane keeps
    * its hands off the draft — no composer from it, no saves onto it — and

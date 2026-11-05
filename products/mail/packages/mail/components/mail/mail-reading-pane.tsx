@@ -17,6 +17,7 @@ import { ComposeView } from "@/components/mail/ComposeView";
 import { ThreadPane } from "@/components/mail/ThreadPane";
 import { SelectionPane } from "@/components/mail/SelectionPane";
 import { toast } from "@/lib/mail/toast";
+import { openMailReplyWindow } from "@/lib/mail/reader-window";
 import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { threadKey } from "@/lib/mail/thread-copies";
 import { MailRestPanel } from "@/components/mail/MailRestPanel";
@@ -380,12 +381,32 @@ export function ReadingPaneContent({
               onFloatReply={
                 phone
                   ? undefined
-                  : (opts) =>
-                      setFloatingReply({
+                  : (opts) => {
+                      const card = () =>
+                        setFloatingReply({
+                          account: selected.account,
+                          threadId: selected.threadId,
+                          full: opts?.full,
+                        });
+                      // "Fill the window" stays a card over this window.
+                      if (opts?.full) return card();
+                      // In the desktop app the reply pops out into a window
+                      // of its own that stays on top
+                      // (ReplyReaderWindow). Elsewhere, and if the
+                      // window will not open, it is the card.
+                      void openMailReplyWindow({
                         account: selected.account,
                         threadId: selected.threadId,
-                        full: opts?.full,
+                        subject: selectedRow?.subject ?? "",
                       })
+                        .then((opened) => {
+                          if (!opened) card();
+                        })
+                        .catch((err: unknown) => {
+                          console.error("reply window:", err);
+                          card();
+                        });
+                    }
               }
               replyFloating={
                 floatingReply?.account === selected.account &&

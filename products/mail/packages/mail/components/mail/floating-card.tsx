@@ -103,9 +103,13 @@ export function useFloatingCard(
    * a reply grown out of the thread's composer goes back to it, not to a
    * card in the corner.
    */
-  onLeaveFull?: () => void
+  onLeaveFull?: () => void,
+  /** The card is a window of its own: see "window" in card-window. */
+  inWindow = false
 ): FloatingCard {
-  const [view, setView] = React.useState<CardWindowView>(startsFull ? "full" : "normal");
+  const [view, setView] = React.useState<CardWindowView>(
+    inWindow ? "window" : startsFull ? "full" : "normal"
+  );
   const leaveRef = React.useRef(onLeaveFull);
   React.useLayoutEffect(() => {
     leaveRef.current = onLeaveFull;
@@ -116,9 +120,9 @@ export function useFloatingCard(
   const full = floating && view === "full";
   const minimised = floating && view === "minimised";
   /** Sized by hand in either shape, and put away in neither. */
-  const sizeable = floating && view !== "minimised";
+  const sizeable = floating && view !== "minimised" && view !== "window";
   const { cardRef, startDrag, cardStyle, size, startResize } = useCardDrag(
-    floating,
+    floating && view !== "window",
     sizeKey,
     full
   );
@@ -190,6 +194,33 @@ export function FloatingCardChrome({
 }) {
   const t = useMailT();
   if (!card.floating) return null;
+  if (card.view === "window") {
+    /*
+      The window is the card. Its heading is the window's top: the traffic
+      lights stand in it, and it carries the window (reader-window-strip).
+      Close and nothing else; the window has its own size buttons.
+    */
+    return (
+      <div
+        data-tauri-drag-region="deep"
+        data-reader-window-strip
+        className="mail-reader-topbar flex h-11 shrink-0 select-none items-center gap-2 border-b border-[var(--mail-thread-chrome-line)] bg-[var(--mail-thread-chrome)] pr-3"
+      >
+        <span className="pointer-events-none min-w-0 flex-1 truncate text-sm font-semibold text-stone-800" title={title || undefined}>
+          {title}
+        </span>
+        <button
+          type="button"
+          title={t("close")}
+          aria-label={t("close")}
+          className={FLOATING_CARD_BUTTON}
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
   return (
     <>
       {/* Only while there is a card to see: a message on its way out hides

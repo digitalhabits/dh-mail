@@ -443,9 +443,16 @@ pub fn run() {
         // The exit drains the writes first, below. Left to itself the
         // window went and a chat popout kept the app running with nothing
         // on screen. A popout closing drains its own writes and no more.
+        // Except while a reply is popped out: then the main window is
+        // hidden and the reply stays. When
+        // the last reply window closes, the main window comes back.
         if window.label() == "main" {
           use tauri::Manager as _;
           api.prevent_close();
+          if mail_native::popout::reply_window_showing(window.app_handle(), None) {
+            let _ = window.hide();
+            return;
+          }
           if quit_guard::must_ask(window.app_handle()) {
             return;
           }
@@ -469,6 +476,10 @@ pub fn run() {
       }
       tauri::WindowEvent::Destroyed => {
         mail_native::pending::forget_window(window.label());
+        if mail_native::popout::is_reply_window(window.label()) {
+          use tauri::Manager as _;
+          mail_native::popout::show_main_after_last_reply(window.app_handle(), window.label());
+        }
       }
       // Another app brings Mail forward when it has left a message.
       // See mail_native::handoff.
@@ -602,6 +613,16 @@ pub fn run() {
       // A normal quit takes the "running" marker away (diagnostics.rs).
       if let tauri::RunEvent::Exit = &_event {
         diagnostics::mark_clean_exit(_app);
+      }
+      // A click on the Dock icon: the main window comes back when it was
+      // closed with a reply popped out.
+      #[cfg(target_os = "macos")]
+      if let tauri::RunEvent::Reopen { .. } = &_event {
+        use tauri::Manager as _;
+        if let Some(main_window) = _app.get_webview_window("main") {
+          let _ = main_window.show();
+          let _ = main_window.set_focus();
+        }
       }
       // A downloaded update nobody clicked goes in on the way out, after
       // the writes below have drained. Builds with an updater only.

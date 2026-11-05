@@ -14,7 +14,12 @@
  * Only where the card stands is here. What is in it belongs to each card.
  */
 
-export type CardWindowView = "normal" | "minimised" | "full";
+/**
+ * "window" is the card in a window of its own (a reply popped out into
+ * one, ReplyReaderWindow): it fills that window, and the window is what is
+ * carried, sized and put away.
+ */
+export type CardWindowView = "normal" | "minimised" | "full" | "window";
 
 /**
  * Where the card stands, and how big.
@@ -27,6 +32,7 @@ export type CardWindowView = "normal" | "minimised" | "full";
  * from the card rather than from the window.
  */
 export function cardWindowClass(view: CardWindowView): string {
+  if (view === "window") return "fixed inset-0 z-10 max-h-none rounded-none border-0 shadow-none";
   if (view === "full") {
     /*
       The ceilings are the window, not the card's own idea of itself.

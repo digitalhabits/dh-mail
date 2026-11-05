@@ -39,6 +39,7 @@ import { threadKey } from "@/lib/mail/thread-copies";
 import { useMailColorMode } from "@/lib/mail/theme";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { closeMailReaderWindow, isNativeShell } from "@/lib/native-shell";
+import { ReaderWindowStrip } from "@/components/mail/reader-window-strip";
 
 /** This conversation and every copy the row stood for. */
 function copiesOf(
@@ -295,6 +296,7 @@ export function PersonReaderWindow({
         className="mail-shell mail-surface-root fixed inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--mail-thread-bg,#fff)]"
         data-theme={colorMode}
       >
+        <ReaderWindowStrip />
         <PersonPane
           row={row}
           onOpenThread={openThread}
