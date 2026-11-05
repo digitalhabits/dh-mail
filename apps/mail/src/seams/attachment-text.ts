@@ -187,6 +187,51 @@ async function drawFirstPage(
   }
 }
 
+/**
+ * Every page of a PDF as a picture, for printing it (print-attachment.ts).
+ *
+ * The Mac prints from a web view of its own, which cannot read the PDF, so
+ * the pages go to it as pictures: wide enough for about 200 dots an inch on
+ * paper, white where the page is empty. At most `maxPages`; null when pdf.js
+ * cannot open it.
+ */
+export async function renderPdfPages(
+  bytes: Uint8Array,
+  widthPx: number,
+  maxPages: number
+): Promise<string[] | null> {
+  try {
+    const lib = await pdfjs();
+    const doc = await lib.getDocument({ data: bytes }).promise;
+    try {
+      const pages: string[] = [];
+      const count = Math.min(doc.numPages, maxPages);
+      for (let n = 1; n <= count; n++) {
+        const page = await doc.getPage(n);
+        const unscaled = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(widthPx / unscaled.width, 4) });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(viewport.width));
+        canvas.height = Math.max(1, Math.round(viewport.height));
+        const context = canvas.getContext("2d");
+        if (!context) return null;
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas, canvasContext: context, viewport }).promise;
+        pages.push(canvas.toDataURL("image/png"));
+        // The page's drawing memory, given back before the next one.
+        page.cleanup();
+      }
+      return pages;
+    } finally {
+      void doc.loadingTask.destroy();
+    }
+  } catch (err) {
+    console.warn("mail: could not draw the pages of a PDF to print", err);
+    return null;
+  }
+}
+
 export async function mountPdfViewer(
   container: HTMLElement,
   bytes: Uint8Array

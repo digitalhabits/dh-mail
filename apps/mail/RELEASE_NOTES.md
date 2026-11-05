@@ -1,6 +1,11 @@
 ## What is new
 
 **Fixes**
+- A mailbox you hide by hand goes back to its schedule. If it has one, your hide lasts until the schedule next changes, and then the schedule decides again. Before, it stayed hidden until you showed it. The menu says until when: "Hidden by you until 18:00, then by your schedule".
+- With a PDF or a picture open in the preview, ⌘P prints that file. Before, it printed the message under it. Other files say to open them in their own app to print.
+- The preview line in the mail list is a little lighter than the names again.
+
+**Earlier fixes**
 - A conversation you open no longer moves up and down by a pixel or two for its first seconds.
 - Error messages are in plain words. A reply that did not send says to check the internet connection, with no web address. A file that did not come says so, with no code.
 - If an Exchange server does not send a file the first time, Mail asks for it once more before it tells you.

@@ -606,6 +606,9 @@ function whoWords(
     const status = hide.statusOf(account);
     if (!status.hidden) return null;
     const time = hiddenUntilLabel(status);
+    if (status.byHand && status.reason === "hand" && status.until) {
+      return t("hoursStateHiddenByYouThenSchedule", { time: formatSnoozeWakeLabel(status.until.toISOString()) });
+    }
     if (status.byHand || !time) return t("hoursStateHiddenByYouNoEnd");
     return t(status.reason === "until" ? "hoursStateHiddenByYou" : "hoursStateHiddenBySchedule", { time });
   }

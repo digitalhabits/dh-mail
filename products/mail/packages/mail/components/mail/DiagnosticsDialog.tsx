@@ -70,7 +70,8 @@ function stateOf(email: string, pauseState: MailPauseState, hide: MailboxHideCon
   const parts: string[] = [];
   const status = hide.statusOf(email);
   if (status.hidden) {
-    if (status.byHand) parts.push("hidden by you, until shown");
+    if (status.byHand && status.reason === "hand") parts.push(`hidden by you until ${diagTime(status.until)}, then by schedule`);
+    else if (status.byHand) parts.push("hidden by you, until shown");
     else if (status.reason === "until") parts.push(`hidden by you until ${diagTime(status.until)}`);
     else parts.push(`hidden by schedule until ${diagTime(status.endsAt ?? null)}`);
   }

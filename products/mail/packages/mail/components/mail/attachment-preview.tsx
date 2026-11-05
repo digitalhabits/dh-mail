@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import { MAIL_PINCH_SCALE_EVENT, readMailPinch } from "@/lib/mail/pinch";
 import { canRenderPdf, mountPdfViewer } from "@/lib/mail/attachment-text";
+import { printPreviewedFile } from "@/components/mail/print-attachment";
 import type { PdfViewerHandle } from "@/lib/mail/pdf-viewer-types";
 import { attachmentUrl } from "@/lib/mail/attachment-save";
 import { useMailT } from "@/lib/mail/i18n";
@@ -525,6 +526,27 @@ function AttachmentPreviewBody({
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [zoomable]);
+
+  /*
+    ⌘P prints the file on show, not the message under it (Mikkel,
+    2026-11-05). Capture on the window, ahead of the thread's own keys,
+    and stopped there so they never see it.
+  */
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "p") return;
+      event.preventDefault();
+      event.stopPropagation();
+      void printPreviewedFile({
+        src,
+        filename: attachment.filename,
+        kind: pdf ? "pdf" : image ? "image" : "other",
+      });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [src, pdf, image, attachment.filename]);
 
   const zoomPill = zoomable && src ? (
     <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-stone-200 bg-white px-1.5 py-0.5">

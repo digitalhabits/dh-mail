@@ -548,7 +548,10 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-chrome-muted: #47616a;
   /* A row's preview line in the list: ink at 85% over the cream. The
      muted grey above read too faint there (2026-10-27). */
-  --mail-row-preview: #1f363e; /* darker, easier to read (2026-11-04) */
+  --mail-row-preview: #263f48; /* darker, easier to read (2026-11-04) */
+  /* A summary line (a short account of a conversation): a step darker than
+     a preview, because it is written to be read, not skimmed. */
+  --mail-summary-line: #1f363e;
   /* A sender's name and the subject under it: one ink, a step past the
      system's, so the two differ by weight alone. In two inks they read as
      two typefaces (2026-10-27). */
@@ -762,6 +765,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-chrome-fg: #f5f0e8;
   --mail-chrome-muted: #c9c5bc;
   --mail-row-preview: #c9c5bc;
+  --mail-summary-line: var(--mail-row-preview);
   --mail-row-name: var(--mail-chrome-fg);
   --mail-chrome-faint: #9aa3b0;
   /*

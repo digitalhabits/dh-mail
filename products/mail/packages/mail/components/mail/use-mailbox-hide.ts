@@ -17,6 +17,7 @@ import {
   hideAgainEndsShow,
   hideAgainFor,
   hideAgainLabel,
+  handHideRow,
   hideKey,
   hideStep,
   mailboxHideVerdict,
@@ -27,6 +28,7 @@ import {
   shownEarlyEnd,
   shownEarlyUntil,
   showWordsFor,
+  strandedHandHide,
   type MailboxHide,
   type MailboxHideState,
   type MailboxHideVerdict,
@@ -222,17 +224,31 @@ export function useMailboxHide({
     const hiddenSet = new Set(hidden.map(hideKey));
     const shownSet = new Set(visible.map(hideKey));
     const steps: { key: string; email: string; show: boolean }[] = [];
+    const adopted: { email: string; row: MailboxHide }[] = [];
     for (const [key, row] of Object.entries(state.accounts)) {
       if (inFlight.current.has(key)) continue;
       if (!hiddenSet.has(key) && !shownSet.has(key)) continue; // not connected
+      /*
+        Hidden by hand before a hide by hand ended at the schedule, so
+        nothing would ever show it: the schedule takes it over now.
+      */
+      const taken = strandedHandHide(row, shownSet.has(key), now);
+      if (taken) {
+        adopted.push({ email: [...visible, ...hidden].find((e) => hideKey(e) === key) ?? key, row: taken });
+        continue;
+      }
       const step = hideStep(row, shownSet.has(key), now);
       if (!step) continue;
       const email = [...visible, ...hidden].find((e) => hideKey(e) === key) ?? key;
       steps.push({ key, email, show: step === "show" });
     }
-    if (!steps.length) return;
+    if (!steps.length && !adopted.length) return;
     // After this render: the steps change the page's own state.
     const timer = window.setTimeout(() => {
+      for (const { email, row } of adopted) {
+        diagEvent("hide by hand handed to schedule", { mailbox: mailboxNumber(email), until: diagTime(row.byHandUntil ?? null) });
+        patchRow(email, () => row);
+      }
       for (const { key, email, show } of steps) {
         if (inFlight.current.has(key)) continue;
         inFlight.current.add(key);
@@ -261,7 +277,8 @@ export function useMailboxHide({
       return {
         ...verdict,
         hidden: isHidden,
-        byHand: isHidden && !verdict.hidden,
+        // By hand: no words to type to show it, with an end or without.
+        byHand: isHidden && (!verdict.hidden || verdict.reason === "hand"),
         shownEarlyUntil: isHidden ? null : shownEarlyUntil(row, new Date(minute)),
       };
     },
@@ -282,9 +299,12 @@ export function useMailboxHide({
       toast.success(t("mailboxHiddenFor", { email }));
     },
     hideByHand: (email) => {
-      diagEvent("hide set", { mailbox: mailboxNumber(email), until: "shown by hand" });
-      // By hand: no clock shows it again.
-      patchRow(email, (row) => ({ ...row, hiddenUntil: undefined, autoHidden: undefined }));
+      // By hand: until it is shown, or with a schedule until the schedule next changes.
+      const row = patchRow(email, (r) => handHideRow(r, new Date())).accounts[hideKey(email)];
+      diagEvent("hide set", {
+        mailbox: mailboxNumber(email),
+        until: row?.byHandUntil ? diagTime(row.byHandUntil) : row?.autoHidden ? "schedule window end" : "shown by hand",
+      });
       void flip(email, false)
         .then(() => toast.success(t("accountHiddenFromMailConnected", { email })))
         .catch((err: unknown) => toast.error(err instanceof Error ? err.message : t("couldNotUpdate")));
@@ -293,7 +313,11 @@ export function useMailboxHide({
       diagEvent("hidden hours set", { mailbox: mailboxNumber(email), hidden: diagHours(windows) });
       // A schedule set again is a schedule meant: a "show now" from before
       // no longer holds it off, and the clock hides it if a window is on.
-      patchRow(email, (row) => ({ ...row, hours: windows.length ? windows : undefined, shownUntil: undefined }));
+      patchRow(email, (row) => {
+        const next = { ...row, hours: windows.length ? windows : undefined, shownUntil: undefined };
+        // Hidden by hand until the old schedule's next window: until the new one's.
+        return row.byHandUntil ? handHideRow(next, new Date()) : next;
+      });
     },
     resumeSchedule: (email) => {
       diagEvent("schedule resumed", { mailbox: mailboxNumber(email) });
@@ -306,6 +330,8 @@ export function useMailboxHide({
       const row = state.accounts[key];
       const now = new Date();
       const verdict = mailboxHideVerdict(row, now);
+      // Hidden by a time or the schedule. Hidden by hand is shown with no words and no end.
+      const timed = verdict.hidden && verdict.reason !== "hand";
       /*
         Shown until its own time or window would have ended, or sooner
         with "Hide again after" set. A time kept with the hide-again cut
@@ -321,7 +347,7 @@ export function useMailboxHide({
       // This account's own words and "Hide again after", or every account's.
       const words = showWordsFor(state, email);
       const againMinutes = hideAgainFor(state, email);
-      const shownEnd = verdict.hidden ? shownEarlyEnd(ownEnd, againMinutes, now) : null;
+      const shownEnd = timed ? shownEarlyEnd(ownEnd, againMinutes, now) : null;
       /*
         The question names how long, when "Hide again after" is what ends
         it: "Show … for 15 minutes?" says that the mailbox goes again. A
@@ -331,7 +357,7 @@ export function useMailboxHide({
       const cutEndsIt = hideAgainEndsShow(ownEnd, againMinutes, now);
       void (async () => {
         // Early is only early against a time: a mailbox hidden by hand asks nothing.
-        if (verdict.hidden && words > 0) {
+        if (timed && words > 0) {
           const ok = await requestUnpauseChallenge(words, {
             title: cutEndsIt
               ? t("showMailboxForTitle", { email, time: hideAgainLabel(againMinutes, t) })
@@ -341,12 +367,13 @@ export function useMailboxHide({
           });
           if (!ok) return;
         }
-        diagEvent("shown early", { mailbox: mailboxNumber(email), until: diagTime(shownEnd), words: verdict.hidden && words > 0 });
+        diagEvent("shown early", { mailbox: mailboxNumber(email), until: diagTime(shownEnd), words: timed && words > 0 });
         patchRow(email, (r) => ({
           ...r,
           hiddenUntil: verdict.reason === "until" && againMinutes > 0 ? r.hiddenUntil : undefined,
           autoHidden: undefined,
-          shownUntil: verdict.hidden ? (shownEnd ?? undefined) : r.shownUntil,
+          byHandUntil: undefined,
+          shownUntil: timed ? (shownEnd ?? undefined) : r.shownUntil,
         }));
         try {
           await flip(email, true);

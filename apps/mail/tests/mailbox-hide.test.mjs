@@ -4,7 +4,10 @@
  */
 
 import {
+  handHideRow,
   hideStep,
+  nextScheduleStart,
+  strandedHandHide,
   mailboxHideVerdict,
   readHideState,
   scheduleWindowEnd,
@@ -106,4 +109,38 @@ suite(async () => {
   check("its words are its own", showWordsFor(own, "a@x.example") === 0);
   check("another's are every account's", showWordsFor(own, "b@x.example") === 20 && showWordsFor(own, "c@x.example") === 20);
   check("and its own Hide again after", hideAgainFor(own, "b@x.example") === 60 && hideAgainFor(own, "a@x.example") === 15);
+
+  /*
+    Hidden by hand, a mailbox with a schedule is the schedule's again at the
+    schedule's next change (2026-11-05). `evenings` hides it 18:00 – 08:00.
+  */
+  check("the next window starts at 18:00 today", nextScheduleStart(evenings.hours, at(12)) === at(18).getTime());
+  check("no schedule, no next window", nextScheduleStart(undefined, at(12)) === null);
+
+  const handNoon = handHideRow(evenings, at(12));
+  check("hidden by hand at noon: by hand until 18:00", handNoon.byHandUntil === at(18).getTime() && handNoon.autoHidden === true, JSON.stringify(handNoon));
+  const noonVerdict = mailboxHideVerdict(handNoon, at(13));
+  check("so at 13:00 it is hidden by hand, until 18:00", noonVerdict.hidden && noonVerdict.reason === "hand" && noonVerdict.untilClock === "18:00");
+  const evening = mailboxHideVerdict(handNoon, at(20));
+  check("at 20:00 the schedule hides it", evening.hidden && evening.reason === "schedule");
+  const nextDay = new Date(2026, 9, 6, 9);
+  check("and at 09:00 the next day it is shown", !mailboxHideVerdict(handNoon, nextDay).hidden && hideStep(handNoon, false, nextDay) === "show");
+
+  const handNight = handHideRow({ ...evenings, shownUntil: at(23).getTime() }, at(21));
+  check("shown early at night, hidden by hand again: the window hides it", handNight.autoHidden === true && !handNight.byHandUntil && !handNight.shownUntil);
+  check("and it is shown when the window ends", hideStep(handNight, false, nextDay) === "show");
+
+  const handNoSchedule = handHideRow({ hiddenUntil: at(15).getTime() }, at(12));
+  check("no schedule: hidden until shown, as before", !handNoSchedule.autoHidden && !handNoSchedule.byHandUntil && !handNoSchedule.hiddenUntil);
+  check("which no clock shows", hideStep(handNoSchedule, false, nextDay) === null);
+
+  const stuck = strandedHandHide(evenings, false, at(12));
+  check("a mailbox stuck from before is taken over: by hand until 18:00", stuck?.byHandUntil === at(18).getTime() && stuck?.autoHidden === true);
+  const stuckNight = strandedHandHide(evenings, false, at(22));
+  check("in a window, the window takes it over", stuckNight?.autoHidden === true && !stuckNight?.byHandUntil);
+  check("a shown mailbox is left alone", strandedHandHide(evenings, true, at(12)) === null);
+  check("as is one with no schedule", strandedHandHide({}, false, at(12)) === null);
+  check("and one the clock hid already", strandedHandHide({ ...evenings, autoHidden: true }, false, at(12)) === null);
+  check("byHandUntil is read back from storage",
+    readHideState({ accounts: { "a@x.example": { ...evenings, byHandUntil: 5, autoHidden: true } } }).accounts["a@x.example"].byHandUntil === 5);
 });

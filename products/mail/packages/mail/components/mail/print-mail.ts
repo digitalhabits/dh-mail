@@ -79,12 +79,18 @@ export function printMailMessages(input: PrintMailInput): void {
   if (typeof document === "undefined") return;
   if (!input.messages.length) return;
 
-  const html = buildPrintDocument(
-    input,
-    window.location.origin,
-    sanitizeEmailHtml
+  printHtmlDocument(
+    buildPrintDocument(input, window.location.origin, sanitizeEmailHtml)
   );
+}
 
+/**
+ * Print a whole document the page built: the Mac's own print panel in the
+ * desktop app, a frame anywhere else. A previewed file prints this way too
+ * (print-attachment.ts).
+ */
+export function printHtmlDocument(html: string): void {
+  if (typeof document === "undefined") return;
   if (isNativeShell()) {
     void printNativeDocument(html)
       .then((printed) => {
