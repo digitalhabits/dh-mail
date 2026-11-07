@@ -215,6 +215,7 @@ macro_rules! mail_commands {
       mail_native::drafts_inbox::reject_drafts_inbox,
       mail_native::drafts_inbox::drafts_inbox_path,
       mail_native::drafts_inbox::note_drafts_inbox,
+      mail_native::drafts_inbox::show_main_window,
       mail_native::commands::mail_store_call,
       mail_native::pending::set_pending_mail_writes,
       mail_native::commands::mail_import_snapshot,

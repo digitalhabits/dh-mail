@@ -17,22 +17,32 @@ import { shortDate } from "@/lib/mail/date-format";
 import type { MailT } from "@/lib/mail/i18n-strings";
 import type { MailAnswerLink } from "@/lib/mail/store/types";
 
-/** Asks the page to open a thread: `detail` is `{ account, threadId }`. */
+/**
+ * Asks the page to open a thread: `detail` is `{ account, threadId }`, and
+ * `focusMessageId` to land on one message of it.
+ */
 export const MAIL_OPEN_THREAD_EVENT = "dh-mail-open-thread";
 
 /**
  * Opens a thread when a link asks for it. The page calls this with what
  * opening a row sets, so the thread opens as a row would.
  */
-export function useOpenThreadEvent(open: (thread: { account: string; threadId: string }) => void) {
+export type OpenThreadDetail = { account: string; threadId: string; focusMessageId?: string };
+
+export function useOpenThreadEvent(open: (thread: OpenThreadDetail) => void) {
   const openRef = React.useRef(open);
   React.useEffect(() => {
     openRef.current = open;
   });
   React.useEffect(() => {
     const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ account?: string; threadId?: string }>).detail;
-      if (detail?.account && detail.threadId) openRef.current({ account: detail.account, threadId: detail.threadId });
+      const detail = (e as CustomEvent<Partial<OpenThreadDetail>>).detail;
+      if (!detail?.account || !detail.threadId) return;
+      openRef.current({
+        account: detail.account,
+        threadId: detail.threadId,
+        ...(detail.focusMessageId ? { focusMessageId: detail.focusMessageId } : null),
+      });
     };
     window.addEventListener(MAIL_OPEN_THREAD_EVENT, onOpen);
     return () => window.removeEventListener(MAIL_OPEN_THREAD_EVENT, onOpen);

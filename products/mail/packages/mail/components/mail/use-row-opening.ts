@@ -148,10 +148,16 @@ export function useRowOpening({
     markRowRead(t);
   }, [markRowRead, setComposing, setListExpanded, setSelected]);
   openThreadRef.current = openThread;
-  // A link in a thread to the other half of a split conversation.
-  useOpenThreadEvent(({ account, threadId }) => {
+  // A link in a thread to the other half of a split conversation, or a
+  // request from another program to show a thread. The thread need not be in
+  // the list: the reading pane loads it by its id. Nothing is marked read
+  // here; the effect below does what it does for any thread that opens.
+  useOpenThreadEvent(({ account, threadId, focusMessageId }) => {
     setComposing(false);
-    setSelected({ account, threadId, inPeople: false });
+    setListExpanded(false);
+    // Several rows held would stand in front of the thread.
+    clearMultiSelection();
+    setSelected({ account, threadId, inPeople: false, focusMessageId });
   });
 
   /*

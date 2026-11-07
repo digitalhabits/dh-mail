@@ -19,7 +19,10 @@ import { cn } from "@/lib/utils";
 export const OPEN_ROW_CARD = cn(
   "mail-open-row isolate [--mail-person-stack-ring:var(--mail-row-selected-solid)]",
   "before:pointer-events-none before:absolute before:inset-x-2 before:inset-y-[2px] before:-z-10",
-  "before:rounded-surface before:bg-[var(--mail-row-selected)] before:shadow-[var(--mail-row-card-shadow)]"
+  "before:rounded-surface before:bg-[var(--mail-row-selected)]",
+  // A 3px bar in the accent down its left edge, inside the card's corners:
+  // with the fill it says "open", where a hover is only a fill.
+  "before:shadow-[inset_3px_0_0_var(--mail-accent),var(--mail-row-card-shadow)]"
 );
 
 /**

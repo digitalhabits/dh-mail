@@ -1,5 +1,11 @@
 ## What is new
 
+**Fixes**
+- When you show a hidden mailbox before its schedule ends, it now hides again after 15 minutes. Before, it stayed shown until the schedule ended. To change how long, open "To show it early" in the mailbox's menu. "Never" is still a choice.
+- A conversation card under a person no longer turns grey when you point at it. It stays white and lifts a little.
+- In the list, the row you point at is a little darker than the list, so it does not look like the open row.
+- The open row is white, with a coloured bar down its left edge.
+
 **Pop-out windows**
 - A reply you pop out opens in a window of its own, which stays in front of your other windows. Before, it was a card over the main window.
 - If you close the main window while a reply is popped out, Mail stays open with the reply. When you close the reply, the main window comes back. A click on Mail in the Dock also brings it back.

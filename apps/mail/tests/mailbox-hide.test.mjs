@@ -83,6 +83,13 @@ suite(async () => {
   check("the setting is read when it is one of the menu's", readHideState({ accounts: {}, hideAgainMinutes: 30 }).hideAgainMinutes === 30);
   check("and dropped when it is not", readHideState({ accounts: {}, hideAgainMinutes: 7 }).hideAgainMinutes === undefined);
 
+  // Not set, an early show lasts 15 minutes (2026-11-07). Never is a choice, kept as 0.
+  check("not set: hidden again after 15 minutes", hideAgainFor(readHideState({ accounts: {} }), "a@x.example") === 15);
+  check("Never is kept, not read as not set", readHideState({ accounts: {}, hideAgainMinutes: 0 }).hideAgainMinutes === 0);
+  check("so Never stays Never", hideAgainFor(readHideState({ accounts: {}, hideAgainMinutes: 0 }), "a@x.example") === 0);
+  check("an account's own Never wins over the default",
+    hideAgainFor(readHideState({ accounts: { "a@x.example": { hideAgainMinutes: 0 } } }), "a@x.example") === 0);
+
   // The question before an early show names how long, when the cut ends it.
   const t0 = new Date(2026, 9, 17, 9, 0);
   const inMinutes = (m) => t0.getTime() + m * 60_000;

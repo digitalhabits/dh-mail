@@ -282,6 +282,17 @@ pub fn note_drafts_inbox(app: tauri::AppHandle, kind: String, name: String, body
   write_note(&data, &kind, &name, &body).map(|_| ())
 }
 
+/// Bring the main window forward, for a request that shows the person
+/// something (an `open` request, in a build that takes requests). It shows
+/// a window that was closed or minimized, as a click on the Dock icon does.
+#[tauri::command]
+pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+  let window = app.get_webview_window("main").ok_or("Mail has no main window")?;
+  let _ = window.unminimize();
+  let _ = window.show();
+  window.set_focus().map_err(|e| e.to_string())
+}
+
 /// Where the folder is, for Settings to show and copy.
 #[tauri::command]
 pub fn drafts_inbox_path(app: tauri::AppHandle) -> Result<String, String> {
@@ -386,6 +397,42 @@ mod tests {
     assert!(kept.contains("/no/such/file.pdf"), "{kept}");
     let relative = serde_json::json!({ "attachments": ["plan.pdf"] });
     assert!(read_attachments(&relative).unwrap_err().contains("absolute"));
+  }
+
+  #[test]
+  fn a_request_to_open_a_thread_is_taken_whole_and_answered_under_its_name() {
+    let data = temp();
+    let dir = folder_in(&data);
+    fs::create_dir_all(&dir).unwrap();
+    let request = serde_json::json!({
+      "request": "open",
+      "account": "ulla@aavang.example",
+      "threadId": "t-beans",
+      "messageId": "m-may",
+      "id": "r1",
+    });
+    fs::write(dir.join("request-1.json"), serde_json::to_vec(&request).unwrap()).unwrap();
+    let got = take_waiting(&data);
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].draft, request, "every field reaches the page as written");
+    assert!(got[0].attachment_files.is_empty());
+    assert!(!dir.join("request-1.json").exists(), "taken out of the folder");
+    let answer = serde_json::json!({ "ok": false, "error": "No such thread", "id": "r1", "request": "open" });
+    let path = write_note(&data, "answers", &got[0].name, &answer).unwrap();
+    assert_eq!(path, dir.join(ANSWERS).join("request-1.json"));
+    let read: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(read, answer);
+  }
+
+  #[test]
+  fn a_request_the_program_took_back_is_not_taken() {
+    let data = temp();
+    let dir = folder_in(&data);
+    fs::create_dir_all(&dir).unwrap();
+    // The tool takes a request back by renaming it, as Mail takes one.
+    fs::write(dir.join("request-2.json.withdrawn"), br#"{"request":"open"}"#).unwrap();
+    assert!(take_waiting(&data).is_empty());
+    assert!(!has_waiting(&data));
   }
 
   #[test]

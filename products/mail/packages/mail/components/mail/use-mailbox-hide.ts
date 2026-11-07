@@ -15,6 +15,7 @@ import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
 import { useMailT } from "@/lib/mail/i18n";
 import {
   hideAgainEndsShow,
+  DEFAULT_HIDE_AGAIN_MINUTES,
   hideAgainFor,
   hideAgainLabel,
   handHideRow,
@@ -137,7 +138,8 @@ function setMailboxHideAgainFor(email: string | null, minutes: number): void {
     return;
   }
   const { hideAgainMinutes: _old, ...rest } = read();
-  write({ ...rest, accounts: withoutOwn(rest.accounts, "hideAgainMinutes"), ...(value ? { hideAgainMinutes: value } : null) });
+  // Never (0) is written: left out, it would be the 15-minute default.
+  write({ ...rest, accounts: withoutOwn(rest.accounts, "hideAgainMinutes"), hideAgainMinutes: value });
 }
 
 /** Every account's row without its own value of `field`: they take every account's again. */
@@ -286,7 +288,7 @@ export function useMailboxHide({
   );
 
   const showWords = state.showWords ?? 0;
-  const hideAgainMinutes = state.hideAgainMinutes ?? 0;
+  const hideAgainMinutes = state.hideAgainMinutes ?? DEFAULT_HIDE_AGAIN_MINUTES;
 
   return {
     hidden: hiddenNow,

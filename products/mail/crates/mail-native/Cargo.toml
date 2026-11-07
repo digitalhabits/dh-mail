@@ -15,7 +15,7 @@ crate-type = ["rlib"]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3", features = ["macos-private-api"] }
+tauri = { version = "2.12.5", features = ["macos-private-api"] }
 # Local store. Bundled so no system SQLite is needed.
 rusqlite = { version = "0.32", features = ["bundled"] }
 # Fetching remote images for the message view, where a webview cannot.
@@ -46,7 +46,7 @@ ews = { version = "0.1.2", optional = true }
 # The public app's direct downloads update themselves from GitHub. See
 # team_update.rs. Only with `public-updater` (or `team-updater`): a store
 # build must not carry an updater at all.
-tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2.14.1", optional = true }
 # The answer to Check for Updates… (team_update::check_now), and Save as…
 # for an attachment (downloads.rs).
 tauri-plugin-dialog = "2"

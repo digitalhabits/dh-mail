@@ -101,14 +101,15 @@ export function StackThreadRow({
           : undefined
       }
       className={cn(
-        // No line and no bar: the open one is a card, as an open row is.
+        // The open one is a card with the accent's bar, as an open row is
+        // (list-row-marks); a hover is only a fill.
         "relative flex w-full items-start gap-3 rounded-control py-1.5 pl-4 pr-2 text-left",
         // The faint line between two conversations, as between rows of the
         // list, but starting where the subject does. None under the last.
         "after:pointer-events-none after:absolute after:bottom-0 after:left-4 after:right-0 after:h-px after:bg-[var(--mail-row-line)] last:after:hidden",
         active
-          ? "bg-[var(--mail-row-selected)] shadow-[var(--mail-row-card-shadow)] after:hidden"
-          : "hover:bg-[var(--mail-chrome-hover)]"
+          ? "bg-[var(--mail-row-selected)] shadow-[inset_3px_0_0_var(--mail-accent),var(--mail-row-card-shadow)] after:hidden"
+          : "hover:bg-[var(--mail-row-hover)]"
       )}
     >
       <span className="min-w-0 flex-1">

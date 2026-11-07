@@ -23,6 +23,7 @@ import * as React from "react";
 
 import { accountChipLabels } from "@/lib/mail/account-labels";
 import { useMemoObject } from "@/components/mail/use-memo-object";
+import { useOpenThreadEvent } from "@/components/mail/thread-answer-links";
 import { MAIL_ACCOUNT_ORDER_EVENT, moveAccountBefore, readAccountOrder, sortAccountsByOrder, writeAccountOrder } from "@/lib/mail/account-order";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { usePauseChip } from "@/components/mail/use-pause-chip";
@@ -105,6 +106,24 @@ export function useMailAccountsState(accounts: string[]) {
     },
     []
   );
+  /*
+    A thread asked for from elsewhere is in a mailbox the list may not show.
+    When the list is on other mailboxes, it moves to that one, as a click on
+    its tab would. A hidden mailbox is left hidden: the thread opens all the
+    same, since the reading pane loads it by its id.
+  */
+  const accountEmailsRef = React.useRef(accountEmails);
+  React.useEffect(() => {
+    accountEmailsRef.current = accountEmails;
+  });
+  useOpenThreadEvent(({ account }) => {
+    const key = account.toLowerCase();
+    const shown = accountEmailsRef.current.find((e) => e.toLowerCase() === key);
+    if (!shown) return;
+    setMailboxScopeEmails((prev) =>
+      prev.length === 0 || prev.some((e) => e.toLowerCase() === key) ? prev : [shown]
+    );
+  });
   return {
     accountEmails,
     setAccountEmails,

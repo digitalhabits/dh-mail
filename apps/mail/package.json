@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-mail",
-  "version": "0.11.57",
+  "version": "0.11.58",
   "private": true,
   "packageManager": "pnpm@9.14.4",
   "description": "Digital Habits: Mail — desktop and phone mail app (Tauri + Vite).",
@@ -50,17 +50,17 @@
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^20",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.25.0",
-    "happy-dom": "^20.12.0",
-    "postcss": "^8.5.31",
+    "happy-dom": "^21.0.4",
+    "postcss": "^8.5.32",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5",

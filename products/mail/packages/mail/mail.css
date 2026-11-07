@@ -108,6 +108,12 @@
 .mail-shell[data-theme="dark"] .mail-bubble-card {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
+/* A thread card under a person lifts when pointed at (person-thread-card).
+   After the rule above, and as heavy, so the lift wins on navy too. */
+.mail-shell .mail-stack-card:hover {
+  border-color: var(--mail-card-hover-border);
+  box-shadow: var(--mail-card-hover-shadow);
+}
 
 .mail-shell[data-theme="dark"] .mail-thread-header {
   box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.55);
@@ -730,6 +736,12 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   /* The chrome's hover, so a row in the list and a row in the folders can
      never drift apart. They are the same colour on this theme already. */
   --mail-row-hover: var(--mail-chrome-hover);
+  /* A thread card under a person, pointed at: it stays white and lifts, a
+     firmer edge and a deeper shadow (mockup "Hover vs. selected", 1b,
+     2026-11-07). A fill is what marks the open row, so a hover is never a
+     fill on a card. */
+  --mail-card-hover-border: #cfc7bd;
+  --mail-card-hover-shadow: 0 4px 14px rgba(27, 61, 74, 0.1), 0 1px 3px rgba(27, 61, 74, 0.06);
   /* A long thread's outline rail (thread-outline.tsx): one tick a message,
      theirs grey, yours in the blue of your bubbles, the ones on screen in
      ink. "You" in the outline's rows is that blue, deepened. */
@@ -908,6 +920,8 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 14%, #1e2d3e);
   --mail-row-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --mail-row-hover: var(--mail-chrome-hover);
+  --mail-card-hover-border: #4b5a6e;
+  --mail-card-hover-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   --mail-row-line: rgba(255, 255, 255, 0.06);
   /* The light theme's three panes, as the dark theme already draws them. */
   --mail-sidebar: var(--mail-chrome);
@@ -1904,9 +1918,11 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
 .mail-shell:not([data-theme="dark"]) [data-list-expanded] {
   --mail-chrome: #f5f1ea;
   --mail-fade-from: #f5f1ea;
-  /* Hover is almost white: a step toward the open row's white card. */
-  --mail-chrome-hover: #fcfbf8;
-  --mail-row-hover: #fcfbf8;
+  /* Hover is a step darker than the list, never toward the open row's white:
+     near-white read as the open row (mockup "Hover vs. selected", 1b,
+     2026-11-07). The same step as the list's hover elsewhere. */
+  --mail-chrome-hover: #efe9df;
+  --mail-row-hover: #efe9df;
   /* The open row is a white card again, with main's edge and shadow
      (2026-10-30), on the list's own colour. */
   --mail-row-selected: #ffffff;

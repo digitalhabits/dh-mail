@@ -25,7 +25,8 @@
  * "Hide again after" (`hideAgainMinutes`) cuts an early show short: shown
  * early, a mailbox hides itself again after that long, or when its own
  * time or window ends, whichever comes first. The menu is Blocker's "Turn
- * back on after"; 0, the default, is Never.
+ * back on after"; 0 is Never. Not set, it is 15 minutes (Ulrik,
+ * 2026-11-07: a mailbox shown early stayed shown until the window ended).
  */
 
 import {
@@ -68,12 +69,15 @@ export type MailboxHideState = {
   accounts: Record<string, MailboxHide>;
   /** Words to type before showing a mailbox early. 0 is none. */
   showWords?: number;
-  /** Shown early, hidden again after this many minutes. 0 or absent is Never. */
+  /** Shown early, hidden again after this many minutes. 0 is Never; absent is the default. */
   hideAgainMinutes?: number;
 };
 
 /** The "Hide again after" menu, in minutes; 0 is Never. Blocker's menu. */
 export const HIDE_AGAIN_OPTIONS = Object.freeze([0, 5, 10, 15, 30, 60, 120, 240, 480, 1440]);
+
+/** "Hide again after" when none is set: shown early, a mailbox hides again after 15 minutes. */
+export const DEFAULT_HIDE_AGAIN_MINUTES = 15;
 
 /** One of the menu's values, or 0 (Never) for anything else. */
 export function normaliseHideAgainMinutes(value: unknown): number {
@@ -268,11 +272,15 @@ export function readHideState(raw: unknown): MailboxHideState {
     }
   }
   const showWords = normaliseUnpauseWords(value.showWords);
-  const hideAgainMinutes = normaliseHideAgainMinutes(value.hideAgainMinutes);
+  // 0 (Never) is kept: absent is the default, not Never.
+  const hideAgainMinutes =
+    typeof value.hideAgainMinutes === "number" && HIDE_AGAIN_OPTIONS.includes(value.hideAgainMinutes)
+      ? value.hideAgainMinutes
+      : undefined;
   return {
     accounts,
     ...(showWords ? { showWords } : null),
-    ...(hideAgainMinutes ? { hideAgainMinutes } : null),
+    ...(hideAgainMinutes != null ? { hideAgainMinutes } : null),
   };
 }
 
@@ -283,5 +291,5 @@ export function showWordsFor(state: MailboxHideState, email: string): number {
 
 /** An account's "Hide again after", in minutes: its own, or every account's. */
 export function hideAgainFor(state: MailboxHideState, email: string): number {
-  return state.accounts[hideKey(email)]?.hideAgainMinutes ?? state.hideAgainMinutes ?? 0;
+  return state.accounts[hideKey(email)]?.hideAgainMinutes ?? state.hideAgainMinutes ?? DEFAULT_HIDE_AGAIN_MINUTES;
 }
