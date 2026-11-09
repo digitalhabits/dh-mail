@@ -971,9 +971,8 @@ async function main() {
     /*
       A reply under a new subject is a new conversation: Gmail and Outlook
       both start one. It goes without the thread's id and still says what
-      it answers. (Edit subject floats it into the card, which draws no
-      bubbles, so the rule against a bubble in the old thread cannot be
-      seen here; changed-subject reads it.)
+      it answers. (changed-subject reads the rule against a bubble in
+      the old thread.)
     */
     typeInto(subjectFields()[0], "Paint for the bench");
     await sleep(300);

@@ -1,13 +1,17 @@
 ## What is new
 
 **Fixes**
+- A reply you pop out is now an ordinary window. It no longer stays in front of your other windows, also those of other apps.
+- "Edit subject" in a reply opens the subject in the reply box you are using. Before, the reply moved into a card of its own.
+- The title of a popped-out reply changes as you type a new subject.
+- After you send a popped-out reply, its window says that the message is sending, until the window closes. Before, the window was empty.
 - When you show a hidden mailbox before its schedule ends, it now hides again after 15 minutes. Before, it stayed shown until the schedule ended. To change how long, open "To show it early" in the mailbox's menu. "Never" is still a choice.
 - A conversation card under a person no longer turns grey when you point at it. It stays white and lifts a little.
 - In the list, the row you point at is a little darker than the list, so it does not look like the open row.
 - The open row is white, with a coloured bar down its left edge.
 
 **Pop-out windows**
-- A reply you pop out opens in a window of its own, which stays in front of your other windows. Before, it was a card over the main window.
+- A reply you pop out opens in a window of its own. Before, it was a card over the main window.
 - If you close the main window while a reply is popped out, Mail stays open with the reply. When you close the reply, the main window comes back. A click on Mail in the Dock also brings it back.
 - A conversation, a person's mail or a new message that you pop out has the window buttons at the top of the page, as the main window has.
 

@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * A reply popped out into a window of its own, which stays over the others
- * (Ulrik, 2026-11-05). It was a card over the main window, which
- * covered the very thread it answered.
+ * A reply popped out into a window of its own (Ulrik, 2026-11-05). It was
+ * a card over the main window, which covered the very thread it answered.
+ * It is an ordinary window: it stood over every other one until
+ * 2026-11-09, a focus window of another app too.
  *
  * The window holds the same floating reply the card held: the thread pane
  * showing its composer and nothing else (`floating` in ThreadPane), on the
- * thread's stored draft. It fills the window ("window" in card-window), and
- * the window stays over the others, as the note does.
+ * thread's stored draft. It fills the window ("window" in card-window).
  *
  * While it is open, the thread in the main window shows its "answering in
  * the pop-out" strip (popout.rs counts this window with the chat pop-out),

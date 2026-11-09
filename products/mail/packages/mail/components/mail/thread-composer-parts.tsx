@@ -172,12 +172,9 @@ export function ComposerMoreMenu({
 }) {
   const {
     chatStyleBusy,
-    composerSnapshotRef,
     draftReplyWithAssist,
     draftingReply,
     draftWorking,
-    floatReply,
-    floating,
     forwardFiles,
     forwardFilesBusy,
     forwardSource,
@@ -185,7 +182,6 @@ export function ComposerMoreMenu({
     fromAccount,
     includeSignature,
     mode,
-    onFloatReply,
     replySubject,
     sending,
     setChatStyle,
@@ -246,7 +242,10 @@ export function ComposerMoreMenu({
             history — and only the name of it changes. Offered rather
             than shown, because on most replies the subject is not a
             question worth putting a field in front of somebody for.
-            A forward's row is always up, so it needs no way in. */}
+            A forward's row is always up, so it needs no way in.
+            The row opens where the reply is: moving the reply to the
+            card in the corner took the writer away from what they
+            were doing. */}
         {!forwarding && !subjectOpen ? (
           <button
             type="button"
@@ -256,26 +255,6 @@ export function ComposerMoreMenu({
               close();
               setSubjectDraft(replySubject);
               setSubjectOpen(true);
-              /*
-                And out of the thread, into the card in the corner.
-
-                The message is about to stop being part of the
-                conversation it is written under, and that is worth
-                seeing at the moment it is asked for rather than in
-                somebody else's inbox afterwards. Gmail says the same
-                thing by popping the reply out.
-
-                The card passes its own snapshot: the subject was set
-                a line ago and is not in the rendered one yet. Already
-                in the card, or on a phone that has no card, the row
-                simply opens.
-              */
-              if (!floating && onFloatReply) {
-                floatReply({
-                  ...composerSnapshotRef.current,
-                  subject: replySubject,
-                });
-              }
             }}
           >
             {t("changeSubject")}

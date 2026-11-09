@@ -174,7 +174,7 @@ export function useDraftsInbox(
             }
             const saved: MailDraft = {
               ...draft,
-              ...(forward ? { subject: forward.subject } : null),
+              ...(forward && !draft.subject ? { subject: forward.subject } : null),
               key,
               attachments: [...(forward?.files ?? []), ...attachmentsOf(item, key)],
               updatedAt: Date.now(),

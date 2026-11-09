@@ -1151,6 +1151,7 @@ export const da: Record<keyof typeof en, string> = {
     "Svar under et andet emne. Det starter en ny samtale og beholder den citerede historik",
   newSubjectStartsConversation:
     "Et nyt emne starter en ny samtale. Historikken bliver citeret nedenfor.",
+  replyWindowSending: "Sender. Vinduet lukker, når beskeden er sendt.",
   minimiseReply: "Læg det væk",
   minimisedReplyTo: "Svar til {name}",
   minimisedReplyShow: "Vis svaret",

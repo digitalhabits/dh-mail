@@ -9,8 +9,11 @@
  * as it last saw it: when the person has changed the draft since, the
  * fingerprint is another one, and Mail says no.
  *
- * The body is hashed as text, so an editor that only rewrites the HTML of a
- * draft it opens does not count as a change.
+ * The body is hashed as its words, with every run of spaces and line breaks
+ * read as one space. So an editor that only rewrites the HTML of a draft it
+ * opens does not count as a change: the composer makes each line its own
+ * paragraph, which turned a single line break into a blank line, and a
+ * program could then not change a draft it had made once Mail showed it.
  *
  * No React and no storage here, so a suite can read it.
  */
@@ -98,7 +101,7 @@ export function draftFingerprint(draft: MailDraft): string {
       p.cc,
       p.bcc,
       draft.kind === "thread" ? draft.subject?.trim() ?? "" : p.subject,
-      p.body,
+      p.body.replace(/\s+/g, " ").trim(),
       p.attachments,
       draft.kind === "thread" ? [draft.threadId, draft.mode] : null,
       p.includeSignature,

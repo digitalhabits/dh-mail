@@ -155,23 +155,21 @@ suite(async () => {
     sendHook.includes("if (!startsNewThread) {\n      setThread((current) =>")
   );
 
-  /* The gesture: asking for a new subject takes the message out of the
-     thread, the way Gmail pops the reply out. */
+  /* The gesture: asking for a new subject opens the row where the reply
+     is. It used to move the reply to the card in the corner, which took
+     the writer away from what they were doing. */
   const button = pane.slice(
     pane.indexOf("{!forwarding && !subjectOpen ? ("),
     pane.indexOf('{t("changeSubject")}')
   );
-  check(
-    "Change subject floats the message into the card",
-    button.includes("floatReply({"),
-    button.includes("floatReply") ? "floated" : "missing"
-  );
-  check(
-    "with the subject it just set, not the one on screen",
-    button.includes("subject: replySubject,")
-  );
-  check(
-    "and not when it is already in the card, or there is no card",
-    button.includes("if (!floating && onFloatReply) {")
-  );
+  check("Edit subject opens the subject row", button.includes("setSubjectOpen(true);"));
+  check("and leaves the reply where it is", !button.includes("floatReply"));
+
+  /* The card's heading, and a reply window's title bar, follow the subject
+     as it is typed. */
+  const card = src("ThreadPane.tsx");
+  check("the card's heading follows the subject being typed",
+    card.includes("(m.subjectOpen || m.forwarding) && m.subjectDraft.trim()") && card.includes("title={cardTitle}"));
+  check("a reply window that has sent says so rather than standing empty",
+    card.includes('card.view === "window" && !mode && cardHadComposer.current') && card.includes('t("replyWindowSending")'));
 });

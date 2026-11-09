@@ -38,6 +38,15 @@ suite(async () => {
   );
   check("a forward can name the message it carries", forwardOne.ok && forwardOne.draft.kind === "thread" && forwardOne.draft.quoteMessageId === "m7");
   check("a reply carries no message of its own", reply.ok && reply.draft.kind === "thread" && !("quoteMessageId" in reply.draft));
+  check("a reply with no subject keeps the thread's", reply.ok && !("subject" in reply.draft));
+  const withSubject = (mode) => draftFromInbox(
+    { from: "ulla@aavang.example", to: ["bo@havn.example"], subject: "  Beans: the May plan ", body: "x", replyTo: { threadId: "18f2c4a1b", mode } },
+    ACCOUNTS
+  );
+  for (const mode of ["reply", "replyAll", "forward"]) {
+    const d = withSubject(mode);
+    check(`a ${mode} keeps the subject it was given`, d.ok && d.draft.kind === "thread" && d.draft.subject === "Beans: the May plan", d.ok ? d.draft.subject : d.reason);
+  }
   const forwardNoTo = draftFromInbox({ from: "ulla@aavang.example", body: "x", replyTo: { threadId: "1a", mode: "forward" } }, ACCOUNTS);
   check("a forward with nobody to go to is refused, as a forward", !forwardNoTo.ok && forwardNoTo.reason.includes("forward"));
 

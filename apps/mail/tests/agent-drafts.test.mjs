@@ -44,6 +44,9 @@ suite(async () => {
   check("the fingerprint is the same for the same draft", base === draftFingerprint(draft({ updatedAt: 99 })));
   check("an editor that only rewrites the HTML does not change it",
     base === draftFingerprint(draft({ body: '<p style="margin:0">Hi Bo,</p><p><br></p><p>The beans go in May.</p>' })));
+  check("the composer making each line a paragraph does not change it",
+    draftFingerprint(draft({ body: "<p>Hi Bo,<br>The beans go in May.</p>" })) ===
+      draftFingerprint(draft({ body: "<p>Hi Bo,</p><p>The beans go in May.</p>" })));
   check("other words change it", base !== draftFingerprint(draft({ body: "<p>Hi Bo,</p><p>The peas go in May.</p>" })));
   check("another recipient changes it", base !== draftFingerprint(draft({ ccList: [{ kind: "email", email: "kim@havn.example" }] })));
   check("another subject changes it", base !== draftFingerprint(draft({ subject: "Peas" })));
@@ -57,6 +60,11 @@ suite(async () => {
     { ...draft(), kind: "thread", account: "ulla@aavang.example", fromAccount: "ulla@aavang.example", threadId: "t1", mode: "reply", subject: undefined, editRecipients: false, replyFocus: false },
     "Beans"
   );
+  const given = draftPreview(
+    { ...draft(), kind: "thread", account: "ulla@aavang.example", fromAccount: "ulla@aavang.example", threadId: "t1", mode: "forward", subject: "Beans for May", editRecipients: false, replyFocus: false },
+    "Beans"
+  );
+  check("a subject the writer gave wins over the thread's", given.subject === "Beans for May", given.subject);
   check("a reply's preview says Re: and the thread's subject", reply.subject === "Re: Beans" && reply.threadId === "t1", reply.subject);
   check("the body is shown as text, a blank line between paragraphs", draftPreview(draft()).body === "Hi Bo,\n\nThe beans go in May.", JSON.stringify(draftPreview(draft()).body));
 });

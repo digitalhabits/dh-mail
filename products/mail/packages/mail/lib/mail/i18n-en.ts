@@ -1162,6 +1162,7 @@ export const en = {
     "Answer under a different subject. It starts a new conversation and keeps the quoted history",
   newSubjectStartsConversation:
     "A new subject starts a new conversation. The history stays quoted below.",
+  replyWindowSending: "Sending. This window closes when the message has gone.",
   minimiseReply: "Put this away",
   minimisedReplyTo: "Reply to {name}",
   minimisedReplyShow: "Show the reply",

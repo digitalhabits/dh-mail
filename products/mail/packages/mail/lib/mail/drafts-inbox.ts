@@ -8,7 +8,8 @@
  *     "from": "you@example.org",          a mailbox connected in Mail
  *     "to": ["them@example.org"],
  *     "cc": [], "bcc": [],                optional
- *     "subject": "Hello",                 a new message's subject
+ *     "subject": "Hello",                 a new message's subject; on a reply or
+ *                                         forward it replaces the thread's
  *     "body": "Plain text.\n\nParagraphs are kept.",
  *     "attachments": ["/Users/you/plan.pdf"],  optional: files Mail reads and attaches
  *     "replyTo": {                        optional: a reply in a thread
@@ -109,6 +110,7 @@ export function draftFromInbox(raw: unknown, accounts: readonly string[]): Draft
         : "";
   if (!body) return { ok: false, reason: '"body" is missing or empty' };
 
+  const subject = typeof file.subject === "string" ? file.subject.trim().slice(0, 500) : "";
   const replyTo = file.replyTo;
   if (replyTo !== undefined && replyTo !== null) {
     const r = replyTo as Record<string, unknown>;
@@ -137,11 +139,11 @@ export function draftFromInbox(raw: unknown, accounts: readonly string[]): Draft
         replyFocus: false,
         attachments: [],
         ...(mode === "forward" ? { quoteMessageId: messageId } : null),
+        ...(subject ? { subject } : null),
       },
     };
   }
 
-  const subject = typeof file.subject === "string" ? file.subject.trim().slice(0, 500) : "";
   return {
     ok: true,
     draft: {

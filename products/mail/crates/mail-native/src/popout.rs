@@ -648,7 +648,7 @@ pub async fn open_mail_reader_window(
   use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
   let origin = document_origin(&webview)?;
-  // The thread's reply alone, in a window that stays on top: see
+  // The thread's reply alone, in a window of its own: see
   // `reply_window_label`.
   let reply = reply.unwrap_or(false) && person.is_none() && draft.is_none();
   let label = if reply {
@@ -711,17 +711,16 @@ pub async fn open_mail_reader_window(
   }
 
   /*
-    A reply stays over the other windows: it is written while the
-    thread, or something else, is read beside it. Smaller than a reader,
+    A reply is an ordinary window: it takes its turn among the others, as
+    a new message's window does. It stood over every window, a focus
+    window of another app too (Ulrik, 2026-11-09). Smaller than a reader,
     in the bottom right of the screen, where the floating reply card
     stood.
   */
   if reply {
     builder = builder
       .inner_size(REPLY_WINDOW_WIDTH, REPLY_WINDOW_HEIGHT)
-      .min_inner_size(420.0, 320.0)
-      .always_on_top(true)
-      .visible_on_all_workspaces(true);
+      .min_inner_size(420.0, 320.0);
     if let Ok(Some(monitor)) = webview.window().current_monitor() {
       let scale = monitor.scale_factor();
       let size = monitor.size().to_logical::<f64>(scale);

@@ -242,6 +242,27 @@ export function ThreadPane(props: ThreadPaneProps) {
       isOpenPart: p.status === "open",
     });
   };
+  /*
+    A reply in a window of its own, sent, with Undo still offered. The card
+    hides at this point, which in a window of its own left the window
+    empty. It says what is happening instead, and the window closes once
+    the message has gone (closeFloatingCard).
+  */
+  if (floating && card.view === "window" && !mode && cardHadComposer.current) {
+    return (
+      <div className="mail-thread-surface flex min-h-0 flex-1 flex-col bg-[var(--mail-thread)]">
+        <div
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-8 text-sm text-stone-500"
+          aria-live="polite"
+        >
+          {t("replyWindowSending")}
+        </div>
+      </div>
+    );
+  }
+  /* The card's heading names the message as it will go: a subject the
+     writer is typing wins over the thread's. */
+  const cardTitle = ((m.subjectOpen || m.forwarding) && m.subjectDraft.trim()) || thread.subject || "\u2026";
   const pane = (
     <ReaderThreadContext.Provider value={readerThread}>
     <div
@@ -283,7 +304,7 @@ export function ThreadPane(props: ThreadPaneProps) {
       */}
       <FloatingCardChrome
         card={card}
-        title={thread?.subject || "\u2026"}
+        title={cardTitle}
         hidden={!mode}
         onClose={() => onFloatReply?.()}
       />
