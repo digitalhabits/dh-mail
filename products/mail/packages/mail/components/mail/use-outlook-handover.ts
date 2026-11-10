@@ -183,8 +183,10 @@ export function useOutlookHandover(input: {
         }
       : undefined;
     const handoverSubject = outgoingSubject;
-    const pickedQuote = quoteMessageId ? quotePayload : undefined;
-    const noQuote = chatNoQuote || Boolean(pickedQuote);
+    // A picked message is a card only in a chat-style thread; elsewhere it
+    // is a plain reply with the history cut there. See use-thread-send.
+    const pickedQuote = quoteMessageId && chatNoQuote ? quotePayload : undefined;
+    const noQuote = chatNoQuote;
     const composed = quotedReplyMessage(
       replyText,
       pickedQuote,

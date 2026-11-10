@@ -48,8 +48,6 @@ export function ComposerPreview({
     historyAppendix,
     includeSignature,
     outgoingSubject,
-    quoteMessageId,
-    quotePayload,
     recipientName,
     reply,
     replyText,
@@ -105,22 +103,13 @@ export function ComposerPreview({
                 : undefined
               : chatStyle
                 ? undefined
-                : quoteMessageId && quotePayload
+                : // A picked message too: its history is cut there.
+                  historyAppendix
                   ? {
-                      intro: `On ${quotePayload.date}, ${
-                        quotePayload.fromName
-                          ? `${quotePayload.fromName} <${quotePayload.fromEmail}>`
-                          : quotePayload.fromEmail
-                      } wrote:`,
-                      text: quotePayload.text,
-                      html: quotePayload.html,
+                      text: historyAppendix.text,
+                      html: historyAppendix.html,
                     }
-                  : historyAppendix
-                    ? {
-                        text: historyAppendix.text,
-                        html: historyAppendix.html,
-                      }
-                    : undefined
+                  : undefined
           }
           recipientName={recipientName}
           sending={sending}

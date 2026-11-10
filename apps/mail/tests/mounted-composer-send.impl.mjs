@@ -436,12 +436,20 @@ async function main() {
     await sleep(500);
 
     assert.equal(sends.length, 2, "the reply went to the send route");
-    assert.equal(sends[1].noQuote, true, "a picked message takes the place of the history");
+    // An ordinary thread: the pick is an ordinary reply. The history goes
+    // under it, cut at the picked message, and no card goes on top — a card
+    // looks wrong in Outlook or Spark, and a reply sent without history
+    // made the server turn the thread into a chat (2026-11-10).
+    assert.notEqual(sends[1].noQuote, true, "a picked message keeps the history");
     assert(
-      String(sends[1].html).includes("Can you bring one?"),
-      "the picked message is in the body"
+      String(sends[1].appendix?.html).includes("Can you bring one?"),
+      "the picked message is in the history under the reply"
     );
-    pass("a reply carries the message that was picked last");
+    assert(
+      !String(sends[1].html).includes("Can you bring one?"),
+      "and not in a card above it"
+    );
+    pass("a reply carries the history up to the message that was picked");
 
     /*
       Undo of a forward, while the thread refreshes under it. A send is
@@ -940,11 +948,16 @@ async function main() {
     assert(showQuoted, "folded, behind the ••• pill");
     clickEl(showQuoted);
     await sleep(300);
+    // Opened, the ••• goes and a "Hide quoted text" button sits under the
+    // history, as in Gmail.
+    const hideQuoted = () =>
+      [...historyBox().querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Hide quoted text");
+    assert(hideQuoted(), "opened, it offers Hide quoted text");
     assert(
-      [...historyBox().querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Hide quoted text"),
-      "opened, it offers Hide quoted text"
+      ![...historyBox().querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Show quoted text"),
+      "and the ••• pill is gone"
     );
-    clickEl([...historyBox().querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Hide quoted text"));
+    clickEl(hideQuoted());
     await sleep(200);
     pass("a reply shows its quoted history under the box, folded, as a forward shows its message");
 

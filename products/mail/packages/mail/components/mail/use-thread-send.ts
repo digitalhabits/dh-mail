@@ -609,13 +609,18 @@ export function useSendReply({
     /**
      * A reply to one message the reader picked, rather than to the thread.
      *
-     * It carries that message in its body, in the card a reaction uses. If it
-     * goes as the quoted history, the reader folds it away behind a "…".
-     * A chat-style thread drops the history altogether. Then the message that
-     * was picked does not show at either end.
+     * In a chat-style thread it carries that message in its body, in the
+     * card a reaction uses: the history is dropped there, so without the
+     * card the picked message would not show at either end.
+     *
+     * In an ordinary thread it is an ordinary reply. The history goes under
+     * it as always, cut at the picked message (see `historyAppendix`). A card
+     * on top looks wrong in Outlook or Spark, and leaving the history off
+     * made the server mark the thread as chat style, so every later reply
+     * lost its history too (reported 2026-11-10).
      */
-    const pickedQuote = quoteMessageId ? quotePayload : undefined;
-    const noQuote = chatNoQuote || Boolean(pickedQuote);
+    const pickedQuote = quoteMessageId && chatNoQuote ? quotePayload : undefined;
+    const noQuote = chatNoQuote;
     const localId = `local-${Date.now()}`;
     const localQuote =
       !noQuote && historyAppendix

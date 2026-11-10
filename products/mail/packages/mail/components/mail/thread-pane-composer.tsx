@@ -467,9 +467,9 @@ export function ThreadComposerBand({
               {/* Under the note, where the recipient will see it. */}
               {forwarding && forwardSource ? <ForwardSourceQuote m={m} /> : null}
               {/* The same for a reply: the history that goes with it, as it
-                  will be sent. Not when nothing is quoted: chat style, or a
-                  reply to one picked message, which shows its own card. */}
-              {!forwarding && !chatStyle && !m.quoteMessageId && m.historyAppendix ? (
+                  will be sent — for a picked message, up to that message.
+                  Not in chat style, which sends none. */}
+              {!forwarding && !chatStyle && m.historyAppendix ? (
                 <ReplyHistoryQuote m={m} html={m.historyAppendix.html} />
               ) : null}
               </div>
@@ -723,24 +723,38 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
   // The quote is drawn for white paper; on the dark box its colours are
   // re-lit, as a message's are in the thread, or it read dark on dark.
   const inTheDark = useQuoteInTheDark();
-  const label = t(open ? "hideQuotedText" : "showQuotedText");
+  // Open, the ••• goes, as in Gmail: a pill that stays where it was says
+  // nothing about what it did. The way to fold it again is at the foot of
+  // the history, where the reader is once they have read it.
   return (
     <div data-reply-history="" className="mx-3 mb-2.5 text-[13px] text-stone-600">
-      <button
-        type="button"
-        title={label}
-        aria-label={label}
-        aria-expanded={open}
-        className="inline-flex h-4 items-center rounded-full bg-stone-200/80 px-2 text-[10px] leading-none tracking-[0.15em] text-stone-600 hover:bg-stone-300"
-        onClick={() => setOpen(!open)}
-      >
-        <span aria-hidden>•••</span>
-      </button>
       {open ? (
-        <div className="mt-2 border-l-2 border-stone-200 pl-3">
-          <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} {...inTheDark} />
-        </div>
-      ) : null}
+        <>
+          <div className="border-l-2 border-stone-200 pl-3">
+            <EmailHtmlView html={html} allowImages={loadImagesByDefault} zoom={zoom} {...inTheDark} />
+          </div>
+          <button
+            type="button"
+            aria-expanded
+            className="mt-2 inline-flex h-5 items-center gap-1 rounded-full bg-stone-200/80 px-2 text-[11px] leading-none text-stone-600 hover:bg-stone-300"
+            onClick={() => setOpen(false)}
+          >
+            <ChevronUp className="h-3 w-3" aria-hidden />
+            {t("hideQuotedText")}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          title={t("showQuotedText")}
+          aria-label={t("showQuotedText")}
+          aria-expanded={false}
+          className="inline-flex h-4 items-center rounded-full bg-stone-200/80 px-2 text-[10px] leading-none tracking-[0.15em] text-stone-600 hover:bg-stone-300"
+          onClick={() => setOpen(true)}
+        >
+          <span aria-hidden>•••</span>
+        </button>
+      )}
     </div>
   );
 }

@@ -1,6 +1,16 @@
 ## What is new
 
 **Fixes**
+- In a reply, the ••• under the box goes away once the quoted history is open. A "Hide quoted text" button under the history folds it again. Before, the ••• stayed where it was, so it did not show that the history was open.
+- When you answer one message with its reply arrow, the reply now carries the history up to that message, as an ordinary reply does. Before, the message went as a card at the top, with no history under it, and that looked wrong in other mail apps. After such a reply, the next replies in the conversation also lost their history. If a conversation still sends no history, turn on "Quote history" in the ··· menu of the reply box.
+- "… shown in Mail" and "… is hidden from Mail for now" show at the foot of the list, with the other notices. Before, they showed at the foot of the window.
+
+**Pop-out windows**
+- A reply you pop out opens in a window of its own. Before, it was a card over the main window.
+- If you close the main window while a reply is popped out, Mail stays open with the reply. When you close the reply, the main window comes back. A click on Mail in the Dock also brings it back.
+- A conversation, a person's mail or a new message that you pop out has the window buttons at the top of the page, as the main window has.
+
+**Earlier fixes**
 - A reply you pop out is now an ordinary window. It no longer stays in front of your other windows, also those of other apps.
 - "Edit subject" in a reply opens the subject in the reply box you are using. Before, the reply moved into a card of its own.
 - The title of a popped-out reply changes as you type a new subject.
@@ -9,13 +19,6 @@
 - A conversation card under a person no longer turns grey when you point at it. It stays white and lifts a little.
 - In the list, the row you point at is a little darker than the list, so it does not look like the open row.
 - The open row is white, with a coloured bar down its left edge.
-
-**Pop-out windows**
-- A reply you pop out opens in a window of its own. Before, it was a card over the main window.
-- If you close the main window while a reply is popped out, Mail stays open with the reply. When you close the reply, the main window comes back. A click on Mail in the Dock also brings it back.
-- A conversation, a person's mail or a new message that you pop out has the window buttons at the top of the page, as the main window has.
-
-**Earlier fixes**
 - On an Exchange mailbox, a message you delete no longer comes back to the inbox. If it comes back once more, delete it again.
 - In a long new message, the last lines no longer hide behind the signature when you change something higher up. The message and the signature scroll together.
 - ⌘V pastes into the link box that ⌘K opens.

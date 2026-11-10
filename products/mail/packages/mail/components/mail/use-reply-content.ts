@@ -169,6 +169,16 @@ export function useReplyContent({
       ...thread.messages,
     ].filter((m) => !isPendingLocalMessage(m.id));
     if (!all.length) return null;
+    // A reply to one picked message carries the history as it stood at
+    // that message: it and what came before, not what came after.
+    const pickedAt = quoteMessageId ? all.findIndex((m) => m.id === quoteMessageId) : -1;
+    if (pickedAt >= 0) {
+      const upTo = all.slice(0, pickedAt + 1);
+      const keptUpTo = upTo.slice(-REPLY_HISTORY_CAP);
+      return buildQuoteHistory(keptUpTo.map(historyEntryOf), {
+        omittedBeyond: Math.max(0, upTo.length - keptUpTo.length),
+      });
+    }
     // What the thread holds beyond what is loaded still counts: the note
     // under the tail says how much of the conversation it is not.
     const total =
@@ -178,7 +188,7 @@ export function useReplyContent({
     return buildQuoteHistory(kept.map(historyEntryOf), {
       omittedBeyond: Math.max(0, total - kept.length),
     });
-  }, [thread, olderParts]);
+  }, [thread, olderParts, quoteMessageId]);
   /**
    * Who the empty box says the reply goes to: everyone in To and Cc, named
    * from the thread where a name is known. A reply-all names them all; a

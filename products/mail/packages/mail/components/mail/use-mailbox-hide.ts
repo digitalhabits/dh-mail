@@ -37,6 +37,7 @@ import {
 import { listHiddenMailboxes, setMailboxInMailTab } from "@/lib/mail/mailbox-visibility";
 import type { MailQuietWindow } from "@/lib/mail/quiet-hours";
 import { toast } from "@/lib/mail/toast";
+import { sayDone } from "@/lib/mail/undo-slot";
 import { normaliseUnpauseWords } from "@/lib/mail/unpause-friction";
 import { useMailRouter } from "@/lib/mail-router";
 
@@ -298,7 +299,7 @@ export function useMailboxHide({
     hideUntil: (email, until, from) => {
       diagEvent("hide set", { mailbox: mailboxNumber(email), until: diagTime(until), from: from ?? "unknown" });
       patchRow(email, (row) => ({ ...row, hiddenUntil: until, shownUntil: undefined }));
-      toast.success(t("mailboxHiddenFor", { email }));
+      sayDone(t("mailboxHiddenFor", { email }));
     },
     hideByHand: (email) => {
       // By hand: until it is shown, or with a schedule until the schedule next changes.
@@ -308,7 +309,7 @@ export function useMailboxHide({
         until: row?.byHandUntil ? diagTime(row.byHandUntil) : row?.autoHidden ? "schedule window end" : "shown by hand",
       });
       void flip(email, false)
-        .then(() => toast.success(t("accountHiddenFromMailConnected", { email })))
+        .then(() => sayDone(t("accountHiddenFromMailConnected", { email })))
         .catch((err: unknown) => toast.error(err instanceof Error ? err.message : t("couldNotUpdate")));
     },
     setHours: (email, windows) => {
@@ -325,7 +326,7 @@ export function useMailboxHide({
       diagEvent("schedule resumed", { mailbox: mailboxNumber(email) });
       // The clock does the hiding: with shownUntil gone, the window hides it.
       patchRow(email, (row) => ({ ...row, shownUntil: undefined }));
-      toast.success(t("mailboxHiddenFor", { email }));
+      sayDone(t("mailboxHiddenFor", { email }));
     },
     showNow: (email) => {
       const key = hideKey(email);
@@ -379,7 +380,7 @@ export function useMailboxHide({
         }));
         try {
           await flip(email, true);
-          toast.success(t("accountShownInMail", { email }));
+          sayDone(t("accountShownInMail", { email }));
         } catch (err) {
           toast.error(err instanceof Error ? err.message : t("couldNotUpdate"));
         }
