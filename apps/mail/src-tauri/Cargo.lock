@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "digital-habits-mail"
-version = "0.11.60"
+version = "0.11.61"
 dependencies = [
  "log",
  "mail-native",

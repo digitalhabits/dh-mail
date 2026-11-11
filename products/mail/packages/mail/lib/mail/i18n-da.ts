@@ -1075,6 +1075,7 @@ export const da: Record<keyof typeof en, string> = {
   addRecipients: "tilføj modtagere…",
   editRecipients: "Rediger modtagere",
   replyingTo: "Svarer til",
+  answeringMailFrom: "Svarer på mailen fra {name}, {date}",
   replyToOne: "Svar til {name}",
   replyToOneOther: "Svar til {name} og 1 anden",
   replyToOthers: "Svar til {name} og {count} andre",

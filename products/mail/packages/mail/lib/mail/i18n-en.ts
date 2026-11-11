@@ -1086,6 +1086,7 @@ export const en = {
   addRecipients: "add recipients…",
   editRecipients: "Edit recipients",
   replyingTo: "Replying to",
+  answeringMailFrom: "Answering the mail from {name}, {date}",
   replyToOne: "Reply to {name}",
   replyToOneOther: "Reply to {name} and 1 other",
   replyToOthers: "Reply to {name} and {count} others",

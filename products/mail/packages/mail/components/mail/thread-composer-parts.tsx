@@ -20,6 +20,7 @@ import { useComposerMinimise } from "@/components/mail/composer-minimise";
 
 import { DraftAssistMenu, SendFollowUpToggle, useAccountAssist } from "@/components/mail/team-layer";
 import { FromAccountMenu, SendAsAddress } from "@/components/mail/FromAccountMenu";
+import { forwardedHtml, forwardedPlainText } from "@/lib/mail/forwarded-message";
 import { forwardPayload } from "@/components/mail/forward-payload";
 import { SentPreview, SignatureMetaControls } from "@/components/mail/composer-preview";
 import { formatShortcut } from "@/lib/mail/shortcuts";
@@ -93,13 +94,8 @@ export function ComposerPreview({
           quote={
             forwarding
               ? forwarded
-                ? {
-                    intro: `Forwarded message — from ${
-                      forwarded.fromName ? `${forwarded.fromName} <${forwarded.fromEmail}>` : forwarded.fromEmail
-                    }, ${forwarded.date}:`,
-                    text: forwarded.text,
-                    html: forwarded.html,
-                  }
+                ? // The block that is sent, header and all, not a line of our own.
+                  { text: forwardedPlainText(forwarded), html: forwardedHtml(forwarded) }
                 : undefined
               : chatStyle
                 ? undefined

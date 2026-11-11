@@ -328,8 +328,8 @@ async function main() {
     assert(subjectBox, "a forward shows its subject row");
     assert.equal(subjectBox.value, `Fwd: ${SUBJECT}`);
     assert(
-      /^(Asta Holm|Viggo Dam|You|yourself)/i.test(document.querySelector("[data-forward-source]")?.textContent || ""),
-      "and says which message goes with it, under the note"
+      /^-+ Forwarded message -+From: (Asta Holm|Viggo Dam)/i.test(document.querySelector("[data-forward-source]")?.textContent || ""),
+      "and shows the message under the header the recipient gets"
     );
 
     const recipientBox = inputs().find((i) =>
@@ -420,9 +420,15 @@ async function main() {
     await sleep(300);
     assert.equal(document.querySelectorAll(".ql-editor").length, 1, "and still one after a message is picked");
     assert.equal(document.querySelectorAll("#mail-reply-toolbar").length, 1, "with one toolbar");
+    // An ordinary thread: one plain line says whose mail it answers. No
+    // excerpt in a card, since no card goes with the reply.
     assert(
-      /Replying to /.test(document.body.textContent || ""),
+      /Answering the mail from /.test(document.body.textContent || ""),
       "the reply says which message it answers"
+    );
+    assert(
+      !/Replying to /.test(document.body.textContent || ""),
+      "in one line, not in a card"
     );
     assert(byTitle(/^answer the thread instead/i), "with the way back to the whole thread");
     const replyButton = buttons().find(

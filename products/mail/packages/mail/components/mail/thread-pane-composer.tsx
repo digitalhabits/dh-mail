@@ -13,7 +13,7 @@ import {
 } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
-import { ChevronDown, ChevronUp, Forward, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Reply, SendHorizontal, ExternalLink, Trash2, X } from "lucide-react";
 
 import { DraftAssistNotes } from "@/components/mail/team-layer";
 import { COMPOSER_MAX_SHARE } from "@/components/mail/use-thread-pane-geometry";
@@ -24,7 +24,7 @@ import {
   DraftAttachmentChips,
 } from "@/components/mail/draft-attachments";
 import { reactionQuoteText } from "@/lib/mail/reaction-message";
-import { currentMailLocale } from "@/lib/mail/i18n";
+import { messageStamp, shortDate } from "@/lib/mail/date-format";
 import { formatShortcut } from "@/lib/mail/shortcuts";
 import { SendLaterMenu, sendButtonWord } from "@/components/mail/SendLaterMenu";
 import { ComposerToolbar } from "@/components/mail/ComposerToolbar";
@@ -366,7 +366,7 @@ export function ThreadComposerBand({
               !bandFills && "overflow-y-auto"
             )}
           >
-          <ComposerHead m={m} />
+          <ComposerHead m={m} chatStyle={chatStyle} />
             {draftNotes || draftWorking ? (
               <DraftAssistNotes
                 result={draftNotes}
@@ -498,13 +498,13 @@ export function ThreadComposerBand({
  * Opened, the recipients and the subject are rows in the card
  * (ComposerFieldRows).
  */
-function ComposerHead({ m }: { m: ThreadPaneModel }) {
+function ComposerHead({ m, chatStyle }: { m: ThreadPaneModel; chatStyle: boolean }) {
   const { editRecipients, forwarding, quotedForReply, subjectOpen, t } = m;
   return (
     <>
       {/* What this reply answers. Picking one message out of a thread used
           to do nothing you could see. */}
-      {!forwarding && quotedForReply ? <QuotedReplyBanner m={m} /> : null}
+      {!forwarding && quotedForReply ? <QuotedReplyBanner m={m} chatStyle={chatStyle} /> : null}
       {!editRecipients && !forwarding && subjectOpen ? (
         <>
           {/* A reply's subject is the thread's; asked for, the row
@@ -563,11 +563,18 @@ function ComposerSubjectRow({
 /**
  * What this reply answers: the one message picked out of the thread, with
  * the way back to answering the whole thread.
+ *
+ * In chat style the picked message goes as a card on top of the reply, so
+ * the strip shows it as one. In an ordinary conversation nothing goes on
+ * top: the message is in the history under the reply. A card here said
+ * otherwise, so the strip is one plain line (2026-11-10).
  */
 function QuotedReplyBanner({
   m,
+  chatStyle,
 }: {
   m: ThreadPaneModel;
+  chatStyle: boolean;
 }) {
   const {
     quotedForReply,
@@ -576,6 +583,28 @@ function QuotedReplyBanner({
   } = m;
   // The caller shows this only with a message picked; said here too for the types.
   if (!quotedForReply) return null;
+  const who = quotedForReply.own
+    ? t("yourself")
+    : quotedForReply.fromName || quotedForReply.fromEmail;
+  if (!chatStyle) {
+    return (
+      <div className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-stone-500">
+        <Reply className="h-3.5 w-3.5 shrink-0 text-stone-400" aria-hidden />
+        <span className="min-w-0 flex-1 truncate">
+          {t("answeringMailFrom", { name: who, date: shortDate(quotedForReply.sentAt) })}
+        </span>
+        <button
+          type="button"
+          title={t("answerThreadInstead")}
+          aria-label={t("answerThreadInstead")}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-stone-200/70 hover:text-stone-700"
+          onClick={() => setQuoteMessageId(null)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="mb-2 flex items-start gap-2 rounded-control border border-stone-200 bg-stone-50 px-3 py-2">
       <Reply
@@ -584,10 +613,7 @@ function QuotedReplyBanner({
       />
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] font-semibold text-stone-500">
-          Replying to{" "}
-          {quotedForReply.own
-            ? t("yourself")
-            : quotedForReply.fromName || quotedForReply.fromEmail}
+          {t("replyingTo")} {who}
         </span>
         <span className="mt-0.5 block truncate text-xs text-stone-600">
           {reactionQuoteText(quotedForReply.bodyText) || t("noText")}
@@ -651,10 +677,18 @@ function ForwardSourceQuote({
   };
   // The caller shows this only on a forward with its source; said here too for the types.
   if (!forwardSource) return null;
-  const who = forwardSource.own ? t("yourself") : forwardSource.fromName || forwardSource.fromEmail;
-  const day = forwardSource.sentAt
-    ? new Date(forwardSource.sentAt).toLocaleDateString(currentMailLocale(), { day: "numeric", month: "short" })
-    : "";
+  // The header the recipient gets (forwarded-message.ts), so the box shows
+  // the forward as it goes. An arrow and a quote bar here read as something
+  // Habits adds to the mail (reported 2026-11-11).
+  const from = forwardSource.fromName
+    ? `${forwardSource.fromName} <${forwardSource.fromEmail}>`
+    : forwardSource.fromEmail;
+  const header = [
+    `From: ${from}`,
+    `Date: ${messageStamp(forwardSource.sentAt)}`,
+    `Subject: ${m.thread?.subject ?? ""}`,
+    `To: ${forwardSource.toEmails.join(", ")}`,
+  ];
   const allowImages =
     loadImagesByDefault ||
     (readImageChoices()[forwardSource.fromEmail.trim().toLowerCase()] ?? false);
@@ -662,14 +696,18 @@ function ForwardSourceQuote({
   // colour in the box is Send.
   const link = "whitespace-nowrap text-xs text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline";
   return (
-    <div data-forward-source="" className="mx-3 mb-3 border-l-2 border-stone-200 pl-3 text-[13px] text-stone-600">
-      <span className="flex items-center gap-1.5 font-semibold">
-        <Forward className="h-3.5 w-3.5 shrink-0 text-stone-400" aria-hidden />
-        {day ? `${who}, ${day}` : who}
-      </span>
+    <div data-forward-source="" className="mx-3 mb-3 text-[13px] text-stone-600">
+      <div className="leading-normal">
+        <b>---------- Forwarded message ----------</b>
+        {header.map((row) => (
+          <div key={row} className="break-words">
+            {row}
+          </div>
+        ))}
+      </div>
       {open ? (
         <>
-          <div className="mt-1">
+          <div className="mt-3">
             {forwardSource.bodyHtml ? (
               <EmailHtmlView
                 html={forwardSource.bodyHtml}
@@ -689,7 +727,7 @@ function ForwardSourceQuote({
           </button>
         </>
       ) : (
-        <span className="mt-0.5 flex items-baseline gap-2">
+        <span className="mt-3 flex items-baseline gap-2">
           <span className="min-w-0 truncate">
             {reactionQuoteText(forwardSource.bodyText) || "(no text)"}
           </span>
