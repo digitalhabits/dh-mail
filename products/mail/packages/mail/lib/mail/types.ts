@@ -240,8 +240,10 @@ export type MailScheduledMessage = {
   /**
    * Where it is on its way: waiting for its time, being sent, or given
    * up — with the server's words. A provider-held message is "waiting".
+   * "stuck": due for more than ten minutes, and the server could not be
+   * reached. It is still tried (outbox.rs, `is_stuck`).
    */
-  status?: "waiting" | "sending" | "failed";
+  status?: "waiting" | "sending" | "stuck" | "failed";
   error?: string;
   /**
    * Not sent because Mail was not open within an hour of its time: it

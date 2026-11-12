@@ -16,6 +16,7 @@ import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layou
 import { MessageSquare, Archive, ArchiveRestore, Trash2, Calendar, Clock, FolderInput, Forward, Paperclip, MessagesSquare, Pin, Printer, Reply, ReplyAll, RotateCwFadingClock, ShieldCheck, SquarePen } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 import { clearMailThreadDrag, setMailThreadDragData } from "@/components/mail/MailFolders";
+import { SenderRulesRow } from "@/components/mail/sender-rule-menu";
 import { MoveToFolderMenu } from "@/components/mail/MoveToFolderMenu";
 import type { MailFolder } from "@/lib/mail/folder-types";
 import { getThreadDraftKeysSnapshot, subscribeMailDrafts, threadDraftKey } from "@/lib/mail/local-drafts";
@@ -363,6 +364,7 @@ export function ThreadRowMenu({
           {t("actionDelete")}
         </button>
       ) : null}
+      <SenderRulesRow account={account} threadId={threadId} onDismiss={onDismiss} />
     </RowMenuShell>
   );
 }
@@ -394,7 +396,9 @@ export function PersonRowMenu({
   onDeleteAll,
   onDeleteForever,
   onDismiss,
+  rulesFor,
 }: {
+  rulesFor?: { account: string; threadId: string };
   x: number;
   y: number;
   name: string;
@@ -477,6 +481,7 @@ export function PersonRowMenu({
           {t("deleteForeverCount", { count })}
         </button>
       ) : null}
+      {rulesFor ? <SenderRulesRow {...rulesFor} onDismiss={onDismiss} /> : null}
     </RowMenuShell>
   );
 }

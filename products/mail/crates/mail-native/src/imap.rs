@@ -947,9 +947,20 @@ fn connect_any(host: &str, port: u16, timeout: Duration) -> ImapResult<TcpStream
 /// A TLS stream to `host:port`, verified against the roots built into the
 /// app (`webpki-roots`), not the ones the operating system keeps.
 pub(crate) fn tls_connect(host: &str, port: u16, timeout: Duration) -> ImapResult<Stream> {
+  tls_wrap(tcp_connect(host, port, timeout)?, host)
+}
+
+/// A plain connection to `host:port`, with the timeouts every stream here
+/// has. TLS comes later, as SMTP's STARTTLS on port 587 asks.
+pub(crate) fn tcp_connect(host: &str, port: u16, timeout: Duration) -> ImapResult<TcpStream> {
   let tcp = connect_any(host, port, timeout)?;
   tcp.set_read_timeout(Some(DEFAULT_TIMEOUT))?;
   tcp.set_write_timeout(Some(timeout))?;
+  Ok(tcp)
+}
+
+/// TLS over a connection already open, verified as `tls_connect` says.
+pub(crate) fn tls_wrap(tcp: TcpStream, host: &str) -> ImapResult<Stream> {
   let mut roots = rustls::RootCertStore::empty();
   roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
   let config = rustls::ClientConfig::builder_with_provider(Arc::new(

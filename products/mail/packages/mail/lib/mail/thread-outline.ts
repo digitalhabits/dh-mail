@@ -22,6 +22,7 @@ import { getThreadMetadata, headerValue, parseAddressList } from "@/lib/gmail/ap
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 import { messageDate } from "@/lib/mail/inbox-gmail-common";
 import { outlineFromLocalStore } from "@/lib/mail/local-thread";
+import { pauseCutOff, shownUnderCutOff } from "@/lib/mail/pause-cut-off";
 import { outlookAccessTokenFor } from "@/lib/mail/outlook-token";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import type { MailOutlineItem } from "@/lib/mail/types";
@@ -95,16 +96,31 @@ async function outlookOutline(account: string, threadId: string): Promise<MailOu
   });
 }
 
+/**
+ * An outline the provider answered, as a paused mailbox held it: no
+ * message that came in after the cut-off (lib/mail/pause-cut-off.ts). The
+ * copy's outline is cut where it is read.
+ */
+function withoutHeldBack(account: string, items: MailOutlineItem[]): MailOutlineItem[] {
+  const cut = pauseCutOff(account);
+  if (cut == null) return items;
+  return items.filter((item) => {
+    const sentAt = item.sentAt ? Date.parse(item.sentAt) : Infinity;
+    const mine = normalizeEmail(item.fromEmail) === normalizeEmail(account);
+    return shownUnderCutOff({ sentAt: Number.isFinite(sentAt) ? sentAt : Infinity, own: mine }, cut);
+  });
+}
+
 /** Every message of the thread, oldest first, as its outline shows it. */
 export async function getMailThreadOutline(
   account: string,
   threadId: string
 ): Promise<MailOutlineItem[]> {
   const provider = await resolveMailProvider(account);
-  if (provider === "outlook") return oncePerMessage(await outlookOutline(account, threadId));
+  if (provider === "outlook") return oncePerMessage(withoutHeldBack(account, await outlookOutline(account, threadId)));
   const stored = await outlineFromLocalStore(account, threadId);
   if (stored) return oncePerMessage(stored);
   if (provider === "exchange") return [];
   if (await isAppPasswordGmail(account)) return [];
-  return oncePerMessage(await gmailOutline(account, threadId));
+  return oncePerMessage(withoutHeldBack(account, await gmailOutline(account, threadId)));
 }

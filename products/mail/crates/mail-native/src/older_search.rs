@@ -133,6 +133,7 @@ pub async fn mail_sync_search_older(
   account: String,
   query: String,
   limit: Option<usize>,
+  as_of: Option<i64>,
 ) -> Result<Value, String> {
   tauri::async_runtime::spawn_blocking(move || {
     let email = account.trim().to_lowercase();
@@ -159,7 +160,7 @@ pub async fn mail_sync_search_older(
     }
     let uids = newest_uids(found.unwrap_or_default());
     let threads = db
-      .messages_threads_for_uids(&email, "", &uids, limit.unwrap_or(DEFAULT_LIMIT))
+      .messages_threads_for_uids(&email, "", &uids, limit.unwrap_or(DEFAULT_LIMIT), as_of)
       .map_err(|e| e.to_string())?;
     log::info!("[mail-sync] {email}: older mail search found {} threads", threads.len());
     Ok(json!({ "threads": threads, "handled": true }))
@@ -292,16 +293,16 @@ mod tests {
     )
     .unwrap();
     // 99 is not in the copy; 30 is in Trash, which a search leaves out.
-    let threads = db.messages_threads_for_uids(account, "", &[10, 11, 20, 30, 99], 50).unwrap();
+    let threads = db.messages_threads_for_uids(account, "", &[10, 11, 20, 30, 99], 50, None).unwrap();
     let ids: Vec<&str> = threads.iter().map(|t| t.thread_id.as_str()).collect();
     assert_eq!(ids, vec!["tb", "ta"]);
     // The newest hit of a thread is the one the reader is taken to.
     assert_eq!(threads[1].focus_message_id.as_deref(), Some("a2"));
     assert_eq!(threads[1].message_count, 2);
     // A UID of another folder's numbering is not one of All Mail's.
-    assert!(db.messages_threads_for_uids(account, "trash", &[10], 50).unwrap().is_empty());
+    assert!(db.messages_threads_for_uids(account, "trash", &[10], 50, None).unwrap().is_empty());
     // The limit keeps the newest.
-    let one = db.messages_threads_for_uids(account, "", &[10, 20], 1).unwrap();
+    let one = db.messages_threads_for_uids(account, "", &[10, 20], 1, None).unwrap();
     assert_eq!(one[0].thread_id, "tb");
   }
 

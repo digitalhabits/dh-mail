@@ -50,15 +50,42 @@ const MAX_COPIES = 4;
  * Message-ID cannot be matched, so it is not merged.
  */
 async function withCopies(account: string, rows: StoredWithBody[]): Promise<StoredWithBody[]> {
+  return (await withCopiesAndHeld(account, rows)).shown;
+}
+
+/** The same, and beside it the rows a pause holds back. */
+async function withCopiesAndHeld(
+  account: string,
+  rows: StoredWithBody[]
+): Promise<{ shown: StoredWithBody[]; held: StoredWithBody[] }> {
   const ids = rows.filter((r) => !r.isDraft).map((r) => r.rfcMessageId);
-  return withoutHeldBack(account, [...rows, ...(await copyRows(account, ids))]);
+  const all = [...rows, ...(await copyRows(account, ids))];
+  const shown = withoutHeldBack(account, all);
+  if (shown.length === all.length) return { shown, held: [] };
+  const kept = new Set(shown);
+  return { shown, held: all.filter((r) => !kept.has(r)) };
+}
+
+/**
+ * Whether a stored message is the mailbox's own: a draft, a message it
+ * sent (the Sent label), or one from its own address. The store's search
+ * and lists use the same rule (read.rs, `before_cut_off`).
+ *
+ * Not "any address of the organisation", as the bubbles' side uses: that
+ * made a colleague's reply the reader's own, so a pause never held it
+ * back in the open conversation, while the search did (2026-11-12).
+ */
+function ownInMailbox(row: StoredWithBody, mailbox: string): boolean {
+  if (row.isDraft) return true;
+  if (row.labels?.some((label) => label === "SENT" || label === "DRAFT")) return true;
+  return normalizeEmail(row.fromEmail) === normalizeEmail(mailbox);
 }
 
 /**
  * The thread as a paused mailbox held it: no message that came in after
  * the pause's cut-off (lib/mail/pause-cut-off.ts). Each row by its own
  * mailbox, so a copy in a mailbox that is not paused still shows. The
- * reader's own messages and drafts always show.
+ * mailbox's own messages and drafts always show.
  */
 function withoutHeldBack(account: string, rows: StoredWithBody[]): StoredWithBody[] {
   const cuts = new Map<string, number | null>();
@@ -69,10 +96,69 @@ function withoutHeldBack(account: string, rows: StoredWithBody[]): StoredWithBod
   };
   return rows.filter((r) => {
     const owner = r.copy?.account ?? account;
-    const own =
-      r.isDraft || normalizeEmail(r.fromEmail) === normalizeEmail(owner) || isOwnOrgAddress(r.fromEmail);
-    return shownUnderCutOff({ sentAt: r.sentAt, own }, cutFor(owner));
+    return shownUnderCutOff({ sentAt: r.sentAt, own: ownInMailbox(r, owner) }, cutFor(owner));
   });
+}
+
+/**
+ * A thread the provider answered (Outlook over Graph, Gmail over its API),
+ * as a paused mailbox held it. The provider knows nothing of the pause, so
+ * its answer had every message, the held-back ones too, and the reply went
+ * to the newest of them.
+ *
+ * `held` is how many messages were left out. The reply target is then the
+ * newest message that shows.
+ */
+export function detailWithoutHeldBack(detail: MailThreadDetail): { detail: MailThreadDetail; held: number } {
+  const cuts = new Map<string, number | null>();
+  const cutFor = (mailbox: string) => {
+    const key = mailbox.toLowerCase();
+    if (!cuts.has(key)) cuts.set(key, pauseCutOff(mailbox));
+    return cuts.get(key) ?? null;
+  };
+  const messages = detail.messages.filter((m) => {
+    const owner = m.account ?? detail.account;
+    const cut = cutFor(owner);
+    if (cut == null) return true;
+    const own = normalizeEmail(m.fromEmail) === normalizeEmail(owner);
+    // A message with no date cannot be placed: it is held back.
+    const sentAt = m.sentAt ? Date.parse(m.sentAt) : Infinity;
+    return shownUnderCutOff({ sentAt: Number.isFinite(sentAt) ? sentAt : Infinity, own }, cut);
+  });
+  const held = detail.messages.length - messages.length;
+  if (!held) return { detail, held: 0 };
+  const last = messages[messages.length - 1];
+  const from = last ? (last.account ?? detail.account) : detail.account;
+  const targets = replyTargets({
+    from: last?.fromEmail ?? "",
+    to: last?.toEmails ?? [],
+    cc: last?.ccEmails ?? [],
+    account: from,
+  });
+  const references = [last?.references ?? "", last?.rfcMessageId ?? ""]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  return {
+    held,
+    detail: {
+      ...detail,
+      messages,
+      participants: participantNames(messages),
+      ...(detail.totalMessageCount != null
+        ? { totalMessageCount: Math.max(0, detail.totalMessageCount - held) }
+        : null),
+      reply: {
+        inReplyTo: (last?.rfcMessageId ?? "").trim(),
+        references,
+        to: targets.to,
+        cc: [],
+        allTo: targets.allTo,
+        allCc: targets.allCc,
+        ...(from !== detail.account ? { from } : null),
+      },
+    },
+  };
 }
 
 /**
@@ -117,7 +203,9 @@ export async function withLocalCopies(
 ): Promise<MailThreadDetail> {
   if (options?.before || options?.after || options?.around || !detail.messages.length) return detail;
   const ids = detail.messages.map((m) => m.rfcMessageId);
-  let extra = await copyRows(detail.account, ids).catch(() => []);
+  // The copies under each mailbox's own pause, as the copy path reads them.
+  const readCopies = async () => withoutHeldBack(detail.account, await copyRows(detail.account, ids));
+  let extra = await readCopies().catch(() => []);
   const from = detail.hasOlder
     ? Math.min(...detail.messages.map((m) => (m.sentAt ? Date.parse(m.sentAt) : Infinity)))
     : -Infinity;
@@ -133,7 +221,7 @@ export async function withLocalCopies(
         .then((provider) => fetchMissingBodies(other, provider, missing))
         .catch(() => false);
     }
-    extra = shown(await copyRows(detail.account, ids).catch(() => extra));
+    extra = shown(await readCopies().catch(() => extra));
   }
   const messages = dedupeMessagesByRfcId(
     [...detail.messages, ...extra.map((r) => toMailMessage(r, detail.account))].sort(
@@ -236,7 +324,14 @@ export async function threadFromLocalStore(
     return null;
   }
   const store = mailStore();
-  const readRows = async () => withCopies(account, await store.messages.thread(account, threadId));
+  // The rows a pause holds back are kept apart: they are not shown, but
+  // the mark-as-read step must know of them.
+  let held: StoredWithBody[] = [];
+  const readRows = async () => {
+    const read = await withCopiesAndHeld(account, await store.messages.thread(account, threadId));
+    held = read.held;
+    return read.shown;
+  };
   let rows = await readRows();
   if (!rows.length) return null;
 
@@ -282,7 +377,7 @@ export async function threadFromLocalStore(
   // Opening a window marks the thread read in the copy at once; the
   // provider learns it through the action queue.
   if (options?.markRead !== false && !options?.before && !options?.after) {
-    await markCopiesRead(all, account, threadId);
+    await markCopiesRead(all, held, account, threadId);
   }
 
   let chat = await getChatForThread(account, threadId, names.find((n) => n !== "You") || undefined);
@@ -392,16 +487,33 @@ async function fillBodies(
   return { windowRows: fresh, rows };
 }
 
-/** Mark the conversation read in every mailbox: the list shows its copies as one row. */
-async function markCopiesRead(all: StoredWithBody[], account: string, threadId: string) {
+/**
+ * Mark the conversation read in every mailbox: the list shows its copies as one row.
+ *
+ * Not the mail a pause holds back. The "read" action is for the whole
+ * thread, in the copy and on the server, so it took the unread mark off a
+ * reply the reader had not seen, and the reply was not bold when the pause
+ * ended (2026-11-12). A thread with such mail is marked in the copy only,
+ * up to the cut-off; the server learns it when the thread is opened after
+ * the pause.
+ */
+async function markCopiesRead(all: StoredWithBody[], held: StoredWithBody[], account: string, threadId: string) {
   const store = mailStore();
+  const at = (r: StoredWithBody) => r.copy ?? { account, threadId };
+  const key = (where: { account: string; threadId: string }) => `${where.account}|${where.threadId}`;
   const unreadIn = new Map<string, { account: string; threadId: string }>();
   for (const r of all) {
     if (!r.unread) continue;
-    const where = r.copy ?? { account, threadId };
-    unreadIn.set(`${where.account}|${where.threadId}`, where);
+    unreadIn.set(key(at(r)), at(r));
   }
+  const heldUnreadIn = new Set(held.filter((r) => r.unread && !r.isDraft).map((r) => key(at(r))));
   for (const where of unreadIn.values()) {
+    if (heldUnreadIn.has(key(where))) {
+      await store.messages
+        .setUnread(where.account, where.threadId, false, pauseCutOff(where.account))
+        .catch(() => undefined);
+      continue;
+    }
     const queued = await queueLocalAction(where.account, where.threadId, "read").catch(() => false);
     if (!queued) await store.messages.setUnread(where.account, where.threadId, false).catch(() => undefined);
   }

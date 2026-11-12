@@ -327,17 +327,11 @@ export function useListReach({
   noneFetching,
   pauseState,
 }: Pick<ThreadListDataInput, "accountEmails" | "activeFolder" | "debouncedSearch" | "folder" | "noneFetching" | "pauseState">) {
-  // Sent is fetched while the mail is paused: see listShowsSentOnly.
   const sentOnly = listShowsSentOnly(folder, activeFolder);
-  /*
-    A search reaches a paused mailbox too. A pause holds back the mail
-    that comes in; a search is the reader asking for mail they know is
-    there, and finding nothing in a paused mailbox reads as the mail being
-    gone. But it finds the mailbox as it was when the pause began: what
-    came in since stays held back (lib/mail/pause-cut-off.ts).
-  */
+  // Every list but the inbox is read during a pause, as the mailbox was at the
+  // cut-off (pause-cut-off.ts). Not read, a folder kept the rows of the list before it.
   const searching = Boolean(debouncedSearch);
-  const pastPause = sentOnly || searching;
+  const pastPause = !showsInbox(debouncedSearch, activeFolder, folder);
   const pausedRef = React.useRef(noneFetching && !pastPause);
   pausedRef.current = noneFetching && !pastPause;
   /**
@@ -662,11 +656,23 @@ export function useListLoad({
             new Date()
           ).paused
       );
-      if (!liveEmails.length) {
+      // A paused inbox is not read. When the view changed, the rows on
+      // screen are another view's: show this view's own kept rows, or none.
+      const showKeptRows = () => {
         setLoadingList(false);
         setRefreshing(false);
+        if (sameView) return true;
+        // A load of the view before must not land its rows in this one.
+        loadAbortRef.current?.abort();
+        loadGenRef.current += 1;
+        inFlightRef.current = false;
+        const kept = readCachedList(viewerId, key);
+        setThreads(kept?.threads ?? []);
+        setListCursor(kept?.nextCursor ?? null);
+        setResultsQuery(debouncedSearch);
         return true;
-      }
+      };
+      if (!liveEmails.length) return showKeptRows();
 
       // Supersede any in-flight list fetch (e.g. browse still running when
       // search starts — otherwise it finishes later and wipes the results).
@@ -798,7 +804,7 @@ export function useListLoad({
             p.set("account", email);
             const json = await apiJson<{
               threads?: MailThreadSummary[];
-              nextCursor?: string | null;
+              nextCursor?: string | null; readUpTo?: Record<string, number>;
             }>(`/api/mail/threads?${p.toString()}`, {
               signal: accountController.signal,
             });
@@ -814,7 +820,7 @@ export function useListLoad({
             successes += 1;
             Object.assign(cursorTokens, decodeCursorTokens(json.nextCursor));
             buckets.set(email, rows);
-            if (inboxRead) noteLiveRead([email]);
+            if (inboxRead) noteLiveRead([email], json.readUpTo);
             // Rows from one mailbox are already the server's answer, so
             // local narrowing must stop even though others are still out.
             setThreads(mergedNow());
@@ -922,11 +928,7 @@ export function useListLoad({
         if (fresh && !snoozedView) params.set("fresh", "1");
         if (incremental && !snoozedView) params.set("incremental", "1");
         // One mailbox asked for, and it is paused: nothing to fetch.
-        if (scopedToPausedMailbox(params)) {
-          setLoadingList(false);
-          setRefreshing(false);
-          return true;
-        }
+        if (scopedToPausedMailbox(params)) return showKeptRows();
 
         // Multi-account browse/search: one request per mailbox, merged into
         // the list as each response lands. One slow mailbox does not hold
@@ -942,7 +944,7 @@ export function useListLoad({
         timeout = window.setTimeout(() => controller.abort(), 45_000);
         const json = await apiJson<{
           threads?: MailThreadSummary[];
-          nextCursor?: string | null;
+          nextCursor?: string | null; readUpTo?: Record<string, number>;
         }>(
           snoozedView
             ? `/api/mail/snoozed?${params.toString()}`
@@ -989,7 +991,7 @@ export function useListLoad({
         setListCursor(nextCursor);
         writeCachedList(viewerId, key, { threads, nextCursor });
         if (snoozedView) setSnoozedCount(threads.length);
-        noteListRead({ inbox: inboxRead, snoozedView, account: params.get("account"), emails: liveEmails });
+        noteListRead({ inbox: inboxRead, snoozedView, account: params.get("account"), emails: liveEmails, upTo: json.readUpTo });
         // Keep the open thread's People flag in sync after a change or a refresh.
         reconcileSelection(threads);
         return true;

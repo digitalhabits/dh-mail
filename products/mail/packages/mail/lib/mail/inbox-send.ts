@@ -225,7 +225,7 @@ async function heldInOutbox(account: string): Promise<MailScheduledMessage[]> {
         subject: string;
         to: string[];
         sendAt: number;
-        status?: "waiting" | "sending" | "failed" | "late";
+        status?: "waiting" | "sending" | "stuck" | "failed" | "late";
         lastError?: string | null;
       }[]
     | null;

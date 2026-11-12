@@ -287,6 +287,7 @@ export function createTauriMailStore(): MailStore {
           label: input.label ?? null,
           before: input.before ?? null,
           limit: input.limit ?? null,
+          ...(input.asOf != null ? { asOf: input.asOf } : {}),
         }),
       counts: (input) =>
         call("messages.counts", {
@@ -346,8 +347,8 @@ export function createTauriMailStore(): MailStore {
           messageIds,
           ...(options?.leftFolder != null ? { leftFolder: options.leftFolder } : null),
         }),
-      setUnread: (account, threadId, unread) =>
-        call("messages.setUnread", { account, threadId, unread }),
+      setUnread: (account, threadId, unread, asOf) =>
+        call("messages.setUnread", { account, threadId, unread, ...(asOf != null ? { asOf } : {}) }),
     },
 
     sync: {

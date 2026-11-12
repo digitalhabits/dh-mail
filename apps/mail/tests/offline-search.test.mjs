@@ -120,7 +120,9 @@ suite(async () => {
 
   invalidateMailCaches();
   const inbox = await listUnifiedInbox({ clerkUserId: OWNER, account: OUTLOOK, fresh: true });
-  check("the Outlook inbox lists from the copy", lists.length === 1 && lists[0].view === "inbox", JSON.stringify(lists));
+  // Beside the list, one row is read to know how far the read reached (live-read.ts).
+  const inboxLists = lists.filter((l) => l.view === "inbox");
+  check("the Outlook inbox lists from the copy", inboxLists.length === 1 && lists.every((l) => l.view === "inbox" || l.limit === 1), JSON.stringify(lists));
   check("with its thread", inbox.threads.some((t) => t.subject === "Allotment rota"), inbox.threads.map((t) => t.subject).join(" | "));
   check("and no request to Microsoft", !network.some((u) => u.includes("graph.microsoft.com") || u.includes("login.microsoftonline.com")), network.join(" "));
 });

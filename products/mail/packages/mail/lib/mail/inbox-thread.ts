@@ -9,14 +9,15 @@
 import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
-import { threadFromLocalStore, withLocalCopies } from "@/lib/mail/local-thread";
+import { detailWithoutHeldBack, threadFromLocalStore, withLocalCopies } from "@/lib/mail/local-thread";
+import { pauseCutOff } from "@/lib/mail/pause-cut-off";
 import { extractAttachments, extractBodyHtml, extractBodyText, getMessageFull, getThreadFull, getThreadMinimal, headerValue, modifyThreadLabels, parseAddressList, resolveInlineImages, type GmailMessage } from "@/lib/gmail/api";
 import { mailStore } from "@/lib/mail/store";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
 import { replyTargets } from "@/lib/mail/reply-target";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 import { adoptSplitThread, getChatForThread, noteChatMessageIds } from "@/lib/mail/chats";
-import { getOutlookMailThread } from "@/lib/mail/outlook-inbox";
+import { getOutlookMailThread, markOutlookThreadRead } from "@/lib/mail/outlook-inbox";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { isOwnOrgAddress } from "@/lib/own-addresses";
@@ -104,7 +105,9 @@ export async function getMailThread(
 ): Promise<MailThreadDetail> {
   const provider = await resolveMailProvider(account);
   if (provider === "outlook") {
-    return withLocalCopies(await getOutlookMailThread(account, threadId, options), options);
+    return fromProvider(account, threadId, options, (read) => getOutlookMailThread(account, threadId, read), () =>
+      markOutlookThreadRead(account, threadId)
+    );
   }
   const stored = await threadFromLocalStore(account, threadId, options);
   if (stored) return stored;
@@ -113,7 +116,36 @@ export async function getMailThread(
   if (provider === "exchange") return emptyThreadDetail(account, threadId);
   if (await isAppPasswordGmail(account)) return emptyThreadDetail(account, threadId);
 
-  return withLocalCopies(await getGmailApiThread(account, threadId, options), options);
+  return fromProvider(account, threadId, options, (read) => getGmailApiThread(account, threadId, read), async () => {
+    const token = await accessTokenFor(account);
+    await modifyThreadLabels(token, threadId, { removeLabelIds: ["UNREAD"] });
+  });
+}
+
+/**
+ * A thread the provider answers, under the mailbox's pause.
+ *
+ * The provider gives the whole conversation, and marks all of it read. In
+ * a paused mailbox the mail that came in after the cut-off is left out
+ * (`detailWithoutHeldBack`), as the copy path leaves it out. And a
+ * conversation with such mail is not marked read: the provider can only
+ * mark all of it, and the mail held back must still be unread when the
+ * pause ends. With none held back, it is marked as before.
+ */
+async function fromProvider<O extends { before?: string; after?: string; around?: string; markRead?: boolean }>(
+  account: string,
+  threadId: string,
+  options: O | undefined,
+  read: (options: O | undefined) => Promise<MailThreadDetail>,
+  markRead: () => Promise<void>
+): Promise<MailThreadDetail> {
+  // Copies from the reader's other mailboxes come under their own pauses.
+  if (pauseCutOff(account) == null) return withLocalCopies(await read(options), options);
+  const wantsRead = options?.markRead !== false && !options?.before && !options?.after;
+  const quiet = { ...(options as O), markRead: false };
+  const { detail, held } = detailWithoutHeldBack(await withLocalCopies(await read(quiet), options));
+  if (wantsRead && !held) void markRead().catch(() => undefined);
+  return detail;
 }
 
 /**

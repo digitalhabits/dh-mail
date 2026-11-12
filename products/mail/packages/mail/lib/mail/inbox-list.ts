@@ -15,6 +15,7 @@ import { outlookListTarget } from "@/lib/mail/outlook-folders";
 
 import { localStoreComplete, localStoreServes, localStoreServesFolder } from "@/lib/mail/local-store";
 import { pauseCutOff } from "@/lib/mail/pause-cut-off";
+import { readsUpTo } from "@/lib/mail/live-read";
 import type { MailStoredThread, MailStoredView } from "@/lib/mail/store/types";
 import { decodeSnippet, getThreadMetadata, gmailLabelSearchQuery, listGmailHistory, listRecentMessages, listRecentThreads } from "@/lib/gmail/api";
 import {
@@ -80,13 +81,17 @@ async function dropListRowsFromAnOlderShape(): Promise<void> {
  * required prefix, so these go to the provider, which speaks them.
  */
 /**
- * A search the provider answered, in a paused mailbox: its conversations
+ * A list or a search the provider answered, in a paused mailbox: its conversations
  * that had news after the cut-off go (lib/mail/pause-cut-off.ts). The
  * provider's rows carry no message dates to trim by, so a conversation
  * with a newer message is left out whole. The copy answers most searches,
  * and trims instead.
  */
-function dropHeldBack(summaries: SummaryEntry[], accountEmail: string): void {
+function dropHeldBack(summaries: SummaryEntry[], accountEmail: string, folder?: string): void {
+  // Not Sent while browsing: a row there may be the reader's own mail, sent
+  // in the pause, and Sent is where they check that it went. The provider's
+  // row does not say whose its newest message is. The copy's Sent does.
+  if (folder === "sent") return;
   const cutOff = pauseCutOff(accountEmail);
   if (cutOff == null) return;
   const account = accountEmail.toLowerCase();
@@ -148,12 +153,18 @@ async function listFromLocalStore(input: {
   if (view === "trash" && !(await localStoreServesFolder(accountEmail, "trash"))) return null;
   if (view === "junk" && !(await localStoreServesFolder(accountEmail, "spam"))) return null;
   const before = input.pageToken ? Number(input.pageToken) : null;
+  // A paused mailbox's Sent is read during the pause (listShowsSentOnly),
+  // and a Sent row is made from the whole conversation. With no cut-off, the
+  // row took its time, first line, unread mark and count from a reply the
+  // pause held back (a tester, 2026-11-12). Null when not paused.
+  const asOf = pauseCutOff(accountEmail);
   const page = await store.list({
     accounts: [accountEmail],
     view,
     label: input.label,
     before: Number.isFinite(before) ? before : null,
     limit: PER_ACCOUNT_MESSAGES,
+    ...(asOf != null ? { asOf } : {}),
   });
   return {
     summaries: page.threads.map((t) => summaryFromStored(t, classifier)),
@@ -219,7 +230,7 @@ export function summaryFromStored(t: MailStoredThread, classifier: Classifier): 
 }
 
 type InboxCacheEntry = {
-  value: { threads: MailThreadSummary[]; nextCursor: string | null };
+  value: { threads: MailThreadSummary[]; nextCursor: string | null; readUpTo?: Record<string, number> };
   expiresAt: number;
 };
 
@@ -312,6 +323,12 @@ export async function listUnifiedInbox(options: {
   threads: MailThreadSummary[];
   /** Pass back as `cursor` to hydrate the next page only. Null = end. */
   nextCursor: string | null;
+  /**
+   * How far the read of each mailbox's inbox reached (ms): what a pause
+   * that follows holds back from. Only on a first page of the inbox.
+   * See lib/mail/live-read.ts.
+   */
+  readUpTo?: Record<string, number>;
 }> {
   // Before anything reads the stored rows. The first list after a reload is
   // not an incremental poll, so a check further down would let the old rows
@@ -358,8 +375,14 @@ export async function listUnifiedInbox(options: {
       accounts: allAccounts.map((a) => a.email),
       threads: cached.value.threads,
       nextCursor: cached.value.nextCursor,
+      ...(cached.value.readUpTo ? { readUpTo: cached.value.readUpTo } : null),
     };
   }
+  // Before the rows are read, so that it never says more than they hold.
+  const readUpTo =
+    folder === "inbox" && !label && !hasSearchQuery && !isContinuation
+      ? await readsUpTo(accountEmails, (email) => providerByEmail.get(email) ?? "gmail", Date.now())
+      : undefined;
 
   const classifier = await getClassifier(options.clerkUserId);
   const {
@@ -440,6 +463,7 @@ export async function listUnifiedInbox(options: {
             nextTokens[accountEmail] = result.nextPageToken;
           }
           summaries.push(...result.summaries);
+          dropHeldBack(summaries, accountEmail, q ? undefined : folder);
           return;
         }
 
@@ -489,7 +513,7 @@ export async function listUnifiedInbox(options: {
           });
           if (result.nextPageToken) nextTokens[accountEmail] = result.nextPageToken;
           summaries.push(...result.summaries);
-          if (q) dropHeldBack(summaries, accountEmail);
+          dropHeldBack(summaries, accountEmail, q ? undefined : folder);
           return;
         }
 
@@ -507,7 +531,7 @@ export async function listUnifiedInbox(options: {
           gmailListSnippetsByAccount,
           pageStateByAccount,
         });
-        if (q) dropHeldBack(summaries, accountEmail);
+        dropHeldBack(summaries, accountEmail, q ? undefined : folder);
       } catch (err) {
         // A Gmail on an app password is read from the copy only, as Exchange
         // is: before its first rows it lists nothing, and that is no failure.
@@ -619,11 +643,15 @@ export async function listUnifiedInbox(options: {
     q,
     summaries,
   });
+  // The cached page says how far its own read reached, not a later one's.
+  const kept = readUpTo && !isContinuation ? inboxCache.get(cacheKey) : undefined;
+  if (kept) kept.value.readUpTo = readUpTo;
 
   return {
     accounts: allAccounts.map((a) => a.email),
     threads: collapsed,
     nextCursor,
+    ...(readUpTo ? { readUpTo } : null),
   };
 }
 

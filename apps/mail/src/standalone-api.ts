@@ -24,6 +24,8 @@ import { forgetAccountThreadBodies } from "@/lib/mail/thread-cache";
 import { deleteAccountDrafts } from "@/lib/mail/local-drafts";
 import { unpinAccount } from "@/lib/mail/pins";
 import { searchOlderMail } from "@/lib/mail/older-search";
+import { makeRule, removeSenderRule, saveSenderRule } from "@/lib/mail/sender-rules";
+import { runSenderRulesSoon, senderRuleState } from "@/lib/mail/sender-rules-run";
 import { trackMailWrite } from "./pending-writes";
 import {
   archiveMailThread,
@@ -432,6 +434,32 @@ async function moveThread({ url, body }: RouteContext): Promise<Response> {
   // The owner is passed so the ones that take a thread out of the inbox
   // can drop it from the stored list page too. The others ignore it.
   await act(input.account, input.threadId, OWNER_ID);
+  return ok({ success: true });
+}
+
+/** /api/mail/rules/sender: the sender of a row, their rule, and their mail in the inbox. */
+async function senderRule({ q }: RouteContext): Promise<Response> {
+  const account = q.get("account");
+  const threadId = q.get("threadId");
+  if (!account || !threadId) return failed("account and threadId are required", 400);
+  return ok({ success: true, ...(await senderRuleState(account, threadId, q.get("from") ?? undefined)) });
+}
+
+/** /api/mail/rules/save: keep a rule, and move the mail already in the inbox when asked. */
+async function senderRuleSave({ body }: RouteContext): Promise<Response> {
+  const input = await body<Parameters<typeof makeRule>[0] & { moveExisting?: boolean }>();
+  const rule = makeRule(input);
+  if (!rule) return failed("This rule cannot be made", 400);
+  await saveSenderRule(rule);
+  const moved = input.moveExisting ? await runSenderRulesSoon(rule.account, rule) : 0;
+  return ok({ success: true, rule, moved });
+}
+
+/** /api/mail/rules/remove: a rule the reader takes away. Mail it moved stays where it is. */
+async function senderRuleRemove({ body }: RouteContext): Promise<Response> {
+  const input = await body<{ id: string }>();
+  if (!input.id) return failed("id is required", 400);
+  await removeSenderRule(input.id);
   return ok({ success: true });
 }
 
@@ -1069,6 +1097,9 @@ export const STANDALONE_MAIL_ROUTES: Record<string, Route> = {
   "/api/mail/not-junk": moveThread,
   "/api/mail/unread": moveThread,
   "/api/mail/delete-forever": deleteForever,
+  "/api/mail/rules/sender": senderRule,
+  "/api/mail/rules/save": senderRuleSave,
+  "/api/mail/rules/remove": senderRuleRemove,
   "/api/mail/snooze": snooze,
   "/api/mail/unsnooze": unsnooze,
   "/api/mail/snoozed": snoozed,
@@ -1143,6 +1174,9 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/send",
   "/api/mail/chat-style",
   "/api/mail/folders/move",
+  "/api/mail/rules/sender",
+  "/api/mail/rules/save",
+  "/api/mail/rules/remove",
   "/api/mail/folders/unmove",
   "/api/mail/contact-lists",
   "/api/gmail/accounts",

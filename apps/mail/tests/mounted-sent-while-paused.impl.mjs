@@ -36,10 +36,56 @@ setMailApiTransport(async (path) => {
       includeHidden: url.searchParams.get("includeHidden") === "1",
     });
   }
-  return new Response(JSON.stringify({ success: true, threads: [], nextCursor: null }), {
+  // The folder walk below: each folder answers with one row of its own, Junk slowly.
+  let threads = [];
+  if (url.pathname === "/api/mail/threads" && rowsByFolder) {
+    const folder = url.searchParams.get("folder") ?? "inbox";
+    if (folder === "junk") await sleep(250);
+    threads = url.searchParams.get("account") === PAUSED ? (rowsByFolder[folder] ?? []) : [];
+  }
+  return new Response(JSON.stringify({ success: true, threads, nextCursor: null }), {
     headers: { "Content-Type": "application/json" },
   });
 });
+
+/** When set, the rows each folder answers with. */
+let rowsByFolder = null;
+const row = (id) => ({
+  account: PAUSED,
+  threadId: id,
+  subject: id,
+  fromName: "Ann",
+  fromEmail: "ann@mail.example",
+  snippet: "",
+  lastAt: "2026-11-01T10:00:00.000Z",
+  unread: false,
+  messageCount: 1,
+  tab: "other",
+});
+
+/** The rows on screen, as the hook last gave them. */
+let shown = [];
+function Walker({ folder, pauseState }) {
+  const data = useThreadListData({
+    viewerId: "walker",
+    pageSnapKey: "snap-walk",
+    initialList: null,
+    // Two mailboxes: each is asked on its own, and its answer lands on its own.
+    accountCount: 2,
+    accountEmails: [PAUSED, LIVE],
+    mailboxScopeEmails: [],
+    folder,
+    activeFolder: null,
+    debouncedSearch: "",
+    searchScopeKey: "",
+    pauseState,
+    noneFetching: true,
+    mailSurfaceRef: { current: null },
+    reconcileSelection: () => {},
+  });
+  shown = data.threads.map((t) => t.threadId);
+  return null;
+}
 
 function List({ folder, accounts, pauseState, noneFetching, search = "" }) {
   useThreadListData({
@@ -126,6 +172,36 @@ async function walk() {
     const all = await mount({ folder: "inbox", accounts: [PAUSED], pauseState: allPaused, noneFetching: true, search: "invoice" });
     assert.ok(all.some((r) => r.q === "invoice"), "a search asks while all mail is paused");
     pass("a search reaches a paused mailbox");
+  }
+
+  // A walk through the folders of a paused mailbox. Each list shows its own
+  // rows. The paused inbox is not read, and it must not keep the rows of
+  // the list before it, nor take the rows of a load that lands late: after
+  // Sent, the inbox and every folder showed the Sent rows (2026-11-12).
+  {
+    await sleep(200);
+    rowsByFolder = { sent: [row("sent-1")], junk: [row("junk-1")], archived: [row("archived-1")], inbox: [row("inbox-new")] };
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const show = async (folder, wait) => {
+      root.render(React.createElement(Walker, { folder, pauseState: allPaused }));
+      await sleep(wait);
+    };
+    await show("sent", 300);
+    assert.deepEqual(shown, ["sent-1"], "Sent shows the Sent rows");
+    await show("archived", 300);
+    assert.deepEqual(shown, ["archived-1"], "a folder is read in a pause, and shows its own rows");
+    await show("inbox", 300);
+    assert.deepEqual(shown, [], "the paused inbox is not read, and does not keep the folder's rows");
+    // Junk answers slowly: the reader is back in the inbox before it lands.
+    await show("junk", 50);
+    await show("inbox", 500);
+    assert.deepEqual(shown, [], "a folder's answer that lands late does not fill the inbox");
+    root.unmount();
+    host.remove();
+    rowsByFolder = null;
+    pass("each list of a paused mailbox shows its own rows");
   }
 
   // A search reaches a hidden mailbox, unless the reader turned that off.

@@ -4,8 +4,15 @@
 //! sign-in IMAP uses, and files a copy in Sent itself. There is no budget
 //! on it beyond the daily sending cap every route shares. The worker
 //! carries the outbox here; nothing in the interface waits on it.
+//!
+//! Some networks shut port 465. Gmail takes the same mail on 587, where the
+//! connection starts plain and turns to TLS with STARTTLS. `connect_gmail`
+//! tries the other port when one cannot be reached, and keeps to the one
+//! that worked. Before, a reader on such a network had a message in the
+//! outbox that was tried every minute all day and never went (2026-11-11).
 
 use std::io::{BufRead, BufReader, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use base64::Engine;
@@ -14,6 +21,47 @@ use crate::imap::{tls_connect, Stream};
 
 pub const SMTP_HOST: &str = "smtp.gmail.com";
 pub const SMTP_PORT: u16 = 465;
+/// The same server with STARTTLS, for a network that shuts 465.
+pub const SMTP_STARTTLS_PORT: u16 = 587;
+
+/// 587 worked when 465 could not be reached: try it first from now on.
+static PREFER_STARTTLS: AtomicBool = AtomicBool::new(false);
+
+/// Gmail's SMTP server, on 465 or, where that cannot be reached, on 587.
+/// Only a connection that fails sends it to the other port. A refusal or a
+/// TLS error is the server's answer, and the other port would give the same.
+pub fn connect_gmail(timeout: Duration) -> Result<Smtp, SmtpError> {
+  let starttls_first = PREFER_STARTTLS.load(Ordering::Relaxed);
+  let first = if starttls_first {
+    Smtp::connect_starttls(SMTP_HOST, SMTP_STARTTLS_PORT, timeout)
+  } else {
+    Smtp::connect(SMTP_HOST, SMTP_PORT, timeout)
+  };
+  let err = match first {
+    Ok(smtp) => return Ok(smtp),
+    Err(e) if worth_the_other_port(&e) => e,
+    Err(e) => return Err(e),
+  };
+  let (port, second) = if starttls_first {
+    (SMTP_PORT, Smtp::connect(SMTP_HOST, SMTP_PORT, timeout))
+  } else {
+    (SMTP_STARTTLS_PORT, Smtp::connect_starttls(SMTP_HOST, SMTP_STARTTLS_PORT, timeout))
+  };
+  match second {
+    Ok(smtp) => {
+      log::info!("[mail-net] {SMTP_HOST}: sending on port {port}; the other port could not be reached ({err})");
+      PREFER_STARTTLS.store(port == SMTP_STARTTLS_PORT, Ordering::Relaxed);
+      Ok(smtp)
+    }
+    // The first port's error: the one the reader's network gives first.
+    Err(_) => Err(err),
+  }
+}
+
+/// A connection that could not be made or broke before the greeting.
+fn worth_the_other_port(e: &SmtpError) -> bool {
+  matches!(e, SmtpError::Io(_))
+}
 
 #[derive(Debug)]
 pub enum SmtpError {
@@ -90,11 +138,32 @@ pub struct Smtp {
 
 impl Smtp {
   pub fn connect(host: &str, port: u16, timeout: Duration) -> Result<Smtp, SmtpError> {
-    let stream = tls_connect(host, port, timeout).map_err(|e| match e {
-      crate::imap::ImapError::Io(io) => SmtpError::Io(io),
-      other => SmtpError::Tls(other.to_string()),
-    })?;
+    let stream = tls_connect(host, port, timeout).map_err(imap_error)?;
     Self::from_stream(stream)
+  }
+
+  /// Port 587: plain to begin with, then TLS after STARTTLS, and the
+  /// greeting again over TLS, as the server forgets what it said before.
+  pub fn connect_starttls(host: &str, port: u16, timeout: Duration) -> Result<Smtp, SmtpError> {
+    let tcp = crate::imap::tcp_connect(host, port, timeout).map_err(imap_error)?;
+    Self::from_stream(Stream::Plain(tcp))?.start_tls(host)
+  }
+
+  fn start_tls(mut self, host: &str) -> Result<Smtp, SmtpError> {
+    self.command("STARTTLS", 220)?;
+    // Anything the server sent before TLS began could be an attacker's
+    // words, read later as if they came over TLS.
+    if !self.stream.buffer().is_empty() {
+      return Err(SmtpError::Protocol("the server sent more after STARTTLS".into()));
+    }
+    let tcp = match self.stream.into_inner() {
+      Stream::Plain(tcp) => tcp,
+      Stream::Tls(_) => return Err(SmtpError::Protocol("STARTTLS on a TLS connection".into())),
+    };
+    let tls = crate::imap::tls_wrap(tcp, host).map_err(imap_error)?;
+    let mut smtp = Smtp { stream: BufReader::new(tls) };
+    smtp.command("EHLO localhost", 250)?;
+    Ok(smtp)
   }
 
   pub fn connect_plain(tcp: std::net::TcpStream) -> Result<Smtp, SmtpError> {
@@ -243,6 +312,14 @@ impl Smtp {
   }
 }
 
+/// A connection error stays one, so that `connect_gmail` can tell it apart.
+fn imap_error(e: crate::imap::ImapError) -> SmtpError {
+  match e {
+    crate::imap::ImapError::Io(io) => SmtpError::Io(io),
+    other => SmtpError::Tls(other.to_string()),
+  }
+}
+
 /// A line that starts with a dot gets a second one, as the DATA step
 /// requires, and line ends are CRLF.
 ///
@@ -300,6 +377,53 @@ mod tests {
       }
     });
     TcpStream::connect(addr).unwrap()
+  }
+
+  #[test]
+  fn port_587_says_starttls_and_then_speaks_tls() {
+    // A server that answers STARTTLS and then reads what comes next: a TLS
+    // hello, not another command in the clear.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = thread::spawn(move || {
+      let (mut socket, _) = listener.accept().unwrap();
+      socket.write_all(b"220 smtp.test ESMTP ready\r\n").unwrap();
+      let mut reader = BufReader::new(socket.try_clone().unwrap());
+      let mut line = String::new();
+      reader.read_line(&mut line).unwrap();
+      assert!(line.starts_with("EHLO"), "{line:?}");
+      socket.write_all(b"250-smtp.test\r\n250 STARTTLS\r\n").unwrap();
+      line.clear();
+      reader.read_line(&mut line).unwrap();
+      assert_eq!(line, "STARTTLS\r\n");
+      socket.write_all(b"220 2.0.0 Ready to start TLS\r\n").unwrap();
+      let mut first = [0u8; 1];
+      std::io::Read::read_exact(&mut reader, &mut first).unwrap();
+      first[0]
+    });
+    let err = Smtp::connect_starttls("localhost", port, Duration::from_secs(5)).err().expect("no TLS server here");
+    // 0x16 opens a TLS handshake record.
+    assert_eq!(server.join().unwrap(), 0x16);
+    assert!(!worth_the_other_port(&SmtpError::Tls(err.to_string())));
+  }
+
+  #[test]
+  fn words_after_starttls_before_tls_are_refused() {
+    let stream = fake_smtp(vec![
+      ("EHLO", "250-smtp.test\r\n250 STARTTLS\r\n"),
+      ("STARTTLS", "220 go ahead\r\n250 injected\r\n"),
+    ]);
+    let smtp = Smtp::connect_plain(stream).unwrap();
+    let err = smtp.start_tls("localhost").err().expect("refused");
+    assert!(matches!(err, SmtpError::Protocol(_)), "{err}");
+  }
+
+  #[test]
+  fn only_a_connection_that_fails_tries_the_other_port() {
+    let unreachable = std::io::Error::new(std::io::ErrorKind::NotConnected, "could not reach smtp.gmail.com:465");
+    assert!(worth_the_other_port(&SmtpError::Io(unreachable)));
+    assert!(!worth_the_other_port(&SmtpError::Refused { code: 535, text: "bad grant".into() }));
+    assert!(!worth_the_other_port(&SmtpError::Tls("certificate".into())));
   }
 
   #[test]

@@ -44,6 +44,8 @@ const NOT_BROWSER_STORAGE = [
   { name: "SIGNATURE_KEY", value: "mail_signature", why: "native settings store, per account" },
   { name: "KEY", value: "mail_text_style", why: "native settings store, per account" },
   { name: "RECENT_KEY", value: "mail_recent_fonts", why: "native settings store" },
+  { name: "SENDER_RULES_KEY", value: "mail_sender_rules", why: "native settings store" },
+  { name: "SENDER_RULES_DONE_KEY", value: "mail_sender_rules_done", why: "native settings store" },
   // Id prefixes and record keys. They name things, not stored values.
   { name: "COMPOSE_DRAFT_KEY", value: "compose", why: "draft record key in IndexedDB" },
   { name: "IMAP_ATTACHMENT_PREFIX", value: "imap:", why: "attachment id prefix" },

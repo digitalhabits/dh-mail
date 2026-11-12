@@ -274,13 +274,18 @@ export function MoveToFolderMenu({
            from a press outside itself — see ThreadToolbarOverflow. */
         data-mail-move-menu
         align="end"
-        className="w-72 p-0"
+        /* Never taller than the room it has: the list of folders scrolls,
+           and the box and the four places stay in sight. Opened upward from
+           a row low in the window, a long list ran off the top of the
+           window, with the box and Inbox out of sight (2026-11-12). */
+        collisionPadding={8}
+        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col p-0"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={dismissMenu}
         onFocusOutside={dismissMenu}
         onInteractOutside={dismissMenu}
       >
-        <div className="border-b border-stone-100 p-2">
+        <div className="shrink-0 border-b border-stone-100 p-2">
           <input
             ref={inputRef}
             value={query}
@@ -318,7 +323,7 @@ export function MoveToFolderMenu({
         </div>
         {/* The rail's four, in the rail's order, above the folders. */}
         {places.length ? (
-          <ul className="border-b border-stone-100 p-1">
+          <ul className="shrink-0 border-b border-stone-100 p-1">
             {places.map((place, i) => {
               const Icon = place.icon;
               const isHere = here?.view === place.key;
@@ -379,7 +384,7 @@ export function MoveToFolderMenu({
             )}
           </div>
         ) : (
-        <ul className="max-h-[32rem] overflow-y-auto py-1">
+        <ul className="max-h-[32rem] min-h-0 overflow-y-auto py-1">
           {items.length ? (
             items.map((item, index) => {
               // The places above hold the first numbers; these carry on.

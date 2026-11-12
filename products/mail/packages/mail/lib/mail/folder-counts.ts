@@ -113,3 +113,52 @@ export function bumpFolderCount(
   });
   return next;
 }
+
+/** The last count each folder had while its mailbox was not paused. */
+export type HeldFolderCounts = Map<string, number>;
+
+/**
+ * The counts of a paused mailbox, as they were before the pause.
+ *
+ * The copy goes on filling during a pause, and the counts are read from
+ * it. Mail that a rule filed in a folder made that folder's number go up,
+ * so the rail said that mail had come. A paused mailbox's folders keep the
+ * count they had when the mailbox was last read live, or the first count
+ * seen in the pause when there is none.
+ *
+ * `learn` is false for a list read with no counts in it (names only): it
+ * takes the held counts and teaches nothing.
+ */
+export function holdPausedFolderCounts(
+  folders: MailAccountFolder[],
+  held: HeldFolderCounts,
+  paused: (account: string) => boolean,
+  learn = true
+): MailAccountFolder[] {
+  const pausedNow = new Map<string, boolean>();
+  const isPaused = (account: string) => {
+    const key = account.trim().toLowerCase();
+    if (!pausedNow.has(key)) pausedNow.set(key, paused(account));
+    return pausedNow.get(key) === true;
+  };
+  return folders.map((folder) => {
+    const key = folderCountKey(folder.account, folder.name);
+    if (!isPaused(folder.account)) {
+      if (learn) held.set(key, folder.count);
+      return folder;
+    }
+    const was = held.get(key);
+    if (was == null) {
+      if (learn) held.set(key, folder.count);
+      return folder;
+    }
+    return was === folder.count ? folder : { ...folder, count: was };
+  });
+}
+
+/** The reader's own move, in a held count too: it is not mail that came in. */
+export function bumpHeldFolderCount(held: HeldFolderCounts, account: string, name: string, delta: number): void {
+  const key = folderCountKey(account, name);
+  const was = held.get(key);
+  if (was != null) held.set(key, Math.max(0, was + delta));
+}

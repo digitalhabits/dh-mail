@@ -49,11 +49,22 @@ export function MenuShell({
   React.useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const box = el.getBoundingClientRect();
-    setPlaced({
-      left: Math.max(8, Math.min(x, window.innerWidth - box.width - 8)),
-      top: Math.max(8, Math.min(y, window.innerHeight - box.height - 8)),
-    });
+    const place = () => {
+      const box = el.getBoundingClientRect();
+      const next = {
+        left: Math.max(8, Math.min(x, window.innerWidth - box.width - 8)),
+        top: Math.max(8, Math.min(y, window.innerHeight - box.height - 8)),
+      };
+      setPlaced((was) => (was.left === next.left && was.top === next.top ? was : next));
+    };
+    place();
+    // Again when the menu grows: a line that waits for an answer (the rules
+    // for a sender) comes after the menu is placed, and a menu low in the
+    // window then ran off its foot, with the new line out of sight.
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(place);
+    watch.observe(el);
+    return () => watch.disconnect();
   }, [x, y]);
 
   React.useEffect(() => {

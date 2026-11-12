@@ -47,6 +47,11 @@ pub fn add_columns(conn: &rusqlite::Connection) -> DbResult<()> {
 /// Tries at a connection that keeps failing before the message is given back.
 pub const MAX_ATTEMPTS: i64 = 20;
 
+/// How long a message may wait for a server it cannot reach before the
+/// reader is told. A network that shuts the mail port kept a message in the
+/// outbox all day, shown as sent, with nothing on the screen (2026-11-11).
+pub const STUCK_AFTER_MS: i64 = 10 * 60 * 1000;
+
 /// How long a claim on a message is believed.
 ///
 /// A worker takes a message before it sends it, and lets go if the send
@@ -90,7 +95,8 @@ pub struct OutboxRow {
 
 impl OutboxRow {
   /// "waiting" for its time, "sending" when due, "failed" when given up,
-  /// "late" when a scheduled message waits for the person (`is_late`).
+  /// "late" when a scheduled message waits for the person (`is_late`),
+  /// "stuck" when it is due and has not gone for a while (`is_stuck`).
   pub fn status(&self, now: i64) -> &'static str {
     if self.failed_at.is_some() {
       "failed"
@@ -98,9 +104,17 @@ impl OutboxRow {
       "waiting"
     } else if self.is_late(now) {
       "late"
+    } else if self.is_stuck(now) {
+      "stuck"
     } else {
       "sending"
     }
+  }
+
+  /// Due for longer than `STUCK_AFTER_MS`, and the last try at it failed.
+  /// It is still tried: the reader is only told that it has not gone.
+  pub fn is_stuck(&self, now: i64) -> bool {
+    self.failed_at.is_none() && self.last_error.is_some() && now - self.send_at > STUCK_AFTER_MS
   }
 
   /// A message sent later, more than an hour past its time: not sent
@@ -290,6 +304,22 @@ impl MailDb {
     Ok(false)
   }
 
+  /// The server could not be reached: these messages keep that as their
+  /// last error. It is not an attempt, so a network that is down for a day
+  /// never makes the app give a message up. Answers the ones that are now
+  /// stuck (`OutboxRow::is_stuck`), for the reader to be told.
+  pub fn outbox_unreachable(&self, account: &str, ids: &[i64], error: &str, now: i64) -> DbResult<Vec<OutboxRow>> {
+    let conn = self.conn_mut();
+    for id in ids {
+      conn.execute(
+        "UPDATE outbox SET last_error = ?3 WHERE id = ?1 AND account_email = ?2 AND failed_at IS NULL",
+        params![id, account, error],
+      )?;
+    }
+    drop(conn);
+    Ok(self.outbox_list(account)?.into_iter().filter(|r| ids.contains(&r.id) && r.is_stuck(now)).collect())
+  }
+
   pub fn outbox_cancel(&self, account: &str, id: i64) -> DbResult<bool> {
     let conn = self.conn_mut();
     let n = conn.execute("DELETE FROM outbox WHERE id = ?1 AND account_email = ?2", params![id, account])?;
@@ -405,6 +435,33 @@ pub fn row_json(row: &OutboxRow) -> Value {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_message_the_server_cannot_be_reached_for_is_stuck_after_ten_minutes() {
+    let db = MailDb::open_in_memory().unwrap();
+    let now = now_ms();
+    let id = db.outbox_enqueue("vera@example.com", None, &["ann@x.test".into()], "raw", "Plans", &["ann@x.test".into()], None, None).unwrap();
+    let unreached = "connection: could not reach smtp.gmail.com:465";
+
+    // A minute in: noted on the message, not said yet.
+    let stuck = db.outbox_unreachable("vera@example.com", &[id], unreached, now + 60_000).unwrap();
+    assert!(stuck.is_empty());
+    let row = db.outbox_list("vera@example.com").unwrap().remove(0);
+    assert_eq!(row.last_error.as_deref(), Some(unreached));
+    assert_eq!(row.status(now + 60_000), "sending");
+
+    // Past ten minutes: stuck, and said.
+    let later = now + STUCK_AFTER_MS + 60_000;
+    let stuck = db.outbox_unreachable("vera@example.com", &[id], unreached, later).unwrap();
+    assert_eq!(stuck.iter().map(|r| r.id).collect::<Vec<_>>(), vec![id]);
+    let row = db.outbox_list("vera@example.com").unwrap().remove(0);
+    assert_eq!(row.status(later), "stuck");
+    // Not an attempt: a network that is down never makes the app give up.
+    assert_eq!(row.attempts, 0);
+    assert!(row.failed_at.is_none());
+    // Another mailbox's message is not touched.
+    assert!(db.outbox_unreachable("other@example.com", &[id], unreached, later).unwrap().is_empty());
+  }
 
   #[test]
   fn a_held_message_says_its_words_and_cc() {

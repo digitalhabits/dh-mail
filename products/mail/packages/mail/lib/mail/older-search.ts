@@ -27,6 +27,7 @@ import { filterAccountsForScope } from "@/lib/mail/account-scope";
 import { summaryFromStored } from "@/lib/mail/inbox-list";
 import { getClassifier } from "@/lib/mail/inbox-gmail-common";
 import { stateServes, syncStates } from "@/lib/mail/local-store";
+import { pauseCutOff } from "@/lib/mail/pause-cut-off";
 import type { OlderMailMiss } from "@/lib/mail/older-mail-merge";
 import { listConnectedMailAccounts } from "@/lib/mail/providers";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
@@ -121,11 +122,14 @@ async function askGmail(
     void Promise.resolve(invoke("mail_sync_search_older_cancel", { account: input.account })).catch(() => undefined);
   };
   input.signal?.addEventListener("abort", cancel, { once: true });
+  const asOf = pauseCutOff(input.account);
   try {
     const answer = (await invoke("mail_sync_search_older", {
       account: input.account,
       query: input.q,
       limit: OLDER_PER_ACCOUNT,
+      // A paused mailbox: the rows as the pause found them.
+      ...(asOf != null ? { asOf } : null),
     })) as { threads?: MailStoredThread[]; handled?: boolean; superseded?: boolean };
     if (input.signal?.aborted || answer.superseded) return NOTHING;
     const rows = Array.isArray(answer.threads) ? answer.threads : [];

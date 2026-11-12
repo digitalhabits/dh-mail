@@ -22,6 +22,7 @@ import { FloatingCards } from "@/components/mail/mail-floating-cards";
 import { ReadingPaneContent } from "@/components/mail/mail-reading-pane";
 import { ThreadListColumn } from "@/components/mail/mail-thread-list";
 import { FoldersMenu, FolderRail, FoldersButton, FilterChips, FilterRow, AccountTabs, ListTabsOrFolder, LayoutMenu } from "@/components/mail/mail-list-chrome";
+import { SenderRuleDialogHost } from "@/components/mail/SenderRuleDialog";
 import { MailPauseMenu } from "@/components/mail/MailPauseMenu";
 import { openMailAccountsMenu } from "@/lib/mail/open-mail-accounts-menu";
 import { MailPhoneShell, type MailPhoneDetail } from "@/components/mail/MailPhoneShell";
@@ -221,6 +222,8 @@ export function MailPage(props: MailPageProps) {
   const contactDialogs = (
     <>
       <ContactSourcesDialogHost />
+      {/* "Rule for <sender>", opened from a row's menu. */}
+      <SenderRuleDialogHost />
       {/* The words to type before ending a pause early. */}
       <UnpauseChallengeHost />
       {/* Help → Save Diagnostics…, and Settings → Advanced. */}

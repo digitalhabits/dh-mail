@@ -14,7 +14,6 @@ import * as React from "react";
 
 import { patchCachedThreads } from "@/components/mail/mail-list-state";
 import { mailApiJson } from "@/lib/mail/api";
-import { MAIL_LAST_LIVE_READ_KEY } from "@/lib/mail/storage-keys";
 import { mailPauseVerdictForAccount, type MailPauseState } from "@/lib/mail/quiet-hours";
 import {
   nextWakeWhilePaused,
@@ -24,20 +23,27 @@ import {
   withWokenRows,
 } from "@/lib/mail/snooze-wake-paused";
 import { threadKey } from "@/lib/mail/thread-copies";
-import { readLastLiveReads } from "@/lib/mail/pause-cut-off";
+import { readLastLiveReads, writeLiveReads } from "@/lib/mail/pause-cut-off";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
-/** These mailboxes' inboxes were just read from the provider, not paused. */
-export function noteLiveRead(emails: readonly string[]): void {
+/**
+ * These mailboxes' inboxes were just read from the provider, not paused.
+ *
+ * `upTo` is how far each read reached (the list's answer says it): the
+ * copy's newest mail, or the time the read began. Without it, the time now.
+ * The time now was not right for a copy that was behind: mail that came
+ * before that time, and was stored after it, was not in the list, but it
+ * passed the cut-off of the pause that followed.
+ */
+export function noteLiveRead(emails: readonly string[], upTo?: Readonly<Record<string, number>> | null): void {
   if (!emails.length) return;
-  const reads = readLastLiveReads();
   const now = Date.now();
-  for (const email of emails) reads[email.toLowerCase()] = now;
-  try {
-    window.localStorage.setItem(MAIL_LAST_LIVE_READ_KEY, JSON.stringify(reads));
-  } catch {
-    /* private mode: only the snoozes that wake while the app is open come back */
+  const reads: Record<string, number> = {};
+  for (const email of emails) {
+    const at = upTo?.[email] ?? upTo?.[email.toLowerCase()];
+    reads[email] = typeof at === "number" && Number.isFinite(at) ? Math.min(at, now) : now;
   }
+  writeLiveReads(reads);
 }
 
 /** The list is the inbox: not a folder, not a search. */
@@ -56,9 +62,10 @@ export function noteListRead(read: {
   snoozedView: boolean;
   account: string | null;
   emails: readonly string[];
+  upTo?: Readonly<Record<string, number>> | null;
 }): void {
   if (!read.inbox || read.snoozedView) return;
-  noteLiveRead(read.account ? [read.account] : read.emails);
+  noteLiveRead(read.account ? [read.account] : read.emails, read.upTo);
 }
 
 /**

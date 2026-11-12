@@ -12,6 +12,7 @@
 
 import { exchangeSyncRunning, startExchangeSync, stopExchangeSync, wakeExchangeSync } from "@/lib/mail/exchange-sync";
 import { outlookSyncRunning, startOutlookSync, stopOutlookSync, wakeOutlookSync } from "@/lib/mail/outlook-sync";
+import { startSenderRules, stopSenderRules } from "@/lib/mail/sender-rules-run";
 import { tauriInvoke } from "@/lib/mail/store/tauri";
 
 import type { MailboxRef } from "./mailbox-health";
@@ -62,6 +63,8 @@ export function wakeEverySyncWhenOnline(target: Pick<Window, "addEventListener" 
 export async function startLocalStoreSync(mailboxes: MailboxRef[]): Promise<string[]> {
   const invoke = tauriInvoke();
   if (!invoke) return [];
+  // The reader's rules for senders run after each change of a mailbox's copy.
+  startSenderRules(mailboxes.map((m) => m.email));
   const outlook = mailboxes.filter((m) => m.provider === "outlook").map((m) => m.email);
   for (const email of outlook) startOutlookSync(email);
   // Exchange (EWS): a worker in the interface, as for Outlook. None in the
@@ -88,6 +91,7 @@ export async function startLocalStoreSync(mailboxes: MailboxRef[]): Promise<stri
  * last write.
  */
 export async function stopLocalStoreSync(account: string): Promise<void> {
+  stopSenderRules(account);
   await stopOutlookSync(account);
   await stopExchangeSync(account);
   gmailMailboxes.delete(account.trim().toLowerCase());

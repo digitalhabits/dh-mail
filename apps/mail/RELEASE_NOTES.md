@@ -1,10 +1,26 @@
 ## What is new
 
+**Rules for a sender**
+- Right-click a mail and choose "Rules for …" to say where that sender's future mail goes: always to Junk, always to Archive, always to a folder, or always to Trash. One click makes the rule, and it also moves the mail of theirs that is in the inbox now.
+- "More options…" opens the full rule: this sender only or everyone at their domain, the folder to use, and whether the mail already in the inbox goes too.
+- A sender with a rule shows it as "In use". "Remove this rule" takes it away.
+- Mail runs the rules after each sync. A rule does not run while Mail is closed: mail that came then is moved when you next open Mail.
+
+**Quiet hours and paused mailboxes**
+- Mail that comes in during a pause stays out of sight everywhere. Before, the Sent list could show a reply the pause was holding back: its time, its first words and bold text, though the conversation did not show it.
+- A reply held back during a pause shows in the conversation when the pause ends. Before, it could stay missing.
+- Mail held back during a pause is still unread when the pause ends. Before, it was marked read when you opened the conversation during the pause.
+- During a pause, each folder shows its own mail. Before, after a look at Sent, the inbox and the other folders could show the Sent list.
+- Folder counts of a paused mailbox do not change until the pause ends.
+
 **Fixes**
-- A forward you write shows the forwarded message under the usual "Forwarded message" header, with From, Date, Subject and To. This is what the recipient gets. Before, the box showed the message under an arrow, which the mail does not have. Preview also shows the header as it is sent.
-- When you answer one message with its reply arrow, one line over the box says whose mail you answer. Before, the message showed as a card, but the card is not sent. Click × on the line to answer the whole conversation.
+- The "Move to folder" list stays inside the window. Before, opened from a mail low in the list, its top ran off the window, with the search box and Inbox out of sight.
+- Gmail sends on port 587 when the network shuts port 465. Before, on such a network a message stayed in the outbox.
+- A message that cannot be sent for 10 minutes says so: its row in Scheduled says "Not sent yet" with the reason, and a notice tells you once. Before, nothing showed.
 
 **Earlier fixes**
+- A forward you write shows the forwarded message under the usual "Forwarded message" header, with From, Date, Subject and To. This is what the recipient gets. Before, the box showed the message under an arrow, which the mail does not have. Preview also shows the header as it is sent.
+- When you answer one message with its reply arrow, one line over the box says whose mail you answer. Before, the message showed as a card, but the card is not sent. Click × on the line to answer the whole conversation.
 - In a reply, the ••• under the box goes away once the quoted history is open. A "Hide quoted text" button under the history folds it again. Before, the ••• stayed where it was, so it did not show that the history was open.
 - When you answer one message with its reply arrow, the reply now carries the history up to that message, as an ordinary reply does. Before, the message went as a card at the top, with no history under it, and that looked wrong in other mail apps. After such a reply, the next replies in the conversation also lost their history. If a conversation still sends no history, turn on "Quote history" in the ··· menu of the reply box.
 - "… shown in Mail" and "… is hidden from Mail for now" show at the foot of the list, with the other notices. Before, they showed at the foot of the window.

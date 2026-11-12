@@ -30,6 +30,9 @@ import {
 import {
   applyStickyFolderCounts,
   bumpFolderCount,
+  bumpHeldFolderCount,
+  holdPausedFolderCounts,
+  type HeldFolderCounts,
   type StickyFolderCounts,
 } from "@/lib/mail/folder-counts";
 import {
@@ -40,6 +43,7 @@ import {
 } from "@/lib/mail/folder-picker";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
+import { pauseCutOff } from "@/lib/mail/pause-cut-off";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 
 
@@ -309,8 +313,16 @@ function notifyFolders(folders: MailAccountFolder[]) {
   for (const listener of foldersListeners) listener(folders);
 }
 
-function applyStickyCounts(folders: MailAccountFolder[]): MailAccountFolder[] {
-  return applyStickyFolderCounts(folders, stickyCounts, Date.now());
+/** A paused mailbox's counts stay as they were: see holdPausedFolderCounts. */
+const heldCounts: HeldFolderCounts = new Map();
+const mailboxPaused = (account: string) => pauseCutOff(account) != null;
+
+function applyStickyCounts(folders: MailAccountFolder[], counted = true): MailAccountFolder[] {
+  return applyStickyFolderCounts(
+    holdPausedFolderCounts(folders, heldCounts, mailboxPaused, counted),
+    stickyCounts,
+    Date.now()
+  );
 }
 
 export async function refreshMailFolders(
@@ -328,7 +340,7 @@ export async function refreshMailFolders(
   const fast = await apiJson<{ folders: MailAccountFolder[] }>(
     withParam("includeCounts=0")
   );
-  const mergedFast = applyStickyCounts(fast.folders);
+  const mergedFast = applyStickyCounts(fast.folders, false);
   notifyFolders(mergedFast);
 
   void apiJson<{ folders: MailAccountFolder[] }>(withParam("includeCounts=1"))
@@ -354,6 +366,7 @@ export function bumpMailFolderCount(
   name: string,
   delta: number
 ): void {
+  bumpHeldFolderCount(heldCounts, account, name, delta);
   notifyFolders(
     bumpFolderCount(
       foldersCache ?? [],

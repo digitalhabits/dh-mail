@@ -21,12 +21,23 @@ pub(super) fn flush_outbox(app: &AppHandle, db: &MailDb, email: &str) -> usize {
     Ok(c) => c,
     Err(_) => return 0,
   };
-  let mut smtp = match Smtp::connect(SMTP_HOST, SMTP_PORT, CONNECT_TIMEOUT)
+  let mut smtp = match crate::smtp::connect_gmail(CONNECT_TIMEOUT)
     .and_then(|mut s| s.sign_in(email, &credential).map(|_| s))
   {
     Ok(s) => s,
     Err(e) => {
       log::warn!("[mail-sync] {email}: could not reach the mail server to send: {}", e.for_log());
+      // Kept on each message, and said once one has waited too long. Before,
+      // nothing reached the screen, and the message showed as sent.
+      let ids: Vec<i64> = due.iter().map(|(row, _)| row.id).collect();
+      match db.outbox_unreachable(email, &ids, &e.for_log(), now) {
+        Ok(stuck) if !stuck.is_empty() => {
+          let rows: Vec<_> = stuck.iter().map(|r| json!({ "id": r.id, "subject": r.subject })).collect();
+          let _ = app.emit(SEND_STUCK_EVENT, json!({ "account": email, "messages": rows, "error": e.for_log() }));
+        }
+        Ok(_) => {}
+        Err(err) => log::warn!("[mail-sync] {email}: could not note the unreached server: {err}"),
+      }
       if e.is_auth() {
         forget_token(app, email);
         set_paused(app, email, "needs reconnect: the mail server refused the grant");

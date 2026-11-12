@@ -704,6 +704,61 @@ fn a_paused_mailbox_is_searched_as_it_was_when_the_pause_began() {
 }
 
 #[test]
+fn a_paused_mailbox_s_sent_list_says_nothing_of_a_reply_held_back() {
+  let db = db();
+  // t1: the reader's letter, and a reply that came in during the pause.
+  let mut mine = msg("m1", "t1", 1, 1_000, &[SENT]);
+  mine.snippet = "my letter".into();
+  mine.unread = false;
+  let mut reply = msg("m2", "t1", 2, 5_000, &[INBOX]);
+  reply.snippet = "the reply".into();
+  reply.unread = true;
+  // t2: sent during the pause. The reader's own mail is not held back.
+  let mut later = msg("m3", "t2", 3, 6_000, &[SENT]);
+  later.snippet = "sent in the pause".into();
+  later.unread = false;
+  db.messages_upsert("vera@example.com", &[mine, reply, later]).unwrap();
+  let list = |as_of: Option<i64>| {
+    let mut args = json!({ "accounts": ["vera@example.com"], "view": "sent" });
+    if let Some(cut) = as_of {
+      args["asOf"] = json!(cut);
+    }
+    db.messages_list(&args).unwrap()
+  };
+  let row = |v: &Value, id: &str| v["threads"].as_array().unwrap().iter().find(|t| t["threadId"] == id).cloned().unwrap();
+
+  let open = row(&list(None), "t1");
+  assert_eq!(open["latest"]["snippet"], "the reply", "with no pause, the row shows the reply");
+  let paused = list(Some(3_000));
+  let held = row(&paused, "t1");
+  assert_eq!(held["latest"]["snippet"], "my letter", "paused, the row is the letter that was sent");
+  assert_eq!(held["lastAt"], json!(1_000));
+  assert_eq!(held["unread"], json!(false), "and is not bold for mail the reader cannot open");
+  assert_eq!(held["messageCount"], json!(1));
+  assert_eq!(row(&paused, "t2")["latest"]["snippet"], "sent in the pause", "mail sent in the pause still shows");
+}
+
+#[test]
+fn marking_read_under_a_pause_leaves_the_held_back_mail_unread() {
+  let db = db();
+  let mut old = msg("m1", "t1", 1, 1_000, &[INBOX]);
+  old.unread = true;
+  let mut news = msg("m2", "t1", 2, 5_000, &[INBOX]);
+  news.unread = true;
+  db.messages_upsert("vera@example.com", &[old, news]).unwrap();
+  let unread = || -> Vec<bool> {
+    let out = db.messages_thread(&json!({ "account": "vera@example.com", "threadId": "t1" })).unwrap();
+    out["messages"].as_array().unwrap().iter().map(|m| m["unread"].as_bool().unwrap()).collect()
+  };
+
+  db.messages_set_unread(&json!({ "account": "vera@example.com", "threadId": "t1", "unread": false, "asOf": 3_000 }))
+    .unwrap();
+  assert_eq!(unread(), vec![false, true], "the mail the reader saw is read; the mail held back is not");
+  db.messages_set_unread(&json!({ "account": "vera@example.com", "threadId": "t1", "unread": false })).unwrap();
+  assert_eq!(unread(), vec![false, false], "with no pause, the whole thread is read");
+}
+
+#[test]
 fn search_answers_folders_labels_read_state_and_file_names_from_the_copy() {
   let db = db();
   let mut unread = msg("m1", "t1", 1, 1_000, &[INBOX, "Clients/Oxford"]);

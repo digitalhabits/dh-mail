@@ -10,6 +10,7 @@
 
 import type { MailThreadDetail } from "@/lib/mail/types";
 import { ownMailIdentity } from "@/lib/own-addresses";
+import { pauseCutOff } from "@/lib/mail/pause-cut-off";
 
 export type MailThreadCacheEntry = {
   thread: MailThreadDetail;
@@ -19,6 +20,8 @@ export type MailThreadCacheEntry = {
   bytes: number;
   /** Whose addresses were ours when the thread was worked out. See `ownKey`. */
   own: string;
+  /** The pause cut-off it was read under, or "". See `heldBackKey`. */
+  heldBack: string;
 };
 
 type StoredThreadBody = {
@@ -30,6 +33,7 @@ type StoredThreadBody = {
   bytes: number;
   updatedAt: number;
   own?: string;
+  heldBack?: string;
 };
 
 /** Tiny row per body. Eviction reads these, so it never loads message bodies. */
@@ -53,7 +57,13 @@ const DB_NAME = "redd-plan-mail-thread-bodies";
 // The rule this is the third instance of: derived data in the cache, and a
 // freshness test that only asks about the provider. Anything worked out on
 // the way in has to be versioned on the way in too.
-const DB_VERSION = 4;
+//
+// 5: what a paused mailbox holds back is left out of the thread too
+// (pause-cut-off.ts). A thread read during quiet hours kept that cut after
+// they ended, because the list's tip did not change: the reply that came in
+// stayed missing from the conversation while the list showed it (Mikkel,
+// 2026-11-11). Entries from before `heldBack` cannot say what they left out.
+const DB_VERSION = 5;
 const STORE = "bodies";
 const META_STORE = "meta";
 
@@ -78,6 +88,18 @@ const MAX_DISK_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 function ownKey(): string {
   const { addresses, domains } = ownMailIdentity();
   return `${addresses.join(",")}|${domains.join(",")}`;
+}
+
+/*
+  A paused mailbox's thread leaves out the mail the pause holds back, from
+  the cut-off on (pause-cut-off.ts). When the pause ends the conversation
+  has not changed, so the list's tip does not change either, and a thread
+  read during the pause was used as it was. Each entry keeps the cut-off it
+  was read under, and one read under another is not used, as with `ownKey`.
+*/
+function heldBackKey(account: string): string {
+  const cut = pauseCutOff(account);
+  return cut == null ? "" : String(cut);
 }
 
 const cache = new Map<string, MailThreadCacheEntry>();
@@ -122,12 +144,13 @@ function putRam(
   thread: MailThreadDetail,
   tipAt: string,
   bytes: number,
-  own: string
+  own: string,
+  heldBack: string
 ): MailThreadCacheEntry {
   const key = cacheKey(account, threadId);
   const prev = cache.get(key);
   if (prev) totalBytes -= prev.bytes;
-  const entry: MailThreadCacheEntry = { thread, tipAt, bytes, own };
+  const entry: MailThreadCacheEntry = { thread, tipAt, bytes, own, heldBack };
   cache.set(key, entry);
   totalBytes += bytes;
   touch(key);
@@ -147,7 +170,7 @@ export function getCachedMailThread(
 ): MailThreadCacheEntry | null {
   const key = cacheKey(account, threadId);
   const entry = cache.get(key);
-  if (!entry || entry.own !== ownKey()) return null;
+  if (!entry || entry.own !== ownKey() || entry.heldBack !== heldBackKey(account)) return null;
   touch(key);
   return entry;
 }
@@ -344,6 +367,7 @@ export async function loadCachedMailThread(
   // No `own` is an entry from before this check: worked out with unknown
   // addresses, so not used either.
   if (!stored || stored.own !== ownKey()) return null;
+  if ((stored.heldBack ?? "") !== heldBackKey(account)) return null;
 
   return putRam(
     account,
@@ -351,7 +375,8 @@ export async function loadCachedMailThread(
     stored.thread,
     stored.tipAt || tipAtFromThread(stored.thread),
     stored.bytes || measureThreadBytes(stored.thread),
-    stored.own
+    stored.own,
+    stored.heldBack ?? ""
   );
 }
 
@@ -363,16 +388,17 @@ export function setCachedMailThread(
 ): void {
   const tip = tipAt || tipAtFromThread(thread);
   const own = ownKey();
+  const heldBack = heldBackKey(account);
   const key = cacheKey(account, threadId);
   const prev = cache.get(key);
   // The open pane re-runs this on every render pass. Same object, same tip —
   // nothing new to store, so skip the serialize and the disk write.
-  if (prev && prev.thread === thread && prev.tipAt === tip && prev.own === own) {
+  if (prev && prev.thread === thread && prev.tipAt === tip && prev.own === own && prev.heldBack === heldBack) {
     touch(key);
     return;
   }
   const bytes = measureThreadBytes(thread);
-  putRam(account, threadId, thread, tip, bytes, own);
+  putRam(account, threadId, thread, tip, bytes, own, heldBack);
   void idbPut({
     key,
     account,
@@ -382,6 +408,7 @@ export function setCachedMailThread(
     bytes,
     updatedAt: Date.now(),
     own,
+    heldBack,
   });
 }
 

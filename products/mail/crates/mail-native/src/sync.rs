@@ -26,7 +26,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::actions::{flush_actions, Folders};
-use crate::smtp::{Smtp, SmtpError, SMTP_HOST, SMTP_PORT};
+use crate::smtp::SmtpError;
 use crate::{db::MailDb, lock::LockExt};
 use crate::imap::{self, Client, Credential, Fetched, Item};
 use crate::messages::{Address, MessageRow, SyncState, DRAFT, IMPORTANT, INBOX, SENT, SPAM, STARRED, TRASH};
@@ -54,6 +54,8 @@ pub const ACTION_FAILED_EVENT: &str = "mail-sync-action-failed";
 pub const SEND_FAILED_EVENT: &str = "mail-sync-send-failed";
 /// Emitted with `{ account, id, threadId }` when a message left the outbox.
 pub const SENT_EVENT: &str = "mail-sync-sent";
+/// Messages due for a while that could not go: the server was not reached.
+pub const SEND_STUCK_EVENT: &str = "mail-sync-send-stuck";
 
 const IMAP_HOST: &str = "imap.gmail.com";
 const IMAP_PORT: u16 = 993;

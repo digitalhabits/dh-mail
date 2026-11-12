@@ -88,7 +88,7 @@ export function useHeldMessages() {
     }).__TAURI__?.event;
     if (tauriEvent?.listen) {
       // A scheduled draft sent, cancelled or given up (scheduled_sends.rs).
-      for (const name of ["mail-sync-sent", "mail-sync-send-failed", "mail-scheduled-changed"]) {
+      for (const name of ["mail-sync-sent", "mail-sync-send-failed", "mail-sync-send-stuck", "mail-scheduled-changed"]) {
         void tauriEvent
           .listen(name, () => void loadHeldMessages())
           .then((fn) => {

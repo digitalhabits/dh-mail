@@ -109,12 +109,17 @@ impl MailDb {
     )?;
     let before = args.get("before").and_then(Value::as_i64).unwrap_or(i64::MAX);
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(50).clamp(1, 500);
+    // A paused mailbox's cut-off, as for a search. Sent is read during a
+    // pause, and a Sent row is made from the whole conversation: with no
+    // cut-off it took its date, snippet and unread dot from a reply the
+    // pause held back.
+    let as_of = args.get("asOf").and_then(Value::as_i64);
     let conn = self.conn_mut();
     let mut rows: Vec<ThreadRow> = Vec::new();
     for account in &accounts {
       let candidates = candidate_threads(&conn, account, &view, before, limit)?;
       let ids: Vec<String> = candidates.iter().map(|(id, _)| id.clone()).collect();
-      rows.extend(load_threads(&conn, account, &ids, &view, None)?);
+      rows.extend(load_threads(&conn, account, &ids, &view, as_of)?);
     }
     rows.sort_by(|a, b| b.last_at.cmp(&a.last_at));
     rows.truncate(limit as usize);
@@ -491,10 +496,16 @@ impl MailDb {
 
   /// Every message of a thread read, or the newest unread: the two moves
   /// the interface makes.
+  ///
+  /// `asOf`, when marking read: a paused mailbox's cut-off. Only the mail
+  /// the reader could see is marked: what came before it, and their own.
+  /// Marking the whole thread took the unread dot off a reply the pause
+  /// held back, so it was not bold when the pause ended.
   pub fn messages_set_unread(&self, args: &Value) -> DbResult<Value> {
     let account = str_arg(args, "account")?;
     let thread_id = str_arg(args, "threadId")?;
     let unread = args.get("unread").and_then(Value::as_bool).unwrap_or(false);
+    let as_of = args.get("asOf").and_then(Value::as_i64).unwrap_or(i64::MAX);
     let conn = self.conn_mut();
     let changed = if unread {
       conn.execute(
@@ -504,8 +515,10 @@ impl MailDb {
       )?
     } else {
       conn.execute(
-        "UPDATE messages SET unread = 0, updated_at = ?3 WHERE account_email = ?1 AND thread_id = ?2 AND unread = 1",
-        params![account, thread_id, now_ms()],
+        "UPDATE messages SET unread = 0, updated_at = ?3 WHERE account_email = ?1 AND thread_id = ?2 AND unread = 1
+           AND (sent_at < ?4 OR EXISTS (SELECT 1 FROM message_labels l WHERE l.account_email = messages.account_email
+             AND l.message_id = messages.message_id AND l.label IN ('SENT','DRAFT')))",
+        params![account, thread_id, now_ms(), as_of],
       )?
     };
     Ok(json!(changed))

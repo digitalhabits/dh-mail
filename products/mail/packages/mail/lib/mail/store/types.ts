@@ -656,6 +656,8 @@ export type MailMessageStore = {
     label?: string;
     before?: number | null;
     limit?: number;
+    /** A paused mailbox's cut-off (ms), as for `search`: rows are made from the mail before it. */
+    asOf?: number;
   }): Promise<{ threads: MailStoredThread[]; nextBefore: number | null }>;
 
   /** How many threads a view holds, and how many of them are unread. */
@@ -759,7 +761,12 @@ export type MailMessageStore = {
   removeMessages(account: string, messageIds: string[], options?: { leftFolder?: string }): Promise<void>;
 
   /** Mark a thread read (every message) or unread (its newest). */
-  setUnread(account: string, threadId: string, unread: boolean): Promise<void>;
+  /**
+   * `asOf`, with `unread` false: a paused mailbox's cut-off (ms). Only the
+   * mail from before it is marked read, so mail the pause holds back is
+   * still unread when the pause ends.
+   */
+  setUnread(account: string, threadId: string, unread: boolean, asOf?: number | null): Promise<void>;
 };
 
 export type MailSyncStore = {

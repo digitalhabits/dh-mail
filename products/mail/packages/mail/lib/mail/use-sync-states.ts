@@ -29,6 +29,9 @@ function sorted(list: MailSyncState[]): MailSyncState[] {
   );
 }
 
+/** The stuck messages already told of, by "account|id", for this run of the app. */
+const toldStuck = new Set<string>();
+
 export function useMailSyncStates(): MailSyncState[] {
   const [states, setStates] = React.useState<MailSyncState[]>([]);
   /**
@@ -120,6 +123,30 @@ export function useMailSyncStates(): MailSyncState[] {
         })
         .catch(() => {});
     }
+    // A message that could not go for ten minutes, said once per message:
+    // the worker says it again every pass while the server stays out of
+    // reach. Before, nothing was said, and the message showed as sent.
+    let unlistenStuck: (() => void) | null = null;
+    if (tauriEvent?.listen) {
+      void tauriEvent
+        .listen("mail-sync-send-stuck", (event) => {
+          const detail = event.payload as { account?: string; messages?: { id: number; subject?: string }[] };
+          for (const m of detail.messages ?? []) {
+            const key = `${detail.account ?? ""}|${m.id}`;
+            if (toldStuck.has(key)) continue;
+            toldStuck.add(key);
+            toast.error(mailSay("sendStuck", { subject: m.subject || "(no subject)" }), {
+              description: mailSay("sendStuckDetail"),
+              duration: 15_000,
+            });
+          }
+        })
+        .then((fn) => {
+          if (cancelled) fn();
+          else unlistenStuck = fn;
+        })
+        .catch(() => {});
+    }
     let unlistenSend: (() => void) | null = null;
     if (tauriEvent?.listen) {
       void tauriEvent
@@ -144,6 +171,7 @@ export function useMailSyncStates(): MailSyncState[] {
       unlisten?.();
       unlistenFailed?.();
       unlistenSend?.();
+      unlistenStuck?.();
     };
   }, []);
   return states;

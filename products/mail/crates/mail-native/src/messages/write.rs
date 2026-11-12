@@ -175,12 +175,15 @@ impl MailDb {
   /// first, each marked with its newest matched message. A UID the copy
   /// does not hold is left out: the server's answer is mapped onto rows
   /// the copy already has, so it shows with no message read again.
+  /// `as_of` is a paused mailbox's cut-off: a row says nothing of the mail
+  /// that came in after it.
   pub fn messages_threads_for_uids(
     &self,
     account: &str,
     folder: &str,
     uids: &[u32],
     limit: usize,
+    as_of: Option<i64>,
   ) -> DbResult<Vec<ThreadRow>> {
     let conn = self.conn_mut();
     let mut stmt = conn.prepare(
@@ -204,7 +207,7 @@ impl MailDb {
     let ids: Vec<String> = best.keys().cloned().collect();
     let mut out: Vec<ThreadRow> = Vec::new();
     for chunk in ids.chunks(400) {
-      out.extend(load_threads(&conn, account, chunk, &View::All, None)?);
+      out.extend(load_threads(&conn, account, chunk, &View::All, as_of)?);
     }
     for row in out.iter_mut() {
       row.focus_message_id = best.get(&row.thread_id).map(|(_, id)| id.clone());

@@ -9,7 +9,9 @@ import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import "server-only";
 
 import { highlightRanges, searchHighlightTerms } from "@/lib/mail/search-highlight";
-import { getThreadMetadata } from "@/lib/gmail/api";
+import { getThreadMetadata, type GmailMessage } from "@/lib/gmail/api";
+import { detailWithoutHeldBack } from "@/lib/mail/local-thread";
+import { pauseCutOff, shownUnderCutOff } from "@/lib/mail/pause-cut-off";
 import {
   filterAccountsForScope,
   type MailAccountScope,
@@ -21,7 +23,7 @@ import { listConnectedMailAccounts } from "@/lib/mail/providers";
 import type { MailStoredMessage } from "@/lib/mail/store/types";
 import type { MailThreadSummary } from "@/lib/mail/types";
 import { type Classifier, classifyThread, recordLogoFor, recordNameFor, displayName } from "@/lib/mail/thread-classify";
-import { METADATA_HEADERS, getClassifier, mapWithConcurrency, summarizeGmailThread } from "@/lib/mail/inbox-gmail-common";
+import { METADATA_HEADERS, getClassifier, mapWithConcurrency, messageDate, summarizeGmailThread } from "@/lib/mail/inbox-gmail-common";
 
 /**
  * A snoozed Exchange thread's row, from the local copy (section 16.3), as
@@ -33,7 +35,11 @@ export async function exchangeSnoozedRow(
   snoozedUntil: string,
   classifier: Classifier
 ): Promise<MailThreadSummary | null> {
-  const rows = (await mailStore().messages.thread(accountEmail, threadId)) as MailStoredMessage[];
+  // In a paused mailbox, the row as the pause found it: see `heldBackFrom`.
+  const cut = pauseCutOff(accountEmail);
+  const rows = ((await mailStore().messages.thread(accountEmail, threadId)) as MailStoredMessage[]).filter((r) =>
+    shownUnderCutOff({ sentAt: r.sentAt, own: r.isDraft || r.labels?.includes("SENT") === true }, cut)
+  );
   const latest = rows.filter((r) => !r.isDraft).sort((a, b) => b.sentAt - a.sentAt)[0];
   if (!latest) return null;
   const from = { name: latest.fromName, email: latest.fromEmail };
@@ -63,6 +69,27 @@ export async function exchangeSnoozedRow(
     crmLogoUrl: recordLogoFor(counterpart.email, classifier),
     snoozedUntil,
   };
+}
+
+/**
+ * A Gmail thread's metadata without the mail a pause holds back: what came
+ * in after the mailbox's cut-off (lib/mail/pause-cut-off.ts). Null when
+ * nothing is left.
+ *
+ * A snoozed row is built from the thread as it is now. In a paused mailbox
+ * that was the thread with its held-back reply: the row in the Snoozed
+ * tab, and the row a snooze put back in the paused inbox when it woke,
+ * had the reply's time, first words and unread mark.
+ */
+function heldBackFrom<T extends { messages?: GmailMessage[] }>(thread: T, cut: number | null): T | null {
+  if (cut == null) return thread;
+  const messages = (thread.messages ?? []).filter((m) => {
+    const labels = m.labelIds ?? [];
+    const own = labels.includes("SENT") || labels.includes("DRAFT");
+    const at = messageDate(m);
+    return shownUnderCutOff({ sentAt: at || Infinity, own }, cut);
+  });
+  return messages.length ? { ...thread, messages } : null;
 }
 
 /** Active snoozes as list rows, soonest wake first. */
@@ -117,10 +144,16 @@ export async function listSnoozedThreads(options: {
           // One message is enough for a row. The list rule runs on that
           // message's envelope, the same rule the inbox applies to Graph's
           // newest message.
-          const detail = await getOutlookMailThread(accountEmail, threadId, {
-            limit: 1,
-            markRead: false,
-          });
+          // In a paused mailbox the newest message may be one the pause
+          // holds back, so a page is read and cut, not one message.
+          const paused = pauseCutOff(accountEmail) != null;
+          const detail = detailWithoutHeldBack(
+            await getOutlookMailThread(accountEmail, threadId, {
+              ...(paused ? null : { limit: 1 }),
+              markRead: false,
+            })
+          ).detail;
+          if (paused && !detail.messages.length) return null;
           const latest = detail.messages[detail.messages.length - 1];
           const from = latest
             ? { name: latest.fromName, email: latest.fromEmail }
@@ -162,11 +195,11 @@ export async function listSnoozedThreads(options: {
         // The same row the inbox builds, minus the invite probe: a snoozed
         // row is a reminder, and the chip is not worth a payload per thread.
         const token = await accessTokenFor(accountEmail);
-        const thread = await getThreadMetadata(
-          token,
-          threadId,
-          METADATA_HEADERS
+        const thread = heldBackFrom(
+          await getThreadMetadata(token, threadId, METADATA_HEADERS),
+          pauseCutOff(accountEmail)
         );
+        if (!thread) return null;
         const built = await summarizeGmailThread({
           token,
           accountEmail,

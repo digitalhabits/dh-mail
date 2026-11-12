@@ -458,6 +458,8 @@ export function PeopleRows() {
                 askDeleteForever ? () => askDeleteForever(row.threads) : undefined
               }
               onDismiss={close}
+              // The rules for the sender of the pile's newest conversation.
+              rulesFor={newest}
             />
           );
         })()}
@@ -1099,7 +1101,7 @@ export function OutboxGroup() {
                         ? "hover:bg-white/5"
                         : "hover:bg-[var(--mail-chrome-hover)]"
                   )}
-                  title={held.status === "failed" ? held.error : undefined}
+                  title={held.status === "failed" || held.status === "stuck" ? held.error : undefined}
                   onClick={() => open(held)}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -1110,7 +1112,7 @@ export function OutboxGroup() {
                   {held.missed ? (
                     // Missed, not broken: the clock, as a waiting one has.
                     <Clock className="h-3.5 w-3.5 shrink-0 text-amber-600/80" aria-hidden />
-                  ) : held.status === "failed" ? (
+                  ) : held.status === "failed" || held.status === "stuck" ? (
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
                   ) : held.status === "sending" ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-teal-700/75" aria-hidden />
@@ -1194,6 +1196,9 @@ export function OutboxGroup() {
                         {t(isScheduledDraftId(held.id) ? "keepAsDraft" : "delete")}
                       </span>
                     </span>
+                  ) : held.status === "stuck" ? (
+                    // Still tried: nothing to do but know it has not gone.
+                    <span className="shrink-0 text-xs font-semibold text-amber-700">{t("notSentYet")}</span>
                   ) : held.status === "sending" ? (
                     <span className="shrink-0 text-xs font-semibold text-teal-700/90">
                       {t("sendingNow")}
