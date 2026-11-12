@@ -31,6 +31,7 @@ import { historyEntryOf } from "@/components/mail/thread-messages";
 import type { MailRecipient } from "@/lib/mail/contact-list-types";
 import type { OlderThreadPart } from "@/components/mail/use-thread-stream";
 import type { MailThreadDetail } from "@/lib/mail/types";
+import { replySubjectOf } from "@/lib/mail/reply-subject";
 
 export function useReplyContent({
   account,
@@ -61,11 +62,7 @@ export function useReplyContent({
    * The thread's subject, with the Re: a reply carries. It is built once,
    * here, for every part that needs it.
    */
-  const replySubject = thread
-    ? thread.subject.startsWith("Re:")
-      ? thread.subject
-      : `Re: ${thread.subject}`
-    : "";
+  const replySubject = thread ? replySubjectOf(thread.subject) : "";
   const forwardSubject = thread
     ? /^fwd?:/i.test(thread.subject)
       ? thread.subject

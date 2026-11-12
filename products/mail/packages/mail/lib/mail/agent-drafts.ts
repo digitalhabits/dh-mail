@@ -21,6 +21,7 @@
 import { htmlToPlainText } from "@/lib/client-email-html";
 import { flattenRecipientsForSend } from "@/lib/mail/contact-list-types";
 import type { MailDraft } from "@/lib/mail/local-drafts";
+import { replySubjectOf } from "@/lib/mail/reply-subject";
 
 /** What a draft would send, as a person reads it before saying yes. */
 export type DraftPreview = {
@@ -64,7 +65,7 @@ export function draftPreview(draft: MailDraft, threadSubject?: string): DraftPre
   };
   if (draft.kind === "thread") {
     const base = (threadSubject ?? "").trim();
-    const reply = draft.mode === "forward" ? `Fwd: ${base}` : /^re:/i.test(base) ? base : `Re: ${base}`;
+    const reply = draft.mode === "forward" ? `Fwd: ${base}` : replySubjectOf(base);
     return {
       ...common,
       kind: "thread",

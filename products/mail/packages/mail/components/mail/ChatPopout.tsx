@@ -45,6 +45,7 @@ import { mailSay, useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
 import { useMailColorMode } from "@/lib/mail/theme";
+import { replySubjectOf } from "@/lib/mail/reply-subject";
 
 
 const POLL_MS = 30_000;
@@ -988,9 +989,7 @@ export function useChatSend({
           account,
           to,
           cc: thread.reply.cc.length ? thread.reply.cc : undefined,
-          subject: thread.subject.startsWith("Re:")
-            ? thread.subject
-            : `Re: ${thread.subject}`,
+          subject: replySubjectOf(thread.subject),
           includeSignature: false,
           threadId,
           inReplyTo: thread.reply.inReplyTo,
