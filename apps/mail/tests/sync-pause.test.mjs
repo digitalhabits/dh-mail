@@ -7,7 +7,7 @@
  */
 
 import { mailSay } from "@/lib/mail/i18n-strings";
-import { syncPauseKind } from "@/lib/mail/sync-pause";
+import { longFaultSince, SERVER_FAULT_LONG_MS, syncPauseKind } from "@/lib/mail/sync-pause";
 
 import { check, suite } from "./harness.mjs";
 
@@ -49,7 +49,12 @@ suite(async () => {
 
   check(
     "a refusal that is neither is other",
-    syncPauseKind("token refresh failed (500): internal_failure") === "other"
+    syncPauseKind("token refresh failed (403): access_denied") === "other"
+  );
+  // A 500 was "other" here until 2026-11-13: it is the provider's own fault.
+  check(
+    "a 500 from the sign-in service is the server's fault",
+    syncPauseKind("token refresh failed (500): internal_failure") === "server"
   );
   check("no reason at all is other", syncPauseKind(null) === "other" && syncPauseKind("  ") === "other");
 
@@ -63,4 +68,21 @@ suite(async () => {
 
   const details = mailSay("syncPausedDetails", { reason: "store: disk full" });
   check("the details line carries the reason", details.includes("store: disk full") && !details.includes("{"), details);
+
+  // The provider's own fault: nothing for the reader to mend, and no Reconnect.
+  const graph502 =
+    'Graph GET /me/mailFolders?$top=100 failed (502): {"error":{"code":"UnknownError","message":""}}';
+  check("a 502 from the provider is the server's fault", syncPauseKind(graph502) === "server", syncPauseKind(graph502));
+  check("so are a 500, a 503 and a 504", ["500", "503", "504"].every((code) => syncPauseKind(`Gmail GET /labels failed (${code}): busy`) === "server"));
+  check("a 400 or a 404 is not", syncPauseKind("Graph GET /me failed (404): gone") === "other" && syncPauseKind("Graph POST /x failed (400): bad") === "other");
+  check("a refused sign-in with a 5xx in its words is still a sign-in", syncPauseKind("token refresh failed (502): invalid_grant") === "signIn");
+
+  // A fault at the mail server that lasts: the notice says since when.
+  const NOW = Date.UTC(2026, 10, 13, 8, 0);
+  check("a fault of a few minutes says no time", longFaultSince(NOW - 5 * 60_000, NOW) === null);
+  check("a fault of half an hour or more says when the mailbox last synced", longFaultSince(NOW - SERVER_FAULT_LONG_MS, NOW) === NOW - SERVER_FAULT_LONG_MS && longFaultSince(NOW - 14 * 3_600_000, NOW) === NOW - 14 * 3_600_000);
+  check("a mailbox with no known last sync says no time", longFaultSince(null, NOW) === null && longFaultSince(undefined, NOW) === null && longFaultSince(0, NOW) === null);
+  const since = mailSay("syncServerFaultSince", { time: "Thu 18:29" });
+  check("the line names the time", since.includes("Thu 18:29") && !since.includes("{"), since);
+  check("the help no longer says there is nothing to do", !mailSay("syncServerFaultHelp").includes("anything"));
 });

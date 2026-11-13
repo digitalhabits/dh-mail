@@ -277,6 +277,10 @@ export const da: Record<keyof typeof en, string> = {
   syncPausedHelp:
     "Mail prøver igen af sig selv. Hvis beskeden bliver stående, så forbind kontoen igen.",
   syncPausedDetails: "Detaljer: {reason}",
+  syncServerFault: "{provider} har et problem med {account} lige nu",
+  syncServerFaultHelp: "Fejlen er hos mailserveren, ikke i din konto. Mail prøver igen af sig selv.",
+  syncServerFaultSince: "Der er ikke kommet ny mail fra denne postkasse siden {time}.",
+  showDetails: "Vis detaljer",
   syncOffline: "Mail kan ikke få forbindelse til {provider} for {account}",
   syncOfflineHelp:
     "Mail prøver igen af sig selv. Dit internet kan godt virke imens: nogle netværk blokerer forbindelser til mail.",

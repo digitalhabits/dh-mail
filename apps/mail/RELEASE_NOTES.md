@@ -1,5 +1,12 @@
 ## What is new
 
+**When a mailbox stops syncing**
+- The notice about a mailbox that stopped syncing is shorter. The technical text is behind "Show details".
+- When the fault is at the mail server (for example, Outlook itself is down), the notice says so, and it no longer offers Reconnect, which does not help then. If the fault lasts 30 minutes or more, the notice says since when the mailbox has had no new mail.
+
+**Security**
+- The libraries that Mail is built with have their newest security fixes.
+
 **One conversation across two mailboxes**
 - A conversation that you start in one mailbox and answer from another is now one conversation. Before, Mail showed two rows, each with half of it. The list shows one row, the conversation shows every message in order, and archive, delete and move take both halves.
 - Mail joins the two halves when one answers a message of the other, and only when the subject is the same. A reply with a new subject is a conversation of its own.

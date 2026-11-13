@@ -14,6 +14,11 @@
  * - "signIn": Google no longer accepts the sign-in. Only the reader can fix
  *   it, with Reconnect. The worker says "needs reconnect" in every such
  *   reason (see sync.rs).
+ * - "server": the mail server answered that it has a fault of its own (a
+ *   500, 502, 503 or 504). Nothing is wrong with the account, and Reconnect
+ *   would not help; the worker tries again by itself. Before, this was
+ *   "other", and the list offered Reconnect for a fault at Microsoft
+ *   (2026-11-13).
  * - "other": anything else. The worker still tries again, and the reason is
  *   kept for whoever is asked to look.
  *
@@ -22,7 +27,7 @@
  * offers Reconnect for a dropped Wi-Fi connection.
  */
 
-export type SyncPauseKind = "offline" | "signIn" | "other";
+export type SyncPauseKind = "offline" | "signIn" | "server" | "other";
 
 /** The word on its own, so "reconnecting" does not count. */
 const SIGN_IN = /\breconnect\b|invalid_grant/i;
@@ -44,10 +49,31 @@ const OFFLINE: RegExp[] = [
   /^ews:network:/i,
 ];
 
+/** The provider's own fault, as both API clients write a failed call: "… failed (502): …". */
+const SERVER_FAULT = /\bfailed \((?:500|502|503|504)\)/i;
+
 export function syncPauseKind(reason: string | null | undefined): SyncPauseKind {
   const text = (reason ?? "").trim();
   if (!text) return "other";
   if (SIGN_IN.test(text)) return "signIn";
   if (OFFLINE.some((pattern) => pattern.test(text))) return "offline";
+  if (SERVER_FAULT.test(text)) return "server";
   return "other";
+}
+
+/** How long a fault at the mail server may last before the notice says since when. */
+export const SERVER_FAULT_LONG_MS = 30 * 60_000;
+
+/**
+ * When the mailbox last synced, for a fault at the mail server that has
+ * lasted a while; null for a short one, or when the time is not known.
+ *
+ * The notice said "You do not need to do anything". That is true, but for
+ * a fault of hours it left out what the reader needs to know: that the
+ * mailbox has brought no new mail since some time (2026-11-13: the
+ * provider's own web mail was down from the evening before).
+ */
+export function longFaultSince(lastOkAt: number | null | undefined, now: number): number | null {
+  if (typeof lastOkAt !== "number" || !Number.isFinite(lastOkAt) || lastOkAt <= 0) return null;
+  return now - lastOkAt >= SERVER_FAULT_LONG_MS ? lastOkAt : null;
 }

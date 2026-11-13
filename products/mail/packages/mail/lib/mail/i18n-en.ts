@@ -277,6 +277,10 @@ export const en = {
   syncPausedHelp:
     "Mail tries again by itself. If this message stays, reconnect the account.",
   syncPausedDetails: "Details: {reason}",
+  syncServerFault: "{provider} has a problem with {account} right now",
+  syncServerFaultHelp: "The fault is at the mail server, not in your account. Mail tries again by itself.",
+  syncServerFaultSince: "No new mail has come from this mailbox since {time}.",
+  showDetails: "Show details",
   syncOffline: "Mail cannot reach {provider} for {account}",
   syncOfflineHelp:
     "Mail tries again by itself. Your internet can work while this shows: some networks block mail connections.",

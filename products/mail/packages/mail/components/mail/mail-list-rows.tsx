@@ -26,10 +26,10 @@ import * as React from "react";
 
 import { isMailPersonPinned } from "@/lib/mail/person-pins";
 import { mailProviderFor, mailProviderLabel } from "@/lib/mail/use-outlook-accounts";
-import { syncPauseKind } from "@/lib/mail/sync-pause";
+import { longFaultSince, syncPauseKind } from "@/lib/mail/sync-pause";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
-import { ListNotice, ListNoticeButton } from "@/components/mail/ListNotice";
+import { ListNotice, ListNoticeButton, ListNoticeDetails } from "@/components/mail/ListNotice";
 import { MailFirstReadLine } from "@/components/mail/MailFirstReadLine";
 import { OfflineLine } from "@/components/mail/OfflineLine";
 import { useOffline } from "@/lib/mail/use-offline";
@@ -910,6 +910,23 @@ export function ListNotices() {
                   >
                     {t("syncOfflineHelp")}
                   </ListNotice>
+                ) : syncPauseKind(s.lastError) === "server" ? (
+                  /* The provider answered with a fault of its own (a 502).
+                     Nothing to press: Reconnect would not mend it. */
+                  <ListNotice
+                    title={t("syncServerFault", {
+                      provider: mailProviderLabel(mailProviderFor(s.account, isOutlookAccount)),
+                      account: s.account,
+                    })}
+                  >
+                    <p>{t("syncServerFaultHelp")}</p>
+                    {longFaultSince(s.lastOkAt, Date.now()) != null ? (
+                      <p className="mt-0.5">
+                        {t("syncServerFaultSince", { time: formatSnoozeWakeLabel(new Date(s.lastOkAt ?? 0).toISOString()) })}
+                      </p>
+                    ) : null}
+                    <ListNoticeDetails show={t("showDetails")} hide={t("hideDetails")}>{s.lastError}</ListNoticeDetails>
+                  </ListNotice>
                 ) : (
                   /* Something else stopped it. Said in plain words first,
                      with the one thing the reader can try; the worker's
@@ -932,9 +949,7 @@ export function ListNotices() {
                   >
                     <p>{t("syncPausedHelp")}</p>
                     {s.lastError ? (
-                      <p className="mt-0.5 break-words text-[11px] text-[var(--mail-chrome-faint)]">
-                        {t("syncPausedDetails", { reason: s.lastError })}
-                      </p>
+                      <ListNoticeDetails show={t("showDetails")} hide={t("hideDetails")}>{s.lastError}</ListNoticeDetails>
                     ) : null}
                   </ListNotice>
                 )}

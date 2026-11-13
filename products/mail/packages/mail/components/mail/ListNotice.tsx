@@ -59,3 +59,30 @@ export function ListNoticeButton({
     </button>
   );
 }
+
+/**
+ * The worker's own words for what went wrong, folded away.
+ *
+ * They are written for whoever is asked to look: a request, a status, a
+ * request id. On the notice they were half of it, in small grey type, and
+ * a reader met them before the one line that says what to do. Now a small
+ * "Show details" opens them.
+ */
+export function ListNoticeDetails({ show, hide, children }: { show: string; hide: string; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        className="text-[11px] text-[var(--mail-chrome-faint)] underline decoration-dotted underline-offset-2 hover:text-[var(--mail-chrome-muted)]"
+      >
+        {open ? hide : show}
+      </button>
+      {open ? (
+        <p className="mt-0.5 select-text break-words text-[11px] text-[var(--mail-chrome-faint)]">{children}</p>
+      ) : null}
+    </div>
+  );
+}
