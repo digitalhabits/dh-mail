@@ -660,6 +660,20 @@ export async function listUnifiedInbox(options: {
  * woken: a snoozed thread with a newer tip wakes, and the store is told.
  * Moved out of listUnifiedInbox.
  */
+/** How many of the ids a newest message names a row carries: the nearest ones. */
+const TIP_REFS_KEPT = 30;
+
+/** The Message-IDs in a References or In-Reply-To text, written as `tipId` is, oldest first. */
+function namedIds(references: string | undefined): string[] {
+  const ids = (references ?? "").match(/<[^>]+>/g) ?? [];
+  const out: string[] = [];
+  for (const raw of ids) {
+    const id = normalizeRfcMessageId(raw);
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out.slice(-TIP_REFS_KEPT);
+}
+
 async function foldCopiesAndSnoozes({
   hasSearchQuery,
   snoozedByKey,
@@ -718,6 +732,8 @@ async function foldCopiesAndSnoozes({
       summary.snoozedUntil = wakeByTip.get(tipKey);
     }
     if (tipKey) summary.tipId = tipKey;
+    const tipRefs = namedIds(latestReferences);
+    if (tipRefs.length) summary.tipRefs = tipRefs;
     const key = latestRfcId || `${summary.account}|${summary.threadId}`;
     const existing = seen.get(key);
     if (!existing) {

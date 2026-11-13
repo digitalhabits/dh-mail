@@ -880,6 +880,59 @@ fn the_same_conversation_is_found_in_the_other_mailboxes() {
 }
 
 #[test]
+fn a_conversation_continued_from_another_mailbox_is_found_by_its_headers() {
+  let db = db();
+  // Mailbox A: the letter that started it.
+  let mut first = msg("a1", "at", 1, 1_000, &[INBOX]);
+  first.rfc_message_id = Some("<a1@x.test>".into());
+  first.subject = "RE: Exam question".into();
+  // Another conversation in A, on another subject.
+  let mut other = msg("a9", "ao", 9, 900, &[INBOX]);
+  other.rfc_message_id = Some("<a9@x.test>".into());
+  other.subject = "Lunch".into();
+  db.messages_upsert("vera@gmail.test", &[first, other]).unwrap();
+  // Mailbox B: the reader's answer, sent from there, and what came after.
+  let mut answer = msg("b1", "bt", 1, 2_000, &[SENT]);
+  answer.rfc_message_id = Some("<b1@x.test>".into());
+  answer.in_reply_to = Some("<a1@x.test>".into());
+  answer.subject = "Re: Exam question".into();
+  let mut after = msg("b2", "bt", 2, 3_000, &[INBOX]);
+  after.rfc_message_id = Some("<b2@x.test>".into());
+  after.in_reply_to = Some("<b1@x.test>".into());
+  after.subject = "SV: Exam question".into();
+  // A reply to the lunch letter that starts a new topic: not joined.
+  let mut hijack = msg("b3", "bh", 3, 4_000, &[SENT]);
+  hijack.rfc_message_id = Some("<b3@x.test>".into());
+  hijack.in_reply_to = Some("<a9@x.test>".into());
+  hijack.subject = "Budget for next year".into();
+  db.messages_upsert("vera@ku.test", &[answer, after, hijack]).unwrap();
+
+  // From B: the conversation names a message that A holds.
+  let back = db
+    .messages_copies(&json!({
+      "account": "vera@ku.test", "rfcIds": ["<b1@x.test>", "<b2@x.test>"],
+      "refIds": ["<a1@x.test>"], "subject": "SV: Exam question"
+    }))
+    .unwrap();
+  assert_eq!(back["copies"], json!([{ "account": "vera@gmail.test", "threadId": "at", "linked": true }]));
+  // From A: a message in B answers one of this conversation's messages.
+  let onward = db
+    .messages_copies(&json!({ "account": "vera@gmail.test", "rfcIds": ["<a1@x.test>"], "subject": "RE: Exam question" }))
+    .unwrap();
+  assert_eq!(onward["copies"], json!([{ "account": "vera@ku.test", "threadId": "bt", "linked": true }]));
+  // Another subject is another conversation, whatever the headers say.
+  let lunch = db
+    .messages_copies(&json!({ "account": "vera@gmail.test", "rfcIds": ["<a9@x.test>"], "subject": "Lunch" }))
+    .unwrap();
+  assert_eq!(lunch["copies"], json!([]), "a reply that starts a new topic is not joined");
+  // The same mailbox is never joined to itself: its server groups its mail.
+  let own = db
+    .messages_copies(&json!({ "account": "vera@ku.test", "rfcIds": ["<b1@x.test>"], "subject": "Re: Exam question" }))
+    .unwrap();
+  assert_eq!(own["copies"], json!([]));
+}
+
+#[test]
 fn bodies_read_with_the_wrong_charset_are_fetched_again_once() {
   let db = db();
   let mut misread = msg("m1", "t1", 1, 1_000, &[INBOX]);

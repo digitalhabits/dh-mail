@@ -678,7 +678,18 @@ export type MailMessageStore = {
    * and thread outside `account` that holds one of these Message-IDs.
    * Optional: a store without it shows each mailbox's copy alone.
    */
-  copies?(account: string, rfcIds: string[]): Promise<{ account: string; threadId: string }[]>;
+  copies?(
+    account: string,
+    rfcIds: string[],
+    /**
+     * Also the conversations the reply headers join to this one, when no
+     * message is in both mailboxes: the ones that hold a message this
+     * conversation names (`refIds`), and the ones with a message that
+     * answers one of `rfcIds`. Only with the same subject, once "Re:" and
+     * the like are off. These come back with `linked`.
+     */
+    links?: { refIds: string[]; subject: string }
+  ): Promise<{ account: string; threadId: string; linked?: boolean }[]>;
 
   /**
    * The thread a reply here answers, and the replies elsewhere that answer

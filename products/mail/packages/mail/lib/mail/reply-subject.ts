@@ -28,3 +28,16 @@ export function hasReplyMark(subject: string): boolean {
 export function replySubjectOf(subject: string): string {
   return hasReplyMark(subject) ? subject : `Re: ${subject}`;
 }
+
+/** Marks a mail app puts before a subject, reply or forward. The store has the same list (answer_links.rs). */
+const ANY_MARK = /^\s*(?:re|fw|fwd|aw|sv|vs|wg|tr|rv|antw|res|ref)\s*(?:\[\d+\]|\(\d+\))?\s*:\s*/i;
+
+/**
+ * The subject without its "Re:", "Fwd:", "SV:" marks, in lower case with
+ * single spaces: what two messages of one conversation have in common.
+ */
+export function baseSubject(subject: string): string {
+  let rest = subject;
+  while (ANY_MARK.test(rest)) rest = rest.replace(ANY_MARK, "");
+  return rest.trim().toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+}

@@ -88,6 +88,14 @@ export type MailThreadSummary = {
    */
   tipId?: string;
   /**
+   * The messages the newest message names in its References and
+   * In-Reply-To, as `tipId` is written, newest last. A row in another
+   * mailbox whose tip is one of them is the earlier half of the same
+   * conversation: the reader answered from another address. See
+   * `dedupeThreadsByTip`.
+   */
+  tipRefs?: string[];
+  /**
    * The same message, in other mailboxes of ours.
    *
    * A row is one conversation as far as the reader can see, and when the

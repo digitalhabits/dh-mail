@@ -77,6 +77,7 @@ pub const SCHEMA: &str = r#"
   CREATE INDEX IF NOT EXISTS messages_thread_idx ON messages (account_email, thread_id, sent_at);
   CREATE INDEX IF NOT EXISTS messages_sent_idx ON messages (account_email, sent_at DESC);
   CREATE INDEX IF NOT EXISTS messages_rfc_idx ON messages (rfc_message_id);
+  CREATE INDEX IF NOT EXISTS messages_reply_idx ON messages (in_reply_to);
 
   CREATE TABLE IF NOT EXISTS message_labels (
     account_email TEXT NOT NULL,

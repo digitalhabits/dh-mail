@@ -13,6 +13,7 @@
  * No React in here, so a test can read it.
  */
 
+import { baseSubject } from "@/lib/mail/reply-subject";
 import type { MailThreadSummary } from "@/lib/mail/types";
 
 export type ThreadRef = { account: string; threadId: string };
@@ -87,6 +88,75 @@ export function dedupeThreadsByTip(rows: MailThreadSummary[]): MailThreadSummary
         alsoIn,
       };
     }
+  }
+  return foldLinked(out);
+}
+
+/**
+ * One row for a conversation that the reader continued from another mailbox.
+ *
+ * Mail to one address, answered from another: the answer and what follows
+ * are in the second mailbox, and no message is in both, so the tips differ
+ * and the two halves were two rows. The newer half's tip names the older
+ * half's tip in its References. Then the older row is folded into the newer
+ * one, as a copy is: it is remembered in `alsoIn`, so an action on the row
+ * takes both halves, and the conversation view shows both
+ * (lib/mail/local-thread.ts, `linksOf`).
+ *
+ * Only across mailboxes: inside one mailbox the server groups the mail, and
+ * the list shows what it says. And only with the same subject, once "Re:"
+ * and the like are off: an action takes the whole row, so a reply that
+ * starts another topic must not bring the old conversation with it.
+ *
+ * `rows` are newest first, each tip once.
+ */
+function foldLinked(rows: MailThreadSummary[]): MailThreadSummary[] {
+  if (!rows.some((t) => t.tipRefs?.length)) return rows;
+  /**
+   * The rows, by place in `out`, whose newest message names this id, newest
+   * first. More than one row can name a message: two people answer one
+   * letter, or someone answers it to start another topic. Each is tried in
+   * turn. With only the newest kept, a reply under a new subject stood in
+   * the way of the conversation that the older half belongs to.
+   */
+  const namedBy = new Map<string, number[]>();
+  const out: MailThreadSummary[] = [];
+  const mailboxes = (t: MailThreadSummary) => [t.account, ...(t.alsoIn ?? []).map((c) => c.account)].map((a) => a.toLowerCase());
+  const note = (t: MailThreadSummary, index: number) => {
+    for (const id of t.tipRefs ?? []) {
+      const rows = namedBy.get(id);
+      if (!rows) namedBy.set(id, [index]);
+      else if (!rows.includes(index)) rows.push(index);
+    }
+  };
+  for (const t of rows) {
+    const candidates = t.tipId ? (namedBy.get(t.tipId) ?? []) : [];
+    // Folded into one of those rows before: a list that is put together again
+    // from rows already folded and the same rows fresh from a mailbox.
+    if (candidates.some((index) => out[index].alsoIn?.some((c) => threadKey(c) === threadKey(t)))) continue;
+    const index = candidates.find(
+      (at) =>
+        baseSubject(out[at].subject) === baseSubject(t.subject) &&
+        !mailboxes(out[at]).some((mailbox) => mailboxes(t).includes(mailbox))
+    );
+    if (index == null) {
+      note(t, out.length);
+      out.push(t);
+      continue;
+    }
+    const kept = out[index];
+    out[index] = {
+      ...kept,
+      unread: kept.unread || t.unread,
+      hasAttachments: kept.hasAttachments || t.hasAttachments,
+      hasCalendarInvite: kept.hasCalendarInvite || t.hasCalendarInvite,
+      calendarInviteWhen: kept.calendarInviteWhen ?? t.calendarInviteWhen,
+      // Two halves with no message in both: the conversation is their sum.
+      messageCount: kept.messageCount + t.messageCount,
+      alsoIn: [...(kept.alsoIn ?? []), { account: t.account, threadId: t.threadId }, ...(t.alsoIn ?? [])],
+    };
+    // What the older half names may be a half older still.
+    note(t, index);
   }
   return out;
 }

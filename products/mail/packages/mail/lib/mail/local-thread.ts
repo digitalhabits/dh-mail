@@ -59,7 +59,7 @@ async function withCopiesAndHeld(
   rows: StoredWithBody[]
 ): Promise<{ shown: StoredWithBody[]; held: StoredWithBody[] }> {
   const ids = rows.filter((r) => !r.isDraft).map((r) => r.rfcMessageId);
-  const all = [...rows, ...(await copyRows(account, ids))];
+  const all = [...rows, ...(await copyRows(account, ids, linksOf(rows)))];
   const shown = withoutHeldBack(account, all);
   if (shown.length === all.length) return { shown, held: [] };
   const kept = new Set(shown);
@@ -161,17 +161,47 @@ export function detailWithoutHeldBack(detail: MailThreadDetail): { detail: MailT
   };
 }
 
+/** What joins a conversation to its other half in another mailbox: see `linksOf`. */
+type ThreadLinks = { refIds: string[]; subject: string };
+
+/**
+ * The messages a conversation names in its References and In-Reply-To and
+ * does not hold, and its subject.
+ *
+ * A conversation started in one mailbox and answered from another has no
+ * message in both, so it was two rows, each with half of it. The store
+ * joins the halves by these ids (read.rs, `linked_elsewhere`), as
+ * Thunderbird's index does, and only when the subject is the same.
+ */
+function linksOf(rows: { rfcMessageId?: string | null; references?: string | null; inReplyTo?: string | null; subject?: string; sentAt?: number | string | null; isDraft?: boolean }[]): ThreadLinks {
+  const sent = rows.filter((r) => !r.isDraft);
+  const own = new Set(sent.map((r) => (r.rfcMessageId ?? "").trim()).filter(Boolean));
+  const named = new Set<string>();
+  for (const r of sent) {
+    for (const id of `${r.references ?? ""} ${r.inReplyTo ?? ""}`.match(/<[^>]+>/g) ?? []) {
+      if (!own.has(id)) named.add(id);
+    }
+  }
+  const at = (r: { sentAt?: number | string | null }) => (typeof r.sentAt === "string" ? Date.parse(r.sentAt) : (r.sentAt ?? 0));
+  const newest = [...sent].sort((a, b) => at(b) - at(a))[0];
+  return { refIds: [...named], subject: newest?.subject ?? "" };
+}
+
 /**
  * The messages of the copies in other mailboxes that these Message-IDs do
  * not name: what `withCopies` adds. Empty when there are no copies.
  */
-async function copyRows(account: string, rfcIds: (string | null | undefined)[]): Promise<StoredWithBody[]> {
+async function copyRows(
+  account: string,
+  rfcIds: (string | null | undefined)[],
+  links?: ThreadLinks
+): Promise<StoredWithBody[]> {
   const store = mailStore();
   if (!store.messages.copies) return [];
   const key = (id: string | null | undefined) => (id ?? "").trim();
   const ids = rfcIds.map(key).filter(Boolean);
   if (!ids.length) return [];
-  const copies = await store.messages.copies(account, ids).catch(() => []);
+  const copies = await store.messages.copies(account, ids, links).catch(() => []);
   if (!copies.length) return [];
   const seen = new Set(ids);
   const out: StoredWithBody[] = [];
@@ -204,7 +234,8 @@ export async function withLocalCopies(
   if (options?.before || options?.after || options?.around || !detail.messages.length) return detail;
   const ids = detail.messages.map((m) => m.rfcMessageId);
   // The copies under each mailbox's own pause, as the copy path reads them.
-  const readCopies = async () => withoutHeldBack(detail.account, await copyRows(detail.account, ids));
+  const links = linksOf(detail.messages.map((m) => ({ ...m, subject: detail.subject })));
+  const readCopies = async () => withoutHeldBack(detail.account, await copyRows(detail.account, ids, links));
   let extra = await readCopies().catch(() => []);
   const from = detail.hasOlder
     ? Math.min(...detail.messages.map((m) => (m.sentAt ? Date.parse(m.sentAt) : Infinity)))

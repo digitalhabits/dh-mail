@@ -198,7 +198,17 @@ impl MailDb {
     let rows = stmt.query_map(values.as_slice(), |r| {
       Ok(json!({ "account": r.get::<_, String>(0)?, "threadId": r.get::<_, String>(1)? }))
     })?;
-    let copies = rows.collect::<Result<Vec<_>, _>>()?;
+    let mut copies = rows.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+    // And the conversations the reply headers join to this one.
+    let ref_ids = str_list_arg(args, "refIds").unwrap_or_default();
+    let subject = opt_str_arg(args, "subject").unwrap_or_default();
+    for linked in linked_elsewhere(&conn, &account, &ids, &ref_ids, &subject)? {
+      let known = copies.iter().any(|c| c["account"] == linked.0.as_str() && c["threadId"] == linked.1.as_str());
+      if !known {
+        copies.push(json!({ "account": linked.0, "threadId": linked.1, "linked": true }));
+      }
+    }
     Ok(json!({ "copies": copies }))
   }
 
@@ -631,6 +641,73 @@ fn view_filters(view: &View) -> (String, String) {
       .to_string(),
   };
   (hidden_filter, membership)
+}
+
+/// Conversations in the reader's other mailboxes that the reply headers
+/// join to this one, when no message is in both.
+///
+/// The reader starts a conversation in one mailbox and answers from
+/// another: the answer is only in the second mailbox's Sent, and what comes
+/// after it arrives there. No server joins two accounts, so the list showed
+/// two rows, each with half of the conversation (2026-11-12).
+///
+/// Two ways in, both exact, as Thunderbird's index joins mail (its
+/// `_indexMessage`): by the Message-IDs alone, never by who wrote or when.
+///
+/// - `ref_ids`: the messages this conversation names in its References and
+///   In-Reply-To. A mailbox that holds one of them holds what came before.
+/// - `ids`: this conversation's own messages. A message elsewhere whose
+///   In-Reply-To is one of them is what came after.
+///
+/// One guard that Thunderbird does not have: the subjects must be the same
+/// once "Re:" and the like are off. An action here takes the whole
+/// conversation, so a reply used to start another topic must not bring the
+/// old conversation with it. Drafts do not count.
+fn linked_elsewhere(
+  conn: &Connection,
+  account: &str,
+  ids: &[String],
+  ref_ids: &[String],
+  subject: &str,
+) -> DbResult<Vec<(String, String)>> {
+  let base = crate::answer_links::base_subject(subject);
+  let mut out: Vec<(String, String)> = Vec::new();
+  let mut search = |column: &str, wanted: &[String]| -> DbResult<()> {
+    let mut wanted: Vec<String> = wanted.iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect();
+    wanted.sort();
+    wanted.dedup();
+    wanted.truncate(500);
+    if wanted.is_empty() {
+      return Ok(());
+    }
+    let marks = std::iter::repeat("?").take(wanted.len()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+      "SELECT DISTINCT account_email, thread_id, subject FROM messages
+        WHERE lower(account_email) <> ? AND is_draft = 0 AND {column} IN ({marks})
+        ORDER BY account_email, thread_id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut values: Vec<&dyn rusqlite::ToSql> = vec![&account];
+    for id in &wanted {
+      values.push(id);
+    }
+    let rows = stmt.query_map(values.as_slice(), |r| {
+      Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    })?;
+    for row in rows {
+      let (mailbox, thread_id, theirs) = row?;
+      if crate::answer_links::base_subject(&theirs) != base {
+        continue;
+      }
+      if !out.iter().any(|(a, t)| *a == mailbox && *t == thread_id) {
+        out.push((mailbox, thread_id));
+      }
+    }
+    Ok(())
+  };
+  search("rfc_message_id", ref_ids)?;
+  search("in_reply_to", ids)?;
+  Ok(out)
 }
 
 fn candidate_threads(

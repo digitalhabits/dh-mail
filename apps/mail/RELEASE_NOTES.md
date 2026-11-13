@@ -1,5 +1,10 @@
 ## What is new
 
+**One conversation across two mailboxes**
+- A conversation that you start in one mailbox and answer from another is now one conversation. Before, Mail showed two rows, each with half of it. The list shows one row, the conversation shows every message in order, and archive, delete and move take both halves.
+- Mail joins the two halves when one answers a message of the other, and only when the subject is the same. A reply with a new subject is a conversation of its own.
+- Inside one mailbox nothing changes: Mail shows the conversations as the mail server groups them.
+
 **Fixes**
 - A reply keeps one reply mark in its subject. Before, a reply to "RE: …" or "SV: …" went out as "Re: RE: …" or "Re: SV: …". On an Exchange mailbox, the answer to such a reply could then show as a conversation of its own.
 - The "Move to folder" list stays inside the window. Before, opened from a mail low in the list, its top ran off the window, with the search box and Inbox out of sight.

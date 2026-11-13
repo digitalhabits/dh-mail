@@ -310,10 +310,11 @@ export function createTauriMailStore(): MailStore {
         const out = await call<{ states: MailTeamThreadState[] }>("messages.teamStates", { account, threadIds, team });
         return out.states;
       },
-      copies: async (account, rfcIds) => {
-        const out = await call<{ copies: { account: string; threadId: string }[] }>("messages.copies", {
+      copies: async (account, rfcIds, links) => {
+        const out = await call<{ copies: { account: string; threadId: string; linked?: boolean }[] }>("messages.copies", {
           account,
           rfcIds,
+          ...(links ? { refIds: links.refIds, subject: links.subject } : {}),
         });
         return out.copies;
       },
