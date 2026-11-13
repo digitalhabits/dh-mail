@@ -82,3 +82,28 @@ export function longFaultSince(lastOkAt: number | null | undefined, now: number)
   if (typeof lastOkAt !== "number" || !Number.isFinite(lastOkAt) || lastOkAt <= 0) return null;
   return now - lastOkAt >= SERVER_FAULT_LONG_MS ? lastOkAt : null;
 }
+
+/**
+ * A sync notice the reader closed.
+ *
+ * It stays closed for that fault only. The key holds the kind of fault, and
+ * the value is when the mailbox last synced well at the moment of the close.
+ * A mailbox that came back and stopped again has a newer time, so its new
+ * notice shows. A sign-in fault is never closed: only the reader can mend it.
+ * The list is kept in memory, so a fault that is still there at the next
+ * start shows again.
+ */
+export type PausedSync = { account: string; folder?: string | null; lastError?: string | null; lastOkAt?: number | null };
+
+export function pauseNoticeKey(s: PausedSync): string {
+  return `${s.account}|${s.folder ?? ""}|${syncPauseKind(s.lastError)}`;
+}
+
+export function canDismissPause(s: PausedSync): boolean {
+  return syncPauseKind(s.lastError) !== "signIn";
+}
+
+export function isPauseDismissed(dismissed: ReadonlyMap<string, number | null>, s: PausedSync): boolean {
+  const key = pauseNoticeKey(s);
+  return canDismissPause(s) && dismissed.has(key) && dismissed.get(key) === (s.lastOkAt ?? null);
+}

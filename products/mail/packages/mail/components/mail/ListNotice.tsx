@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertTriangle, WifiOff } from "lucide-react";
+import { AlertTriangle, WifiOff, X } from "lucide-react";
 
 /**
  * A notice above the thread list: a mailbox that cannot be reached, a sync
@@ -17,11 +17,16 @@ export function ListNotice({
   title,
   children,
   action,
+  onDismiss,
+  dismissLabel,
 }: {
   kind?: "offline" | "warning";
   title: React.ReactNode;
   children?: React.ReactNode;
   action?: React.ReactNode;
+  /** With this, the notice has an × that closes it. */
+  onDismiss?: () => void;
+  dismissLabel?: string;
 }) {
   const Icon = kind === "offline" ? WifiOff : AlertTriangle;
   return (
@@ -30,13 +35,24 @@ export function ListNotice({
       className="flex items-start gap-2.5 rounded-control border border-amber-600/25 bg-amber-500/[0.07] px-3 py-2.5"
     >
       <Icon className="mt-[1px] h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
-      <div className="min-w-0 text-[12px] leading-snug">
+      <div className="min-w-0 flex-1 text-[12px] leading-snug">
         <p className="break-words font-semibold text-[var(--mail-chrome-fg)]">{title}</p>
         {children ? (
           <div className="mt-0.5 text-[var(--mail-chrome-muted)]">{children}</div>
         ) : null}
         {action ? <div className="mt-1.5">{action}</div> : null}
       </div>
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+          title={dismissLabel}
+          className="-mr-1 -mt-0.5 shrink-0 rounded-inner p-1 text-[var(--mail-chrome-faint)] hover:bg-amber-600/10 hover:text-[var(--mail-chrome-fg)]"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -30,6 +30,7 @@ import { longFaultSince, syncPauseKind } from "@/lib/mail/sync-pause";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { ListNotice, ListNoticeButton, ListNoticeDetails } from "@/components/mail/ListNotice";
+import { useDismissedPauses } from "@/components/mail/use-dismissed-pauses";
 import { MailFirstReadLine } from "@/components/mail/MailFirstReadLine";
 import { OfflineLine } from "@/components/mail/OfflineLine";
 import { useOffline } from "@/lib/mail/use-offline";
@@ -809,6 +810,7 @@ export function ListNotices() {
   const { isOutlookAccount } = usePageAccounts();
   const { listNarrow } = usePageLayout();
   const { offline, waiting } = useOffline();
+  const { dismiss, isDismissed } = useDismissedPauses();
   return (
     <>
       {/*
@@ -861,6 +863,8 @@ export function ListNotices() {
       {!listNarrow
         ? syncPaused
             .filter((s) => !(offline && syncPauseKind(s.lastError) === "offline"))
+            /* A notice the reader closed stays closed for that fault. */
+            .filter((s) => !isDismissed(s))
             .map((s) => (
               <div
                 key={`${s.account}|${s.folder}`}
@@ -900,6 +904,8 @@ export function ListNotices() {
                      seconds and servers. */
                   <ListNotice
                     kind="offline"
+                    onDismiss={() => dismiss(s)}
+                    dismissLabel={t("close")}
                     /* The mailbox's own provider, not Gmail for
                        everybody. If not, an Outlook account is told that
                        Mail cannot reach Gmail for it. */
@@ -914,6 +920,8 @@ export function ListNotices() {
                   /* The provider answered with a fault of its own (a 502).
                      Nothing to press: Reconnect would not mend it. */
                   <ListNotice
+                    onDismiss={() => dismiss(s)}
+                    dismissLabel={t("close")}
                     title={t("syncServerFault", {
                       provider: mailProviderLabel(mailProviderFor(s.account, isOutlookAccount)),
                       account: s.account,
@@ -932,6 +940,8 @@ export function ListNotices() {
                      with the one thing the reader can try; the worker's
                      reason comes after, small, for whoever is asked. */
                   <ListNotice
+                    onDismiss={() => dismiss(s)}
+                    dismissLabel={t("close")}
                     title={t("syncPaused", { account: s.account })}
                     action={
                       <ListNoticeButton onClick={() =>
