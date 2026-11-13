@@ -211,9 +211,18 @@ export function App() {
         );
         const json = (await res.json()) as {
           skipped?: boolean;
-          results?: { ok: boolean; error?: string; account?: string; source?: string }[];
+          results?: {
+            ok: boolean;
+            error?: string;
+            account?: string;
+            source?: string;
+            passing?: boolean;
+          }[];
         };
-        const failed = json.results?.find((r) => !r.ok);
+        // A server fault or a lost connection passes by itself, and the
+        // list has its own notice for it: no message here. Contact sources
+        // still shows it.
+        const failed = json.results?.find((r) => !r.ok && !r.passing);
         if (failed?.error) {
           // Named, and with the remedy on the toast: "reconnect this
           // account" left the reader asking which one, and where.

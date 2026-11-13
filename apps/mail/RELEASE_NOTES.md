@@ -3,6 +3,7 @@
 **When a mailbox stops syncing**
 - The notice about a mailbox that stopped syncing is shorter. The technical text is behind "Show details".
 - When the fault is at the mail server (for example, Outlook itself is down), the notice says so, and it no longer offers Reconnect, which does not help then. If the fault lasts 30 minutes or more, the notice says since when the mailbox has had no new mail.
+- A fault at the mail server shows one notice, not two. Before, a red message with the whole failed request for your contacts also showed. Contact sources in Settings now says it in plain words.
 
 **Security**
 - The libraries that Mail is built with have their newest security fixes.

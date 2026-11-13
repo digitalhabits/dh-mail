@@ -2,6 +2,7 @@ import { localStoreServes } from "@/lib/mail/local-store";
 import { isAppPasswordGmail } from "@/lib/gmail/accounts";
 import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
+import { isPassingFault, syncPauseKind } from "@/lib/mail/sync-pause";
 
 import { mailStore } from "@/lib/mail/store";
 import type { MailProvider } from "@/lib/mail/types";
@@ -147,6 +148,14 @@ function isScopeError(err: unknown): boolean {
 function friendlyContactSyncError(err: unknown): string {
   const message = errorMessage(err);
   const lower = message.toLowerCase();
+  // A fault that passes by itself: plain words, and no request text.
+  const kind = syncPauseKind(message);
+  if (kind === "server") {
+    return "The mail server did not answer. Mail tries again later.";
+  }
+  if (kind === "offline") {
+    return "No connection. Mail tries again when you are online.";
+  }
   if (isRateLimit(err)) {
     return "Google is over its request limit for this account. Sync again in a minute.";
   }
@@ -537,6 +546,8 @@ export type SyncProgress = {
   account: string;
   ok: boolean;
   error?: string;
+  /** The fault goes away by itself (server fault, no connection). */
+  passing?: boolean;
 };
 
 export type SyncContactSourcesOptions = {
@@ -614,7 +625,10 @@ export async function syncAllContactSources(
         }
         const message = friendlyContactSyncError(err);
         await saveState(source, account, { error: message });
-        results.push({ source, account, ok: false, error: message });
+        // The reader can do nothing about a server fault or a lost
+        // connection, so the caller does not interrupt them with it.
+        const passing = isPassingFault(syncPauseKind(errorMessage(err)));
+        results.push({ source, account, ok: false, error: message, passing });
       }
       onProgress?.(results[results.length - 1]);
     };

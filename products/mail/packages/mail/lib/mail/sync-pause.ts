@@ -61,6 +61,11 @@ export function syncPauseKind(reason: string | null | undefined): SyncPauseKind 
   return "other";
 }
 
+/** A fault that goes away by itself: the reader has nothing to do. */
+export function isPassingFault(kind: SyncPauseKind): boolean {
+  return kind === "server" || kind === "offline";
+}
+
 /** How long a fault at the mail server may last before the notice says since when. */
 export const SERVER_FAULT_LONG_MS = 30 * 60_000;
 
