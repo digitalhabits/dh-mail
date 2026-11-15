@@ -124,6 +124,23 @@ function toWindows(days: Span[][]): MailQuietWindow[] {
   return [...byHours.values()].sort((a, b) => a.days[0] - b.days[0] || a.start.localeCompare(b.start));
 }
 
+/**
+ * The hours new mail is fetched while the mailbox is hidden, as rules: the
+ * note under the new-mail chart names them. Both sides are hours on.
+ */
+export function fetchWhileHidden(fetching: MailQuietWindow[], shown: MailQuietWindow[]): MailQuietWindow[] {
+  const shownDays = daySpans(shown);
+  const days = daySpans(fetching).map((spans, day) => {
+    const hidden = complement(merge(shownDays[day]));
+    return merge(spans).flatMap(([from, to]) =>
+      hidden
+        .map(([hFrom, hTo]) => [Math.max(from, hFrom), Math.min(to, hTo)] as Span)
+        .filter(([pFrom, pTo]) => pTo > pFrom)
+    );
+  });
+  return toWindows(days);
+}
+
 /** The times it is off, from the times it is on — and the other way round. */
 export function invertWindows(windows: MailQuietWindow[]): MailQuietWindow[] {
   return toWindows(daySpans(windows).map(complement));

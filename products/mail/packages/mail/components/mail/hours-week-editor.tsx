@@ -10,18 +10,32 @@
  *   up or down to other days, snapping to whole days.
  * - Drag on an empty part of a day to add hours for that day.
  *
- * With `shown`, the chart is about new mail: the hours the mailbox is shown
- * are drawn quiet behind, and new mail's hours bright where they fall
- * inside them. Outside them nothing arrives: a bar there is drawn faint, so
- * hours drawn on a hidden day can still be seen and moved.
+ * With `shown`, the chart is about new mail. It has three states, and a key
+ * under it names the ones in sight:
+ * - a bar: new mail comes in, and the mailbox is shown.
+ * - the light band: the mailbox is shown, and no new mail comes in.
+ * - the bare track: the mailbox is hidden. A rule that runs into those hours
+ *   is not drawn there. A note under the key says that the hours shown
+ *   hide the mailbox then, and names the hours mail is still fetched in the
+ *   background, to be seen when the mailbox is shown again. (A hidden mailbox still gets its mail; Ulrik,
+ *   2026-11-15: the chart does not say so, the grey is enough. A hollow bar
+ *   with "Comes in while hidden, waits for you" was tried and was hated.)
+ *   Such a rule can still be taken and dragged where it is.
+ *
+ * The bars are the green of the "shown" chart, so the two charts read the
+ * same way: a bar is the answer to the question on its page. (Until
+ * 2026-11-15 the bars here were a second, brighter green, faint outside the
+ * hours shown, and the hint named the wrong colour in the light theme.)
  *
  * A handle at midnight is not drawn: an all-day bar has no ends to show.
  * It can still be taken there.
  */
 
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 
-import { daySpans } from "@/lib/mail/account-rhythm";
+import { useOnHoursWords } from "@/components/mail/pause-panels";
+import { daySpans, fetchWhileHidden, onRulePhrase } from "@/lib/mail/account-rhythm";
 import { SCHEDULE_DAY_LABELS, type MailScheduleDay } from "@/lib/mail/custom-lists";
 import {
   addDayRule,
@@ -34,7 +48,7 @@ import {
   type RuleBar,
 } from "@/lib/mail/hours-drag";
 import type { MailQuietWindow } from "@/lib/mail/quiet-hours";
-import { cn } from "@/lib/utils";
+import { useMailT } from "@/lib/mail/i18n";
 
 /** How near an end a press must be to take it, in pixels. */
 const HANDLE_REACH = 8;
@@ -50,14 +64,58 @@ export function HoursWeekEditor({
   rows,
   onRows,
   shown,
+  onChangeShown,
 }: {
   rows: MailQuietWindow[];
   onRows: (rows: MailQuietWindow[]) => void;
+  /** Go to the hours shown: the link in the note about hidden hours. */
+  onChangeShown?: () => void;
   /** The hours the mailbox is shown, when the chart is about new mail. */
   shown?: MailQuietWindow[];
 }) {
   const bars = React.useMemo(() => ruleBars(rows), [rows]);
   const shownSpans = React.useMemo(() => (shown ? daySpans(shown) : null), [shown]);
+  /** Some hour the mailbox is shown has no bar over it: the key names the light band. */
+  const shownBare = React.useMemo(
+    () =>
+      Boolean(shownSpans) &&
+      shownSpans!.some((spans, day) =>
+        spans.some(([from, to]) => {
+          // Walk the bars left to right; a gap before `to` is a bare stretch.
+          let at = from;
+          for (const bar of [...bars[day]].sort((a, b) => a.from - b.from)) {
+            if (bar.from > at) break;
+            at = Math.max(at, bar.to);
+          }
+          return at < to;
+        })
+      ),
+    [bars, shownSpans]
+  );
+  /** Some bar shows: the key names it. */
+  const anyBar = React.useMemo(
+    () => bars.some((dayBars, day) => dayBars.some((bar) => barPieces(bar, shownSpans?.[day] ?? null).length > 0)),
+    [bars, shownSpans]
+  );
+  /** Some hour of the week the mailbox is hidden: the note says what the grey is. */
+  const anyHidden = React.useMemo(
+    () =>
+      Boolean(shownSpans) &&
+      shownSpans!.some((spans) => spans.reduce((sum, [from, to]) => sum + (to - from), 0) < DAY_MINUTES),
+    [shownSpans]
+  );
+  const t = useMailT();
+  const words = useOnHoursWords();
+  /** The hours of the rules that fall where the mailbox is hidden, in words. */
+  const hiddenFetch = React.useMemo(
+    () =>
+      shown
+        ? fetchWhileHidden(rows, shown)
+            .map((window) => onRulePhrase(window, words, SCHEDULE_DAY_LABELS))
+            .join(", ")
+        : "",
+    [rows, shown, words]
+  );
   const drag = React.useRef<Drag | null>(null);
   const tracks = React.useRef<(HTMLDivElement | null)[]>([]);
 
@@ -166,38 +224,71 @@ export function HoursWeekEditor({
           <span key={hour}>{hour}</span>
         ))}
       </div>
+      {shownSpans ? (
+        <div className="ml-[1.75rem] mt-3 flex flex-col gap-1 text-xs text-stone-600">
+          {anyBar ? <KeyLine fill="bg-[var(--mail-hours-accent)]" words={t("rhythmKeyFetch")} /> : null}
+          {shownBare ? <KeyLine fill="bg-[var(--mail-week-shown)]" words={t("rhythmKeyShownOnly")} /> : null}
+          {anyHidden ? (
+            <p className="mt-1.5 flex items-start gap-2 leading-relaxed text-stone-600">
+              <AlertTriangle aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              <span>
+                {hiddenFetch ? t("rhythmHiddenFetchNote", { times: hiddenFetch }) : t("rhythmHiddenNote")}
+                {onChangeShown ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="font-semibold text-[var(--mail-hours-accent)] underline-offset-2 hover:underline"
+                      onClick={onChangeShown}
+                    >
+                      {t("rhythmChangeShown")}
+                    </button>
+                  </>
+                ) : null}
+              </span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
+/** One line of the key under the chart: a piece of bar and what it means. */
+function KeyLine({ fill, words }: { fill: string; words: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span aria-hidden className={`h-2.5 w-6 shrink-0 rounded-full ${fill}`} />
+      {words}
+    </span>
+  );
+}
+
 /**
- * One rule's bar on one day, with its ends as handles. About new mail, the
- * part inside the hours shown is bright, and the rest faint.
+ * The parts of a bar that are drawn: those inside the hours shown. With no
+ * hours shown given (the "shown" chart itself), the whole bar.
  */
+export function barPieces(bar: { from: number; to: number }, shown: [number, number][] | null): [number, number][] {
+  if (!shown) return [[bar.from, bar.to]];
+  return shown
+    .map(([from, to]) => [Math.max(from, bar.from), Math.min(to, bar.to)] as [number, number])
+    .filter(([from, to]) => to > from);
+}
+
+/** One rule's bar on one day, with its ends as handles where they are in sight. */
 function Bar({ bar, shown }: { bar: RuleBar; shown: [number, number][] | null }) {
-  const fill = shown ? "bg-[var(--mail-week-fetch)]" : "bg-[var(--mail-hours-accent)]";
-  const pieces = shown
-    ? shown
-        .map(([from, to]) => [Math.max(from, bar.from), Math.min(to, bar.to)] as const)
-        .filter(([from, to]) => to > from)
-    : [[bar.from, bar.to] as const];
+  const inSight = (minute: number) => !shown || shown.some(([from, to]) => minute >= from && minute <= to);
   return (
     <>
-      {shown ? (
-        <span
-          className={cn("absolute inset-y-0 cursor-grab opacity-30 active:cursor-grabbing", fill)}
-          style={{ left: pct(bar.from), width: pct(bar.to - bar.from) }}
-        />
-      ) : null}
-      {pieces.map(([from, to]) => (
+      {barPieces(bar, shown).map(([from, to]) => (
         <span
           key={from}
-          className={cn("absolute inset-y-0 cursor-grab active:cursor-grabbing", fill)}
+          className="absolute inset-y-0 cursor-grab bg-[var(--mail-hours-accent)] active:cursor-grabbing"
           style={{ left: pct(from), width: pct(to - from) }}
         />
       ))}
-      {bar.startHandle && bar.from > 0 ? <Handle at={bar.from} /> : null}
-      {bar.endHandle && bar.to < DAY_MINUTES ? <Handle at={bar.to} /> : null}
+      {bar.startHandle && bar.from > 0 && inSight(bar.from) ? <Handle at={bar.from} /> : null}
+      {bar.endHandle && bar.to < DAY_MINUTES && inSight(bar.to) ? <Handle at={bar.to} /> : null}
     </>
   );
 }

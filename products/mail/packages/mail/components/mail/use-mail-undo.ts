@@ -120,7 +120,9 @@ mailUndoSlot.setFallback((slot) => {
         action: { label: mailSay("undo"), onClick: slot.undo },
         duration: 8000,
       })
-    : toast.success(slot.label, { duration: slot.ms });
+    : slot.busy
+      ? toast.loading(slot.label, { duration: slot.ms })
+      : toast.success(slot.label, { duration: slot.ms });
   return () => toast.dismiss(id);
 });
 

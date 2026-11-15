@@ -675,7 +675,7 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   /* The green and white of the app's main buttons (Next, Send). */
   --mail-fetch-tile: var(--mail-accent);
   --mail-fetch-stroke: #ffffff;
-  --mail-week-shown: #a8d6ce;
+  --mail-week-shown: #b7d3ca;
   --mail-week-fetch: #2ab3a0;
   --mail-week-hidden: rgba(120, 113, 108, 0.14);
   --mail-segment-active: #ffffff;

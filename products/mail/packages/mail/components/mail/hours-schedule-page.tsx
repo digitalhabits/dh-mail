@@ -45,6 +45,7 @@ export function HoursSchedulePage({
   kept,
   current,
   shown,
+  onChangeShown,
   lock,
   onBack,
   onSave,
@@ -66,6 +67,8 @@ export function HoursSchedulePage({
   current: string | null;
   /** The hours shown, when the page is about new mail. */
   shown?: MailQuietWindow[];
+  /** Go to the hours shown of the same account. Changes not saved here are dropped. */
+  onChangeShown?: () => void;
   lock?: PauseLock;
   onBack: () => void;
   onSave: (save: ScheduleSave) => void;
@@ -80,6 +83,11 @@ export function HoursSchedulePage({
   const changed = choice !== current || !sameWeek(nextKept, kept);
   const loosens = Boolean(lock) && changed && scheduleLoosened(kept, nextKept);
   const save = () => onSave({ choice, kept: nextKept });
+  /** Put the page back as the setting stands. */
+  const discard = () => {
+    setRows(onRowsOf(kept));
+    setChoice(current);
+  };
 
   return (
     <div>
@@ -87,12 +95,13 @@ export function HoursSchedulePage({
         <button
           type="button"
           aria-label={t("back")}
-          className="rounded p-0.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+          className="group -ml-1 flex items-center gap-2 rounded py-0.5 pl-0.5 pr-1.5 hover:bg-stone-100"
           onClick={onBack}
         >
-          <ChevronLeft className="h-4 w-4" />
+          {/* The heading goes back too, not only the arrow (Ulrik, 2026-11-15). */}
+          <ChevronLeft className="h-4 w-4 text-stone-500 group-hover:text-stone-800" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-700">{heading}</span>
         </button>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-700">{heading}</p>
         <span className="min-w-0 flex-1 truncate text-xs text-stone-500">{who}</span>
         {lock ? <LockedChip /> : null}
       </div>
@@ -111,6 +120,7 @@ export function HoursSchedulePage({
           rows={rows}
           onRows={setRows}
           shown={shown}
+          onChangeShown={onChangeShown}
           previewHint={previewHint}
         />
       </div>
@@ -123,10 +133,7 @@ export function HoursSchedulePage({
             bare
             words={lock.words}
             hiding={hiding}
-            onCancel={() => {
-              setRows(onRowsOf(kept));
-              setChoice(current);
-            }}
+            onCancel={discard}
             onSave={() => {
               onUnlock?.();
               save();
@@ -134,7 +141,18 @@ export function HoursSchedulePage({
           />
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-stone-500">{changed ? t("hoursMenuNotSaved") : t("hoursMenuNoChanges")}</span>
+            <span className="flex items-center gap-3 text-xs text-stone-500">
+              {changed ? t("hoursMenuNotSaved") : t("hoursMenuNoChanges")}
+              {changed ? (
+                <button
+                  type="button"
+                  className="font-semibold text-stone-600 underline-offset-2 hover:text-stone-900 hover:underline"
+                  onClick={discard}
+                >
+                  {t("hoursMenuDiscard")}
+                </button>
+              ) : null}
+            </span>
             <button
               type="button"
               className="rounded-control bg-[var(--mail-hours-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--mail-hours-accent-hover)]"

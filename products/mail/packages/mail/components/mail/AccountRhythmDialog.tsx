@@ -154,6 +154,7 @@ export function AccountRhythmDialog({ email, onClose }: { email: string; onClose
           rows={fetching}
           onRows={setFetching}
           shown={shown}
+          onChangeShown={() => setStep(1)}
           previewHint={t("rhythmFetchPreviewHint")}
           lock={{ on: fetchLock, set: setFetchLock, title: t("rhythmFetchFriction"), what: t("rhythmFetchFrictionWhat") }}
         />
@@ -211,6 +212,7 @@ function RhythmStep<P extends string>({
   rows,
   onRows,
   shown,
+  onChangeShown,
   previewHint,
   lock,
 }: {
@@ -223,6 +225,7 @@ function RhythmStep<P extends string>({
   onRows: (rows: MailQuietWindow[]) => void;
   /** The hours shown, when the step is about new mail. */
   shown?: MailQuietWindow[];
+  onChangeShown?: () => void;
   previewHint: string;
   lock: { on: boolean; set: (on: boolean) => void; title: string; what: string };
 }) {
@@ -248,6 +251,7 @@ function RhythmStep<P extends string>({
       rows={rows}
       onRows={onRows}
       shown={shown}
+      onChangeShown={onChangeShown}
       previewHint={previewHint}
       lock={lock}
     />

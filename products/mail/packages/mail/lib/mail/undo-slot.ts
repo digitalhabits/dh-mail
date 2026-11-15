@@ -22,7 +22,7 @@
 
 export const UNDO_SLOT_MS = 8000;
 
-export type UndoSlotAction = "archive" | "trash" | "move" | "snooze" | "send" | "discard";
+export type UndoSlotAction = "archive" | "trash" | "move" | "snooze" | "send" | "discard" | "rule";
 
 export type UndoSlot = {
   id: string;
@@ -39,6 +39,11 @@ export type UndoSlot = {
   ms?: number;
   /** Told when it leaves the stack, by Undo or by its time. */
   onGone?: () => void;
+  /**
+   * Still going: a spinner in place of the icon. The same id is shown again
+   * with the result when it is done ("Saving rule…", then "Rule saved").
+   */
+  busy?: boolean;
   /** What it happened to: a subject, "GitHub stack (5)", "7 conversations". */
   object: string;
   /** The whole sentence, for the toast it falls back to. */
@@ -161,6 +166,11 @@ export function createUndoSlotStore(timers: Timers = realTimers) {
     },
     /** On top of the stack. The oldest past the limit leaves the stack. */
     show(slot: UndoSlot) {
+      // The same id again replaces it: its old time and toast go with it.
+      if (state.slots.some((s) => s.id === slot.id)) {
+        stop(slot.id);
+        dropFallback(slot.id);
+      }
       const slots = [slot, ...state.slots.filter((s) => s.id !== slot.id)];
       for (const old of slots.slice(UNDO_SLOT_MAX)) {
         stop(old.id);

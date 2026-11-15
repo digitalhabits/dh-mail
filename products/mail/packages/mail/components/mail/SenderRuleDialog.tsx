@@ -77,7 +77,7 @@ function SenderRuleDialog({ input, onClose }: { input: SenderRuleDialogInput; on
             {t("cancel")}
           </button>
           <button type="button" className={settingsPrimaryButton} disabled={!ready || saving} onClick={() => void save()}>
-            {t("ruleSave")}
+            {saving ? t(moveExisting && count > 0 ? "ruleSavingMoving" : "ruleSaving") : t("ruleSave")}
           </button>
         </>
       }

@@ -14,6 +14,7 @@ import {
   onHoursSummary,
   invertWindows,
   presetOf,
+  fetchWhileHidden,
   rhythmFromSettings,
   rhythmSegments,
   rhythmToSettings,
@@ -93,4 +94,25 @@ suite(async () => {
 
   const saturday = rhythmSegments(RHYTHMS.offWeekends)[5];
   check("Saturday off on weekends: hidden all day", saturday.length === 1 && saturday[0].state === "hidden");
+
+  // The note under the new-mail chart: the hours fetched while hidden.
+  const weekdays = [0, 1, 2, 3, 4];
+  const shownOutsideWork = [
+    { start: "00:00", end: "09:00", days: weekdays },
+    { start: "17:00", end: "00:00", days: weekdays },
+    { start: "00:00", end: "00:00", days: [5, 6] },
+  ];
+  const twice = fetchWhileHidden(FETCH_PRESETS.twice, shownOutsideWork);
+  check("twice a day inside hidden hours: both hours are fetched while hidden",
+    JSON.stringify(twice) === JSON.stringify([
+      { start: "09:00", end: "10:00", days: weekdays },
+      { start: "15:00", end: "16:00", days: weekdays },
+    ]));
+  const hiddenOfAlways = fetchWhileHidden([ALWAYS_RULE], shownOutsideWork);
+  check("always: the hidden hours of the weekdays, and nothing at the weekend",
+    JSON.stringify(hiddenOfAlways) === JSON.stringify([{ start: "09:00", end: "17:00", days: weekdays }]));
+  check("a rule that only touches hidden hours is cut to them",
+    JSON.stringify(fetchWhileHidden([{ start: "07:00", end: "10:00", days: [0] }], shownOutsideWork)) ===
+      JSON.stringify([{ start: "09:00", end: "10:00", days: [0] }]));
+  check("a mailbox shown all week has no such hours", fetchWhileHidden(FETCH_PRESETS.twice, [ALWAYS_RULE]).length === 0);
 });

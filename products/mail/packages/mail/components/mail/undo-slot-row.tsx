@@ -7,7 +7,7 @@
  */
 
 import * as React from "react";
-import { Archive, Clock, FileX, FolderInput, Send, Trash2, Undo2, type LucideIcon } from "lucide-react";
+import { Archive, Clock, FileX, FolderInput, ListFilter, Loader2, Send, Trash2, Undo2, type LucideIcon } from "lucide-react";
 
 import { useMailT } from "@/lib/mail/i18n";
 import { mailUndoSlot, type UndoSlot, type UndoSlotAction, type UndoSlotState } from "@/lib/mail/undo-slot";
@@ -58,15 +58,20 @@ const ACTION_ICON: Record<UndoSlotAction, LucideIcon> = {
   snooze: Clock,
   send: Send,
   discard: FileX,
+  rule: ListFilter,
 };
 
 /** The icon, what happened in bold, and what it happened to. */
 function SlotWords({ slot }: { slot: UndoSlot }) {
-  const Icon = ACTION_ICON[slot.action];
+  const Icon = slot.busy ? Loader2 : ACTION_ICON[slot.action];
   const verb = slotVerb(slot, useSecondsLeft(slot.countdown?.endsAt));
   return (
     <>
-      <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--mail-chrome-fg)]" strokeWidth={1.75} />
+      <Icon
+        aria-hidden
+        className={cn("h-4 w-4 shrink-0 text-[var(--mail-chrome-fg)]", slot.busy && "animate-spin")}
+        strokeWidth={1.75}
+      />
       <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-sm leading-snug" title={`${verb} ${slot.object}`.trim()}>
         {/* A long verb ("Sends at 14:30, if this computer is on and Mail is
             open") wraps, and the notice grows taller, so all of it is read

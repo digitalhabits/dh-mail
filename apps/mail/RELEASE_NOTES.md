@@ -1,5 +1,12 @@
 ## What is new
 
+**The week chart for new mail**
+- In "When should new mail come in?", the week chart now reads the same way as the chart for "Shown in Mail". A dark green bar is when new mail comes in. Light green is when the inbox is shown and no new mail comes in. Grey is when the account is hidden. A key under the chart names the colours.
+- Before, the hint said that the lighter colour was new mail. In the light theme that was the wrong way round, so a day with no new-mail hours, for example a weekend, looked open when it got no new mail all day.
+- When the account is hidden for some hours, a note under the chart says so. It names the hours that mail is still fetched in the background, and you see that mail when the account is shown again. "Change the hours shown" in the note opens those hours.
+- When you change a schedule, "Discard changes" next to "Not saved yet." puts it back as it was.
+- The heading at the top of a schedule page goes back, as the arrow next to it does.
+
 **When a mailbox stops syncing**
 - The notice about a mailbox that stopped syncing is shorter. The technical text is behind "Show details".
 - When the fault is at the mail server (for example, Outlook itself is down), the notice says so, and it no longer offers Reconnect, which does not help then. If the fault lasts 30 minutes or more, the notice says since when the mailbox has had no new mail.
@@ -24,6 +31,7 @@
 - Right-click a mail and choose "Rules for …" to say where that sender's future mail goes: always to Junk, always to Archive, always to a folder, or always to Trash. One click makes the rule, and it also moves the mail of theirs that is in the inbox now.
 - "More options…" opens the full rule: this sender only or everyone at their domain, the folder to use, and whether the mail already in the inbox goes too.
 - A sender with a rule shows it as "In use". "Remove this rule" takes it away.
+- When you save or remove a rule, the confirmation shows at the foot of the list, with the other confirmations. While a rule is saved, "Saving rule…" shows at once.
 - Mail runs the rules after each sync. A rule does not run while Mail is closed: mail that came then is moved when you next open Mail.
 
 **Quiet hours and paused mailboxes**

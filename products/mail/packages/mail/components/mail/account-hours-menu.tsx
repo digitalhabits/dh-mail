@@ -130,6 +130,7 @@ export function AccountHoursMenu({
           kept={spec.kept}
           current={spec.current}
           shown={spec.shown}
+          onChangeShown={tab === "fetch" ? () => setTab("shown") : undefined}
           lock={unlocked ? undefined : spec.lock}
           onUnlock={unlock}
           onBack={toMain}

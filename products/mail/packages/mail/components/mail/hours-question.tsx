@@ -54,6 +54,7 @@ export function HoursQuestion({
   rows,
   onRows,
   shown,
+  onChangeShown,
   previewHint,
   lock,
   editorAlways = false,
@@ -70,6 +71,8 @@ export function HoursQuestion({
   onRows: (rows: MailQuietWindow[]) => void;
   /** The hours shown, when the question is about new mail. */
   shown?: MailQuietWindow[];
+  /** Go to the hours shown, from the note about hidden hours. */
+  onChangeShown?: () => void;
   previewHint: string;
   /** The switch for the words to type before going round these hours. */
   lock?: { on: boolean; set: (on: boolean) => void; title: string; what: string };
@@ -123,7 +126,7 @@ export function HoursQuestion({
             {previewHint}
           </p>
           <div className="mt-3">
-            <HoursWeekEditor rows={rows} onRows={edit} shown={shown} />
+            <HoursWeekEditor rows={rows} onRows={edit} shown={shown} onChangeShown={onChangeShown} />
           </div>
           {editing ? (
             <HoursRuleCards className="mt-4" rows={rows} onRows={edit} />

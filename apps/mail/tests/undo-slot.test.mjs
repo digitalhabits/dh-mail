@@ -167,4 +167,19 @@ suite(async () => {
     mailUndoSlot.clear();
     leave();
   }
+  {
+    // A rule says "Saving rule…" at once, and the same notice turns into
+    // the result: one notice, with the result's own time (2026-11-14).
+    const timers = fakeTimers();
+    const store = createUndoSlotStore(timers);
+    const leave = store.mount("list");
+    store.show(slot("rule", { action: "rule", busy: true, verb: "Saving rule…", undo: undefined, ms: 120000 }));
+    timers.advance(3000);
+    store.show(slot("rule", { action: "rule", verb: "Rule saved", undo: undefined, ms: DONE_SLOT_MS }));
+    const shown = store.get().slots;
+    check("the result takes the place of the busy notice", shown.length === 1 && shown[0].verb === "Rule saved" && !shown[0].busy);
+    timers.advance(DONE_SLOT_MS);
+    check("and goes after its own time, not the busy one's", store.get().slots.length === 0);
+    leave();
+  }
 });
