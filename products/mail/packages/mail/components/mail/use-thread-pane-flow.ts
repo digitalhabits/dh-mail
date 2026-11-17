@@ -17,6 +17,7 @@ import { useOutlookHandover } from "@/components/mail/use-outlook-handover";
 import { useThreadZoom } from "@/components/mail/use-thread-pane-geometry";
 import { useThreadStream } from "@/components/mail/use-thread-stream";
 import { sameDay } from "@/lib/mail/date-format";
+import { mainAddresses, subscribeMainAddresses } from "@/lib/mail/exchange-own-addresses";
 import {
   messageMeta,
   threadAuthorship,
@@ -307,13 +308,16 @@ export function useThreadSending({
    * therefore compared with nothing — we cannot say what changed across a gap
    * we cannot see.
    */
+  // An Exchange mailbox signs in as one address and sends as another. Both
+  // are us, for every such mailbox connected.
+  const mains = React.useSyncExternalStore(subscribeMainAddresses, mainAddresses, mainAddresses);
   const { metaById, newDayIds, earlierBySender } = React.useMemo(() => {
     const segments = [
       ...olderParts.map((part) => part.messages),
       thread?.messages ?? [],
     ];
     const everything = segments.flat();
-    const authorship = threadAuthorship(everything, account);
+    const authorship = threadAuthorship(everything, account, [...Object.keys(mains), ...Object.values(mains)]);
     const metaById = new Map<string, MessageMeta>();
     for (const segment of segments) {
       segment.forEach((message, i) => {
@@ -334,7 +338,7 @@ export function useThreadSending({
     // Each one's previous from the same sender, to fold a repeated signature.
     const earlierBySender = earlierFromSameSender(everything);
     return { metaById, newDayIds, earlierBySender };
-  }, [olderParts, thread?.messages, account]);
+  }, [olderParts, thread?.messages, account, mains]);
   const {
     forwardSubject,
     historyAppendix,

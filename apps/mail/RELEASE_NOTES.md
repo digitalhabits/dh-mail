@@ -1,5 +1,13 @@
 ## What is new
 
+**Fixes in 0.12.7**
+- Drafts: a row in Drafts is now the draft itself. Before, when a reply had come in after you saved a draft, the row showed the reply, and Delete went to the reply: the draft stayed and came back in the list, and the reply was moved to Trash. Delete on a draft now deletes the draft, also for many drafts at once.
+- With Stacks on, the window of a person closes when you archive, delete, junk or snooze that person's last conversation. Before, the window stayed open and blank.
+- When a conversation window closes itself after such an action, the main window comes to the front.
+- A link that you copy from a mail keeps its address. Before, a link pasted into a reply, or into another app, was underlined words with no address.
+- A scheduled email that missed its time is asked about also when an Exchange server does not answer. Before, such an email could show only in Drafts, with no question and no row in Scheduled, until the server answered again.
+- On an Exchange mailbox that signs in with one address and sends as another, a reply that is still sending no longer says "Added us · Removed" with your own address.
+
 **The week chart for new mail**
 - In "When should new mail come in?", the week chart now reads the same way as the chart for "Shown in Mail". A dark green bar is when new mail comes in. Light green is when the inbox is shown and no new mail comes in. Grey is when the account is hidden. A key under the chart names the colours.
 - Before, the hint said that the lighter colour was new mail. In the light theme that was the wrong way round, so a day with no new-mail hours, for example a weekend, looked open when it got no new mail all day.

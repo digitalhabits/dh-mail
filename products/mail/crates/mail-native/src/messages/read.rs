@@ -834,6 +834,19 @@ pub(super) fn load_threads(
     let Some(latest) = visible.last() else {
       continue;
     };
+    // In Drafts the row is the draft itself, not the newest message of its
+    // conversation. A reply that came in after the draft was saved once
+    // gave the row its id, its words and its "To". Delete on that row then
+    // went to the reply: the draft stayed, and the reply was marked as
+    // trash (seen 2026-11-17, a bulk delete of drafts that all came back).
+    let latest = if matches!(view, View::Drafts) {
+      match visible.iter().rev().find(|m| m.row.labels.iter().any(|l| l == DRAFT)) {
+        Some(draft) => draft,
+        None => continue,
+      }
+    } else {
+      latest
+    };
     let mut participants: Vec<Address> = Vec::new();
     let senders: Vec<Address> = visible
       .iter()

@@ -10,6 +10,7 @@ import { isGmailAppPasswordError } from "@/lib/mail/gmail-app-password";
 import "server-only";
 
 import { cancelExchangeHeld, deleteExchangeHeld, listExchangeHeld, sendExchangeHeldNow } from "@/lib/mail/exchange-send-later";
+import { serverAndLocalLists } from "@/lib/mail/scheduled-lists";
 import { exchangeSenderName, sendExchangeMessage } from "@/lib/mail/exchange-send";
 import { discardExchangeDraft, discardOwnDraftCopiesInThread } from "@/lib/mail/exchange-drafts";
 import { localStoreServes } from "@/lib/mail/local-store";
@@ -152,11 +153,7 @@ export async function listScheduledMailMessages(input: {
   // Exchange: what another client left held in Outbox (section 16.4), and
   // the drafts this computer sends later (docs/mail-send-later.md).
   if (provider === "exchange") {
-    const [held, drafts] = await Promise.all([
-      listExchangeHeld(input.account, input.threadId),
-      listScheduledDrafts(input.account, input.threadId),
-    ]);
-    return [...held, ...drafts];
+    return exchangeScheduled(input.account, input.threadId);
   }
   // Gmail: the drafts this computer sends later, and, for one thread, the
   // outbox messages held in it for a later time. A message the outbox is
@@ -292,6 +289,20 @@ function withinTime<T>(work: Promise<T>, ms: number, account: string): Promise<T
   });
 }
 
+/**
+ * An Exchange mailbox's scheduled mail: what the server holds, and the
+ * drafts this computer sends later. The second is given also when the
+ * server does not answer (scheduled-lists.ts).
+ */
+function exchangeScheduled(account: string, threadId?: string): Promise<MailScheduledMessage[]> {
+  return serverAndLocalLists(
+    listExchangeHeld(account, threadId),
+    listScheduledDrafts(account, threadId),
+    HELD_LIST_WAIT_MS,
+    (err) => console.warn("[mail] the server's held list did not load; this computer's scheduled drafts are still listed:", err)
+  );
+}
+
 export async function listAllScheduledMailMessages(input: {
   clerkUserId: string;
   scope?: MailAccountScope;
@@ -311,7 +322,7 @@ export async function listAllScheduledMailMessages(input: {
       try {
         const list =
           a.provider === "exchange"
-            ? Promise.all([listExchangeHeld(a.email), listScheduledDrafts(a.email)]).then((p) => p.flat())
+            ? exchangeScheduled(a.email)
             : a.provider !== "outlook"
               ? Promise.all([heldInOutbox(a.email), listScheduledDrafts(a.email)]).then((p) => p.flat())
               : listScheduledOutlookMessages(a.email);

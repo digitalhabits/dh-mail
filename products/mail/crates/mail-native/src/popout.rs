@@ -764,12 +764,48 @@ pub async fn open_mail_reader_window(
 
 /// Close the reader window, asked from inside it — an action that removes
 /// the conversation (archive, delete, junk) takes its window with it.
+///
+/// The main window then comes to the front: the conversation is gone, and
+/// the list it went from is where the reader goes on (Ulrik, 2026-11-16).
+///
+/// A window in full screen is taken out of full screen first. On the Mac a
+/// plain close of a full-screen window takes the page away and leaves the
+/// window: an empty screen with only its three buttons (seen 2026-11-16,
+/// after Archive in a full-screen reader). The close waits for the Mac to
+/// finish the way out, which it reports by `is_fullscreen` turning false.
 #[tauri::command]
-pub fn close_mail_reader_window(window: tauri::WebviewWindow) -> Result<(), String> {
+pub fn close_mail_reader_window(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
   if !window.label().starts_with("reader-") {
     return Err("Not a mail reader window".into());
   }
-  window.close().map_err(|e| e.to_string())
+  if window.is_fullscreen().unwrap_or(false) {
+    let _ = window.set_fullscreen(false);
+    std::thread::spawn(move || {
+      // At most three seconds: a window that never reports its way out is
+      // still closed, as before, and not left open with the mail gone.
+      for _ in 0..60 {
+        if !window.is_fullscreen().unwrap_or(false) {
+          break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+      }
+      let _ = window.close();
+      front_main_window(&app);
+    });
+    return Ok(());
+  }
+  window.close().map_err(|e| e.to_string())?;
+  front_main_window(&app);
+  Ok(())
+}
+
+/// The main window, in sight and in front.
+fn front_main_window(app: &tauri::AppHandle) {
+  if let Some(main) = app.get_webview_window("main") {
+    let _ = main.unminimize();
+    let _ = main.show();
+    let _ = main.set_focus();
+  }
 }
 
 /// A popout sent mail — tell every window so the main inbox refreshes now

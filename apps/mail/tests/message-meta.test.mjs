@@ -172,4 +172,23 @@ suite(async () => {
   );
   const repeated = audienceOf(from(me, [him, him], [him]));
   check("and one named twice is counted once", repeated.length === 2);
+
+  // --- A mailbox that signs in as one address and sends as another ----------
+
+  // Their mail came to our sending address. Our reply is still sending, and
+  // it is drawn from the address the mailbox signs in with.
+  const sendsAs = "kim.example@dept.uni.example";
+  const theirs = from(him, [sendsAs, "office@uni.example"]);
+  const stillSending = { ...from(me, [him, "office@uni.example"]), own: true };
+  const unknown = messageMeta(stillSending, theirs, threadAuthorship([theirs, stillSending], me));
+  check(
+    "with the sending address not known as ours, it reads as somebody who left",
+    unknown.removed.join() === sendsAs
+  );
+  const known = threadAuthorship([theirs, stillSending], me, [sendsAs]);
+  check(
+    "known as ours, the reply that is still sending says nothing",
+    messageMetaSaysNothing(messageMeta(stillSending, theirs, known)) === true
+  );
+  check("and an address that only receives is not a second writer of ours", known.manyOwn === false);
 });

@@ -425,18 +425,33 @@ impl MailDb {
         let Some(message_id) = payload.get("messageId").and_then(Value::as_str) else {
           return Err(crate::db::DbError::BadArgument("discardDraft needs a messageId".into()));
         };
-        tx.execute(
-          "DELETE FROM message_labels WHERE account_email = ?1 AND message_id = ?2 AND label = ?3",
+        // Only a draft is marked. Whatever the page names, a message that is
+        // not a draft is never marked as trash by this action: a list once
+        // named the newest message of the conversation in place of the
+        // draft, and that message went from sight (2026-11-17). The action
+        // is still queued: the server side looks in Drafts only, and a
+        // draft saved again under a new id is found there or not at all.
+        let is_draft: bool = tx.query_row(
+          "SELECT EXISTS (SELECT 1 FROM message_labels WHERE account_email = ?1 AND message_id = ?2 AND label = ?3)",
           params![account, message_id, DRAFT],
+          |r| r.get(0),
         )?;
-        tx.execute(
-          "INSERT OR IGNORE INTO message_labels (account_email, message_id, label) VALUES (?1, ?2, ?3)",
-          params![account, message_id, TRASH],
-        )?;
-        tx.execute(
-          "UPDATE messages SET updated_at = ?3 WHERE account_email = ?1 AND message_id = ?2",
-          params![account, message_id, now],
-        )?;
+        if is_draft {
+          tx.execute(
+            "DELETE FROM message_labels WHERE account_email = ?1 AND message_id = ?2 AND label = ?3",
+            params![account, message_id, DRAFT],
+          )?;
+          tx.execute(
+            "INSERT OR IGNORE INTO message_labels (account_email, message_id, label) VALUES (?1, ?2, ?3)",
+            params![account, message_id, TRASH],
+          )?;
+          tx.execute(
+            "UPDATE messages SET updated_at = ?3 WHERE account_email = ?1 AND message_id = ?2",
+            params![account, message_id, now],
+          )?;
+        } else {
+          log::warn!("[mail-sync] {account}: discardDraft named a message that is not a draft; it is left as it is");
+        }
       }
       _ => {}
     }
@@ -970,6 +985,16 @@ mod tests {
     let kinds: Vec<&str> = pending.iter().map(|a| a.kind.as_str()).collect();
     assert_eq!(kinds, vec!["archive", "read", "move", "unmove"]);
     assert_eq!(db.actions_count("vera@example.com").unwrap(), 4);
+  }
+
+  #[test]
+  fn a_draft_discard_that_names_a_received_message_leaves_it_alone() {
+    let db = db();
+    seed(&db);
+    // m2 is a letter in the inbox, not a draft.
+    assert_eq!(labels_of(&db, "m2"), vec![INBOX]);
+    db.actions_apply_and_enqueue("vera@example.com", "1a", "discardDraft", &json!({ "messageId": "m2" })).unwrap();
+    assert_eq!(labels_of(&db, "m2"), vec![INBOX], "it is not marked as trash and keeps its place");
   }
 
   #[test]

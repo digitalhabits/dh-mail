@@ -986,3 +986,25 @@ fn a_store_repaired_before_the_latin_letter_decoder_is_repaired_again() {
 fn html_is_read_as_words() {
   assert_eq!(squash(&strip_html("<div>Hi<br>there &amp; you</div><script>x()</script>")), "Hi there & you");
 }
+
+#[test]
+fn a_drafts_row_is_the_draft_and_not_the_newest_message_of_its_conversation() {
+  let db = db();
+  // A letter, our saved draft in answer, and then a second letter from them.
+  let mut first = msg("m1", "t1", 1, 1_000, &[INBOX]);
+  first.snippet = "their first letter".into();
+  let mut draft = msg("m2", "t1", 2, 2_000, &[DRAFT]);
+  draft.snippet = "our unsent answer".into();
+  let mut second = msg("m3", "t1", 3, 3_000, &[INBOX]);
+  second.snippet = "their second letter".into();
+  db.messages_upsert("vera@example.com", &[first, draft, second]).unwrap();
+
+  let drafts = db.messages_list(&json!({ "accounts": ["vera@example.com"], "view": "drafts" })).unwrap();
+  let rows = drafts["threads"].as_array().unwrap();
+  assert_eq!(rows.len(), 1, "the conversation with a draft is listed once");
+  assert_eq!(rows[0]["latest"]["messageId"], "m2", "the row names the draft, so Delete goes to the draft");
+  assert_eq!(rows[0]["latest"]["snippet"], "our unsent answer", "and it says the draft's words");
+
+  let inbox = db.messages_list(&json!({ "accounts": ["vera@example.com"], "view": "inbox" })).unwrap();
+  assert_eq!(inbox["threads"][0]["latest"]["messageId"], "m3", "the inbox row is still the newest letter");
+}

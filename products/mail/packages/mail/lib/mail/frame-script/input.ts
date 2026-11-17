@@ -187,6 +187,44 @@ document.addEventListener("click", function (event) {
   }
   lastClickAt = now;
 }, true);
+/*
+  A copy takes the links with it. The reader shows a link as a span that
+  holds its address (soften-anchors.ts). Copied as it is, such a span is
+  underlined words with no address: pasted into a reply, the link is gone
+  (reported 2026-11-17). So when the selection has a link, the copy is
+  written here: the selected part, with each such span as a real link. The
+  plain text is what the browser would give. With no link in the selection
+  the browser's own copy runs.
+*/
+document.addEventListener("copy", function (event) {
+  var sel = document.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount || !event.clipboardData) return;
+  var holder = document.createElement("div");
+  for (var i = 0; i < sel.rangeCount; i += 1) holder.appendChild(sel.getRangeAt(i).cloneContents());
+  var spans = holder.querySelectorAll("[" + HREF_ATTR + "]");
+  /* A selection inside one link clones only its words: the link goes round them. */
+  var around = linkOf(sel.getRangeAt(0).commonAncestorContainer);
+  var aroundUrl = around ? urlOf(around) : null;
+  if (!spans.length && !aroundUrl) return;
+  for (var j = 0; j < spans.length; j += 1) {
+    var url = urlOf(spans[j]);
+    if (!url) continue;
+    var link = document.createElement("a");
+    link.setAttribute("href", url);
+    while (spans[j].firstChild) link.appendChild(spans[j].firstChild);
+    spans[j].parentNode.replaceChild(link, spans[j]);
+  }
+  if (aroundUrl) {
+    var whole = document.createElement("a");
+    whole.setAttribute("href", aroundUrl);
+    while (holder.firstChild) whole.appendChild(holder.firstChild);
+    holder.appendChild(whole);
+  }
+  event.clipboardData.setData("text/html", holder.innerHTML);
+  event.clipboardData.setData("text/plain", sel.toString());
+  event.preventDefault();
+});
+
 document.addEventListener("dblclick", doubleClicked, true);
 
 /*

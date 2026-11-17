@@ -279,6 +279,49 @@ suite(async () => {
     check("clearing find takes its paint away", !f.registry.has("mail-find") && !f.registry.has("mail-find-active"));
   }
 
+  // --- A copy takes the links with it ----------------------------------------------
+
+  {
+    const f = frame(
+      '<p id="p">See <span data-dh-href="https://example.org/courses">the courses</span> and write to us.</p><p id="q">No link here.</p>'
+    );
+    /** Copy what lies between two points, and say what went on the clipboard. */
+    const copy = (startNode, startAt, endNode, endAt) => {
+      const range = f.doc.createRange();
+      range.setStart(startNode, startAt);
+      range.setEnd(endNode, endAt);
+      const sel = f.doc.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      const put = {};
+      const event = new f.win.Event("copy", { bubbles: true, cancelable: true });
+      event.clipboardData = { setData: (kind, value) => (put[kind] = value) };
+      f.doc.dispatchEvent(event);
+      return { put, taken: event.defaultPrevented };
+    };
+    const p = f.doc.getElementById("p");
+    const whole = copy(p, 0, p, p.childNodes.length);
+    check(
+      "a copied link is a real link with its address",
+      whole.taken && (whole.put["text/html"] ?? "").includes('<a href="https://example.org/courses">the courses</a>'),
+      whole.put["text/html"]
+    );
+    check("and its span with the app's own attribute does not go out", !(whole.put["text/html"] ?? "").includes("data-dh-href"));
+    check("the plain text is the words", (whole.put["text/plain"] ?? "").includes("the courses and write to us"), whole.put["text/plain"]);
+
+    const words = p.querySelector("span").firstChild;
+    const inside = copy(words, 4, words, 11);
+    check(
+      "words copied from inside a link keep the link",
+      inside.taken && inside.put["text/html"] === '<a href="https://example.org/courses">courses</a>',
+      inside.put["text/html"]
+    );
+
+    const q = f.doc.getElementById("q");
+    const plain = copy(q, 0, q, 1);
+    check("a copy with no link in it is left to the browser", !plain.taken && Object.keys(plain.put).length === 0);
+  }
+
   // --- The page side ---------------------------------------------------------------
 
   {

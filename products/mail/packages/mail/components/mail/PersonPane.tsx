@@ -149,13 +149,15 @@ export function PersonPane({
 
   const anyUnread = row.threads.some((t) => t.unread);
   const count = row.threads.length;
-  const newest = row.threads[0];
+  // A person can be left with no conversation for a moment, after the last
+  // one is archived: then there is no newest one to read.
+  const newest: MailThreadSummary | undefined = row.threads[0];
   // Strip self: list payloads can still list a personal alias as external.
-  const participants = (newest.externalParticipants ?? []).filter(
+  const participants = (newest?.externalParticipants ?? []).filter(
     (p) =>
       p.email &&
       !isOwnPersonalAddress(p.email) &&
-      normalizeEmail(p.email) !== normalizeEmail(newest.account)
+      normalizeEmail(p.email) !== normalizeEmail(newest?.account ?? "")
   );
   // One person under several addresses lists them all: the row has kept
   // every address they wrote from (see groupThreadsByPerson).

@@ -250,6 +250,20 @@ export function PersonReaderWindow({
     );
   }
 
+  // The last conversation has gone and the window is about to close (the
+  // effect above). Nothing of the person is drawn in that moment: the pane
+  // reads its newest conversation, and with none it failed, the page went
+  // blank, and the close never ran (seen 2026-11-16, Archive in the window
+  // of a person with one conversation).
+  if (row.threads.length === 0) {
+    return (
+      <div
+        className="mail-shell mail-surface-root fixed inset-0 bg-[var(--mail-thread-bg,#fff)]"
+        data-theme={colorMode}
+      />
+    );
+  }
+
   /*
     The team layer's host, held by this window and not by the reader. The reader is made
     again for each conversation, and the dialog stays while the reader goes
