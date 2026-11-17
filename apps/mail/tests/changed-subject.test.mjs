@@ -152,7 +152,8 @@ suite(async () => {
 
   check(
     "no bubble is put in a thread the message is not joining",
-    sendHook.includes("if (!startsNewThread) {\n      setThread((current) =>")
+    // The bubble is made by Send and drawn by the launch (send-launch.ts).
+    sendHook.includes("sendAt || startsNewThread\n        ? null")
   );
 
   /* The gesture: asking for a new subject opens the row where the reply

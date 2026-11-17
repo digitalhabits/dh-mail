@@ -21,6 +21,7 @@ import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
 import { openScheduledMessage, useOpenScheduledMessage } from "@/components/mail/ScheduledMessageView";
 import { missedWhen } from "@/components/mail/MissedScheduledDialog";
 import { HiddenAccountMark } from "@/components/mail/hidden-account-mark";
+import { PersonForwardedMark } from "@/components/mail/thread-forward-mark";
 import { isScheduledDraftId } from "@/lib/mail/scheduled-drafts";
 import * as React from "react";
 
@@ -663,7 +664,7 @@ function PersonListRow({
                     <>
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       <TeamStackMark threads={row.threads} />
-                      {rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
+                      <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
                     </>
                   }
                 />
@@ -701,7 +702,7 @@ function PersonListRow({
                     <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-list-muted)] group-hover:invisible">
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       <TeamStackMark threads={row.threads} />
-                      {rowTime(row.lastAt, {
+                      <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
                       })}
                     </span>
@@ -740,7 +741,7 @@ function PersonListRow({
                       <span className="text-xs text-[var(--mail-list-muted)]">
                         <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                         <TeamStackMark threads={row.threads} />
-                        {rowTime(row.lastAt, {
+                        <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),
                         })}
                       </span>

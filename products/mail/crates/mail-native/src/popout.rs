@@ -825,6 +825,30 @@ pub fn notify_mail_sent(
     .map_err(|e| e.to_string())
 }
 
+/// A reply window offers its message to the main window to send, and this
+/// tells the main window the id of the offer (lib/mail/send-handover.ts).
+/// To the main window and no other: only that window takes an offer. The
+/// message itself is in the store that the windows share, not in the event.
+///
+/// An error when there is no main window: the reply window then knows that
+/// nobody was told, and sends the message itself.
+#[tauri::command]
+pub fn notify_mail_send_handover(app: tauri::AppHandle, id: String) -> Result<(), String> {
+  use tauri::Emitter;
+  if app.get_webview_window("main").is_none() {
+    return Err("No main window".into());
+  }
+  app
+    .emit_to("main", SEND_HANDOVER_EVENT, send_handover_payload(&id))
+    .map_err(|e| e.to_string())
+}
+
+const SEND_HANDOVER_EVENT: &str = "mail-send-handover";
+
+fn send_handover_payload(id: &str) -> serde_json::Value {
+  serde_json::json!({ "id": id })
+}
+
 /// A reader window archived, deleted or moved its thread — tell every window
 /// so the main list drops the row now rather than at the next poll. The same
 /// channel arrangement as `notify_mail_sent`, for the same WKWebView reason.
@@ -1062,6 +1086,13 @@ mod popout_tests {
     let one = reader_window_label("", "", None, Some("compose:1"));
     assert!(one.starts_with("reader-draft-"), "{one}");
     assert_ne!(one, reader_window_label("", "", None, Some("compose:2")));
+  }
+
+  #[test]
+  fn a_send_handover_event_carries_the_id_and_no_message() {
+    let payload = send_handover_payload("handover-1");
+    assert_eq!(payload, serde_json::json!({ "id": "handover-1" }));
+    assert_eq!(SEND_HANDOVER_EVENT, "mail-send-handover");
   }
 
   #[test]

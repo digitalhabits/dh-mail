@@ -22,6 +22,7 @@
 import type {
   MailAccountRecord,
   MailAnswerLink,
+  MailForwardLink,
   MailTeamThreadState,
   MailChatBinding,
   MailChatOpenPart,
@@ -135,6 +136,8 @@ export const MAIL_STORE_OPERATIONS = [
   "messages.thread",
   "messages.copies",
   "messages.answerLinks",
+  "messages.forwardLinks",
+  "messages.noteReplyApart",
   "messages.teamStates",
   "messages.search",
   "messages.upsertMany",
@@ -305,6 +308,13 @@ export function createTauriMailStore(): MailStore {
       answerLinks: async (account, threadId, own) => {
         const out = await call<{ links: MailAnswerLink[] }>("messages.answerLinks", { account, threadId, own });
         return out.links;
+      },
+      forwardLinks: async (account, threadId) => {
+        const out = await call<{ links: MailForwardLink[] }>("messages.forwardLinks", { account, threadId });
+        return out.links;
+      },
+      noteReplyApart: async (note) => {
+        await call("messages.noteReplyApart", note);
       },
       teamStates: async (account, threadIds, team) => {
         const out = await call<{ states: MailTeamThreadState[] }>("messages.teamStates", { account, threadIds, team });

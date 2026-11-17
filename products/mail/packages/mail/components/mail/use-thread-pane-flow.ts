@@ -194,6 +194,8 @@ export function useThreadSending({
   forwarding,
   fromAccount,
   fromDrafts,
+  handOverComposer,
+  handsOverSend,
   importedDraftRef,
   inTrash,
   includeSignature,
@@ -240,9 +242,9 @@ export function useThreadSending({
 }: Pick<ReturnType<typeof useThreadPaneSetup>, "error" | "olderParts" | "readableAttachments" | "recordsChanged" | "setMoveMenuSignal" | "setSnoozeMenuSignal" | "setThread" | "shortcuts" | "thread"> &
   Pick<ReturnType<typeof useReplyState>, "ccList" | "composer" | "editRecipients" | "fromAccount" | "includeSignature" | "loadScheduled" | "mode" | "outlookElsewhere" | "outlookTarget" | "quoteMessageId" | "reply" | "setConfirmDiscard" | "showCc" | "sigSettings" | "subjectDraft" | "toList" | "updateRecordsAfterSend"> &
   Pick<ReturnType<typeof useReplySpace>, "attachItems" | "attachmentPayload" | "attachmentsReady" | "beginForwardFiles" | "forwardFiles" | "forwarding" | "recipientInputRef" | "restoreForwardBoxes"> &
-  Pick<ReturnType<typeof useComposerAndStream>, "closeComposer" | "focusReply" | "importedDraftRef" | "openComposer" | "restoreComposer"> &
+  Pick<ReturnType<typeof useComposerAndStream>, "closeComposer" | "focusReply" | "handOverComposer" | "importedDraftRef" | "openComposer" | "restoreComposer"> &
   Pick<ReturnType<typeof useReplyFlow>, "closeFloatingCardRef" | "discardComposer" | "popOutThread" | "printThread" | "replyText" | "requestDiscard" | "signsReply" | "startReply"> &
-  { account: ThreadPaneProps["account"]; floating: ThreadPaneProps["floating"]; fromDrafts: Exclude<ThreadPaneProps["fromDrafts"], undefined>; inTrash: Exclude<ThreadPaneProps["inTrash"], undefined>; onArchive: ThreadPaneProps["onArchive"]; onChatPromoted: ThreadPaneProps["onChatPromoted"]; onChatThreadChanged: ThreadPaneProps["onChatThreadChanged"]; onDeleteForever: ThreadPaneProps["onDeleteForever"]; onSent: ThreadPaneProps["onSent"]; onToggleFocus: ThreadPaneProps["onToggleFocus"]; onTogglePin: ThreadPaneProps["onTogglePin"]; onToggleUnread: ThreadPaneProps["onToggleUnread"]; onTrash: ThreadPaneProps["onTrash"]; threadId: ThreadPaneProps["threadId"] }) {
+  { account: ThreadPaneProps["account"]; floating: ThreadPaneProps["floating"]; /** This pane is the reply window: see use-send-launch.ts. */ handsOverSend: boolean; fromDrafts: Exclude<ThreadPaneProps["fromDrafts"], undefined>; inTrash: Exclude<ThreadPaneProps["inTrash"], undefined>; onArchive: ThreadPaneProps["onArchive"]; onChatPromoted: ThreadPaneProps["onChatPromoted"]; onChatThreadChanged: ThreadPaneProps["onChatThreadChanged"]; onDeleteForever: ThreadPaneProps["onDeleteForever"]; onSent: ThreadPaneProps["onSent"]; onToggleFocus: ThreadPaneProps["onToggleFocus"]; onTogglePin: ThreadPaneProps["onTogglePin"]; onToggleUnread: ThreadPaneProps["onToggleUnread"]; onTrash: ThreadPaneProps["onTrash"]; threadId: ThreadPaneProps["threadId"] }) {
   const startForward = () => {
     if (mode === "forward") {
       closeComposer();
@@ -412,6 +414,9 @@ export function useThreadSending({
     attachmentsReady,
     closeComposer,
     restoreComposer,
+    handOverComposer,
+    floating: Boolean(floating),
+    handsOverSend,
     focusReply,
     closeFloatingCardRef,
     importedDraftRef,

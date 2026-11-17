@@ -19,6 +19,7 @@ pub mod contacts;
 pub mod fonts;
 pub mod actions;
 pub mod answer_links;
+pub mod forward_links;
 pub mod team_mailbox;
 pub mod account_exchange;
 pub mod db;

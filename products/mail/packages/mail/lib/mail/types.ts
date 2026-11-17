@@ -76,6 +76,10 @@ export type MailThreadSummary = {
    * disposition, Graph by `isInline`.
    */
   hasAttachments?: boolean;
+  /** When the reader last forwarded this thread (ISO), if they did: the row's arrow. */
+  forwardedAt?: string;
+  /** When the reader last answered it under a new subject (ISO): the row's reply arrow. */
+  repliedApartAt?: string;
   /** Short when-label for the list chip, e.g. "Thu 7 Aug, 10:00". */
   calendarInviteWhen?: string;
   /** ISO wake time when this row is from the Snoozed list. */

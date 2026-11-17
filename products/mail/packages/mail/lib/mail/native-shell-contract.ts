@@ -40,6 +40,8 @@ export type MailNativeShell = {
   openMailReaderWindow: (input: ThreadWindow & { person?: string; draft?: string; reply?: boolean }) => Promise<void>;
   closeMailReaderWindow: () => Promise<void>;
   notifyMailSent: (input: ThreadRef) => Promise<void>;
+  /** Rejects when the main window was not told. See lib/mail/send-handover.ts. */
+  notifyMailSendHandover: (input: { id: string }) => Promise<void>;
   notifyMailChanged: (input: ThreadRef) => Promise<void>;
   notifyMailForward: (input: MessageRef) => Promise<void>;
   notifyMailEditAsNew: (input: MessageRef) => Promise<void>;

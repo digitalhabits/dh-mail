@@ -26,8 +26,8 @@ import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
 import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, subscribeMailPopouts } from "@/lib/mail/popout";
 import { cn } from "@/lib/utils";
-import { HiddenAccountMark } from "@/components/mail/hidden-account-mark";
-import { TeamRowMark, TeamRowMenuAssign } from "@/components/mail/team-layer";
+import { TeamRowMenuAssign } from "@/components/mail/team-layer";
+import { RowDateMarks } from "@/components/mail/row-date-marks";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
@@ -1021,8 +1021,7 @@ export function ThreadListRow({
                   onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
                 )}
               >
-                <HiddenAccountMark account={t.account} />
-                <TeamRowMark account={t.account} threadId={t.threadId} />
+                <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
                 {rowTime(t.lastAt, { withYear })}
               </p>
             )}
@@ -1161,8 +1160,7 @@ function StackedRowBody({
                 onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
               )}
             >
-              <HiddenAccountMark account={t.account} />
-              <TeamRowMark account={t.account} threadId={t.threadId} />
+              <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
               {rowTime(t.lastAt, { withYear })}
             </p>
           )}
@@ -1300,8 +1298,7 @@ function WideRowBody({
             onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
           )}
         >
-          <HiddenAccountMark account={t.account} />
-          <TeamRowMark account={t.account} threadId={t.threadId} />
+          <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
           {rowTime(t.lastAt, { withYear })}
         </p>
       )}

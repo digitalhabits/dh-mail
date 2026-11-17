@@ -222,6 +222,8 @@ export function summaryFromStored(t: MailStoredThread, classifier: Classifier): 
       crmLogoUrl: recordLogoFor(counterpart.email, classifier),
       ...(t.focusMessageId ? { focusMessageId: t.focusMessageId } : null),
       ...(t.hasAttachments ? { hasAttachments: true } : null),
+      ...(t.forwardedAt ? { forwardedAt: new Date(t.forwardedAt).toISOString() } : null),
+      ...(t.repliedApartAt ? { repliedApartAt: new Date(t.repliedApartAt).toISOString() } : null),
     },
     latestRfcId: (t.latest.rfcMessageId ?? "").trim(),
     latestReferences:

@@ -530,6 +530,26 @@ export type MailStoredView =
   | "label";
 
 /** One message's headers, as the sync worker wrote them. Times are ms since the epoch. */
+/**
+ * What the reader sent on from the open thread, filed as a thread of its
+ * own: a forward, or a reply under a new subject (forward_links.rs).
+ */
+export type MailForwardLink = {
+  /** Absent from an older shell: a forward. */
+  kind?: "forward" | "reply";
+  /** The mailbox that holds it. A reply can go from another mailbox. */
+  account?: string;
+  /** Absent for a reply whose sent copy is not in the store yet. */
+  threadId?: string;
+  /** The forward or the reply itself, in that thread. */
+  messageId?: string;
+  /** The forward's own subject. */
+  subject?: string;
+  /** Milliseconds since the epoch. */
+  sentAt: number;
+  to: { name?: string; email: string }[];
+};
+
 /** A thread linked to the open one: a reply and the mail it answers. */
 export type MailAnswerLink = {
   /** "answers": this thread holds the reply. "answeredBy": the other one does. */
@@ -610,6 +630,10 @@ export type MailStoredThread = {
   hasAttachments: boolean;
   starred: boolean;
   isDraft: boolean;
+  /** When the reader last forwarded it, in ms, if they did. Only a list has it. */
+  forwardedAt?: number;
+  /** When the reader last answered it under a new subject, in ms. */
+  repliedApartAt?: number;
   labels: string[];
   latest: {
     messageId: string;
@@ -697,6 +721,22 @@ export type MailMessageStore = {
    * `own` is every address of the reader's. Optional: without it, no links.
    */
   answerLinks?(account: string, threadId: string, own: string[]): Promise<MailAnswerLink[]>;
+
+  /**
+   * The forwards of a thread, newest first: the reader sent the mail on and
+   * the provider filed the forward apart (forward_links.rs). Optional:
+   * without it, no thread says that it was forwarded.
+   */
+  forwardLinks?(account: string, threadId: string): Promise<MailForwardLink[]>;
+
+  /** The page sent a reply under a new subject: keep which thread it answers. */
+  noteReplyApart?(note: {
+    account: string;
+    threadId: string;
+    fromAccount: string;
+    subject: string;
+    to: { name?: string; email: string }[];
+  }): Promise<void>;
 
   /**
    * For a mailbox that a team reads together: who answers each of these

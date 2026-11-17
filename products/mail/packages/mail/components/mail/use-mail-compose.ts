@@ -18,6 +18,7 @@ import { useAutoReply } from "@/components/mail/use-auto-reply";
 import { useMemoObject } from "@/components/mail/use-memo-object";
 import { useEditAsNew } from "@/components/mail/use-edit-as-new";
 import { useWindowRequests } from "@/components/mail/use-window-requests";
+import { useSendHandover } from "@/components/mail/use-send-handover";
 import { useDraftsInbox } from "@/components/mail/use-drafts-inbox";
 import { useComposeHome } from "@/components/mail/use-compose-home";
 import { pruneExpiredMailDrafts } from "@/lib/mail/local-drafts";
@@ -246,6 +247,8 @@ export function useComposeRequests({
     startCompose,
     editAsNewMessageRef,
   });
+  // A reply window hands its message to this window to send.
+  useSendHandover({ setComposing, setSelectedPersonKey, setSelected });
   return { editAsNewFromSource, editAsNewMessage, forwardStarted, pendingForward };
 }
 

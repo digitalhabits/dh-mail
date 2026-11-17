@@ -14,8 +14,10 @@
  * times. If a callback needs a new value, add it to the input and to that
  * callback's list, and to no other.
  *
- * It writes the composer in two ways only: `closeComposer` after a send, and
- * `restoreComposer` for Undo and for a forward that failed. Its two effects
+ * It writes the composer in three ways only: `closeComposer` after a send,
+ * `restoreComposer` for Undo and for a forward that failed, and
+ * `handOverComposer` in the reply window, which hands its message to the
+ * main window to send (use-send-launch.ts). Its two effects
  * only keep a ref up to date: is the pane still here, and is a composer
  * open. The pane keeps the two effects that clear the outbox, at the place
  * where they always ran, and they write through `resetOutbox` and
@@ -23,13 +25,14 @@
  *
  * Every message waits out the Undo count: a reply, a reply under a new
  * subject, and a forward. A reaction and a message that Outlook holds until
- * a set time do not, and each says why where it is sent.
+ * a set time do not, and each says why where it is sent. The count itself
+ * is `runSendLaunch` in send-launch.ts.
  *
  * New work on sending goes in this file, not in ThreadPane.
  */
 
 import { plainMailError } from "@/lib/mail/plain-mail-error";
-import { takeOffScheduledOriginal, type ScheduledOriginal } from "@/lib/mail/scheduled-replace";
+import type { ScheduledOriginal } from "@/lib/mail/scheduled-replace";
 import { sendLaterNotice } from "@/lib/mail/use-outlook-accounts";
 import * as React from "react";
 import { toast } from "@/lib/mail/toast";
@@ -39,11 +42,11 @@ import {
   quotedReplyMessage,
   reactionMessage,
 } from "@/lib/mail/reaction-message";
-import { sendWithUndo } from "@/components/mail/undo-send";
+import { useSendLaunch, type Deliver } from "@/components/mail/use-send-launch";
 import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
-import { dropPendingScheduled, settlePendingScheduled, showPendingScheduled, notifyScheduledChanged } from "@/lib/mail/scheduled-events";
 import { bodyToEmailHtml } from "@/lib/client-email-html";
 import { mailApiJson as apiJson } from "@/lib/mail/api";
+import { noteReplyUnderNewSubject } from "@/components/mail/reply-link-note";
 import type { MailChatRef } from "@/lib/mail/chat-types";
 import {
   flattenRecipientsForSend,
@@ -116,6 +119,11 @@ export type ThreadSendInput = {
   attachmentsReady: boolean;
   closeComposer: Composer["close"];
   restoreComposer: Composer["restore"];
+  handOverComposer: Composer["handOver"];
+  /** This pane is the floating card, or the reply window. */
+  floating?: boolean;
+  /** This pane is the reply window: Send hands the message to the main window. */
+  handsOverSend?: boolean;
   focusReply: (caret?: number | null) => void;
   /** Closes the floating card, when this pane is the card. */
   closeFloatingCardRef: React.RefObject<() => void>;
@@ -167,6 +175,9 @@ export function useThreadSend(input: ThreadSendInput) {
     attachmentsReady,
     closeComposer,
     restoreComposer,
+    handOverComposer,
+    floating,
+    handsOverSend,
     focusReply,
     closeFloatingCardRef,
     importedDraftRef,
@@ -176,10 +187,11 @@ export function useThreadSend(input: ThreadSendInput) {
     onChatPromoted,
     onChatThreadChanged,
   } = input;
-  const { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox } = useSendOutbox({ account, focusReply, mode, onChatPromoted, onChatThreadChanged, onSent, readableAttachments, restoreComposer, restoreForwardBoxes, setThread, threadId });
+  const { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, paneAliveRef, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox } = useSendOutbox({ account, focusReply, mode, onChatPromoted, onChatThreadChanged, onSent, readableAttachments, restoreComposer, restoreForwardBoxes, setThread, threadId });
   const { armedSendAt, armedSendAtRef, editingScheduled, replacesRef, setArmedSendAt, setReplacesScheduled } = useSendSchedule({ mode });
-  const { editOutboxSend, retryOutboxSend, send } = useSendReply({ account, armedSendAtRef, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, closeComposer, closeFloatingCardRef, dispatchOutboxSend, editRecipients, fromAccount, historyAppendix, importedDraftRef, includeSignature, loadScheduled, mode, olderParts, outbox, outgoingSubject, putBackFromOutbox, quoteMessageId, quotePayload, replacesRef, reply, replyText, sending, setArmedSendAt, setForgottenAttachment, setOutbox, setThread, showCc, signatureHtml, startsNewThread, subjectDraft, thread, threadId, toList, updateRecordsAfterSend });
-  const { dropSettledOutboxRows, resetOutbox, sendForward, sendQuickReply } = useSendOthers({ account, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, closeComposer, closeFloatingCardRef, dispatchOutboxSend, editRecipients, forwardFiles, forwardSource, fromAccount, includeSignature, olderParts, outgoingSubject, putBackFromOutbox, quoteMessageId, quotePayload, reply, replySubject, replyText, sending, setConfirmingIds, setOutbox, setThread, showCc, signatureHtml, subjectDraft, thread, threadId, toList });
+  const { deliver } = useSendLaunch({ account, closeComposer, closeFloatingCardRef, dispatchOutboxSend, floating, handOverComposer, handsOverSend, loadScheduled, mode, paneAliveRef, putBackFromOutbox, readableAttachments, setArmedSendAt, setOutbox, setThread, threadId });
+  const { editOutboxSend, retryOutboxSend, send } = useSendReply({ account, armedSendAtRef, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, deliver, dispatchOutboxSend, editRecipients, fromAccount, historyAppendix, importedDraftRef, includeSignature, mode, olderParts, outbox, outgoingSubject, putBackFromOutbox, quoteMessageId, quotePayload, replacesRef, reply, replyText, sending, setForgottenAttachment, showCc, signatureHtml, startsNewThread, subjectDraft, thread, threadId, toList, updateRecordsAfterSend });
+  const { dropSettledOutboxRows, resetOutbox, sendForward, sendQuickReply } = useSendOthers({ account, attachItems, attachmentPayload, attachmentsReady, bccList, ccList, deliver, dispatchOutboxSend, editRecipients, forwardFiles, forwardSource, fromAccount, includeSignature, olderParts, outgoingSubject, quoteMessageId, quotePayload, reply, replySubject, replyText, sending, setConfirmingIds, setOutbox, setThread, showCc, signatureHtml, subjectDraft, thread, threadId, toList });
 
   return {
     armedSendAt,
@@ -400,6 +412,7 @@ export function useSendOutbox({
           sayDone(mailSay("forwardedTo", { who: entry.forward.who }));
         } else if (entry.startsNewThread) {
           sayDone(mailSay("sent"));
+          noteReplyUnderNewSubject(account, threadId, entry);
         }
         onSent?.(entry.request.account);
         scheduleThreadRefetchAfterSend(account, threadId, setThread);
@@ -464,7 +477,7 @@ export function useSendOutbox({
   /* Through a ref so the failure toast's Retry reaches the newest version
      of the dispatch rather than the one closed over when it was shown. */
   dispatchOutboxSendRef.current = dispatchOutboxSend;
-  return { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox };
+  return { clearForgottenAttachment, confirmingIds, dispatchOutboxSend, forgottenAttachment, outbox, paneAliveRef, putBackFromOutbox, sending, setConfirmingIds, setForgottenAttachment, setOutbox };
 }
 
 /** A send set for later, and the scheduled message this one replaces. */
@@ -508,15 +521,13 @@ export function useSendReply({
   attachmentsReady,
   bccList,
   ccList,
-  closeComposer,
-  closeFloatingCardRef,
+  deliver,
   dispatchOutboxSend,
   editRecipients,
   fromAccount,
   historyAppendix,
   importedDraftRef,
   includeSignature,
-  loadScheduled,
   mode,
   olderParts,
   outbox,
@@ -528,10 +539,7 @@ export function useSendReply({
   reply,
   replyText,
   sending,
-  setArmedSendAt,
   setForgottenAttachment,
-  setOutbox,
-  setThread,
   showCc,
   signatureHtml,
   startsNewThread,
@@ -540,9 +548,10 @@ export function useSendReply({
   threadId,
   toList,
   updateRecordsAfterSend,
-}: Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "outbox" | "putBackFromOutbox" | "sending" | "setForgottenAttachment" | "setOutbox"> &
-  Pick<ReturnType<typeof useSendSchedule>, "armedSendAtRef" | "replacesRef" | "setArmedSendAt"> &
-  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "closeComposer" | "closeFloatingCardRef" | "editRecipients" | "fromAccount" | "historyAppendix" | "importedDraftRef" | "includeSignature" | "loadScheduled" | "mode" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replyText" | "setThread" | "showCc" | "signatureHtml" | "startsNewThread" | "subjectDraft" | "thread" | "threadId" | "toList" | "updateRecordsAfterSend">) {
+}: { deliver: Deliver } &
+  Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "outbox" | "putBackFromOutbox" | "sending" | "setForgottenAttachment"> &
+  Pick<ReturnType<typeof useSendSchedule>, "armedSendAtRef" | "replacesRef"> &
+  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "editRecipients" | "fromAccount" | "historyAppendix" | "importedDraftRef" | "includeSignature" | "mode" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replyText" | "showCc" | "signatureHtml" | "startsNewThread" | "subjectDraft" | "thread" | "threadId" | "toList" | "updateRecordsAfterSend">) {
   const send = React.useCallback(async (
     sendAtPicked?: string,
     extras?: { updateRecords?: boolean },
@@ -691,146 +700,58 @@ export function useSendReply({
       },
     };
 
-    /**
-     * A message that has not gone yet does not belong in the conversation.
-     *
-     * The ordinary path paints the bubble straight away, because the send is
-     * on its way and the bubble is only ahead of the provider's copy. This
-     * one is not on its way — Exchange is holding it until the time — so the
-     * thread would be showing the reader something they have not said.
-     */
-    if (sendAt) {
-      // As a send: the composer closes, and for a few seconds nothing has
-      // been handed to anybody, so Undo puts the words back as they were.
-      // One notice, which says the one condition: a message this computer
-      // sends goes only if it is on with Mail open (docs/mail-send-later.md).
-      const when = formatSnoozeWakeLabel(sendAt);
-      const notice = await sendLaterNotice(entry.request.account, when);
-      setArmedSendAt(null);
-      closeComposer();
-      const pendingId = showPendingScheduled({
-        sendAt,
-        account: entry.request.account,
-        threadId: entry.request.threadId ?? "",
-        toName: flatTo.emails[0] ?? "",
-        subject: entry.request.subject,
-        bodyText: composed.text,
-        to: flatTo.emails,
-        cc: flatCc.emails,
-        status: "waiting",
-      }, original);
-      sendWithUndo({
-        object: entry.request.subject,
-        label: () => notice,
-        onSend: () =>
-          void (async () => {
-            try {
-              if (original) await takeOffScheduledOriginal(original);
-              await apiJson("/api/mail/send", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(entry.request),
-              });
-              settlePendingScheduled(pendingId);
-              closeFloatingCardRef.current();
-              // Twice: the message is held as a draft, and Exchange takes a
-              // moment to have it. The first look usually finds it; the
-              // second is for when it does not.
-              void loadScheduled();
-              notifyScheduledChanged();
-              window.setTimeout(() => {
-                void loadScheduled();
-                notifyScheduledChanged();
-              }, 1500);
-            } catch (err) {
-              dropPendingScheduled(pendingId);
-              toast.error(err instanceof Error ? err.message : "Couldn't schedule the message");
-              putBackFromOutbox(localId, entry);
-            }
-          })(),
-        onUndo: () => {
-          dropPendingScheduled(pendingId);
-          putBackFromOutbox(localId, entry);
-        },
-      });
-      return;
-    }
-
-    setOutbox((prev) => ({ ...prev, [localId]: entry }));
-    /* Not into this thread when it is not going there. The bubble would
-       stand under the conversation it was written from until the next
-       fetch of that thread quietly took it away again. */
-    if (!startsNewThread) {
-      setThread((current) =>
-        current
-          ? {
-              ...current,
-              messages: [
-                ...current.messages,
-                {
-                  id: localId,
-                  fromName: "You",
-                  fromEmail: fromAccount,
-                  toEmails: flatTo.emails,
-                  ccEmails: flatCc.emails,
-                  sentAt: new Date().toISOString(),
-                  // The bubble before the provider's copy lands shows what
-                  // actually went, quote card and all.
-                  bodyText: localQuote
-                    ? `${composed.text.trimEnd()}\n\n${localQuote.text}`
-                    : composed.text,
-                  bodyHtml: localQuote
-                    ? `${composed.html}${localQuote.html}`
-                    : composed.html,
-                  attachments: attachments.length
-                    ? attachments.map((a, i) => ({
-                        attachmentId: `local-${i}`,
-                        filename: a.filename,
-                        mimeType: a.mimeType,
-                        size: Math.floor(
-                          (a.contentBase64.replace(/\s+/g, "").length * 3) / 4
-                        ),
-                      }))
-                    : undefined,
-                  own: true,
-                },
-              ],
-            }
-          : current
-      );
-    }
-    closeComposer();
-    /**
-     * A few seconds before it leaves.
-     *
-     * The bubble is already in the thread and the composer is already shut,
-     * which is what the reader wanted; what has not happened is the send.
-     * Undo is the edit that was always there — it takes the bubble back out
-     * and puts the words back in the box.
-     */
-    sendWithUndo({
-      object: entry.request.subject,
-      onSend: () => {
-        // An edit of a scheduled reply, sent now: the original goes first,
-        // and if it cannot, this one is put back rather than sent.
-        if (original) {
-          void takeOffScheduledOriginal(original).then(
-            () => void dispatchOutboxSend(localId, entry),
-            (err: unknown) => {
-              toast.error(err instanceof Error ? err.message : "Couldn't take the scheduled message off");
-              putBackFromOutbox(localId, entry);
-            }
-          );
-        } else void dispatchOutboxSend(localId, entry);
-        // And now the card, which was this message and nothing else. The
-        // send takes what it needs with it, so nothing here is waited for.
-        closeFloatingCardRef.current();
-      },
-      // With the entry, not by a look in the outbox. Each new answer about
-      // the thread clears the outbox of rows that have no bubble, and a
-      // message with no bubble would then have nothing to come back from.
-      onUndo: () => putBackFromOutbox(localId, entry),
-    });
+    /* No bubble for a message that is not going into this thread now: one
+       under a new subject, and one that the provider holds until a time. */
+    const bubble: MailMessage | null =
+      sendAt || startsNewThread
+        ? null
+        : {
+            id: localId,
+            fromName: "You",
+            fromEmail: fromAccount,
+            toEmails: flatTo.emails,
+            ccEmails: flatCc.emails,
+            sentAt: new Date().toISOString(),
+            // The bubble before the provider's copy lands shows what
+            // actually went, quote card and all.
+            bodyText: localQuote
+              ? `${composed.text.trimEnd()}\n\n${localQuote.text}`
+              : composed.text,
+            bodyHtml: localQuote
+              ? `${composed.html}${localQuote.html}`
+              : composed.html,
+            attachments: attachments.length
+              ? attachments.map((a, i) => ({
+                  attachmentId: `local-${i}`,
+                  filename: a.filename,
+                  mimeType: a.mimeType,
+                  size: Math.floor(
+                    (a.contentBase64.replace(/\s+/g, "").length * 3) / 4
+                  ),
+                }))
+              : undefined,
+            own: true,
+          };
+    /* Send later: the notice, and the row that shows while it waits. */
+    const later = sendAt
+      ? {
+          notice: await sendLaterNotice(entry.request.account, formatSnoozeWakeLabel(sendAt)),
+          pending: {
+            sendAt,
+            account: entry.request.account,
+            threadId: entry.request.threadId ?? "",
+            toName: flatTo.emails[0] ?? "",
+            subject: entry.request.subject,
+            bodyText: composed.text,
+            to: flatTo.emails,
+            cc: flatCc.emails,
+            status: "waiting" as const,
+          },
+        }
+      : null;
+    // The count, the bubble and Undo: see send-launch.ts. In the reply
+    // window, the message goes to the main window for them.
+    deliver({ account, threadId, localId, entry, bubble, quoteMessageId, original, later });
   }, [thread,
     reply,
     replyText,
@@ -848,7 +769,6 @@ export function useSendReply({
     // the quote is the same object with a pick and without one.
     quoteMessageId,
     historyAppendix,
-    closeComposer,
     attachmentsReady,
     attachmentPayload,
     // The strip's files, which the outbox entry carries so that Undo puts
@@ -859,8 +779,7 @@ export function useSendReply({
     showCc,
     editRecipients,
     updateRecordsAfterSend,
-    dispatchOutboxSend,
-    loadScheduled,
+    deliver,
     // The subject the writer set. Without it the callback keeps the first
     // render's answer and sends the thread's own name over a changed one.
     outgoingSubject,
@@ -868,10 +787,8 @@ export function useSendReply({
     // Undo puts the subject back with the words.
     subjectDraft,
     startsNewThread,
-    setThread,
     importedDraftRef,
-    closeFloatingCardRef,
-    putBackFromOutbox, armedSendAtRef, replacesRef, setArmedSendAt, setForgottenAttachment, setOutbox]);
+    armedSendAtRef, replacesRef, setForgottenAttachment]);
   const retryOutboxSend = React.useCallback(
     (localId: string) => {
       const entry = outbox[localId];
@@ -900,8 +817,7 @@ export function useSendOthers({
   attachmentsReady,
   bccList,
   ccList,
-  closeComposer,
-  closeFloatingCardRef,
+  deliver,
   dispatchOutboxSend,
   editRecipients,
   forwardFiles,
@@ -910,7 +826,6 @@ export function useSendOthers({
   includeSignature,
   olderParts,
   outgoingSubject,
-  putBackFromOutbox,
   quoteMessageId,
   quotePayload,
   reply,
@@ -926,8 +841,9 @@ export function useSendOthers({
   thread,
   threadId,
   toList,
-}: Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "putBackFromOutbox" | "sending" | "setConfirmingIds" | "setOutbox"> &
-  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "closeComposer" | "closeFloatingCardRef" | "editRecipients" | "forwardFiles" | "forwardSource" | "fromAccount" | "includeSignature" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replySubject" | "replyText" | "setThread" | "showCc" | "signatureHtml" | "subjectDraft" | "thread" | "threadId" | "toList">) {
+}: { deliver: Deliver } &
+  Pick<ReturnType<typeof useSendOutbox>, "dispatchOutboxSend" | "sending" | "setConfirmingIds" | "setOutbox"> &
+  Pick<ThreadSendInput, "account" | "attachItems" | "attachmentPayload" | "attachmentsReady" | "bccList" | "ccList" | "editRecipients" | "forwardFiles" | "forwardSource" | "fromAccount" | "includeSignature" | "olderParts" | "outgoingSubject" | "quoteMessageId" | "quotePayload" | "reply" | "replySubject" | "replyText" | "setThread" | "showCc" | "signatureHtml" | "subjectDraft" | "thread" | "threadId" | "toList">) {
   /**
    * Forward, with the same few seconds as a reply.
    *
@@ -987,20 +903,8 @@ export function useSendOthers({
         forward: forwardPayload({ source: forwardSource, thread, olderParts }),
       },
     };
-    setOutbox((prev) => ({ ...prev, [localId]: entry }));
-    closeComposer();
-    sendWithUndo({
-      object: entry.request.subject,
-      onSend: () => {
-        void dispatchOutboxSend(localId, entry);
-        // And now the card, if this forward was written in one.
-        closeFloatingCardRef.current();
-      },
-      // With the entry, not by a look in the outbox. Each new answer about
-      // the thread clears the outbox of rows that have no bubble, and a
-      // message with no bubble would then have nothing to come back from.
-      onUndo: () => putBackFromOutbox(localId, entry),
-    });
+    // No bubble. The count and Undo: see send-launch.ts.
+    deliver({ account, threadId, localId, entry, bubble: null, quoteMessageId, original: null, later: null });
   }, [thread,
     forwardSource,
     forwardFiles,
@@ -1022,14 +926,13 @@ export function useSendOthers({
     replyText,
     includeSignature,
     signatureHtml,
-    closeComposer,
     attachmentsReady,
     attachmentPayload,
     // The strip's files, which the outbox entry carries for Undo.
     attachItems,
-    dispatchOutboxSend,
-    closeFloatingCardRef,
-    putBackFromOutbox, setOutbox]);
+    account,
+    threadId,
+    deliver]);
   /** Gmail-style quick reaction: replies with just the emoji (+ quoted history). */
   const sendQuickReply = React.useCallback(
     async (emoji: string, quoteOverride?: ReactionQuote) => {

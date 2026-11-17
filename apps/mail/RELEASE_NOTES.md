@@ -1,5 +1,13 @@
 ## What is new
 
+**Forwards and replies are marked (0.12.8)**
+- A mail that you forwarded now says so. A line under its title names who you forwarded it to and when, and an arrow shows by the date on its row in the list. "Show forward" opens the forward in a window of its own.
+- A reply that you sent under a new subject is marked the same way on the mail that it answers. "Show reply" opens the reply.
+
+**Send from the reply window (0.12.8)**
+- When you send from a reply window, the window closes, the main window comes to the front, and the sending notice with Undo shows in the main window. Undo puts your words back in the reply box of the conversation in the main window. Send later and a forward go the same way.
+- A mail that you send from another window now shows in the conversation that is open in the main window. Before, it could stay out of view until you opened the conversation again.
+
 **Fixes in 0.12.7**
 - Drafts: a row in Drafts is now the draft itself. Before, when a reply had come in after you saved a draft, the row showed the reply, and Delete went to the reply: the draft stayed and came back in the list, and the reply was moved to Trash. Delete on a draft now deletes the draft, also for many drafts at once.
 - With Stacks on, the window of a person closes when you archive, delete, junk or snooze that person's last conversation. Before, the window stayed open and blank.

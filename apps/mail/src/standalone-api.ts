@@ -11,6 +11,7 @@
 
 import { getMailThreadOutline } from "@/lib/mail/thread-outline";
 import { getAnswerLinks } from "@/lib/mail/answer-links";
+import { getForwardLinks, noteReplyApart } from "@/lib/mail/forward-links";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import {
   deleteExchangeAccount,
@@ -281,6 +282,38 @@ async function answerLinks({ q }: RouteContext): Promise<Response> {
   const own = [...(await getOwnIdentity()).addresses, ...ownMailIdentity().addresses];
   const links = await getAnswerLinks(account, id, own);
   return ok({ success: true, links });
+}
+
+/** The forwards of a thread: the reader sent it on, and the forward is a thread of its own. */
+async function forwardLinks({ q }: RouteContext): Promise<Response> {
+  const account = q.get("account");
+  const id = q.get("id");
+  if (!account || !id) return failed("account and id are required", 400);
+  return ok({ success: true, links: await getForwardLinks(account, id) });
+}
+
+/** A reply went out under a new subject: keep which thread it answers. */
+async function replyLink({ method, body }: RouteContext): Promise<Response> {
+  if (method !== "POST") return failed("POST only", 405);
+  const sent = await body<{
+    account?: string;
+    threadId?: string;
+    fromAccount?: string;
+    subject?: string;
+    to?: { name?: string; email?: string }[];
+  }>();
+  if (!sent.account || !sent.threadId || !sent.subject) return failed("account, threadId and subject are required", 400);
+  const to = (Array.isArray(sent.to) ? sent.to : [])
+    .filter((p) => typeof p?.email === "string" && p.email)
+    .map((p) => ({ name: typeof p.name === "string" ? p.name : "", email: String(p.email) }));
+  await noteReplyApart({
+    account: sent.account,
+    threadId: sent.threadId,
+    fromAccount: sent.fromAccount || sent.account,
+    subject: sent.subject,
+    to,
+  });
+  return ok({ success: true });
 }
 
 /** Messages the provider is holding for a thread, and the two ways out. */
@@ -1086,6 +1119,8 @@ export const STANDALONE_MAIL_ROUTES: Record<string, Route> = {
   "/api/mail/thread": thread,
   "/api/mail/thread-outline": threadOutline,
   "/api/mail/answer-links": answerLinks,
+  "/api/mail/forward-links": forwardLinks,
+  "/api/mail/reply-link": replyLink,
   "/api/mail/scheduled": scheduled,
   "/api/mail/folders": folders,
   "/api/mail/drafts": drafts,
@@ -1147,6 +1182,8 @@ export const STANDALONE_MAIL_PATHS = [
   "/api/mail/thread",
   "/api/mail/thread-outline",
   "/api/mail/answer-links",
+  "/api/mail/forward-links",
+  "/api/mail/reply-link",
   "/api/mail/folders",
   "/api/mail/drafts",
   "/api/mail/junk",

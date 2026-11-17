@@ -80,6 +80,13 @@ pub struct ThreadRow {
   pub senders: Vec<Address>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub focus_message_id: Option<String>,
+  /// When the reader last forwarded this thread, if they did
+  /// (forward_links.rs). Only a list fills it in.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub forwarded_at: Option<i64>,
+  /// When the reader last answered it under a new subject, if they did.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub replied_apart_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -119,7 +126,20 @@ impl MailDb {
     for account in &accounts {
       let candidates = candidate_threads(&conn, account, &view, before, limit)?;
       let ids: Vec<String> = candidates.iter().map(|(id, _)| id.clone()).collect();
-      rows.extend(load_threads(&conn, account, &ids, &view, as_of)?);
+      let mut loaded = load_threads(&conn, account, &ids, &view, as_of)?;
+      // The forward arrow of a row. Not under a pause: a forward sent during
+      // the pause is mail the pause holds back.
+      if as_of.is_none() {
+        let subjects: Vec<(String, String)> = loaded.iter().map(|r| (r.thread_id.clone(), r.subject.clone())).collect();
+        let forwarded = crate::forward_links::forwarded_times(&conn, account, &subjects)?;
+        let ids: Vec<String> = loaded.iter().map(|r| r.thread_id.clone()).collect();
+        let replied = crate::forward_links::replied_apart_times(&conn, account, &ids)?;
+        for row in &mut loaded {
+          row.forwarded_at = forwarded.get(&row.thread_id).copied();
+          row.replied_apart_at = replied.get(&row.thread_id).copied();
+        }
+      }
+      rows.extend(loaded);
     }
     rows.sort_by(|a, b| b.last_at.cmp(&a.last_at));
     rows.truncate(limit as usize);
@@ -909,6 +929,8 @@ pub(super) fn load_threads(
       participants,
       senders,
       focus_message_id: None,
+      forwarded_at: None,
+      replied_apart_at: None,
     });
   }
   Ok(out)

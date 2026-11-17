@@ -281,6 +281,19 @@ export async function notifyMailSent(input: {
 }
 
 /**
+ * Tell the main window that a reply window offers it a message to send.
+ * Only the id travels: see lib/mail/send-handover.ts. Rejects when the main
+ * window was not told, and the reply window then sends the message itself.
+ */
+export async function notifyMailSendHandover(input: {
+  id: string;
+}): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) throw new Error("Not running in the desktop app");
+  await invoke("notify_mail_send_handover", input);
+}
+
+/**
  * Tell the other shell windows a thread was archived, deleted or moved, so
  * the list drops the row now rather than at the next poll (no-op outside
  * the shell).

@@ -205,6 +205,7 @@ macro_rules! mail_commands {
       mail_native::popout::open_mail_reader_window,
       mail_native::popout::close_mail_reader_window,
       mail_native::popout::notify_mail_sent,
+      mail_native::popout::notify_mail_send_handover,
       mail_native::popout::notify_mail_changed,
       mail_native::popout::notify_mail_forward,
       mail_native::popout::notify_mail_edit_as_new,

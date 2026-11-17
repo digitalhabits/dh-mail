@@ -29,6 +29,7 @@ import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
 import { TeamThreadControl, ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
 import { AnswerLinkLines, useAnswerLinks } from "@/components/mail/thread-answer-links";
+import { ThreadForwardStrip } from "@/components/mail/thread-forward-mark";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
 import {
   SettingsDialog,
@@ -745,6 +746,7 @@ export function ThreadHeader({
           threadOthers={threadOthers}
           thread={thread}
         />
+        <ThreadForwardStrip account={thread.account} threadId={thread.threadId} />
       </div>
       ) : null}
     </>

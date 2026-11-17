@@ -153,6 +153,7 @@ pub fn migrate(conn: &Connection) -> DbResult<()> {
   conn.execute_batch(crate::actions::SCHEMA)?;
   conn.execute_batch(crate::outbox::SCHEMA)?;
   conn.execute_batch(crate::scheduled_sends::SCHEMA)?;
+  conn.execute_batch(crate::forward_links::REPLY_LINKS_SCHEMA)?;
   upgrade(conn)?;
   // The local copy of the mail: its index change and its repairs.
   crate::messages::migrate(conn)?;
