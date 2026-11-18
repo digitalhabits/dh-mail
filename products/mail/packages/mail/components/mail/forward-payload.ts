@@ -50,5 +50,8 @@ export function forwardPayload(input: {
     to: source.toEmails,
     text: history ? `${own.text}\n\n${history.text}` : own.text,
     html: own.html ? own.html + (history?.html ?? "") : undefined,
+    // Which mail this is a forward of, for the server: see `forwardLinkHeaders`.
+    ...(source.rfcMessageId ? { rfcMessageId: source.rfcMessageId } : null),
+    ...(source.references ? { references: source.references } : null),
   };
 }

@@ -55,6 +55,7 @@ import { discardGmailDraft, discardOutlookDraft } from "@/lib/mail/inbox-drafts"
 import { newRfcMessageId, translateGmailError } from "@/lib/mail/inbox-gmail-common";
 import { outgoingHeaderLines } from "@/lib/mail/mime-header";
 import {
+  forwardLinkHeaders,
   forwardedHtml,
   forwardedPlainText,
   type ForwardedMessage,
@@ -819,13 +820,24 @@ async function scheduleFromDraft(input: OutgoingMail, provider: "gmail" | "excha
 }
 
 /**
+ * A forward names the mail it was made from, so the Exchange server files
+ * it with that mail and not by its subject (`forwardLinkHeaders`). A message
+ * that names a mail already is left as it is.
+ */
+export function withForwardLink<T extends Pick<OutgoingMail, "forward" | "inReplyTo" | "references">>(input: T): T {
+  if (!input.forward || input.inReplyTo || input.references) return input;
+  const link = forwardLinkHeaders(input.forward);
+  return link ? { ...input, ...link } : input;
+}
+
+/**
  * Send from an Exchange mailbox (exchange-send.ts). Send later does not ask
  * the server to hold it — on Exchange 2019 a held message cannot be
  * cancelled (docs/mail-exchange-ews.md, 17.1). It waits as a draft, and
  * this computer sends it (docs/mail-send-later.md).
  */
 async function sendFromExchange(input: OutgoingMail): Promise<{ threadId?: string }> {
-  const mime = await buildOutgoingMime(input, await exchangeSenderName(input.account));
+  const mime = await buildOutgoingMime(withForwardLink(input), await exchangeSenderName(input.account));
   if (input.sendAt) await scheduleFromDraft(input, "exchange", mime);
   else await sendExchangeMessage(input.account, mime, input.bcc ?? []);
   // The server draft this send came from, after the send and never before.

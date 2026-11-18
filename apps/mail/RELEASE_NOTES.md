@@ -1,5 +1,9 @@
 ## What is new
 
+**Fixes in 0.12.10**
+- A short reply from a mailbox that puts a signature on replies shows one time in the conversation. Before, it could show two times until you opened the conversation again. Only one mail was sent.
+- On an Exchange mailbox, a mail that you forward goes into the conversation of the mail that you forwarded. Before, when you had sent mails with the same subject to different people, the forward could show in the conversation with another of them.
+
 **Fixes in 0.12.9**
 - "Mark as unread" now stays on a conversation that is open in the reader. In 0.12.8 the conversation went back to read at once.
 - The signature editor stays open while you write. Before, it could close after a moment and go back to the list of signatures, for example when new mail came in, and what you had typed was lost.

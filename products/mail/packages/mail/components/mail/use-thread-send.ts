@@ -731,6 +731,7 @@ export function useSendReply({
                 }))
               : undefined,
             own: true,
+            localOwnText: composed.text,
           };
     /* Send later: the notice, and the row that shows while it waits. */
     const later = sendAt

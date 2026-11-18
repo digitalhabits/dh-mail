@@ -229,12 +229,21 @@ function optimisticCoveredBy(
   reals: MailMessage[]
 ): boolean {
   const localLead = optimisticBodyLead(local.bodyText);
+  /*
+    The words alone, when the bubble has them. A short reply with a
+    signature did not match on the whole text: the bubble is the words and
+    then the history, the sent copy is the words, the signature and then the
+    history, and after a few words the two are different. The bubble then
+    stayed next to the sent copy (reported 2026-11-18).
+  */
+  const ownLead = optimisticBodyLead(local.localOwnText ?? "");
   const localAt = Date.parse(local.sentAt ?? "") || 0;
   return reals.some((m) => {
     if (!m.own || isPendingLocalMessage(m.id)) return false;
     const at = Date.parse(m.sentAt ?? "") || 0;
     if (localAt && at && Math.abs(at - localAt) > 15 * 60 * 1000) return false;
     const lead = optimisticBodyLead(m.bodyText);
+    if (ownLead && lead.startsWith(ownLead)) return true;
     if (!localLead) return Math.abs(at - localAt) < 2 * 60 * 1000;
     const n = Math.min(40, localLead.length, lead.length || 40);
     if (n <= 0) return Math.abs(at - localAt) < 2 * 60 * 1000;

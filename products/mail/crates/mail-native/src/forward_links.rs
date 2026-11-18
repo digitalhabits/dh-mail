@@ -6,9 +6,12 @@
 //! (2026-11-17). This finds the forwards of a thread, so the thread can say
 //! so and open them. It joins nothing, as answer_links.rs joins nothing.
 //!
-//! A forward that this app sends names no message in its headers, and the
-//! Outlook and Exchange copies keep no such headers at all. So a forward is
-//! found by what it is:
+//! A forward that this app sends from a Gmail or Outlook mailbox names no
+//! message in its headers, and the Outlook and Exchange copies keep no such
+//! headers at all. (From an Exchange mailbox it does name the mail, so that
+//! the server files it with that mail: `forwardLinkHeaders` in
+//! forwarded-message.ts. Such a forward is then in the thread itself, as a
+//! message of it, and needs no mark.) So a forward is found by what it is:
 //!
 //! - it is the reader's own sent mail, in another thread of the same mailbox;
 //! - its subject begins with a forward mark ("Fwd:", "FW:", "VS:", …) and is

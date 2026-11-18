@@ -168,6 +168,12 @@ export type MailMessage = {
    * in (local-thread.ts). Its body, files and invites are that mailbox's.
    */
   account?: string;
+  /**
+   * Only on a "sending" bubble: the words that were typed, with no history
+   * under them. The sent copy can have a signature between the words and
+   * the history, so the two are matched on the words (thread-messages.ts).
+   */
+  localOwnText?: string;
 };
 
 /**
