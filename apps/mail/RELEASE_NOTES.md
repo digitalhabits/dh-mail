@@ -1,5 +1,9 @@
 ## What is new
 
+**Fixes in 0.12.9**
+- "Mark as unread" now stays on a conversation that is open in the reader. In 0.12.8 the conversation went back to read at once.
+- The signature editor stays open while you write. Before, it could close after a moment and go back to the list of signatures, for example when new mail came in, and what you had typed was lost.
+
 **Forwards and replies are marked (0.12.8)**
 - A mail that you forwarded now says so. A line under its title names who you forwarded it to and when, and an arrow shows by the date on its row in the list. "Show forward" opens the forward in a window of its own.
 - A reply that you sent under a new subject is marked the same way on the mail that it answers. "Show reply" opens the reply.

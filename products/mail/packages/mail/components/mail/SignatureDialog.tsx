@@ -185,10 +185,23 @@ export function SignatureDialog({
     insertSignatureImage
   );
 
+  /*
+    The addresses as one string. The caller can give a new list with the same
+    addresses at each sync, and a new list must not count as a change: it put
+    the editor away while a signature was written (reported 2026-11-18).
+  */
+  const accountsKey = accounts.join("\n");
+
+  // Only a dialog that opens starts at the list.
   React.useEffect(() => {
     if (!open) return;
     setEditing(null);
     setLoaded(false);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const accounts = accountsKey ? accountsKey.split("\n") : [];
     let cancelled = false;
     // All of them, not the one being written from: the card's whole point
     // is that it says which addresses are still without.
@@ -206,7 +219,7 @@ export function SignatureDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, accounts]);
+  }, [open, accountsKey]);
 
   /** Writes one account's settings, and tells the composer that opened this. */
   const persist = async (account: string, next: SignatureSettings) => {
