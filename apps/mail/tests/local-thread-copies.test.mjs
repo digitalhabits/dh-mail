@@ -77,7 +77,7 @@ function install(newestOnlyAtWork) {
       thread: async (account, threadId) => threads[`${account}|${threadId}`] ?? [],
       copies: async (account, rfcIds) => {
         copiesAsked.push({ account, rfcIds });
-        return (account === gmail || account === outlook) && rfcIds.includes("<m1@x.test>")
+        return (account === gmail || account === outlook) && rfcIds.some((id) => id === "<m1@x.test>" || id === "<m3@x.test>")
           ? [{ account: work, threadId: "k" }]
           : [];
       },
@@ -99,7 +99,8 @@ suite(async () => {
   check("and is the reader's own", reply?.own === true);
   check("a message both mailboxes have is shown once, as this mailbox's", detail.messages.filter((m) => m.rfcMessageId === "<m1@x.test>").length === 1 && !detail.messages[0].account);
   check("the count is the whole conversation", detail.totalMessageCount === 3, detail.totalMessageCount);
-  check("the newest message is in both: the reply goes from this mailbox", detail.reply.from === undefined, detail.reply.from);
+  check("the newest message is in both, sent to the work address: the reply goes from there", detail.reply.from === work, detail.reply.from);
+  check("and goes to its sender", detail.reply.to.join(",") === ann.email, detail.reply.to);
   const read = marks.map((m) => `${m.account}|${m.threadId}`).sort().join(",");
   check("opening reads the conversation in both mailboxes", read === `${gmail}|g,${work}|k`, read);
 
@@ -109,7 +110,7 @@ suite(async () => {
   check("to the people that reply went to, not to this mailbox", later.reply.to.join(",") === ann.email, later.reply.to);
   const fields = replyFields(later.reply, false);
   check("Reply opens with that mailbox as From", fields.fromAccount === work && fields.toList.map((r) => r.email).join(",") === ann.email, JSON.stringify(fields));
-  check("with no other mailbox to go from, From is left as it is", !("fromAccount" in replyFields(detail.reply, true)));
+  check("with no other mailbox to go from, From is left as it is", !("fromAccount" in replyFields({ ...detail.reply, from: undefined }, true)));
   check("and reply-all leaves this mailbox out too", !later.reply.allTo.includes(gmail) && later.reply.allTo.includes(ann.email), later.reply.allTo);
 
   // A thread read from the provider, not the copy: Outlook over Graph.

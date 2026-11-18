@@ -166,3 +166,59 @@ export function replyTargets(input: {
     allCc: replyAll.cc,
   };
 }
+
+/**
+ * The mailbox a reply to an incoming message goes from, when the message
+ * came to more than one of the reader's mailboxes.
+ *
+ * A message with one of the reader's addresses in To and another in Cc is
+ * in both mailboxes, and the list shows it as one row. The reply went from
+ * the mailbox whose copy the row opened, so the answer to a mail sent to
+ * the work address could go from the address that was only on Cc
+ * (reported 2026-11-18). The reply goes from the mailbox the mail was sent
+ * to: one in To comes before one in Cc, and one in Cc comes before one
+ * that is in neither (Bcc, or a list). Mailboxes of the same rank: the open
+ * one stays.
+ *
+ * `holders` are the other mailboxes that hold this message. A mailbox can
+ * have more addresses than the one it is connected as: an Exchange mailbox
+ * signs in as one address and gets its mail at another. `addressesOf` gives
+ * every address of a mailbox (exchange-own-addresses.ts), and any of them
+ * in To or Cc names the mailbox.
+ *
+ * For an alias that no mailbox is known to have: when exactly one of the
+ * mailboxes is not named, an alias of the reader's in To or Cc is taken as
+ * that mailbox.
+ *
+ * A message the reader sent is not changed here: see `sentFromThisMailbox`.
+ */
+export function replyMailbox(input: {
+  account: string;
+  holders: readonly string[];
+  from: string;
+  to: readonly string[];
+  cc: readonly string[];
+  addressesOf?: (mailbox: string) => readonly string[];
+}): string {
+  const key = (address: string) => normalizeEmail(address ?? "");
+  const mailboxes = [input.account, ...input.holders.filter((h) => key(h) !== key(input.account))];
+  if (mailboxes.length < 2) return input.account;
+  const addresses = new Map(
+    mailboxes.map((m) => [m, new Set([key(m), ...(input.addressesOf?.(m) ?? []).map(key)])] as const)
+  );
+  const known = new Set([...addresses.values()].flatMap((set) => [...set]));
+  if (known.has(key(input.from)) || isOwnPersonalAddress(input.from)) return input.account;
+
+  const to = input.to.map(key);
+  const cc = input.cc.map(key);
+  const namedIn = (list: readonly string[], mailbox: string) => list.some((a) => addresses.get(mailbox)!.has(a));
+  const notNamed = mailboxes.filter((m) => !namedIn(to, m) && !namedIn(cc, m));
+  const alias = (list: readonly string[]) => list.some((a) => !known.has(a) && isOwnPersonalAddress(a));
+  const aliasRank = notNamed.length === 1 ? (alias(to) ? 0 : alias(cc) ? 1 : 2) : 2;
+  const rank = (mailbox: string) =>
+    namedIn(to, mailbox) ? 0 : namedIn(cc, mailbox) ? 1 : mailbox === notNamed[0] ? aliasRank : 2;
+
+  let best = input.account;
+  for (const mailbox of mailboxes) if (rank(mailbox) < rank(best)) best = mailbox;
+  return best;
+}

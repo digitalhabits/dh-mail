@@ -1,5 +1,10 @@
 ## What is new
 
+**Replies go from the address the mail was sent to (0.12.11)**
+- When a mail is in more than one of your mailboxes, a reply now starts from the mailbox that the mail was sent to: the one in To, then the one in Cc. Before, the reply started from the mailbox in which you opened the mail, so an answer to a mail sent to your work address could go from an address that was only on Cc.
+- An Exchange mailbox is found by each of its addresses, not only the one that you connected it as.
+- You can still change the address in the From menu.
+
 **Fixes in 0.12.10**
 - A short reply from a mailbox that puts a signature on replies shows one time in the conversation. Before, it could show two times until you opened the conversation again. Only one mail was sent.
 - On an Exchange mailbox, a mail that you forward goes into the conversation of the mail that you forwarded. Before, when you had sent mails with the same subject to different people, the forward could show in the conversation with another of them.

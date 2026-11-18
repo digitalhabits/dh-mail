@@ -20,7 +20,8 @@ import { fetchExchangeBodies } from "@/lib/mail/exchange-native";
 import type { MailStoredBody, MailStoredMessage } from "@/lib/mail/store/types";
 import type { MailAttachment, MailMessage, MailOutlineItem, MailThreadDetail } from "@/lib/mail/types";
 import { isOwnOrgAddress, normalizeEmail } from "@/lib/own-addresses";
-import { replyTargets } from "@/lib/mail/reply-target";
+import { mailboxAddresses } from "@/lib/mail/exchange-own-addresses";
+import { replyMailbox, replyTargets } from "@/lib/mail/reply-target";
 import { dedupeMessagesByRfcId } from "@/lib/mail/thread-copies";
 import { adoptSplitThread, getChatForThread, noteChatMessageIds } from "@/lib/mail/chats";
 import { THREAD_PAGE_SIZE } from "@/lib/mail/thread-classify";
@@ -232,6 +233,7 @@ export async function withLocalCopies(
   options?: { before?: string; after?: string; around?: string }
 ): Promise<MailThreadDetail> {
   if (options?.before || options?.after || options?.around || !detail.messages.length) return detail;
+  detail = await withReplyMailbox(detail);
   const ids = detail.messages.map((m) => m.rfcMessageId);
   // The copies under each mailbox's own pause, as the copy path reads them.
   const links = linksOf(detail.messages.map((m) => ({ ...m, subject: detail.subject })));
@@ -265,6 +267,23 @@ export async function withLocalCopies(
     messages,
     ...(detail.totalMessageCount != null ? { totalMessageCount: detail.totalMessageCount + added } : null),
   };
+}
+
+/**
+ * The same choice of the reply's mailbox for a thread the provider answered:
+ * see `sentToMailbox`. The people of the reply stay: none of the reader's
+ * own addresses is among them.
+ */
+async function withReplyMailbox(detail: MailThreadDetail): Promise<MailThreadDetail> {
+  const last = detail.messages[detail.messages.length - 1];
+  if (detail.reply.from || detail.hasNewer || !last) return detail;
+  const mailbox = await sentToMailbox(detail.account, {
+    rfcMessageId: last.rfcMessageId,
+    fromEmail: last.fromEmail,
+    to: last.toEmails ?? [],
+    cc: last.ccEmails ?? [],
+  }).catch(() => null);
+  return mailbox ? { ...detail, reply: { ...detail.reply, from: mailbox } } : detail;
 }
 
 /** The mailbox a row is in. */
@@ -396,7 +415,7 @@ export async function threadFromLocalStore(
   // The reply target comes from the thread's newest message, in or out of
   // the window.
   const last = all[all.length - 1];
-  const { reply, replyFrom } = replyOf(last, account);
+  const { reply, replyFrom } = replyOf(last, account, await sentToMailbox(account, last));
   const subject = (last.subject ?? "").trim() || "(no subject)";
   const references = [last.references ?? "", last.rfcMessageId ?? ""]
     .map((s) => s.trim())
@@ -469,8 +488,8 @@ export async function threadFromLocalStore(
  * reader's own reply sent from there) is answered from that mailbox, and
  * this mailbox is not one of the people it goes to.
  */
-function replyOf(last: StoredWithBody, account: string) {
-  const from = rowAccount(last, account);
+function replyOf(last: StoredWithBody, account: string, sentTo: string | null = null) {
+  const from = last.copy?.account ?? sentTo ?? account;
   const targets = replyTargets({
     from: last.fromEmail,
     to: last.to.map((a) => a.email),
@@ -483,6 +502,33 @@ function replyOf(last: StoredWithBody, account: string) {
     reply: { to: notHere(targets.to), allTo: notHere(targets.allTo), allCc: notHere(targets.allCc) },
     replyFrom: from,
   };
+}
+
+/**
+ * Another mailbox of the reader's that the newest message was sent to more
+ * directly than to this one: it is in To there and in Cc here, say. The
+ * reply goes from that mailbox (reply-target.ts, `replyMailbox`). Null when
+ * this mailbox is the one, and for a message that only another mailbox has.
+ */
+async function sentToMailbox(
+  account: string,
+  last: { rfcMessageId?: string | null; fromEmail: string; to: string[] | { email: string }[]; cc: string[] | { email: string }[]; copy?: unknown }
+): Promise<string | null> {
+  const id = (last.rfcMessageId ?? "").trim();
+  const store = mailStore();
+  if (last.copy || !id || !store.messages.copies) return null;
+  const copies = await store.messages.copies(account, [id]).catch(() => []);
+  if (!copies.length) return null;
+  const emails = (list: string[] | { email: string }[]) => list.map((a) => (typeof a === "string" ? a : a.email));
+  const mailbox = replyMailbox({
+    account,
+    holders: copies.map((c) => c.account),
+    from: last.fromEmail,
+    to: emails(last.to),
+    cc: emails(last.cc),
+    addressesOf: mailboxAddresses,
+  });
+  return mailbox === account ? null : mailbox;
 }
 
 /**

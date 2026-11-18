@@ -80,13 +80,29 @@ export function sendAsLabel(account: string, from: Readonly<StoredMain> = mains)
   return main && main !== key ? main : account;
 }
 
+/** Every address of each mailbox, by the connected address, as last read. */
+let byMailbox: Stored = {};
+
+/**
+ * Every address that mail to this mailbox can carry: the connected address
+ * and the others the directory names. Only the connected address for a
+ * mailbox that is not on Exchange, and before the first read.
+ */
+export function mailboxAddresses(account: string): string[] {
+  const key = account.trim().toLowerCase();
+  return [...new Set([key, ...(byMailbox[key] ?? [])])];
+}
+
 function flat(stored: Stored, accounts: readonly string[]): string[] {
   const keep = new Set(accounts.map((a) => a.trim().toLowerCase()));
   const out = new Set<string>();
+  const next: Stored = {};
   for (const [account, addresses] of Object.entries(stored)) {
-    if (!keep.has(account)) continue;
-    for (const address of addresses) if (typeof address === "string") out.add(address.toLowerCase());
+    if (!keep.has(account) || !Array.isArray(addresses)) continue;
+    next[account] = addresses.filter((a): a is string => typeof a === "string").map((a) => a.toLowerCase());
+    for (const address of next[account]) out.add(address);
   }
+  byMailbox = next;
   return [...out];
 }
 
