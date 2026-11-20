@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { avatarStyle, senderInitials } from "@/components/mail/avatar";
+import { pictureAddress } from "@/lib/mail/image-proxy";
 import { teamAvatarSrc } from "@/lib/mail/team-avatars";
 import { cn } from "@/lib/utils";
 
@@ -28,14 +29,38 @@ export function SenderAvatar({
   size?: number;
 }) {
   const [logoFailed, setLogoFailed] = React.useState(false);
+  /*
+    The initials stay until the logo has loaded, and not only until it
+    fails. A picture that the page's policy refuses is not drawn, and the
+    webview tells no error for it. With no initials under it, the face is
+    an empty place: every contact with a logo was blank in the list.
+  */
+  const [logoLoaded, setLogoLoaded] = React.useState(false);
   React.useEffect(() => {
     setLogoFailed(false);
+    setLogoLoaded(false);
   }, [logoUrl]);
   const [photoFailed, setPhotoFailed] = React.useState(false);
 
   const teamPhoto = teamAvatarSrc(email);
   const showLogo = Boolean(logoUrl) && !logoFailed;
   const seed = email || name;
+  const initials = (
+    <span
+      className={cn(
+        "flex h-full w-full items-center justify-center rounded-full font-semibold",
+        !size && "text-[11px]",
+        avatarStyle(seed.toLowerCase())
+      )}
+      style={
+        size
+          ? { fontSize: Math.max(7, Math.round((size * 11) / 36)) }
+          : undefined
+      }
+    >
+      {senderInitials(name, email)}
+    </span>
+  );
 
   return (
     <span
@@ -55,41 +80,28 @@ export function SenderAvatar({
           onError={() => setPhotoFailed(true)}
         />
       ) : showLogo ? (
-        <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+        <span className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+          {logoLoaded ? null : initials}
           {/*
-            The logo's own address, loaded straight.
-
-            This went through a picture proxy, which is a path on a web
-            server: fine on the web, where the page is on that server,
-            and a dead end in a desktop pane, whose origin is the app itself
-            — every logo there was a broken-image mark. A logo is a public
-            picture and an <img> needs no permission to show one, so it is
-            asked for directly. No referrer, because the bucket the team's
-            own logos live in refuses a referrer it does not know.
+            Asked for through the host's picture channel (pictureAddress).
+            On the web that is the logo's own address. In the desktop app
+            it is the channel native code answers, because the app's page
+            may not load a picture from the bucket the logos live in.
           */}
           <img
-            src={logoUrl}
+            src={pictureAddress(logoUrl ?? "")}
             alt=""
             referrerPolicy="no-referrer"
-            className="h-full w-full rounded-full object-cover"
+            className={cn(
+              "h-full w-full rounded-full object-cover",
+              logoLoaded ? undefined : "absolute inset-0 opacity-0"
+            )}
+            onLoad={() => setLogoLoaded(true)}
             onError={() => setLogoFailed(true)}
           />
         </span>
       ) : (
-        <span
-          className={cn(
-            "flex h-full w-full items-center justify-center rounded-full font-semibold",
-            !size && "text-[11px]",
-            avatarStyle(seed.toLowerCase())
-          )}
-          style={
-            size
-              ? { fontSize: Math.max(7, Math.round((size * 11) / 36)) }
-              : undefined
-          }
-        >
-          {senderInitials(name, email)}
-        </span>
+        initials
       )}
       {unread ? (
         <span

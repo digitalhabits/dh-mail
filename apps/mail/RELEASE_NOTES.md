@@ -1,5 +1,9 @@
 ## What is new
 
+**Fixes in 0.12.14**
+- With Stacks on, the conversations of an open stack start where the name of the person starts. Before, they started to the left of the name.
+- A face in the list shows the initials of the person until the picture is there. Before, a picture that the app could not load left an empty place.
+
 **Fixes in 0.12.13**
 - A link in a mail opens at the address that the sender wrote. Before, a link with more than one part after the "?" opened at a broken address. The Yes, No and Maybe buttons in a Google Calendar invitation gave "400. That's an error". A reply or a forward also sent the broken address to the other person.
 - A mail shows when one of its pictures has a "%" in its name that the app cannot read. Before, such a mail could stay blank.

@@ -147,8 +147,16 @@ export function StackThreadRow({
 }
 
 /**
- * An open stack's threads, newest first, under the person's row: in from
- * the left as far as the name.
+ * Where the name starts in a person's row with a 36px face: the row's 30px
+ * padding, the face and its 12px gap.
+ */
+export const STACK_NAME_LEFT = 78;
+
+/**
+ * An open stack's threads, newest first, under the person's row. Each is a
+ * card when open or pointed at, and the card's left edge stands where the
+ * person's name starts. The words are in from that by the card's own
+ * padding, so the conversations read as held by the person above.
  */
 export function StackThreads({
   threads,
@@ -159,7 +167,10 @@ export function StackThreads({
   onNavy,
   highlight,
   withYear,
+  nameLeft = STACK_NAME_LEFT,
 }: {
+  /** Where the person's name starts, in px from the row's left edge. */
+  nameLeft?: number;
   threads: MailThreadSummary[];
   isOpen: (t: MailThreadSummary) => boolean;
   onOpen: (t: MailThreadSummary) => void;
@@ -171,9 +182,7 @@ export function StackThreads({
   withYear: boolean;
 }) {
   return (
-    // The words start where the person's name does: the row's padding, the
-    // 36px face and its 12px gap, less the thread row's own 16px.
-    <div className="mb-1 ml-[60px] mr-[18px]">
+    <div className="mb-1 mr-[18px]" style={{ marginLeft: nameLeft }} data-stack-threads="">
       {threads.map((th) => (
         <StackThreadRow
           key={`${th.account}|${th.threadId}`}

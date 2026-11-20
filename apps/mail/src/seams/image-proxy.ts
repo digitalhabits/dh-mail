@@ -58,6 +58,19 @@ function toNative(remote: string): string {
   return PREFIX + utf8ToBase64Url(absolute);
 }
 
+/**
+ * The address to ask for a picture the app draws itself: a logo, a face.
+ *
+ * The app's own page may load pictures only from itself and from this
+ * channel (see `csp` in tauri.conf.json). A logo lives in a storage bucket,
+ * which the policy refuses. The picture was then not drawn, and no error was
+ * told, so the place stayed blank. Through the channel, native code fetches
+ * it, with no cookie and no referrer.
+ */
+export function pictureAddress(remote: string): string {
+  return toNative(remote);
+}
+
 /** `url(...)` inside a style attribute — how a marketing email paints. */
 function rewriteStyleUrls(style: string): string {
   return style.replace(

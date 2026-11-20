@@ -23,7 +23,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { MAIL_LINK_BRIDGE_CSP_HASH } from "@/lib/mail/link-bridge";
-import { MAIL_IMAGE_CSP_SOURCE } from "@/lib/mail/image-proxy";
+import { MAIL_IMAGE_CSP_SOURCE, pictureAddress } from "@/lib/mail/image-proxy";
 import { GOOGLE_TOKEN_ENDPOINT } from "../src/oauth-config";
 import { USAGE_PING_URL } from "@/lib/mail/usage-ping";
 
@@ -83,6 +83,22 @@ suite(async () => {
       has("img-src", "http://dhmail.localhost"),
     sources("img-src")?.join(" ")
   );
+
+  // A logo or a face lives in a storage bucket, which the policy does not
+  // name. It is asked for through the shell's scheme, which the policy does.
+  {
+    const logo = "https://bucket.s3.eu-west-1.amazonaws.example/logos/a.png?X-Amz-Signature=abc&X-Amz-Expires=3600";
+    const asked = pictureAddress(logo);
+    check(
+      "a logo is asked for from an address the policy allows",
+      asked !== logo && has("img-src", `${new URL(asked).protocol}`),
+      asked
+    );
+    check(
+      "a picture that is already the app's own keeps its address",
+      pictureAddress("data:image/png;base64,AAAA") === "data:image/png;base64,AAAA"
+    );
+  }
 
   check(
     "an attachment shows from its blob URL, as a picture and as a page",

@@ -56,7 +56,7 @@ import type { MailScheduledMessage, MailThreadSummary } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
 import { TeamStackCommentMark, TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
-import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
+import { PersonCount, PersonWideBody, STACK_NAME_LEFT, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
 import { previewText } from "@/lib/mail/preview-text";
 
@@ -378,6 +378,7 @@ export function PeopleRows() {
                   onNavy={chromeDark}
                   highlight={highlightTerms}
                   withYear={Boolean(debouncedSearch)}
+                  nameLeft={personRowLayout({ narrow: listNarrow, wide: listRowWide, compact: listDensity === "compact" }).nameLeft}
                 />
               ) : null}
               </React.Fragment>
@@ -508,10 +509,15 @@ export function PeopleRows() {
   );
 }
 
+/** ROW_PAD_LEFT, as a number. */
+const ROW_PAD_LEFT_PX = 30;
+
 /**
  * Where a person row's parts stand, by the list's width and density: the
  * row's padding and line, the button's alignment, the unread dot, the
  * face, and how far down the hover actions sit (on the name's line).
+ * `nameLeft` is where the name starts, from the row's left edge: the
+ * padding, the face and the gap. An open stack's conversations start there.
  */
 function personRowLayout({ narrow, wide, compact }: { narrow: boolean; wide: boolean; compact: boolean }) {
   if (narrow) {
@@ -521,6 +527,7 @@ function personRowLayout({ narrow, wide, compact }: { narrow: boolean; wide: boo
       dotTop: undefined,
       face: 36,
       actionsTop: undefined,
+      nameLeft: STACK_NAME_LEFT,
     };
   }
   if (compact) {
@@ -534,6 +541,8 @@ function personRowLayout({ narrow, wide, compact }: { narrow: boolean; wide: boo
       dotTop: undefined,
       face: wide ? ONE_LINE_FACE : 28,
       actionsTop: undefined,
+      // gap-3 is 12px, gap-2.5 is 10px.
+      nameLeft: ROW_PAD_LEFT_PX + (wide ? ONE_LINE_FACE + 12 : 28 + 10),
     };
   }
   return {
@@ -542,6 +551,7 @@ function personRowLayout({ narrow, wide, compact }: { narrow: boolean; wide: boo
     dotTop: wide ? WIDE_FACE_DOT_TOP : FACE_DOT_TOP,
     face: 36,
     actionsTop: wide ? "top-[18px]" : "top-5",
+    nameLeft: STACK_NAME_LEFT,
   };
 }
 
