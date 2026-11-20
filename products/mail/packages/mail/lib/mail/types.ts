@@ -53,6 +53,11 @@ export type MailThreadSummary = {
    */
   externalParticipants: { name: string; email: string }[];
   /**
+   * We wrote one of its messages. The row then leads its people with "me,",
+   * as Gmail's does. Absent on rows from an older cache.
+   */
+  fromMe?: boolean;
+  /**
    * The record the counterpart belongs to (affiliation label), if known.
    * A stored name: the list cache keeps rows, so it stays as it is.
    */

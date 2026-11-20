@@ -1,5 +1,13 @@
 ## What is new
 
+**The mail list reads like Gmail's (0.12.12)**
+- A row in the list no longer shows the first words of the mail. You see more conversations at one time. To get the words back, turn on "Show a preview in the mail list" in Settings.
+- When the list has the full width of the window, each conversation is one line: the people, then the subject, then the time. When the list stands beside a mail, each conversation is two lines.
+- The people have a column of a fixed width. When you wrote in the conversation, the column starts with "me".
+- A conversation that you did not read is lighter than the others, and its words are bold.
+- When you point at a row, the row lifts on a shadow and shows four actions: archive, delete, mark as read or unread, and snooze.
+- In the menu of a message, Details is now with Print, under the line.
+
 **Replies go from the address the mail was sent to (0.12.11)**
 - When a mail is in more than one of your mailboxes, a reply now starts from the mailbox that the mail was sent to: the one in To, then the one in Cc. Before, the reply started from the mailbox in which you opened the mail, so an answer to a mail sent to your work address could go from an address that was only on Cc.
 - An Exchange mailbox is found by each of its addresses, not only the one that you connected it as.

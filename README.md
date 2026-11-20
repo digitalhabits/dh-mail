@@ -121,7 +121,7 @@ are copied unmodified, so this builds the way the released app builds.
 
 ## Building
 
-Needs Node 20 or later, pnpm 9, and a Rust toolchain. On macOS it also needs the Xcode
+Needs Node 20 or later, pnpm 12, and a Rust toolchain. On macOS it also needs the Xcode
 command line tools. On Windows it needs the MSVC build tools.
 
 ```

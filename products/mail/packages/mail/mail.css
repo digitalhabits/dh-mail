@@ -730,6 +730,15 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-link: #005d53;
   --mail-row-selected: #ffffff;
   --mail-row-selected-solid: #ffffff;
+  /* An unread row stands a step lighter than the list, as Gmail's does: a
+     tint toward the open row's white, never all the way to it. */
+  --mail-row-unread: rgba(255, 255, 255, 0.5);
+  /* The team's discussion beside a thread: a tinted green, so a comment is
+     not taken for mail. The card of a comment, and the count on a row. */
+  --mail-discussion: #e2ebe5;
+  --mail-discussion-card: #ffffff;
+  --mail-discussion-chip: #d6e5dc;
+  --mail-row-read: transparent;
   /* The open row is a card lifted off the cream list (list-row-marks.tsx). */
   /* A white card on cream: 1px ink/8% edge and shadow-card. */
   --mail-row-card-shadow: 0 0 0 1px rgba(27, 61, 74, 0.08), 0 1px 2px rgba(27, 61, 74, 0.04);
@@ -918,6 +927,11 @@ body:has(> [data-mail-reader]) .mail-floating-reply {
   --mail-row-selected: color-mix(in srgb, #2a9d8f 14%, #1e2d3e);
   /* The same, for a ring drawn over the row. */
   --mail-row-selected-solid: color-mix(in srgb, #2a9d8f 14%, #1e2d3e);
+  --mail-row-unread: rgba(255, 255, 255, 0.04);
+  --mail-discussion: color-mix(in srgb, #2a9d8f 9%, #14202c);
+  --mail-discussion-card: #1e2d3e;
+  --mail-discussion-chip: color-mix(in srgb, #2a9d8f 24%, #14202c);
+  --mail-row-read: transparent;
   --mail-row-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --mail-row-hover: var(--mail-chrome-hover);
   --mail-card-hover-border: #4b5a6e;
@@ -2047,4 +2061,28 @@ html[data-mail-list-snap="go"] .mail-list-snap-hint {
    With its own, the two made a double line 8px long. */
 .mail-shell:not([data-theme="dark"]) .mail-resize-gutter {
   border-top-color: transparent;
+}
+
+/* Pointed at, in the list at each width: the row keeps its own colour and
+   lifts off the list on a shadow, as Gmail's does. A fill of its own would be a third
+   colour beside unread's lighter tint and read's cream, and read as one of
+   them. Solid colours, so the quick actions over the row can take them and
+   nothing shows through. */
+.mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-wide-row:hover {
+  position: relative;
+  z-index: 1;
+  background-color: var(--mail-chrome);
+  --mail-person-stack-ring: var(--mail-chrome);
+  box-shadow:
+    inset 1px 0 0 #e4ddd1,
+    inset -1px 0 0 #e4ddd1,
+    0 1px 2px rgba(27, 61, 74, 0.18),
+    0 1px 3px 1px rgba(27, 61, 74, 0.08);
+}
+.mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-wide-row[data-row-unread]:hover {
+  background-color: color-mix(in srgb, #ffffff 50%, var(--mail-chrome));
+  --mail-person-stack-ring: color-mix(in srgb, #ffffff 50%, var(--mail-chrome));
+}
+.mail-shell:not([data-theme="dark"]) [data-list-expanded] .mail-wide-row:hover::before {
+  background-color: transparent;
 }

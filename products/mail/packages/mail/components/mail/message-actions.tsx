@@ -6,6 +6,7 @@
  * its right-click menu, which offers the same. Drawn by MailBubble.
  */
 
+import { MessageMenuComment } from "@/components/mail/team-layer";
 import * as React from "react";
 import {
   Code,
@@ -231,6 +232,8 @@ export function MessageContextMenu({
   x,
   y,
   selectedText,
+  messageId,
+  from,
   onReact,
   onReplyTo,
   actions,
@@ -239,6 +242,9 @@ export function MessageContextMenu({
   x: number;
   y: number;
   selectedText: string;
+  /** The message's RFC Message-ID and its writer, for a build's own rows. */
+  messageId?: string;
+  from?: string;
   onReact?: (emoji: string) => void;
   onReplyTo?: () => void;
   actions: MessageMenuActions;
@@ -309,6 +315,8 @@ export function MessageContextMenu({
           {t("actionReplyAll")}
         </button>
       ) : null}
+      {/* A build with a team layer adds a row here. This app's own draws nothing. */}
+      <MessageMenuComment selectedText={selectedText} messageId={messageId} from={from} className={row} onDone={onDismiss} />
       {onReact || selectedText || onReplyTo || actions.onReplyAll ? (
         <div aria-hidden className="my-1 h-px bg-stone-200" />
       ) : null}
@@ -444,6 +452,17 @@ function MessageMenuItems({
             : t("downloadAttachment")}
         </button>
       ) : null}
+      {/* The message as a document — its details, printed, or as it came —
+          stands apart from what is done with its words. */}
+      {(onToggleDetails || onPrint || onShowOriginal) &&
+      (onReplyAll ||
+        onForward ||
+        onEditAsNew ||
+        onDownloadAttachments ||
+        canCopy ||
+        canCopyRecipients) ? (
+        <div aria-hidden className="my-1 h-px bg-stone-200" />
+      ) : null}
       {onToggleDetails ? (
         <button
           type="button"
@@ -456,18 +475,6 @@ function MessageMenuItems({
           <Info className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
           {detailsOpen ? t("hideDetails") : t("details")}
         </button>
-      ) : null}
-      {/* The message as a document — printed, or as it came — stands
-          apart from what is done with its words. */}
-      {(onPrint || onShowOriginal) &&
-      (onReplyAll ||
-        onForward ||
-        onEditAsNew ||
-        onDownloadAttachments ||
-        canCopy ||
-        canCopyRecipients ||
-        onToggleDetails) ? (
-        <div aria-hidden className="my-1 h-px bg-stone-200" />
       ) : null}
       {onPrint ? (
         <button

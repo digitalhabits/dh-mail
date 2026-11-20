@@ -172,6 +172,7 @@ export function EmailHtmlView({
   frameCss,
   onContentDoubleClick,
   onContentContextMenu,
+  onContentSelection,
   darkRecolor = false,
   highlight,
 }: {
@@ -220,6 +221,8 @@ export function EmailHtmlView({
    * was, and what text the reader had selected.
    */
   onContentContextMenu?: (x: number, y: number, selectedText: string) => void;
+  /** The reader selected words in the message, at this point of the page. Empty: the selection went away. */
+  onContentSelection?: (selectedText: string, x: number, y: number) => void;
   /** Re-light the sender's colours for a dark card. See frame-script/dark.ts. */
   darkRecolor?: boolean;
 }) {
@@ -227,12 +230,14 @@ export function EmailHtmlView({
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const onDblClickRef = React.useRef(onContentDoubleClick);
   const onContextMenuRef = React.useRef(onContentContextMenu);
+  const onSelectionRef = React.useRef(onContentSelection);
   const darkRecolorRef = React.useRef(darkRecolor);
   const zoomRef = React.useRef(zoom);
   const highlightRef = React.useRef(highlight);
   React.useLayoutEffect(() => {
     onDblClickRef.current = onContentDoubleClick;
     onContextMenuRef.current = onContentContextMenu;
+    onSelectionRef.current = onContentSelection;
     darkRecolorRef.current = darkRecolor;
     zoomRef.current = zoom;
     highlightRef.current = highlight;
@@ -383,6 +388,12 @@ export function EmailHtmlView({
         case "link-menu": {
           const menu = frameLinkMenu(frame, data);
           if (menu) setLinkMenu(menu);
+          return;
+        }
+        case "selection": {
+          if (!onSelectionRef.current) return;
+          const at = frameMessageMenu(frame, data);
+          onSelectionRef.current(at.selectedText.slice(0, 4000), at.x, at.y);
           return;
         }
         case "message-menu": {

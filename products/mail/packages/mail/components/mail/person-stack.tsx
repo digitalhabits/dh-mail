@@ -10,11 +10,12 @@
  * person's row again folds the stack.
  */
 
+import { useShowListPreviews } from "@/lib/mail/list-previews-setting";
 import { ChevronDown, ChevronRight, Paperclip } from "lucide-react";
 
 import { Highlighted } from "@/components/mail/Highlighted";
 import { DraftBadge, ThreadMessageCount } from "@/components/mail/ThreadListRow";
-import { TeamRowMark } from "@/components/mail/team-layer";
+import { TeamRowCommentMark, TeamRowMark } from "@/components/mail/team-layer";
 import { rowTime } from "@/lib/mail/date-format";
 import { useMailT } from "@/lib/mail/i18n";
 import type { MailThreadSummary } from "@/lib/mail/types";
@@ -138,6 +139,7 @@ export function StackThreadRow({
       ) : null}
       <span className="shrink-0 text-xs tabular-nums text-[var(--mail-list-muted)]">
         <TeamRowMark account={thread.account} threadId={thread.threadId} />
+        <TeamRowCommentMark thread={thread} />
         {rowTime(thread.lastAt, { withYear })}
       </span>
     </button>
@@ -235,12 +237,13 @@ export function PersonWideBody({
 }) {
   const newest = threads[0];
   const stack = threads.length > 1;
+  const showPreview = useShowListPreviews();
   const strong = "min-w-0 shrink truncate font-semibold text-[var(--mail-chrome-fg)]";
   return (
     <span className="flex min-w-0 flex-1 items-start gap-3">
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5 text-sm">
-          {stack ? (
+          {stack || !showPreview ? (
             <span className={strong}>
               <Highlighted text={name} terms={highlight} onNavy={onNavy} />
             </span>
@@ -257,12 +260,20 @@ export function PersonWideBody({
           <PersonCount threads={threads} open={open} />
           {hasDraft ? <DraftBadge /> : null}
         </span>
+        {/* Two lines either way: a stack's subjects, the thread's first
+            words, or, with previews off, its subject under the person. */}
         <span className="block truncate text-[13px] text-[var(--mail-row-preview)]">
           {hasFile ? (
             <Paperclip className="mr-1 inline h-3 w-3 -translate-y-px stroke-[1.5] opacity-80" aria-hidden />
           ) : null}
           <Highlighted
-            text={stack ? threads.map((th) => th.subject).join(" · ") : previewText(newest.snippet)}
+            text={
+              stack
+                ? threads.map((th) => th.subject).join(" · ")
+                : showPreview
+                  ? previewText(newest.snippet)
+                  : newest.subject
+            }
             terms={highlight}
             onNavy={onNavy}
           />

@@ -28,7 +28,7 @@ export async function proposeAfterSend(_input: {
 }
 
 /** The demo's answer to a path of the team's. There are none. */
-export function demoTeamAnswer(_pathname: string): unknown {
+export function demoTeamAnswer(_pathname: string, _body?: unknown): unknown {
   return undefined;
 }
 

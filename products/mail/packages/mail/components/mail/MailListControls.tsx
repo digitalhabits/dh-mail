@@ -18,6 +18,7 @@ import { MailShortcutsPanel } from "@/components/mail/MailShortcutsDialog";
 import { SnoozeOptionsPanel } from "@/components/mail/SnoozeOptionsPanel";
 import { readUsagePingEnabled, writeUsagePingEnabled } from "@/lib/mail/usage-ping";
 import { useShowFolderCounts, writeShowFolderCounts } from "@/lib/mail/folder-counts-setting";
+import { useShowListPreviews, writeShowListPreviews } from "@/lib/mail/list-previews-setting";
 import { SettingsGroup, SettingsLanguageRow, SettingsPane, SettingsTextSizeRow, SettingsRow, SettingsToggle } from "@/components/mail/settings-ui";
 import { ReaderLinesSetting } from "@/components/mail/reader-lines-setting";
 import { TeamReadingSettings } from "@/components/mail/team-layer";
@@ -335,6 +336,7 @@ export function MailLayoutMenu({
             }
           />
           <ReaderLinesSetting />
+          <ListPreviewsSetting />
           <SettingsRow
             label={t("showFolderCounts")}
             hint={t("showFolderCountsHint")}
@@ -610,4 +612,23 @@ export function useSettingsMenuState() {
     ...(hasDesktopShell ? [{ id: "advanced" as const, label: t("settingsAdvanced") }] : []),
   ];
   return { close, exchange, loadImagesByDefault, open, placement, sections, setLoadImagesByDefault, setOpen, setTheme, setUsagePing, showFolderCounts, t, target, theme, usagePing };
+}
+
+/** Settings > General: the preview line under each row of the list. */
+function ListPreviewsSetting() {
+  const t = useMailT();
+  const show = useShowListPreviews();
+  return (
+    <SettingsRow
+      label={t("showListPreviews")}
+      hint={t("showListPreviewsHint")}
+      control={
+        <SettingsToggle
+          checked={show}
+          onChange={writeShowListPreviews}
+          label={t("showListPreviews")}
+        />
+      }
+    />
+  );
 }

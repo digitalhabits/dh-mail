@@ -8,6 +8,7 @@
  * mail-page-slices.tsx). The JSX is the list's own, word for word.
  */
 
+import { useShowListPreviews } from "@/lib/mail/list-previews-setting";
 import {
   OPEN_ROW_CARD,
   ROW_PAD_LEFT,
@@ -15,6 +16,7 @@ import {
   FACE_DOT_TOP,
   UnreadGutterDot,
   WIDE_FACE_DOT_TOP,
+  ONE_LINE_FACE,
 } from "@/components/mail/list-row-marks";
 import { usePageAccounts, usePageActions, usePageCompose, usePageLayout, usePageList, usePageReader, usePageSync } from "@/components/mail/mail-page-slices";
 import { isPendingScheduledId } from "@/lib/mail/scheduled-events";
@@ -52,7 +54,7 @@ import { ConfirmPurgeDialog } from "@/components/mail/ConfirmPurgeDialog";
 import { OutboxRowMenu, type OutboxMenuAt } from "@/components/mail/OutboxRowMenu";
 import type { MailScheduledMessage, MailThreadSummary } from "@/lib/mail/types";
 import { ThreadListRow, ThreadRowMenu, PersonRowMenu, DraftBadge } from "@/components/mail/ThreadListRow";
-import { TeamStackMark } from "@/components/mail/team-layer";
+import { TeamStackCommentMark, TeamStackMark } from "@/components/mail/team-layer";
 import { rowInSelection, SelectionRowMenu, type SelectionMenuAt } from "@/components/mail/mail-selection-menu";
 import { PersonCount, PersonWideBody, StackThreads } from "@/components/mail/person-stack";
 import type { PersonRow } from "@/lib/mail/person-participants";
@@ -365,7 +367,7 @@ export function PeopleRows() {
             const painted = paintedNow && !scheduledOpen;
             return (
               <React.Fragment key={row.key}>
-              <PersonListRow archivePerson={archivePerson} chromeDark={chromeDark} clickStack={clickStack} debouncedSearch={debouncedSearch} highlightTerms={highlightTerms} listDensity={listDensity} listExpanded={listExpanded} listNarrow={listNarrow} listRowWide={listRowWide} multiKeys={multiKeys} newest={newest} openPersonWindow={openPersonWindow} painted={painted} personHasDraft={personHasDraft} personHasFile={personHasFile} personTitle={personTitle} purgeFrom={purgeFrom} row={row} setPersonMenuAt={setPersonMenuAt} setSelectionMenu={setSelectionMenu} stackOpen={stackOpen} t={t} togglePersonPin={togglePersonPin} toggleRead={toggleRead} />
+              <PersonListRow archivePerson={archivePerson} chromeDark={chromeDark} clickStack={clickStack} debouncedSearch={debouncedSearch} highlightTerms={highlightTerms} listDensity={listDensity} listExpanded={listExpanded} listNarrow={listNarrow} listRowWide={listRowWide} multiKeys={multiKeys} newest={newest} openPersonWindow={openPersonWindow} painted={painted} personHasDraft={personHasDraft} personHasFile={personHasFile} personTitle={personTitle} purgeFrom={purgeFrom} row={row} setPersonMenuAt={setPersonMenuAt} setSelectionMenu={setSelectionMenu} stackOpen={stackOpen} t={t} askPersonSnooze={askPersonSnooze} trashPerson={trashPerson} toggleRead={toggleRead} />
               {stackOpen ? (
                 <StackThreads
                   threads={row.threads}
@@ -506,6 +508,43 @@ export function PeopleRows() {
   );
 }
 
+/**
+ * Where a person row's parts stand, by the list's width and density: the
+ * row's padding and line, the button's alignment, the unread dot, the
+ * face, and how far down the hover actions sit (on the name's line).
+ */
+function personRowLayout({ narrow, wide, compact }: { narrow: boolean; wide: boolean; compact: boolean }) {
+  if (narrow) {
+    return {
+      row: cn(rowLine({ narrow: true }), "items-center justify-center px-1 py-1.5"),
+      button: "items-center justify-center",
+      dotTop: undefined,
+      face: 36,
+      actionsTop: undefined,
+    };
+  }
+  if (compact) {
+    return {
+      row: cn(
+        rowLine({ smallFace: !wide, oneLineFace: wide }),
+        "items-center pr-[18px] py-1.5",
+        ROW_PAD_LEFT
+      ),
+      button: wide ? "items-center gap-3" : "items-center gap-2.5",
+      dotTop: undefined,
+      face: wide ? ONE_LINE_FACE : 28,
+      actionsTop: undefined,
+    };
+  }
+  return {
+    row: cn(rowLine({}), wide ? "items-start pr-[18px] py-2" : "items-start pr-[18px] py-2.5", ROW_PAD_LEFT),
+    button: "items-start gap-3",
+    dotTop: wide ? WIDE_FACE_DOT_TOP : FACE_DOT_TOP,
+    face: 36,
+    actionsTop: wide ? "top-[18px]" : "top-5",
+  };
+}
+
 /** One person in the people view: the stack of their conversations, and the row that opens them. */
 function PersonListRow({
   archivePerson,
@@ -513,7 +552,7 @@ function PersonListRow({
   clickStack,
   debouncedSearch,
   highlightTerms,
-  listDensity,
+  listDensity: chosenDensity,
   listExpanded,
   listNarrow,
   listRowWide,
@@ -530,7 +569,8 @@ function PersonListRow({
   setSelectionMenu,
   stackOpen,
   t,
-  togglePersonPin,
+  askPersonSnooze,
+  trashPerson,
   toggleRead,
 }: {
   archivePerson: ReturnType<typeof usePeopleRowsState>["archivePerson"];
@@ -555,14 +595,29 @@ function PersonListRow({
   setSelectionMenu: ReturnType<typeof usePeopleRowsState>["setSelectionMenu"];
   stackOpen: boolean;
   t: ReturnType<typeof usePeopleRowsState>["t"];
-  togglePersonPin: ReturnType<typeof usePeopleRowsState>["togglePersonPin"];
+  askPersonSnooze: ReturnType<typeof usePeopleRowsState>["askPersonSnooze"];
+  trashPerson: ReturnType<typeof usePeopleRowsState>["trashPerson"];
   toggleRead: ReturnType<typeof usePeopleRowsState>["toggleRead"];
 }) {
+  const showPreview = useShowListPreviews();
+  // Wide without a preview: Gmail's one-line row (see ThreadListRow).
+  const listDensity = listRowWide && !showPreview ? "compact" : chosenDensity;
+  const stack = row.threads.length > 1;
+  // "me," leads one conversation we wrote in; a stack is named for the person.
+  const meLead = !stack && newest.fromMe ? (
+    <span className="font-normal">{t("meLead")}</span>
+  ) : null;
+  const timeClass = row.unread
+    ? cn("font-semibold", chromeDark ? "text-white/85" : "text-[var(--mail-row-name)]")
+    : "text-[var(--mail-list-muted)]";
+  const layout = personRowLayout({ narrow: listNarrow, wide: listRowWide, compact: listDensity === "compact" });
+  const inTrash = purgeFrom === "trash";
   return (
     <div
                 // The threads this row holds, newest first, for the glide
                 // when Stacks is switched (lib/mail/stack-glide).
                 data-glide-keys={row.threads.map((th) => threadKey(th)).join(" ")}
+                data-row-unread={row.unread ? "" : undefined}
                 onDoubleClick={(e) => {
                   // The row's own control is the button that fills
                   // it, so that is the container; a double click on
@@ -593,23 +648,19 @@ function PersonListRow({
                 className={cn(
                   // Relative: the hover actions float over its right end.
                   "group relative flex w-full transition-colors",
-                  rowLine({ narrow: listNarrow, smallFace: listDensity === "compact" && !listRowWide }),
-                  listNarrow
-                    ? "items-center justify-center px-1 py-1.5"
-                    : listRowWide && listDensity !== "compact"
-                      ? cn("items-start pr-[18px] py-2", ROW_PAD_LEFT)
-                    : listRowWide
-                      ? cn("items-center pr-[18px] py-1.5", ROW_PAD_LEFT)
-                    : listDensity !== "compact"
-                      ? cn("items-start pr-[18px] py-2.5", ROW_PAD_LEFT)
-                      : cn("items-center pr-[18px] py-1.5", ROW_PAD_LEFT),
+                  layout.row,
                   /* No fill for a stack only because it is open. A fill
                      reads as selected beside the row that is selected.
                      The open threads under it say it is open. */
                   !listExpanded && (painted || multiKeys.has(row.key))
                     ? // The open person, marked as an open thread is: a card.
                       OPEN_ROW_CARD
-                    : "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
+                    : cn(
+                        // Unread lighter than read, as in Gmail (--mail-row-unread / -read).
+                        row.unread ? "bg-[var(--mail-row-unread)]" : "bg-[var(--mail-row-read)]",
+                        "mail-wide-row",
+                        "hover:bg-[var(--mail-chrome-hover)] hover:[--mail-person-stack-ring:var(--mail-chrome-hover)]"
+                      )
                 )}
               >
               <button
@@ -618,37 +669,20 @@ function PersonListRow({
                 title={listNarrow ? personTitle : undefined}
                 aria-label={listNarrow ? personTitle : undefined}
                 onClick={(e) => clickStack(row, e)}
-                className={cn(
-                  "flex min-w-0 flex-1 text-left",
-                  listNarrow
-                    ? "items-center justify-center"
-                    : listRowWide && listDensity !== "compact"
-                      ? "items-start gap-3"
-                      : listRowWide
-                        ? "items-center gap-3"
-                      : listDensity !== "compact"
-                        ? "items-start gap-3"
-                        : "items-center gap-2.5"
-                )}
+                className={cn("flex min-w-0 flex-1 text-left", layout.button)}
               >
                 {/* Unread in the gutter, as on a thread row; narrow, on the face. */}
                 {listNarrow ? null : (
                   <UnreadGutterDot
                     unread={row.unread}
-                    top={listDensity === "compact" ? undefined : listRowWide ? WIDE_FACE_DOT_TOP : FACE_DOT_TOP}
+                    top={layout.dotTop}
                   />
                 )}
                 <PersonAvatar
                   row={row}
                   unreadDot={listNarrow}
                   onNavy={chromeDark}
-                  size={
-                    listNarrow
-                      ? 36
-                      : listRowWide || listDensity !== "compact"
-                        ? 36
-                        : 28
-                  }
+                  size={layout.face}
                 />
                 {listNarrow ? null : listRowWide ? (
                 listDensity !== "compact" ? (
@@ -664,6 +698,7 @@ function PersonListRow({
                     <>
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       <TeamStackMark threads={row.threads} />
+                      <TeamStackCommentMark threads={row.threads} />
                       <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, { withYear: Boolean(debouncedSearch) })}
                     </>
                   }
@@ -671,17 +706,27 @@ function PersonListRow({
                 ) : (
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex w-[14rem] shrink-0 items-center gap-2">
+                    {/* The people's column, one width on every row (ThreadListRow). */}
+                    <span className="flex w-[13rem] shrink-0 items-center gap-2">
                       <span data-unread={row.unread ? "" : undefined} className="mail-name min-w-0 truncate text-[14.5px] leading-5 text-[var(--mail-row-name)]">
+                        {meLead}
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
+                      {/* The count with the names, as Gmail has it. */}
+                      <PersonCount threads={row.threads} open={stackOpen} />
                     </span>
                     {personHasDraft ? <DraftBadge /> : null}
                     <span className="min-w-0 flex-1 truncate text-sm">
-                      <span className="text-[var(--mail-chrome-fg)]">
+                      <span className={cn("text-[var(--mail-chrome-fg)]", row.unread && "font-semibold")}>
                         <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
-                      {listDensity === "compact" && newest.snippet ? (
+                      {personHasFile && !showPreview ? (
+                        <Paperclip
+                          className="ml-1.5 inline h-3 w-3 shrink-0 -translate-y-px stroke-[1.5] text-[var(--mail-chrome-muted)] opacity-80"
+                          aria-label={t("hasAttachments")}
+                        />
+                      ) : null}
+                      {listDensity === "compact" && showPreview && newest.snippet ? (
                         <span className="text-[var(--mail-row-preview)]">
                           {" — "}
                           {personHasFile ? (
@@ -696,18 +741,17 @@ function PersonListRow({
                     </span>
                     {/* Invisible on hover, not gone: it keeps its room, and
                         the actions float over it (PersonRowActions), so
-                        nothing in the row moves when they show. The
-                        count goes with the time. */}
-                    <PersonCount threads={row.threads} open={stackOpen} />
-                    <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-[var(--mail-list-muted)] group-hover:invisible">
+                        nothing in the row moves when they show. */}
+                    <span className={cn("min-w-[4.5rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums group-hover:invisible", timeClass)}>
                       <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                       <TeamStackMark threads={row.threads} />
+                      <TeamStackCommentMark threads={row.threads} />
                       <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, {
                         withYear: Boolean(debouncedSearch),
                       })}
                     </span>
                   </span>
-                  {listDensity === "compact" || !newest.snippet ? null : (
+                  {listDensity === "compact" || !showPreview || !newest.snippet ? null : (
                     <span className="flex min-w-0 items-center gap-3">
                       <span className="w-[14rem] shrink-0" aria-hidden />
                       <span className="min-w-0 flex-1 truncate text-xs text-[var(--mail-row-preview)]">
@@ -729,6 +773,7 @@ function PersonListRow({
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span data-unread={row.unread ? "" : undefined} className="mail-name min-w-0 truncate text-[14.5px] leading-5 text-[var(--mail-row-name)]">
+                        {meLead}
                         <Highlighted text={row.name} terms={highlightTerms} onNavy={chromeDark} />
                       </span>
                       <PersonCount threads={row.threads} open={stackOpen} />
@@ -738,9 +783,10 @@ function PersonListRow({
                         slot as a thread row keeps for them, so a name is as
                         long with Stacks on as off. */}
                     <span className="flex min-w-[5rem] shrink-0 items-center justify-end gap-2 group-hover:invisible">
-                      <span className="text-xs text-[var(--mail-list-muted)]">
+                      <span className={cn("text-xs", timeClass)}>
                         <HiddenAccountMark accounts={row.threads.map((th) => th.account)} />
                         <TeamStackMark threads={row.threads} />
+                      <TeamStackCommentMark threads={row.threads} />
                         <PersonForwardedMark threads={row.threads} />{rowTime(row.lastAt, {
                           withYear: Boolean(debouncedSearch),
                         })}
@@ -759,7 +805,7 @@ function PersonListRow({
                       <Highlighted text={newest.subject} terms={highlightTerms} onNavy={chromeDark} />
                     </span>
                   )}
-                  {listDensity === "compact" || !newest.snippet ? null : (
+                  {listDensity === "compact" || !showPreview || !newest.snippet ? null : (
                     <span className="mt-px flex items-center justify-between gap-3">
                       <span className="min-w-0 truncate text-xs text-[var(--mail-row-preview)]">
                         {personHasFile ? (
@@ -778,23 +824,16 @@ function PersonListRow({
               {listNarrow ? null : (
                 <PersonRowActions
                   // On the name's line: its middle is the row's padding and half a line down.
-                  className={
-                    listDensity === "compact"
-                      ? undefined
-                      : listRowWide
-                        ? "top-[18px]"
-                        : "top-5"
-                  }
+                  className={layout.actionsTop}
                   row={row}
-                  pinned={isMailPersonPinned(row.key)}
                   onNavy={chromeDark}
-                  onTogglePin={() => togglePersonPin(row)}
-                  onArchive={
-                    purgeFrom === "trash" ? undefined : () => void archivePerson(row)
-                  }
+                  onArchive={inTrash ? undefined : () => void archivePerson(row)}
+                  onTrash={inTrash ? undefined : () => void trashPerson(row)}
                   onToggleRead={() =>
                     void toggleRead(row.threads, row.name)
                   }
+                  // Every conversation with them, as the menu's Snooze does.
+                  onSnooze={(x, y) => askPersonSnooze(newest, x, y, row.threads)}
                 />
               )}
               </div>

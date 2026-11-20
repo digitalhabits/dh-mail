@@ -132,6 +132,33 @@ document.addEventListener("contextmenu", function (event) {
   send({ type: "message-menu", selectedText: words, x: at.x, y: at.y, width: at.width, height: at.height });
 }, true);
 
+/*
+  The selection when a press ends: its words, and where it starts. The page
+  says it on, for a build that offers something for a selection. No words
+  means that the selection went away.
+*/
+document.addEventListener("mouseup", function (event) {
+  if (event.button !== 0) return;
+  setTimeout(function () {
+    var sel = document.getSelection();
+    var words = sel && !sel.isCollapsed ? sel.toString().trim() : "";
+    if (!words) {
+      send({ type: "selection", selectedText: "" });
+      return;
+    }
+    var rects = sel.getRangeAt(0).getClientRects();
+    var first = rects.length ? rects[0] : null;
+    send({
+      type: "selection",
+      selectedText: words,
+      x: first ? first.left : event.clientX,
+      y: first ? first.top : event.clientY,
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
+  }, 0);
+}, true);
+
 /* True when the pointer is on the words themselves, not beside them. */
 function onText(x, y) {
   var node = null;

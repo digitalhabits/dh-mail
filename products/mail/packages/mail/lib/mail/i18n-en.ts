@@ -989,6 +989,9 @@ export const en = {
   settingsAdvancedHint: "Mail and the other apps on this computer.",
   showFolderCounts: "Show counts beside folders",
   showFolderCountsHint: "How many messages each folder holds.",
+  showListPreviews: "Show a preview in the mail list",
+  showListPreviewsHint: "The first words of each conversation, under its subject.",
+  meLead: "me, ",
   sendUsageCount: "Send anonymous usage count",
   sendUsageCountHint:
     "At most once a day, on a day you use Mail, it sends one anonymous count with an ID that changes every month, so we know how many people use it. Nothing about your mail or your accounts.",

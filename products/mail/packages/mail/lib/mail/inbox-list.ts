@@ -197,7 +197,7 @@ type SummaryEntry = {
 };
 
 export function summaryFromStored(t: MailStoredThread, classifier: Classifier): SummaryEntry {
-  const { tab, counterpart, externalParticipants } = classifyThread({
+  const { tab, counterpart, externalParticipants, fromMe } = classifyThread({
     accountEmail: t.account,
     participants: t.participants,
     senders: t.senders,
@@ -218,6 +218,7 @@ export function summaryFromStored(t: MailStoredThread, classifier: Classifier): 
       messageCount: t.messageCount,
       tab,
       externalParticipants,
+      fromMe,
       crmName: recordNameFor(counterpart.email, classifier),
       crmLogoUrl: recordLogoFor(counterpart.email, classifier),
       ...(t.focusMessageId ? { focusMessageId: t.focusMessageId } : null),

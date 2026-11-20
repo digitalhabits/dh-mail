@@ -381,7 +381,26 @@ function conversation(input: {
  * receipt, and a couple of short ones so the list has ordinary rows in it.
  */
 export function demoThreads(): DemoThread[] {
-  return [...demoThreadsFirst(), ...demoThreadsSecond()];
+  return [...demoThreadsFirst(), ...demoThreadsSecond()].map(markFromMe);
+}
+
+/**
+ * As the inbox lists a thread: "me," leads its row when Vera wrote in it, and
+ * the row knows its newest message's Message-ID and the ones before it.
+ */
+function markFromMe(thread: DemoThread): DemoThread {
+  const ids = thread.messages.flatMap((m) =>
+    m.rfcMessageId ? [m.rfcMessageId.toLowerCase().replace(/^<|>$/g, "")] : []
+  );
+  const tipId = ids[ids.length - 1];
+  return {
+    ...thread,
+    summary: {
+      ...thread.summary,
+      ...(thread.messages.some((m) => m.own) ? { fromMe: true } : null),
+      ...(tipId ? { tipId, tipRefs: ids.slice(0, -1) } : null),
+    },
+  };
 }
 
 /** The first half of the demo inbox, newest first. */

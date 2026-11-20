@@ -18,6 +18,7 @@ import type {
   ReadableThreadAttachment,
   TeamOrigin,
 } from "@/components/mail/team-layer-types";
+import type { MailThreadDetail } from "@/lib/mail/types";
 
 /** Mounted once in each window. Nothing to hold here. */
 export function TeamLayerHost(_props: {
@@ -236,5 +237,58 @@ export function TeamAssigneeFilter(): null {
 export function useTeamRowFilter(
   _threads: readonly { account: string; threadId: string }[]
 ): ((thread: { account: string; threadId: string }) => boolean) | null {
+  return null;
+}
+
+/** Beside an open thread: the team's discussion of it. None here. */
+export function ThreadDiscussionPanel(_props: { thread: MailThreadDetail }): null {
+  return null;
+}
+
+/** In the reader's action strip: the count of the team's comments. None here. */
+export function ThreadDiscussionButton(_props: { account: string; threadId: string }): null {
+  return null;
+}
+
+/** Beside Reply and Forward: a comment for the team. None here. */
+export function ThreadCommentButton(_props: {
+  account: string;
+  threadId: string;
+  className?: string;
+  iconOnly?: boolean;
+}): null {
+  return null;
+}
+
+type CommentRow = { account: string; threadId: string; tipId?: string; tipRefs?: string[] };
+
+/** On a row, before the date: the team's comments on it. None here. */
+export function TeamRowCommentMark(_props: { thread: CommentRow; className?: string }): null {
+  return null;
+}
+
+/** The same, for a Stacks row. */
+export function TeamStackCommentMark(_props: { threads: readonly CommentRow[]; className?: string }): null {
+  return null;
+}
+
+/** A row in a list row's right-click menu. None here. */
+export function TeamRowMenuComment(_props: { account: string; threadId: string; onDone: () => void }): null {
+  return null;
+}
+
+/** A row in a message's right-click menu. None here. */
+export function MessageMenuComment(_props: {
+  selectedText: string;
+  messageId?: string;
+  from?: string;
+  className?: string;
+  onDone: () => void;
+}): null {
+  return null;
+}
+
+/** Notices about the team's comments. None here. */
+export function TeamCommentNotices(): null {
   return null;
 }

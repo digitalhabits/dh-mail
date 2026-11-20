@@ -980,6 +980,9 @@ export const da: Record<keyof typeof en, string> = {
   settingsAdvancedHint: "Mail og de andre programmer på denne computer.",
   showFolderCounts: "Vis antal ved mapperne",
   showFolderCountsHint: "Hvor mange beskeder hver mappe har.",
+  showListPreviews: "Vis en forsmag i postlisten",
+  showListPreviewsHint: "De første ord af hver samtale, under emnet.",
+  meLead: "mig, ",
   sendUsageCount: "Send anonym brugsoptælling",
   sendUsageCountHint:
     "Højst én gang om dagen, på en dag hvor du bruger Mail, sender den én anonym optælling med et ID, der skifter hver måned, så vi ved, hvor mange der bruger den. Intet om din post eller dine konti.",

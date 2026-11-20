@@ -38,11 +38,20 @@ export const ROW_LINE = "shadow-[inset_0_-1px_0_var(--mail-row-line)]";
 
 const LINE_FROM = "after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:h-px after:bg-[var(--mail-row-line)]";
 
-export function rowLine({ narrow, smallFace }: { narrow?: boolean; smallFace?: boolean }): string {
+export function rowLine({ narrow, smallFace, oneLineFace }: { narrow?: boolean; smallFace?: boolean; oneLineFace?: boolean }): string {
   if (narrow) return ROW_LINE;
-  // The edge (30px), the face (36px or 28px) and the gap after it (12px or 10px).
-  return cn(LINE_FROM, smallFace ? "after:left-[68px]" : "after:left-[78px]");
+  // The edge (30px), the face (36px, 32px or 28px) and the gap after it (12px or 10px).
+  return cn(
+    LINE_FROM,
+    smallFace ? "after:left-[68px]" : oneLineFace ? "after:left-[74px]" : "after:left-[78px]"
+  );
 }
+
+/**
+ * The face on a wide row of one line (Gmail's): a step under the usual
+ * 36px, so the row is a little less tall. See rowLine's `oneLineFace`.
+ */
+export const ONE_LINE_FACE = 32;
 
 /**
  * The row's left padding: 30px, the edge the list's headings and its

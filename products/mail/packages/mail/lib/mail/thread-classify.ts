@@ -96,6 +96,8 @@ export type ThreadClassification = {
   counterpart: Address;
   /** Everyone on the thread except our own addresses, one entry per email. */
   externalParticipants: Address[];
+  /** One of the thread's messages was written by us (the row leads "me,"). */
+  fromMe: boolean;
 };
 
 /**
@@ -159,6 +161,9 @@ export function classifyThread(input: {
     tab,
     counterpart: { name: counterpart.name, email: counterpart.email },
     externalParticipants: [...byEmail.values()],
+    fromMe: input.senders.some(
+      (s) => Boolean(s.email) && isSelfAddress(s.email, accountEmail)
+    ),
   };
 }
 

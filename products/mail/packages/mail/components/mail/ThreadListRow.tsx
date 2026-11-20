@@ -11,7 +11,7 @@ import {
   MenuShell as RowMenuShell,
 } from "@/components/mail/MenuShell";
 import { formatSnoozeWakeLabel, SnoozeMenu } from "@/components/mail/SnoozeMenu";
-import { dotOnFace, OPEN_ROW_CARD, ROW_PAD_LEFT, RowUnreadDot, rowLine } from "@/components/mail/list-row-marks";
+import { dotOnFace, OPEN_ROW_CARD, ROW_PAD_LEFT, RowUnreadDot, rowLine, ONE_LINE_FACE } from "@/components/mail/list-row-marks";
 import { isInteractiveDoubleClickTarget } from "@/components/mail/use-mail-layout";
 import { MessageSquare, Archive, ArchiveRestore, Trash2, Calendar, Clock, FolderInput, Forward, Paperclip, MessagesSquare, Pin, Printer, Reply, ReplyAll, RotateCwFadingClock, ShieldCheck, SquarePen } from "lucide-react";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
@@ -26,13 +26,15 @@ import type { MoveMenuHere } from "@/components/mail/MoveToFolderMenu";
 import type { MailThreadAction, MailThreadSummary } from "@/lib/mail/types";
 import { getPopoutKeysServerSnapshot, getPopoutKeysSnapshot, popoutThreadKey, subscribeMailPopouts } from "@/lib/mail/popout";
 import { cn } from "@/lib/utils";
-import { TeamRowMenuAssign } from "@/components/mail/team-layer";
+import { TeamRowMenuAssign, TeamRowMenuComment } from "@/components/mail/team-layer";
 import { RowDateMarks } from "@/components/mail/row-date-marks";
 import { rowTime } from "@/lib/mail/date-format";
 import { PeopleAvatar } from "@/components/mail/PersonAvatar";
 import { threadPeople, threadPeopleLabel } from "@/lib/mail/person-participants";
 import type { MailT } from "@/lib/mail/i18n-strings";
 import { previewText } from "@/lib/mail/preview-text";
+import { useShowListPreviews } from "@/lib/mail/list-previews-setting";
+import { RowHoverActions, RowPeople } from "@/components/mail/thread-row-parts";
 
 /** A finger that has moved this far has said which way it is going. */
 const SWIPE_DECIDE_PX = 8;
@@ -274,6 +276,7 @@ export function ThreadRowMenu({
 
       {/* Settling it: who answers it, what it is to you, and when. */}
       {account && threadId ? <TeamRowMenuAssign account={account} threadId={threadId} onDone={onDismiss} /> : null}
+      {account && threadId ? <TeamRowMenuComment account={account} threadId={threadId} onDone={onDismiss} /> : null}
       <button type="button" role="menuitem" className={item} onClick={run(onToggleRead)}>
         <MailDotIcon className={icon} aria-hidden />
         {unread ? t("markAsRead") : t("markAsUnread")}
@@ -522,16 +525,18 @@ function threadRowClass({
   compact,
   padX,
   selected,
+  unread,
 }: {
   narrow: boolean | undefined;
   wide: boolean | undefined;
   compact: boolean;
   padX: string;
   selected: boolean | undefined;
+  unread?: boolean;
 }): string {
   return cn(
     "group relative flex cursor-grab transition-colors active:cursor-grabbing",
-    rowLine({ narrow, smallFace: compact && !wide }),
+    rowLine({ narrow, smallFace: compact && !wide, oneLineFace: compact && wide }),
     // No ring of the browser's own. A row is focusable so the arrow keys
     // can carry focus with the selection, and the selection is already
     // painted — the ring drew a second, louder marker over the top of it,
@@ -563,8 +568,39 @@ function threadRowClass({
     // The open row is a card lifted off the list; see list-row-marks.
     selected
       ? OPEN_ROW_CARD
-      : "mail-hover-row hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]"
+      : cn(
+          // Unread lighter than read, as in Gmail (--mail-row-unread / -read).
+          unread ? "bg-[var(--mail-row-unread)]" : "bg-[var(--mail-row-read)]",
+          "mail-wide-row mail-hover-row hover:bg-[var(--mail-row-hover)] hover:[--mail-person-stack-ring:var(--mail-row-hover)]"
+        )
   );
+}
+
+/**
+ * Whether the row is drawn on one line. Wide without a preview, the row is
+ * Gmail's: one line, the people in a column of their own, then the
+ * subject, then the time. Narrower, the stacked row keeps its two lines
+ * (people and time, then the subject).
+ */
+function rowIsCompact({
+  density,
+  wide,
+  narrow,
+  showPreview,
+}: {
+  density: MailListDensity;
+  wide: boolean;
+  narrow: boolean;
+  showPreview: boolean;
+}): boolean {
+  if (density === "compact") return true;
+  return wide && !narrow && !showPreview;
+}
+
+/** The face: 28px on a compact side row, 32px on a wide one-line row, else 36px. */
+function rowFaceSize({ narrow, wide, compact }: { narrow: boolean; wide: boolean; compact: boolean }): number {
+  if (narrow || !compact) return 36;
+  return wide ? ONE_LINE_FACE : 28;
 }
 
 /**
@@ -690,7 +726,8 @@ export function ThreadListRow({
 }) {
   const say = useMailT();
   const rowRef = React.useRef<HTMLDivElement | null>(null);
-  const compact = density === "compact";
+  const showPreview = useShowListPreviews();
+  const compact = rowIsCompact({ density, wide, narrow, showPreview });
   // The quick actions live on hover. While the snooze menu is open the pointer
   // is off the row, so the row holds them open until the menu closes.
   const [snoozeOpen, setSnoozeOpen] = React.useState(false);
@@ -815,6 +852,7 @@ export function ThreadListRow({
       setSnoozeOpen={setSnoozeOpen}
       snoozeSignal={snoozeSignal}
       onArchive={onArchive}
+      onTrash={onTrash}
     />
   );
 
@@ -823,6 +861,7 @@ export function ThreadListRow({
       ref={rowRef}
       data-thread-key={threadKey(t)}
       data-glide-keys={threadKey(t)}
+      data-row-unread={t.unread ? "" : undefined}
       draggable={!touch}
       onTouchStart={touch ? onSwipeStart : undefined}
       onTouchMove={touch ? onSwipeMove : undefined}
@@ -890,7 +929,7 @@ export function ThreadListRow({
         if (onSelectionMenu) onSelectionMenu(e.clientX, e.clientY);
         else setMenuAt({ x: e.clientX, y: e.clientY });
       }}
-      className={threadRowClass({ narrow, wide, compact, padX, selected })}
+      className={threadRowClass({ narrow, wide, compact, padX, selected, unread: t.unread })}
     >
       {swipeX !== 0 ? <SwipeUnder swipeX={swipeX} /> : null}
       {/* Unread: a dot in the gutter, level with the face. Narrow, or in a
@@ -904,7 +943,7 @@ export function ThreadListRow({
         logoUrl={t.crmLogoUrl}
         unread={dotOnFace(narrow, inCard) && t.unread}
         onNavy={onNavy}
-        size={!narrow && !wide && compact ? 28 : 36}
+        size={rowFaceSize({ narrow, wide, compact })}
       />
       {narrow ? null : wide ? (
         <WideRowBody
@@ -934,7 +973,7 @@ export function ThreadListRow({
                 onNavy ? "text-white" : "text-[var(--mail-row-name)]"
               )}
             >
-              <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
+              <RowPeople t={t} highlight={highlight} onNavy={onNavy} />
             </p>
             <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
@@ -1021,7 +1060,7 @@ export function ThreadListRow({
                   onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
                 )}
               >
-                <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
+                <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} tipId={t.tipId} tipRefs={t.tipRefs} />
                 {rowTime(t.lastAt, { withYear })}
               </p>
             )}
@@ -1112,6 +1151,7 @@ function StackedRowBody({
   withYear: boolean;
   rowActions: React.JSX.Element;
 }) {
+  const showPreview = useShowListPreviews();
   return (
     <div className="min-w-0 flex-1">
       <div className="flex items-center justify-between gap-3">
@@ -1123,7 +1163,7 @@ function StackedRowBody({
               onNavy ? "text-white" : "text-[var(--mail-row-name)]"
             )}
           >
-            <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
+            <RowPeople t={t} highlight={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
           {hasDraft ? <DraftBadge /> : null}
@@ -1157,10 +1197,12 @@ function StackedRowBody({
               className={cn(
                 atRestClass,
                 "text-xs",
-                onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
+                t.unread
+                  ? cn("font-semibold", onNavy ? "text-white/85" : "text-[var(--mail-row-name)]")
+                  : onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
               )}
             >
-              <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
+              <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} tipId={t.tipId} tipRefs={t.tipRefs} />
               {rowTime(t.lastAt, { withYear })}
             </p>
           )}
@@ -1176,6 +1218,8 @@ function StackedRowBody({
       >
         <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
       </p>
+      {/* Without the preview, the line stays only for its marks. */}
+      {showPreview || t.hasCalendarInvite || t.hasAttachments ? (
       <p
         className={cn(
           "mt-px flex min-w-0 items-center gap-1.5 text-xs",
@@ -1225,8 +1269,11 @@ function StackedRowBody({
             />
           </span>
         ) : null}
-        <span className="min-w-0 truncate"><Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} /></span>
+        {showPreview ? (
+          <span className="min-w-0 truncate"><Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} /></span>
+        ) : null}
       </p>
+      ) : null}
     </div>
   );
 }
@@ -1264,6 +1311,7 @@ function WideRowBody({
   withYear: boolean;
   rowActions: React.JSX.Element;
 }) {
+  const showPreview = useShowListPreviews();
   const time = (
     <span className="relative flex shrink-0 items-center justify-end">
       {t.snoozedUntil && onSnooze ? (
@@ -1295,10 +1343,13 @@ function WideRowBody({
             // Right-aligned, so the dates line up at their ends; on one
             // line, for the hidden-account eye before one.
             "whitespace-nowrap text-right text-xs tabular-nums",
-            onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
+            // Unread: the time is bold with the rest of the row (Gmail).
+            t.unread
+              ? cn("font-semibold", onNavy ? "text-white/85" : "text-[var(--mail-row-name)]")
+              : onNavy ? "text-white/40" : "text-[var(--mail-list-muted)]"
           )}
         >
-          <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} />
+          <RowDateMarks account={t.account} threadId={t.threadId} forwardedAt={t.forwardedAt} repliedApartAt={t.repliedApartAt} tipId={t.tipId} tipRefs={t.tipRefs} />
           {rowTime(t.lastAt, { withYear })}
         </p>
       )}
@@ -1318,7 +1369,7 @@ function WideRowBody({
               <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
             </span>
             <span className={cn("min-w-0 max-w-[40%] shrink-0 truncate", onNavy ? "text-white/60" : "text-stone-500")}>
-              <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
+              <RowPeople t={t} highlight={highlight} onNavy={onNavy} />
             </span>
             <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
             {hasDraft ? <DraftBadge /> : null}
@@ -1341,9 +1392,11 @@ function WideRowBody({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex w-[10rem] shrink-0 items-center gap-1.5">
+        {/* The people's column: one width for every row, so the subjects
+            line up, and a long list of names is cut, not let run. */}
+        <span className="flex w-[13rem] shrink-0 items-center gap-1.5">
           <p data-unread={t.unread ? "" : undefined} className={cn("mail-name min-w-0 truncate text-[14.5px] leading-5", onNavy ? "text-white" : "text-[var(--mail-row-name)]")}>
-            <Highlighted text={threadPeopleLabel(t)} terms={highlight} onNavy={onNavy} />
+            <RowPeople t={t} highlight={highlight} onNavy={onNavy} />
           </p>
           <ThreadMessageCount count={t.messageCount} label={say("threadMailsCount", { count: t.messageCount })} />
         </span>
@@ -1388,7 +1441,7 @@ function WideRowBody({
           >
             <Highlighted text={t.subject} terms={highlight} onNavy={onNavy} />
           </span>
-          {compact && t.snippet && !poppedOut ? (
+          {compact && showPreview && t.snippet && !poppedOut ? (
             <span className={onNavy ? "text-white/45" : "text-[var(--mail-row-preview)]"}>
               {" — "}
               <Highlighted text={previewText(t.snippet)} terms={highlight} onNavy={onNavy} />
@@ -1399,99 +1452,5 @@ function WideRowBody({
         {time}
       </div>
     </div>
-  );
-}
-
-/**
- * The buttons that show on a row under the pointer: read or unread,
- * snooze, and archive.
- */
-function RowHoverActions({
-  rowActionsClass,
-  say,
-  t,
-  actionBtn,
-  onToggleRead,
-  actionIcon,
-  onSnooze,
-  onCancelSnooze,
-  setSnoozeOpen,
-  snoozeSignal,
-  onArchive,
-}: {
-  rowActionsClass: string;
-  say: MailT;
-  t: MailThreadSummary;
-  actionBtn: string;
-  onToggleRead: () => void;
-  actionIcon: string;
-  onSnooze: ((untilIso: string) => void) | undefined;
-  onCancelSnooze: (() => void) | undefined;
-  setSnoozeOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  snoozeSignal: number;
-  onArchive: (() => void) | undefined;
-}) {
-  return (
-    <span
-      className={rowActionsClass}
-      onClick={(e) => e.stopPropagation()}
-      // Enter on a button is that button's, not the row's — the row opens the
-      // thread on Enter and would otherwise do both.
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        title={say(t.unread ? "markAsRead" : "markAsUnread")}
-        aria-label={say(t.unread ? "markAsRead" : "markAsUnread")}
-        className={actionBtn}
-        onClick={onToggleRead}
-      >
-        {/* The same icon whichever way the click will go, and the same one
-            the reader uses. A control that changes shape reads as two
-            controls; the label says which way it goes. */}
-        <MailDotIcon className={actionIcon} />
-      </button>
-      {onSnooze ? (
-        <SnoozeMenu
-          onSnooze={onSnooze}
-          onCancelSnooze={onCancelSnooze}
-          currentUntil={t.snoozedUntil}
-          onOpenChange={setSnoozeOpen}
-          // Snooze… on the right-click menu opens this one, so both ways
-          // through end at the same list of times.
-          openSignal={snoozeSignal}
-          trigger={
-            <button
-              type="button"
-              title={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
-              aria-label={t.snoozedUntil ? say("changeSnooze") : say("snooze")}
-              className={actionBtn}
-            >
-              <RotateCwFadingClock className={actionIcon} />
-            </button>
-          }
-        />
-      ) : null}
-      {/* Archive rather than pin.
-
-          The three that hover shows are the three a reader does over and
-          over on the way down a list: read it, put it off, put it away.
-          Pinning is not one of those — it is done to the few conversations
-          that are going to stay, and it stays done. It is still on the
-          right-click menu, and now on the reader's own strip beside
-          snooze, which is where it is wanted: on the conversation being
-          read, not the one being passed over. */}
-      {onArchive ? (
-        <button
-          type="button"
-          title={say("actionArchive")}
-          aria-label={say("actionArchive")}
-          className={actionBtn}
-          onClick={onArchive}
-        >
-          <Archive className={actionIcon} />
-        </button>
-      ) : null}
-    </span>
   );
 }

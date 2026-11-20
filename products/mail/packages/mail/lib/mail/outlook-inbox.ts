@@ -156,7 +156,7 @@ export async function listOutlookAccountThreads(options: {
     const cc = graphAddresses(latest.ccRecipients);
     // Graph hands the list one message per conversation, so the rule runs
     // on that message's envelope. Gmail's runs on the whole thread.
-    const { tab, counterpart, externalParticipants } = classifyThread({
+    const { tab, counterpart, externalParticipants, fromMe } = classifyThread({
       accountEmail: options.accountEmail,
       participants: [from, ...to, ...cc],
       senders: [from],
@@ -181,6 +181,7 @@ export async function listOutlookAccountThreads(options: {
       messageCount: conv.messageCount,
       tab,
       externalParticipants,
+      fromMe,
       crmName: recordNameFor(counterpart.email, options.classifier),
       crmLogoUrl: recordLogoFor(counterpart.email, options.classifier),
       ...(options.q ? { focusMessageId: conv.focusMessageId } : null),

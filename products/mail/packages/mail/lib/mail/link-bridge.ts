@@ -97,4 +97,4 @@ export const MAIL_LINK_BRIDGE_JS =
 
 /** sha256-base64 of MAIL_LINK_BRIDGE_JS (CSP script-src). */
 export const MAIL_LINK_BRIDGE_CSP_HASH =
-  "sha256-EzJUOb9USXmJt/WFbK2QfyDtfJs9vI8D9GVBKclK+PE=";
+  "sha256-qefE1WNy8odY7bU0CRiVASrQPsA34xwDPOqyAFffw0M=";

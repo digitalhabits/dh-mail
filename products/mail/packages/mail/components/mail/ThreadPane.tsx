@@ -7,6 +7,9 @@
  * which is why 2,389 lines could leave MailPage without untangling anything.
  */
 
+import type { MailThreadDetail } from "@/lib/mail/types";
+import { ThreadDiscussionPanel } from "@/components/mail/team-layer";
+import { mailHasTeamRecords } from "@/lib/mail/product-flavor";
 import { UndoSlotFoot } from "@/components/mail/undo-slot-row";
 import { ownMailIdentity } from "@/lib/own-addresses";
 import { headingWithHeld } from "@/lib/mail/held-thread-header";
@@ -308,6 +311,10 @@ export function ThreadPane(props: ThreadPaneProps) {
         hidden={!mode}
         onClose={() => onFloatReply?.()}
       />
+      {/* The thread in one column, and beside it the team's discussion,
+          when the build has one and it shows. */}
+      <div className="flex min-h-0 flex-1 flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {fullWindow ? (
         <ThreadFullWindowBar
           lead={props.toolbarLead}
@@ -391,6 +398,9 @@ export function ThreadPane(props: ThreadPaneProps) {
         />
       </ComposerHome>
       </div>
+      </div>
+      <TeamDiscussionSlot floating={floating} thread={thread} />
+      </div>
       <ThreadPaneDialogs m={m} />
       {/* The Reader that fills the window covers the list and its foot:
           the confirmations stand at its own foot then (undo-slot-row). */}
@@ -418,3 +428,12 @@ export function ThreadPane(props: ThreadPaneProps) {
 
 
 
+
+/**
+ * Beside the thread: the team's discussion of it, in a build that has a
+ * team layer. Not on a floating card, which is a message being written.
+ */
+function TeamDiscussionSlot({ floating, thread }: { floating: boolean | undefined; thread: MailThreadDetail }) {
+  if (floating || !mailHasTeamRecords()) return null;
+  return <ThreadDiscussionPanel thread={thread} />;
+}

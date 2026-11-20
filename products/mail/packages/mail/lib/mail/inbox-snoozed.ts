@@ -45,7 +45,7 @@ export async function exchangeSnoozedRow(
   const from = { name: latest.fromName, email: latest.fromEmail };
   const to = latest.to.map((a) => ({ name: a.name, email: a.email }));
   const cc = latest.cc.map((a) => ({ name: a.name, email: a.email }));
-  const { tab, counterpart, externalParticipants } = classifyThread({
+  const { tab, counterpart, externalParticipants, fromMe } = classifyThread({
     accountEmail,
     participants: [from, ...to, ...cc],
     senders: [from],
@@ -65,6 +65,7 @@ export async function exchangeSnoozedRow(
     messageCount: rows.length,
     tab,
     externalParticipants,
+    fromMe,
     crmName: recordNameFor(counterpart.email, classifier),
     crmLogoUrl: recordLogoFor(counterpart.email, classifier),
     snoozedUntil,
@@ -166,7 +167,7 @@ export async function listSnoozedThreads(options: {
             name: "",
             email,
           }));
-          const { tab, counterpart, externalParticipants } = classifyThread({
+          const { tab, counterpart, externalParticipants, fromMe } = classifyThread({
             accountEmail,
             participants: [...(from ? [from] : []), ...to, ...cc],
             senders: from ? [from] : [],
@@ -186,6 +187,7 @@ export async function listSnoozedThreads(options: {
             messageCount: detail.messages.length,
             tab,
             externalParticipants,
+            fromMe,
             crmName: recordNameFor(counterpart.email, classifier),
             crmLogoUrl: recordLogoFor(counterpart.email, classifier),
             snoozedUntil,

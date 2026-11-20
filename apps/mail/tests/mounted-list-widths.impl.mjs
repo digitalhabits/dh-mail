@@ -185,6 +185,29 @@ async function main() {
       })
     );
     await sleep(700);
+    // Without previews (the default), the wide row is Gmail's: one line,
+    // the sender's column first, then the subject.
+    const senderFirst = [...document.querySelectorAll("[data-thread-key]")]
+      .map((row) => (row.querySelector("p")?.textContent || "").trim());
+    assert(
+      senderFirst.some((line) => line.startsWith("Merle Mikkelsen")),
+      `each row leads with its sender: ${senderFirst.join(" | ")}`
+    );
+    pass("wide enough and without previews, each row is the sender, then the subject, on one line");
+    root.unmount();
+
+    // With previews on, the subject leads, then who wrote it, the preview under.
+    window.localStorage.setItem("redd-plan-mail-list-previews", "1");
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById("root"));
+    root.render(
+      React.createElement(MailPage, {
+        accounts: [ACCOUNT],
+        viewerId: "wide-viewer",
+        ownAddresses: [ACCOUNT],
+      })
+    );
+    await sleep(700);
     // The first line is the subject, then who wrote it: the row's first
     // paragraph, with the sender's name after the subject.
     const firstLines = [...document.querySelectorAll("[data-thread-key]")]
@@ -193,7 +216,7 @@ async function main() {
       firstLines.some((line) => /Merle Mikkelsen/.test(line) && line.indexOf("Merle Mikkelsen") > 0),
       `each row's first line is its subject and then its sender: ${firstLines.join(" | ")}`
     );
-    pass("wide enough, each row is the subject and sender, with the preview under");
+    pass("wide enough, with previews, each row is the subject and sender, with the preview under");
 
     root.unmount();
     process.exit(0);

@@ -27,7 +27,7 @@ import { openThreadFullWindow } from "@/components/mail/thread-full-window";
 import { useReplyTrayDrag } from "@/components/mail/reply-tray-drag";
 import { TrashForeverIcon } from "@/components/mail/TrashForeverIcon";
 
-import { TeamThreadControl, ThreadAssistMenu, ThreadDiaryDialog, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
+import { TeamThreadControl, ThreadAssistMenu, ThreadCommentButton, ThreadDiaryDialog, ThreadDiscussionButton, TriageBanner, useAccountAssist } from "@/components/mail/team-layer";
 import { AnswerLinkLines, useAnswerLinks } from "@/components/mail/thread-answer-links";
 import { ThreadForwardStrip } from "@/components/mail/thread-forward-mark";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
@@ -258,6 +258,15 @@ export function ReplyButtons({
             drag.dragging ? "cursor-grabbing shadow-xl" : "cursor-grab [&_button]:cursor-pointer"
           )}
         >
+          {/* A comment for the team, where the reader decides what to do with the mail. */}
+          {mailHasTeamRecords() && !m.floating ? (
+            <ThreadCommentButton
+              account={m.account}
+              threadId={m.threadId}
+              className={cn(threadActionSecondaryClass, compactThreadActions && circleActionClass)}
+              iconOnly={compactThreadActions}
+            />
+          ) : null}
           <button
             type="button"
             title={`${t("actionReply")} (${formatShortcut(shortcuts.reply)})`}
@@ -1156,6 +1165,10 @@ function ThreadActionStrip({
           team reads together. The assignee's initials once there is one. */}
       {mailHasTeamRecords() ? (
         <TeamThreadControl account={thread.account} threadId={thread.threadId} newestId={thread.messages.at(-1)?.id} />
+      ) : null}
+      {/* The team's comments on the thread: the count, and the panel. */}
+      {mailHasTeamRecords() && !m.floating ? (
+        <ThreadDiscussionButton account={thread.account} threadId={thread.threadId} />
       ) : null}
       {/* Each of these leaves on its own, when the row runs out of
           room — not as a group. See `hidden`. */}

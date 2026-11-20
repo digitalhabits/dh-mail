@@ -8,6 +8,7 @@
  * message already on screen from the same sender follows it at once.
  */
 
+import { announceMessageSelection } from "@/lib/mail/message-selection";
 import { MAIL_IMAGES_SENDER_KEY, MAIL_LOAD_IMAGES_KEY } from "@/lib/mail/storage-keys";
 import * as React from "react";
 
@@ -236,6 +237,8 @@ type BubbleMessage = {
   inlineImages?: Record<string, string>;
   attachments?: MailAttachment[];
   own: boolean;
+  /** The RFC Message-ID, when the message has one. */
+  rfcMessageId?: string;
 };
 
 /** What a message bubble takes. */
@@ -412,6 +415,8 @@ export function MailBubble({
           x={contextMenu.x}
           y={contextMenu.y}
           selectedText={contextMenu.selectedText}
+          messageId={message.rfcMessageId}
+          from={message.fromName || message.fromEmail}
           onReact={reactAction}
           onReplyTo={replyAction}
           actions={menuActions}
@@ -488,6 +493,9 @@ function BubbleWords({
     <div
         onDoubleClick={onBubbleDoubleClick}
         onMouseDown={onBubbleMouseDown}
+        onMouseUp={(event) => {
+          if (event.button === 0) announceBubbleSelection(event.currentTarget, message);
+        }}
         onContextMenu={onBubbleContextMenu}
         className={cn(
           "rounded-surface transition-[background-color,border-color,color] duration-200",
@@ -754,6 +762,13 @@ function BubbleBody({
             <EmailHtmlView
               onContentDoubleClick={toggleDetailsFromBody}
               onContentContextMenu={onFrameContextMenu}
+              onContentSelection={(text, x, y) =>
+                announceMessageSelection(
+                  text
+                    ? { text, x, y, messageId: message.rfcMessageId, from: message.fromName || message.fromEmail }
+                    : null
+                )
+              }
               html={shownHtml}
               inlineImages={message.inlineImages}
               allowImages={allowImages}
@@ -1392,4 +1407,31 @@ export function useBubbleMenu({
     });
   };
   return { bodyBoxRef, bubbleReader, contextMenu, menuActions, onBubbleContextMenu, onBubbleMouseDown, setContextMenu };
+}
+
+/**
+ * The words that the reader selected in a plain-text message, said to the
+ * page when the press ends (message-selection.ts). A message in a frame
+ * says its own, through the frame script.
+ */
+function announceBubbleSelection(bubble: HTMLElement, message: BubbleMessage): void {
+  // After the click, so a click that clears the selection is read as none.
+  window.setTimeout(() => {
+    const sel = window.getSelection();
+    const text = sel && !sel.isCollapsed ? sel.toString().trim() : "";
+    const inside = Boolean(sel?.anchorNode && bubble.contains(sel.anchorNode));
+    if (!sel || !text || !inside) {
+      announceMessageSelection(null);
+      return;
+    }
+    const first = sel.getRangeAt(0).getClientRects()[0];
+    if (!first) return;
+    announceMessageSelection({
+      text: text.slice(0, 4000),
+      x: first.left,
+      y: first.top,
+      messageId: message.rfcMessageId,
+      from: message.fromName || message.fromEmail,
+    });
+  }, 0);
 }

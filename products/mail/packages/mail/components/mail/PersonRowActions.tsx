@@ -2,34 +2,34 @@
 
 import { type PersonRow } from "@/lib/mail/person-participants";
 import { MailDotIcon } from "@/components/mail/MailDotIcon";
-import { Archive, Pin } from "lucide-react";
+import { Archive, RotateCwFadingClock, Trash2 } from "lucide-react";
 import { useMailT } from "@/lib/mail/i18n";
 import { cn } from "@/lib/utils";
 
 /**
- * Pin and archive, on a person row, revealed on hover.
- *
- * The same two the thread rows offer, meaning the same two things: pin keeps
- * this correspondent at the top of the list, and archive clears every
- * conversation with them out of the inbox.
+ * Archive, delete, read or unread, and snooze, on a person row, revealed on
+ * hover: the four a thread row offers, in Gmail's order, each acting on
+ * every conversation with them. Pin is on the right-click menu.
  */
 export function PersonRowActions({
   row,
-  pinned,
   onNavy,
-  onTogglePin,
   onArchive,
+  onTrash,
   onToggleRead,
+  onSnooze,
   className,
 }: {
   row: PersonRow;
-  pinned: boolean;
   onNavy: boolean;
-  onTogglePin: () => void;
   /** Not given in Trash: the mail is deleted already. */
   onArchive?: () => void;
+  /** Not given in Trash, for the same reason. */
+  onTrash?: () => void;
   /** Read when anything is unread; otherwise the newest back to unread. */
   onToggleRead: () => void;
+  /** Opens the times, under the point given (the button's foot). */
+  onSnooze?: (x: number, y: number) => void;
   /** Where they sit up and down: on the name's line when the row has more than one. */
   className?: string;
 }) {
@@ -53,6 +53,40 @@ export function PersonRowActions({
         className
       )}
     >
+      {onArchive ? (
+        <button
+          type="button"
+          title={
+            count === 1
+              ? say("archiveConversation")
+              : say("archiveAllCount", { count })
+          }
+          aria-label={
+            count === 1
+              ? say("archiveConversationWith", { name: row.name })
+              : say("archiveAllWith", { count, name: row.name })
+          }
+          className={plain}
+          onClick={onArchive}
+        >
+          <Archive className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      {onTrash ? (
+        <button
+          type="button"
+          title={count === 1 ? say("actionDelete") : say("deleteAllCount", { count })}
+          aria-label={
+            count === 1
+              ? say("actionDelete")
+              : say("deleteAllWith", { count, name: row.name })
+          }
+          className={plain}
+          onClick={onTrash}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
       <button
         type="button"
         title={
@@ -72,52 +106,18 @@ export function PersonRowActions({
       >
         <MailDotIcon className="h-3.5 w-3.5" />
       </button>
-      <button
-        type="button"
-        title={pinned ? say("unpin") : say("pinToTop")}
-        aria-label={
-          pinned
-            ? say("unpinPerson", { name: row.name })
-            : say("pinPerson", { name: row.name })
-        }
-        className={cn(
-          "rounded p-1",
-          pinned
-            ? onNavy
-              ? "text-teal-300 hover:bg-white/10"
-              : "text-teal-600 hover:bg-teal-50"
-            : onNavy
-              ? "text-white/55 hover:bg-white/10 hover:text-teal-300"
-              : "text-stone-500 hover:bg-stone-100 hover:text-teal-700"
-        )}
-        onClick={onTogglePin}
-      >
-        <Pin
-          className={cn(
-            "h-3.5 w-3.5",
-            pinned && (onNavy ? "fill-teal-300" : "fill-teal-600")
-          )}
-        />
-      </button>
-      {onArchive ? (
+      {onSnooze ? (
         <button
           type="button"
-          // Archiving one thread and archiving eleven are different acts, and the
-          // label is the only warning there is.
-          title={
-            count === 1
-              ? say("archiveConversation")
-              : say("archiveAllCount", { count })
-          }
-          aria-label={
-            count === 1
-              ? say("archiveConversationWith", { name: row.name })
-              : say("archiveAllWith", { count, name: row.name })
-          }
+          title={count === 1 ? say("snooze") : say("snoozeAllCount", { count })}
+          aria-label={count === 1 ? say("snooze") : say("snoozeAllCount", { count })}
           className={plain}
-          onClick={onArchive}
+          onClick={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            onSnooze(box.left, box.bottom);
+          }}
         >
-          <Archive className="h-3.5 w-3.5" />
+          <RotateCwFadingClock className="h-3.5 w-3.5" />
         </button>
       ) : null}
     </span>

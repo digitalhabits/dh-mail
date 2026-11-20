@@ -38,6 +38,16 @@ function json(body: unknown): Response {
   });
 }
 
+/** The JSON that a request carries, or undefined when it carries none. */
+function sentJson(init?: RequestInit): unknown {
+  if (typeof init?.body !== "string") return undefined;
+  try {
+    return JSON.parse(init.body);
+  } catch {
+    return undefined;
+  }
+}
+
 function accountRows(email: string) {
   return [
     {
@@ -309,7 +319,7 @@ export async function handleDemoMailApi(
     default: {
       // A build with a team layer answers its own paths over demo data
       // too. This one has none. See `@/team-shell`.
-      const team = demoTeamAnswer(url.pathname);
+      const team = demoTeamAnswer(url.pathname, sentJson(init));
       if (team !== undefined) return json(team);
       break;
     }

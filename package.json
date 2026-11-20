@@ -1,7 +1,7 @@
 {
   "name": "digital-habits-mail",
   "private": true,
-  "packageManager": "pnpm@9.14.4",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev": "pnpm --dir apps/mail app:dev",
     "build": "pnpm --dir apps/mail app:build",

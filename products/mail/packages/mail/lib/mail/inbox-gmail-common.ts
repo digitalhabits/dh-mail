@@ -242,7 +242,7 @@ export async function summarizeGmailThread(options: {
   threadMessages.sort((a, b) => messageDate(a) - messageDate(b));
   const latest = threadMessages[threadMessages.length - 1];
 
-  const { tab, counterpart, externalParticipants } = classifyThread({
+  const { tab, counterpart, externalParticipants, fromMe } = classifyThread({
     accountEmail,
     participants: threadMessages.flatMap((m) => [
       ...parseAddressList(headerValue(m, "From")),
@@ -294,6 +294,7 @@ export async function summarizeGmailThread(options: {
       messageCount: threadMessages.length,
       tab,
       externalParticipants,
+      fromMe,
       crmName: recordNameFor(counterpart.email, classifier),
       crmLogoUrl: recordLogoFor(counterpart.email, classifier),
       ...(focusMessageId ? { focusMessageId } : null),

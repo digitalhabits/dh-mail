@@ -58,13 +58,14 @@ export function useListLayout({
   /** Folder and filter name the mail, so they stand before New email. */
   const listChromeOnToolbar = listExpanded && !listVertical;
   /**
-   * Expanded rows sit on the pane, not the chrome.
+   * Stacked rows sit on the pane, not the chrome.
    *
-   * The wide list is the thing being read, so it takes the same white
-   * (or dark pane) the split list used. The toolbar stays on the chrome
-   * above it.
+   * The wide (expanded) list keeps the chrome's cream, as the list beside
+   * the reader does: the list turning white as it widened read as a
+   * different place, and unread rows are told apart by a lighter tint on
+   * that cream (--mail-row-unread), which white would swallow.
    */
-  const listRowsOnPane = listSplit || listExpanded;
+  const listRowsOnPane = listSplit;
   const detailOpen = composing || selected != null;
   const [listWidth, startListResize, expandListFromNarrow] =
     useMailListWidth({
