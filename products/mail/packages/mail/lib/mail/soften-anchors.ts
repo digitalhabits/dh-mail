@@ -64,10 +64,15 @@ export function softenAnchorsForParse(html: string): string {
         last = index + match[0].length;
         continue;
       }
-      const escaped = href
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;");
+      /*
+        The address is still HTML as the sender wrote it, so "&amp;" in it
+        is already an escaped "&" and stays as it is. Escaped once more,
+        the parser hands back "&amp;" as part of the address: Google's
+        invitation buttons then open "…?action=RESPOND&amp;eid=…" and
+        Google answers "400. That's an error". Only what could end the
+        attribute early is escaped.
+      */
+      const escaped = href.replace(/"/g, "&quot;").replace(/</g, "&lt;");
       /*
         A link the sender dressed themselves keeps what they gave it — that
         is what the softening is for, so a "View message" button stays a

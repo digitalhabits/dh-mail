@@ -29,6 +29,7 @@ import {
 } from "@/lib/mail/exchange-native";
 import { createActionQueue, type QueueDelivery, type QueueFailure } from "@/lib/mail/action-queue";
 import { mendStaleExchangeItem } from "@/lib/mail/exchange-heal";
+import { noteExchangeItemMoved } from "@/lib/mail/exchange-moved-ids";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
 import { notifySyncChanged } from "@/lib/mail/local-store";
 import { mailStore } from "@/lib/mail/store";
@@ -218,7 +219,12 @@ async function deliver(email: string, action: MailPendingAction): Promise<QueueD
   if (!payload.target) throw new Error(`ews:invalid: No folder to move to.`);
   const result = await moveExchangeItems(email, ids, payload.target);
   const newIds: Record<string, string> = {};
-  for (const m of result.moved) if (m.newId) newIds[m.id] = m.newId;
+  for (const m of result.moved) {
+    if (!m.newId) continue;
+    newIds[m.id] = m.newId;
+    // An open conversation still holds the old ids: see exchange-moved-ids.
+    noteExchangeItemMoved(email, m.id, m.newId);
+  }
   const gone = result.moved.filter((m) => !m.newId).map((m) => m.id);
   // The rows take their new ids now, in the folder they went to.
   const moved = Object.keys(newIds);

@@ -22,7 +22,22 @@ import { check, suite } from "./harness.mjs";
 const PLAIN = "data-dh-plain";
 
 suite(async () => {
-  // ---- Undressed links: ours to paint --------------------------------------
+  // ---- The address is not escaped a second time ----------------------------
+  {
+    const out = softenAnchorsForParse(
+      '<a href="https://cal.example/event?action=RESPOND&amp;eid=abc&amp;rst=1">Yes</a>'
+    );
+    check(
+      "an escaped & in the address stays escaped once",
+      out.includes('data-dh-href="https://cal.example/event?action=RESPOND&amp;eid=abc&amp;rst=1"'),
+      out
+    );
+    const bare = softenAnchorsForParse('<a href="https://cal.example/?a=1&b=2">Yes</a>');
+    check("a bare & is left as the sender wrote it", bare.includes('data-dh-href="https://cal.example/?a=1&b=2"'), bare);
+    const quoted = softenAnchorsForParse("<a href='https://cal.example/?q=\"x\"'>Yes</a>");
+    check("a quote in the address cannot end the attribute", quoted.includes('?q=&quot;x&quot;"'), quoted);
+  }
+
   {
     const out = softenAnchorsForParse('<a href="https://example.org">read</a>');
     check("a link becomes a span, keeping its address", out.includes('data-dh-href="https://example.org"'), out);

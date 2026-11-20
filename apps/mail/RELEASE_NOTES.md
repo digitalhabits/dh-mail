@@ -1,5 +1,11 @@
 ## What is new
 
+**Fixes in 0.12.13**
+- A link in a mail opens at the address that the sender wrote. Before, a link with more than one part after the "?" opened at a broken address. The Yes, No and Maybe buttons in a Google Calendar invitation gave "400. That's an error". A reply or a forward also sent the broken address to the other person.
+- A mail shows when one of its pictures has a "%" in its name that the app cannot read. Before, such a mail could stay blank.
+- A click on a mail address with a "%" in it opens a new mail to that address. Before, the click did nothing.
+- The text copy of a signature keeps signs such as "&lt;" as you wrote them.
+
 **The mail list reads like Gmail's (0.12.12)**
 - A row in the list no longer shows the first words of the mail. You see more conversations at one time. To get the words back, turn on "Show a preview in the mail list" in Settings.
 - When the list has the full width of the window, each conversation is one line: the people, then the subject, then the time. When the list stands beside a mail, each conversation is two lines.
@@ -7,6 +13,10 @@
 - A conversation that you did not read is lighter than the others, and its words are bold.
 - When you point at a row, the row lifts on a shadow and shows four actions: archive, delete, mark as read or unread, and snooze.
 - In the menu of a message, Details is now with Print, under the line.
+
+**Fixes in 0.12.12**
+- A reply quotes only the earlier mails that its recipients have a part in. Before, the quoted history was each mail that the conversation showed. When the mail server put two conversations with the same subject together, a reply to a person in one of them could carry the mails of the other. A forward follows the same rule.
+- On an Exchange mailbox, the files of a mail open after the mail moved to another folder. Before, the files of a mail that came back from a snooze in a paused mailbox did not open, and the app said "The mail server did not send this file".
 
 **Replies go from the address the mail was sent to (0.12.11)**
 - When a mail is in more than one of your mailboxes, a reply now starts from the mailbox that the mail was sent to: the one in To, then the one in Cc. Before, the reply started from the mailbox in which you opened the mail, so an answer to a mail sent to your work address could go from an address that was only on Cc.

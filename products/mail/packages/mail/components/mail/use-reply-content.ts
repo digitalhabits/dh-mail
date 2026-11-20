@@ -18,8 +18,10 @@ import { formatEmailBody } from "@/lib/email-mime";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import {
   buildQuoteHistory,
+  quotableHistory,
   REPLY_HISTORY_CAP,
 } from "@/lib/mail/quote-history";
+import { isOwnPersonalAddress } from "@/lib/own-addresses";
 import {
   replyPlaceholder,
   replyPlaceholderNames,
@@ -28,7 +30,7 @@ import { messageStamp } from "@/lib/mail/date-format";
 import type { MailMessage } from "@/lib/mail/types";
 import { historyEntryOf } from "@/components/mail/thread-messages";
 
-import type { MailRecipient } from "@/lib/mail/contact-list-types";
+import { emailsOfRecipients, type MailRecipient } from "@/lib/mail/contact-list-types";
 import type { OlderThreadPart } from "@/components/mail/use-thread-stream";
 import type { MailThreadDetail } from "@/lib/mail/types";
 import { replySubjectOf } from "@/lib/mail/reply-subject";
@@ -166,26 +168,38 @@ export function useReplyContent({
       ...thread.messages,
     ].filter((m) => !isPendingLocalMessage(m.id));
     if (!all.length) return null;
+    // Only what the reply's recipients have a part in: a thread can hold a
+    // mail that the server filed there by its subject (see quotableHistory).
+    const mayQuote = (upTo: MailMessage[]) =>
+      quotableHistory(upTo, {
+        anchor: upTo.at(-1),
+        people: emailsOfRecipients([...toList, ...ccList]),
+        isOwn: (email) => isOwnPersonalAddress(email) || email === account.toLowerCase() || email === fromAccount.toLowerCase(),
+      });
     // A reply to one picked message carries the history as it stood at
     // that message: it and what came before, not what came after.
     const pickedAt = quoteMessageId ? all.findIndex((m) => m.id === quoteMessageId) : -1;
     if (pickedAt >= 0) {
-      const upTo = all.slice(0, pickedAt + 1);
+      const upTo = mayQuote(all.slice(0, pickedAt + 1));
       const keptUpTo = upTo.slice(-REPLY_HISTORY_CAP);
       return buildQuoteHistory(keptUpTo.map(historyEntryOf), {
         omittedBeyond: Math.max(0, upTo.length - keptUpTo.length),
       });
     }
     // What the thread holds beyond what is loaded still counts: the note
-    // under the tail says how much of the conversation it is not.
-    const total =
+    // under the tail says how much of the conversation it is not. A message
+    // that the rule left out is not a part of this conversation, so the
+    // note does not count it.
+    const quotable = mayQuote(all);
+    const notLoaded =
       olderParts.reduce((n, p) => n + p.messages.length, 0) +
-      (thread.totalMessageCount ?? thread.messages.length);
-    const kept = all.slice(-REPLY_HISTORY_CAP);
+      (thread.totalMessageCount ?? thread.messages.length) -
+      all.length;
+    const kept = quotable.slice(-REPLY_HISTORY_CAP);
     return buildQuoteHistory(kept.map(historyEntryOf), {
-      omittedBeyond: Math.max(0, total - kept.length),
+      omittedBeyond: Math.max(0, notLoaded) + (quotable.length - kept.length),
     });
-  }, [thread, olderParts, quoteMessageId]);
+  }, [thread, olderParts, quoteMessageId, toList, ccList, account, fromAccount]);
   /**
    * Who the empty box says the reply goes to: everyone in To and Cc, named
    * from the thread where a name is known. A reply-all names them all; a

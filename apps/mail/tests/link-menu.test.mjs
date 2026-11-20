@@ -6,7 +6,7 @@
  * Link. This menu does, and its first row says where the link really goes.
  */
 
-import { mailLinkMenuModel, shortenLinkForMenu } from "@/lib/mail/link-menu";
+import { mailLinkMenuModel, mailtoAddress, shortenLinkForMenu } from "@/lib/mail/link-menu";
 
 import { check, suite } from "./harness.mjs";
 
@@ -93,4 +93,17 @@ suite(async () => {
     JSON.stringify(menu)
   );
   check("any other link has no real address of its own", mailLinkMenuModel("https://example.org/a")?.realAddress === undefined);
+
+  // ---- The address in a mailto -------------------------------------------
+
+  check(
+    "a mailto gives its address, decoded, without the subject",
+    mailtoAddress("mailto:ida%2Bnews@mail.example?subject=Hej") === "ida+news@mail.example",
+    mailtoAddress("mailto:ida%2Bnews@mail.example?subject=Hej")
+  );
+  check(
+    "a % that is not encoding is kept, and nothing throws",
+    mailtoAddress("MAILTO:50%off@shop.example") === "50%off@shop.example",
+    mailtoAddress("MAILTO:50%off@shop.example")
+  );
 });

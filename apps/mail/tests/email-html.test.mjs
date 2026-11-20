@@ -138,6 +138,18 @@ suite(async () => {
     ),
     "text/html"
   );
+  // A content id with a "%" that is not encoding: the message still shows.
+  const oddCid = sanitizeEmailHtml(
+    '<p>Hej</p><img src="cid:image%1@mail.example"><img src="cid:logo%402@mail.example">',
+    { "image%1@mail.example": "data:image/png;base64,AAAA", "logo@2@mail.example": "data:image/png;base64,BBBB" }
+  );
+  check(
+    "a content id that cannot be decoded is used as written",
+    oddCid.includes("data:image/png;base64,AAAA"),
+    oddCid
+  );
+  check("and one that can be is decoded as before", oddCid.includes("data:image/png;base64,BBBB"), oddCid);
+
   const unlisted = [...orphans.querySelectorAll("li")].filter((li) => !li.parentElement?.closest("ul, ol"));
   check("list items with no list are put in one", unlisted.length === 0, orphans.body.innerHTML);
   check(

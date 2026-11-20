@@ -190,6 +190,21 @@ function wrapOrphanListItems(doc: Document): void {
   }
 }
 
+/**
+ * The content id a `cid:` address names.
+ *
+ * It is percent-decoded when it can be. An id with a "%" that is not
+ * encoding ("image%1@mail.example") makes the decode throw, and this runs
+ * while the message is drawn, so that id is used as written.
+ */
+function contentIdOf(raw: string): string {
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    return raw.trim();
+  }
+}
+
 /** Keep only what is safe and useful from untrusted email HTML. */
 export function sanitizeEmailHtml(
   html: string,
@@ -275,7 +290,7 @@ export function sanitizeEmailHtml(
       /^\s*cid:(.+)$/i.exec(src) ??
       /^\s*cid:(.+)$/i.exec(img.getAttribute("originalsrc") ?? "");
     if (!cidMatch) continue;
-    const mapped = inlineImages?.[decodeURIComponent(cidMatch[1]).trim()];
+    const mapped = inlineImages?.[contentIdOf(cidMatch[1])];
     if (mapped) img.setAttribute("src", mapped);
     else img.remove();
   }

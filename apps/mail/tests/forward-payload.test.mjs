@@ -17,8 +17,11 @@ for (const key of ["window", "document", "DOMParser", "Node", "NodeFilter"]) {
   globalThis[key] = key === "window" ? win : win[key];
 }
 
-const msg = (id, from, day, words) => ({
+// Each message names the ones before it, as mail in one conversation does.
+const msg = (id, from, day, words, references = "") => ({
   id,
+  rfcMessageId: `<${id}@example.org>`,
+  references,
   fromName: from,
   fromEmail: `${from.toLowerCase()}@example.org`,
   toEmails: ["me@example.org"],
@@ -36,7 +39,7 @@ suite(async () => {
     threadId: "t1",
     subject: "Plans",
     participants: [],
-    messages: [msg("m1", "Alma", "09", "First thoughts."), msg("m2", "Bo", "17", "Any news?"), msg("m3", "Alma", "18", "Love it all.")],
+    messages: [msg("m1", "Alma", "09", "First thoughts."), msg("m2", "Bo", "17", "Any news?", "<m1@example.org>"), msg("m3", "Alma", "18", "Love it all.", "<m1@example.org> <m2@example.org>")],
     totalMessageCount: 3,
   };
   const f = forwardPayload({ source: thread.messages[2], thread, olderParts: [] });
@@ -50,6 +53,12 @@ suite(async () => {
 
   const middle = forwardPayload({ source: thread.messages[1], thread, olderParts: [] });
   check("a forward of an earlier message carries only what came before it", !(middle.html ?? "").includes("Love it all."), middle.html);
+
+  // A mail with the same subject that the server filed here, between other people.
+  const stray = { ...msg("s1", "Carl", "10", "Not for them."), toEmails: ["me@example.org"] };
+  const mixed = { ...thread, messages: [thread.messages[0], stray, thread.messages[1], thread.messages[2]], totalMessageCount: 4 };
+  const clean = forwardPayload({ source: mixed.messages[3], thread: mixed, olderParts: [] });
+  check("a mail that shares no person and no reference with the forwarded one stays out", !clean.text.includes("Not for them.") && clean.text.includes("Any news?"), clean.text);
 
   const first = forwardPayload({ source: thread.messages[0], thread, olderParts: [] });
   check("the first message forwards alone", !(first.html ?? "").includes("wrote:"), first.html);

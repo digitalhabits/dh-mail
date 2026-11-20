@@ -13,7 +13,8 @@
  */
 
 import type { ForwardedMessage } from "@/lib/mail/inbox-send";
-import { buildQuoteHistory } from "@/lib/mail/quote-history";
+import { buildQuoteHistory, quotableHistory } from "@/lib/mail/quote-history";
+import { isOwnPersonalAddress } from "@/lib/own-addresses";
 import { messageStamp } from "@/lib/mail/date-format";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
 import { isPendingLocalMessage } from "@/lib/mail/local-message";
@@ -35,7 +36,15 @@ export function forwardPayload(input: {
   const subject = thread.subject;
   const own = historyEntryOf(source);
   const at = conversation.findIndex((m) => m.id === source.id);
-  const earlier = at > 0 ? conversation.slice(0, at) : [];
+  // Only the mails that share a person with the forwarded one: a thread can
+  // hold a mail that the server filed there by its subject (see
+  // quotableHistory), and that one is not a part of what is forwarded.
+  const account = thread.account.toLowerCase();
+  const earlier = quotableHistory(at > 0 ? conversation.slice(0, at + 1) : [], {
+    anchor: source,
+    people: [source.fromEmail, ...source.toEmails, ...source.ccEmails],
+    isOwn: (email) => isOwnPersonalAddress(email) || email === account,
+  }).filter((m) => m.id !== source.id);
   const history = earlier.length
     ? buildQuoteHistory(earlier.map(historyEntryOf), {
         // What is not loaded is older still, and is said as not shown.

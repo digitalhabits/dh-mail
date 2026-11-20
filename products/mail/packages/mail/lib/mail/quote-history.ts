@@ -129,3 +129,89 @@ export function buildQuoteHistory(
 
   return { text, html, included: kept.length, omitted };
 }
+
+/** As much of a message as the rule below reads. */
+export type HistoryCandidate = {
+  fromEmail: string;
+  toEmails: readonly string[];
+  ccEmails: readonly string[];
+  rfcMessageId?: string;
+  inReplyTo?: string;
+  references?: string;
+  /** The reader sent it. */
+  own?: boolean;
+};
+
+const address = (email: string) => (email ?? "").trim().toLowerCase();
+
+/** The Message-IDs in a header value, in lower case, without the brackets. */
+function idsIn(header: string | undefined): string[] {
+  return (header ?? "").match(/<[^>]+>/g)?.map((id) => id.slice(1, -1).trim().toLowerCase()) ?? [];
+}
+
+/**
+ * The messages of a thread that a reply or a forward can quote.
+ *
+ * The history is built from the thread as the app shows it, and a thread
+ * can hold a mail that does not belong there. A server files a mail by its
+ * subject when it has nothing better, so the same subject sent to two
+ * organisations can become one conversation. A reply to one of them then
+ * carried the correspondence with the other (reported 2026-11-18). A mail
+ * must not go to a person who has no part in it only because it has the
+ * same subject.
+ *
+ * So an earlier message goes into the history only when one of these is
+ * true:
+ *
+ * - it is the message that is answered or forwarded;
+ * - the answered message names it, directly or through the messages
+ *   between them (In-Reply-To and References). An ordinary mail client
+ *   quotes these too;
+ * - one of `people` sent it or received it.
+ *
+ * `people` are the reply's recipients, or the other people on a forwarded
+ * message. The reader's own addresses do not count: the reader is on each
+ * message. An address that sent one of the reader's own messages is the
+ * reader's too, because a mailbox can send as an address that `isOwn` does
+ * not know. With no other person there is no rule to apply, and each
+ * message stays.
+ */
+export function quotableHistory<M extends HistoryCandidate>(
+  /** The thread's messages, oldest first. */
+  messages: readonly M[],
+  input: {
+    /** The message that is answered or forwarded. */
+    anchor: M | undefined;
+    /** Addresses of the people that the history is shown to, or shared with. */
+    people: readonly string[];
+    isOwn: (email: string) => boolean;
+  }
+): M[] {
+  const ownSenders = new Set(messages.filter((m) => m.own).map((m) => address(m.fromEmail)));
+  const people = new Set(
+    input.people.map(address).filter((email) => email && !input.isOwn(email) && !ownSenders.has(email))
+  );
+  if (!people.size) return [...messages];
+
+  // The answered message's ancestors, by their Message-IDs. A reference
+  // points back in time, so one pass from the newest finds them all.
+  const named = new Set<string>();
+  const inChain = new Set<M>();
+  const note = (m: M) => {
+    inChain.add(m);
+    for (const id of [...idsIn(m.references), ...idsIn(m.inReplyTo)]) named.add(id);
+  };
+  if (input.anchor) note(input.anchor);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    const id = idsIn(m.rfcMessageId)[0] ?? address(m.rfcMessageId ?? "");
+    if (id && named.has(id)) note(m);
+  }
+
+  return messages.filter(
+    (m) =>
+      m === input.anchor ||
+      inChain.has(m) ||
+      [m.fromEmail, ...m.toEmails, ...m.ccEmails].some((email) => people.has(address(email)))
+  );
+}

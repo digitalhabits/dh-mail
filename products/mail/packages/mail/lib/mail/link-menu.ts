@@ -66,17 +66,28 @@ export function shortenLinkForMenu(url: string, max = SHOWN_MAX): string {
   return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
 }
 
+/**
+ * The address in a mailto link.
+ *
+ * A mailto can carry ?subject=… and more. Only the address is taken. It is
+ * percent-decoded when it can be: "50%off@shop.example" is not valid
+ * encoding, and decoding it throws, so that one is kept as written.
+ */
+export function mailtoAddress(target: string): string {
+  const address = target.replace(/^mailto:/i, "").split("?")[0];
+  try {
+    return decodeURIComponent(address);
+  } catch {
+    return address;
+  }
+}
+
 /** The menu for a link, or null when the target is not one we would follow. */
 export function mailLinkMenuModel(target: string): MailLinkMenuModel | null {
   if (/^mailto:/i.test(target)) {
-    // A mailto can carry ?subject=… and more. Only the address is shown and
-    // copied, the same as following it opens a message to that address.
-    let address = target.slice("mailto:".length).split("?")[0];
-    try {
-      address = decodeURIComponent(address);
-    } catch {
-      /* keep as written */
-    }
+    // The address alone is shown and copied, the same as following the link
+    // opens a message to that address.
+    const address = mailtoAddress(target);
     if (!address) return null;
     return {
       kind: "mailto",

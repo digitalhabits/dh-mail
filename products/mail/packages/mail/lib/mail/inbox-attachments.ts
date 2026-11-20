@@ -9,6 +9,7 @@
 import "server-only";
 
 import { fetchExchangePart, fetchExchangeSource } from "@/lib/mail/exchange-native";
+import { currentExchangeItemId } from "@/lib/mail/exchange-moved-ids";
 import { isStaleExchangeItem, mendStaleExchangeItem, STALE_ITEM_MESSAGE } from "@/lib/mail/exchange-heal";
 
 import { localStoreServes } from "@/lib/mail/local-store";
@@ -111,10 +112,14 @@ async function readMailAttachment(input: {
       2026-11-04). A message that is really gone fails the second time
       too, and the reader is told in plain words (plain-mail-error.ts).
     */
-    const part = await fetchExchangePart(input.account, input.messageId, section).catch(async (err) => {
+    // The id that the item has now: a conversation that is open keeps the
+    // id from before a move (exchange-moved-ids.ts).
+    const itemId = currentExchangeItemId(input.account, input.messageId);
+    const part = await fetchExchangePart(input.account, itemId, section).catch(async (err) => {
       if (!isStaleExchangeItem(err)) throw err;
       await new Promise((resolve) => setTimeout(resolve, EXCHANGE_PART_RETRY_MS));
-      return fetchExchangePart(input.account, input.messageId, section);
+      // A move can end during the wait, and the item then has a newer id.
+      return fetchExchangePart(input.account, currentExchangeItemId(input.account, input.messageId), section);
     });
     return { bytes: base64ToBytes(part.bytesBase64) };
   }
@@ -158,7 +163,7 @@ export async function fetchMailMessageSource(input: {
   // Exchange makes the MIME again from what it keeps (section 16.1).
   if (provider === "exchange") {
     try {
-      return { bytes: base64ToBytes(await fetchExchangeSource(input.account, input.messageId)) };
+      return { bytes: base64ToBytes(await fetchExchangeSource(input.account, currentExchangeItemId(input.account, input.messageId))) };
     } catch (err) {
       if (!isStaleExchangeItem(err)) throw err;
       await mendStaleExchangeItem(input.account, input.messageId, input.threadId);

@@ -21,7 +21,7 @@ import {
 import { openExternalUrl } from "@/lib/native-shell";
 import { requestMailComposeTo } from "@/lib/mail/compose-to";
 import { mailSay, useMailT } from "@/lib/mail/i18n";
-import { type MailLinkMenuModel } from "@/lib/mail/link-menu";
+import { type MailLinkMenuModel, mailtoAddress } from "@/lib/mail/link-menu";
 import {
   MAIL_LINK_BRIDGE_CSP_HASH,
   MAIL_LINK_BRIDGE_JS,
@@ -38,9 +38,7 @@ import { MAIL_HREF_ATTR, MAIL_PLAIN_LINK_ATTR } from "@/lib/mail/soften-anchors"
  */
 export async function followMailLink(target: string): Promise<void> {
   if (/^mailto:/i.test(target)) {
-    // A mailto can carry ?subject=… and more. Only the address is taken.
-    const address = target.slice("mailto:".length).split("?")[0];
-    requestMailComposeTo(decodeURIComponent(address));
+    requestMailComposeTo(mailtoAddress(target));
     return;
   }
   /*

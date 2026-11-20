@@ -72,6 +72,11 @@ suite(async () => {
   check("no copy: the text part ends with the saved signature",
     saved.text.trimEnd().endsWith(signaturePlainText(SIGNATURE)), saved.text);
 
+  // An entity is decoded once: the words "&lt;" stay those words.
+  const coded = signaturePlainText("<p>Ida &amp; Bo<br>write &amp;lt;b&amp;gt; for bold</p>");
+  check("the text part decodes an entity once",
+    coded === "Ida & Bo\nwrite &lt;b&gt; for bold", coded);
+
   // The copy is the saved signature, word for word: the same bytes go out.
   const same = await gmailParts({ signatureHtml: SIGNATURE });
   check("a copy equal to the saved signature sends the same html",

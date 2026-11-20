@@ -102,11 +102,12 @@ export function signaturePlainText(signature: string): string {
       .replace(/<\/(?:p|li)>/gi, "\n")
       .replace(/<[^>]+>/g, "")
       .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+      // Last, so the words "&lt;" (written "&amp;lt;") do not become "<".
+      .replace(/&amp;/g, "&")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   }

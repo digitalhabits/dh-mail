@@ -30,6 +30,7 @@ import {
   readExchangeFolders,
   type ExchangeFolderState,
 } from "@/lib/mail/exchange-folders";
+import { noteExchangeItemMoved } from "@/lib/mail/exchange-moved-ids";
 import { asRow, cancelExchangeInverse, queueExchangeAction, QUEUED_EXCHANGE_KINDS, relabel } from "@/lib/mail/exchange-queue";
 import { wakeExchangeSync } from "@/lib/mail/exchange-sync";
 import { invalidateInboxCache } from "@/lib/mail/inbox-cache";
@@ -177,6 +178,8 @@ async function applyMove(account: string, place: ThreadPlace, items: Row[], targ
   const byId = new Map(items.map((r) => [r.messageId, r]));
   const store = mailStore();
   const gone = result.moved.map((m) => m.id);
+  // An open conversation still holds the old ids: see exchange-moved-ids.
+  for (const m of result.moved) if (m.newId) noteExchangeItemMoved(account, m.id, m.newId);
   if (gone.length) await store.messages.removeMessages(account, gone);
   const arrived = result.moved
     .filter((m) => m.newId && byId.has(m.id))
