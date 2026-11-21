@@ -250,12 +250,11 @@ export function ThreadDiscussionButton(_props: { account: string; threadId: stri
   return null;
 }
 
-/** Beside Reply and Forward: a comment for the team. None here. */
+/** At the end of the reply tray: a comment for the team. None here. */
 export function ThreadCommentButton(_props: {
   account: string;
   threadId: string;
   className?: string;
-  iconOnly?: boolean;
 }): null {
   return null;
 }

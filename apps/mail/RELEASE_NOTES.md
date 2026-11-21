@@ -1,5 +1,8 @@
 ## What is new
 
+**Updates in 0.12.15**
+- The parts that the app is built from are updated to their newest versions. The app works as before.
+
 **Fixes in 0.12.14**
 - With Stacks on, the conversations of an open stack start where the name of the person starts. Before, they started to the left of the name.
 - A face in the list shows the initials of the person until the picture is there. Before, a picture that the app could not load left an empty place.

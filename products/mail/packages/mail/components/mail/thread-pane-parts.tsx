@@ -258,15 +258,6 @@ export function ReplyButtons({
             drag.dragging ? "cursor-grabbing shadow-xl" : "cursor-grab [&_button]:cursor-pointer"
           )}
         >
-          {/* A comment for the team, where the reader decides what to do with the mail. */}
-          {mailHasTeamRecords() && !m.floating ? (
-            <ThreadCommentButton
-              account={m.account}
-              threadId={m.threadId}
-              className={cn(threadActionSecondaryClass, compactThreadActions && circleActionClass)}
-              iconOnly={compactThreadActions}
-            />
-          ) : null}
           <button
             type="button"
             title={`${t("actionReply")} (${formatShortcut(shortcuts.reply)})`}
@@ -317,6 +308,14 @@ export function ReplyButtons({
             className={cn(threadActionIconClass, "[&_svg]:h-5 [&_svg]:w-5")}
             onPick={(emoji) => void sendQuickReply(emoji)}
           />
+          {/* A comment for the team: last, and as quiet as the emoji button. */}
+          {mailHasTeamRecords() && !m.floating ? (
+            <ThreadCommentButton
+              account={m.account}
+              threadId={m.threadId}
+              className={cn(threadActionIconClass, "[&_svg]:h-5 [&_svg]:w-5")}
+            />
+          ) : null}
         </div>
       ) : null}
 

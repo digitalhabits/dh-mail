@@ -265,6 +265,7 @@ async function main() {
     assert(!barLabels.includes("Reply"), `no Reply in the bar, it is in the tray: ${barLabels.join(", ")}`);
     assert(barLabels.includes("More"), "the bar has the … menu");
     assert(pane.querySelector("[data-reply-tray]"), "the reply tray floats over the thread");
+    assert.equal(pane.querySelector("[data-reply-tray] [data-team-comment-button]"), null, "the public app has no Comment button in the tray");
     const text = pane.textContent || "";
     assert(/paint it the week after/.test(text) && /dry weather before we can paint/.test(text), "the same bubbles, both messages");
     assert(!reader(), "it is not the Reader");

@@ -28,7 +28,11 @@ type FlavorBuild = {
   flavorDefine: (env: Record<string, string>) => Record<string, string>;
   devPort: number;
 };
-const flavorBuildFile = (name: string) => `./src/${name}/build-flavor.mjs`;
+/**
+ * A full address, from this file. Vite can run a copy of this config from
+ * another directory, and a path that starts at "./" would start there.
+ */
+const flavorBuildFile = (name: string) => new URL(`./src/${name}/build-flavor.mjs`, import.meta.url);
 
 export default defineConfig(async ({ mode }) => {
   const nodeEnv = mode === "development" ? "development" : "production";
@@ -52,12 +56,12 @@ export default defineConfig(async ({ mode }) => {
   const flavor =
     /^[a-z]+$/.test(asked) &&
     asked !== "public" &&
-    fs.existsSync(new URL(flavorBuildFile(asked), import.meta.url))
+    fs.existsSync(flavorBuildFile(asked))
       ? asked
       : "public";
   const flavorBuild =
     flavor !== "public"
-      ? ((await import(/* @vite-ignore */ flavorBuildFile(flavor))) as FlavorBuild)
+      ? ((await import(/* @vite-ignore */ flavorBuildFile(flavor).href)) as FlavorBuild)
       : null;
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const flavorDefine = flavorBuild?.flavorDefine(env) ?? {};
@@ -112,8 +116,8 @@ export default defineConfig(async ({ mode }) => {
     // that resolves a module differently from the build checks a program that
     // does not ship.
     resolve: {
-      alias: mailAliases(__dirname, {
-        overrides: flavorBuild?.flavorAliases(__dirname) ?? [],
+      alias: mailAliases(import.meta.dirname, {
+        overrides: flavorBuild?.flavorAliases(import.meta.dirname) ?? [],
       }),
     },
   };
