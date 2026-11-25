@@ -16,6 +16,7 @@ import {
   hideAgainEndsShow,
   hideAgainFor,
   showWordsFor,
+  shownEarlyWindow,
 } from "@/lib/mail/mailbox-hide";
 
 import { keptFromOnHours } from "@/lib/mail/account-rhythm";
@@ -44,6 +45,14 @@ suite(async () => {
   const shownEarly = { ...evenings, shownUntil: end };
   check("shown early inside a window stays shown till it ends", !mailboxHideVerdict(shownEarly, at(23)).hidden);
   check("and the next window hides it again", mailboxHideVerdict(shownEarly, new Date(2026, 9, 6, 19)).hidden);
+
+  // During the 15 minutes (mockup 10a): until when, and hidden again after.
+  const fifteen = { ...evenings, shownUntil: at(21, 15).getTime() };
+  const early = shownEarlyWindow(fifteen, at(21));
+  check("shown early has a window", early?.endsAt.getTime() === at(21, 15).getTime());
+  check("and the schedule hides it after", early?.then.hidden === true && early.then.reason === "schedule");
+  check("no window once it ran out", shownEarlyWindow(fifteen, at(21, 20)) === null);
+  check("no window outside the schedule's hours", shownEarlyWindow({ ...evenings, shownUntil: at(12, 15).getTime() }, at(12)) === null);
   // Shown early, the menu offers the schedule back, until the window ends.
   check("shown early says when its window ends", shownEarlyUntil(shownEarly, at(23)) === "08:00", shownEarlyUntil(shownEarly, at(23)));
   check("not outside a window", shownEarlyUntil(shownEarly, new Date(2026, 9, 6, 12)) === null);

@@ -709,6 +709,8 @@ export const AccountTabs = React.memo(function AccountTabs() {
     now: accounts.pauseNow,
     pauseUntil: accounts.pauseMailUntil,
     resume: accounts.resumeMail,
+    getEarly: accounts.getMailEarly,
+    endEarly: accounts.endMailEarly,
     setQuietHours: accounts.setMailQuietHours,
     setFollowAllHours: accounts.setFollowAllHours,
     setUnpauseWords: accounts.setUnpauseWords,

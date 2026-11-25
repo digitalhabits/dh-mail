@@ -6,6 +6,7 @@ import * as React from "react";
 
 import {
   MAIL_PAUSE_DEFAULT,
+  fetchEarlyEnd,
   mailPauseVerdict,
   pauseAccountKey,
   readPauseState,
@@ -60,7 +61,10 @@ function withAccountRow(
   const current = state.accounts?.[key] ?? {};
   const nextRow = patch(current);
   const accounts = { ...state.accounts };
-  if (!nextRow || (!nextRow.pausedUntil && nextRow.quietHours == null && nextRow.unpauseWords == null)) {
+  if (
+    !nextRow ||
+    (!nextRow.pausedUntil && nextRow.quietHours == null && nextRow.unpauseWords == null && !nextRow.fetchEarlyUntil)
+  ) {
     delete accounts[key];
   } else {
     accounts[key] = nextRow;
@@ -129,6 +133,13 @@ export function useMailPause(): {
   pauseUntil: (until: number, account?: string | null, from?: string) => void;
   /** Clear the pause on All, or on one mailbox. Hours stay. */
   resume: (account?: string | null) => void;
+  /**
+   * New mail for a while (FETCH_EARLY_MINUTES), during hours that pause it.
+   * The hours stay, and pause it again after.
+   */
+  getEarly: (account?: string | null) => void;
+  /** End new mail got early now: the hours pause it again. */
+  endEarly: (account?: string | null) => void;
   setQuietHours: (windows: MailQuietWindow[], account?: string | null) => void;
   /** True: this mailbox uses All's hours again. */
   setFollowAllHours: (account: string, follow: boolean) => void;
@@ -204,6 +215,42 @@ export function useMailPause(): {
       });
       write(next);
       setState(next);
+    },
+    getEarly: (account) => {
+      const until = fetchEarlyEnd(new Date());
+      diagEvent("new mail early", { mailbox: account ? mailboxNumber(account) : "all", until: diagTime(until) });
+      if (!account) {
+        const next = { ...read(), fetchEarlyUntil: until };
+        write(next);
+        setState(next);
+        return;
+      }
+      const next = withAccountRow(read(), account, (row) => ({ ...row, fetchEarlyUntil: until }));
+      write(next);
+      setState(next);
+    },
+    /*
+      The mailbox's own early time, or else All's: whichever lets this
+      mailbox fetch now. Back to the hours takes no words.
+    */
+    endEarly: (account) => {
+      diagEvent("new mail early ended", { mailbox: account ? mailboxNumber(account) : "all" });
+      const current = read();
+      const own = account ? current.accounts?.[pauseAccountKey(account)]?.fetchEarlyUntil : undefined;
+      if (account && own) {
+        const next = withAccountRow(current, account, (row) => {
+          const { fetchEarlyUntil, ...rest } = row;
+          void fetchEarlyUntil;
+          return rest;
+        });
+        write(next);
+        setState(next);
+        return;
+      }
+      const { fetchEarlyUntil, ...rest } = current;
+      void fetchEarlyUntil;
+      write(rest);
+      setState(rest);
     },
     setQuietHours: (windows, account) => {
       diagEvent("new-mail hours set", { mailbox: account ? mailboxNumber(account) : "all", quiet: diagHours(windows) });

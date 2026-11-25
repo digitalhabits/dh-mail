@@ -28,11 +28,13 @@ import {
   scheduleWindowEnd,
   shownEarlyEnd,
   shownEarlyUntil,
+  shownEarlyWindow,
   showWordsFor,
   strandedHandHide,
   type MailboxHide,
   type MailboxHideState,
   type MailboxHideVerdict,
+  type ShownEarly,
 } from "@/lib/mail/mailbox-hide";
 import { listHiddenMailboxes, setMailboxInMailTab } from "@/lib/mail/mailbox-visibility";
 import type { MailQuietWindow } from "@/lib/mail/quiet-hours";
@@ -80,6 +82,8 @@ export type MailboxHideStatus = MailboxHideVerdict & {
   byHand: boolean;
   /** Shown early inside a schedule window: when that window ends ("HH:MM"). */
   shownEarlyUntil: string | null;
+  /** Shown early while something would hide it: until when, and what then. */
+  shownEarly: ShownEarly | null;
 };
 
 export type MailboxHideControls = {
@@ -283,6 +287,7 @@ export function useMailboxHide({
         // By hand: no words to type to show it, with an end or without.
         byHand: isHidden && (!verdict.hidden || verdict.reason === "hand"),
         shownEarlyUntil: isHidden ? null : shownEarlyUntil(row, new Date(minute)),
+        shownEarly: isHidden ? null : shownEarlyWindow(row, new Date(minute)),
       };
     },
     [state, minute, hiddenNow]

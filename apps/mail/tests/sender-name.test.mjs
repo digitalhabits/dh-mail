@@ -11,6 +11,7 @@ import {
   SENDER_NAME_TTL_MS,
   cleanDisplayName,
   formatFromHeader,
+  pickNameFromSentMail,
   pickSendAsName,
   senderNameIsStale,
 } from "@/lib/mail/sender-name";
@@ -107,6 +108,61 @@ suite(async () => {
   );
   check("nothing listed is no name", pickSendAsName([], me) === "");
   check("and neither is no answer at all", pickSendAsName(undefined, me) === "");
+
+  // --- The name Gmail wrote on their own sent mail ---------------------------
+  //
+  // An address set to "use the account name" has no name in the send-as list:
+  // Gmail adds it only to mail Gmail builds. That mail is in their Sent folder.
+
+  check(
+    "a quoted name on their own sent mail is the name",
+    pickNameFromSentMail([`"Vera Holm" <${me}>`], me) === "Vera Holm"
+  );
+  check(
+    "so is an unquoted one",
+    pickNameFromSentMail([`Vera Holm <${me}>`], me) === "Vera Holm"
+  );
+  check(
+    "mail this app sent with the bare address says nothing",
+    pickNameFromSentMail([me, me, `Vera Holm <${me}>`], me) === "Vera Holm"
+  );
+  check(
+    "only bare addresses is no name, the way it sent before",
+    pickNameFromSentMail([me, `<${me}>`], me) === ""
+  );
+  check(
+    "a name that is only the address again is no name",
+    pickNameFromSentMail([`"${me}" <${me}>`], me) === ""
+  );
+  check(
+    "mail sent as another of their addresses does not count",
+    pickNameFromSentMail([`"V. Holm" <work@example.com>`], me) === ""
+  );
+  check(
+    "the address is matched whatever its capitals",
+    pickNameFromSentMail([`Vera Holm <${me.toUpperCase()}>`], me) === "Vera Holm"
+  );
+  check(
+    "one odd client cannot rename them",
+    pickNameFromSentMail(
+      [`vera <${me}>`, `Vera Holm <${me}>`, `Vera Holm <${me}>`],
+      me
+    ) === "Vera Holm"
+  );
+  check(
+    "on a tie the newest wins",
+    pickNameFromSentMail([`V. Holm <${me}>`, `Vera Holm <${me}>`], me) === "V. Holm"
+  );
+  check(
+    "a non-ASCII name arrives decoded",
+    pickNameFromSentMail([`=?UTF-8?B?VmVyYSBIb2xtw7g=?= <${me}>`], me) === "Vera Holmø"
+  );
+  check(
+    "a newline in a sent name cannot reach our header",
+    pickNameFromSentMail([`"Vera\r\nBcc: thief@example.com" <${me}>`], me) ===
+      "Vera Bcc: thief@example.com"
+  );
+  check("nothing sent is no name", pickNameFromSentMail([], me) === "");
 
   // --- Asking again ---------------------------------------------------------
 

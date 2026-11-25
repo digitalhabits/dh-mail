@@ -57,6 +57,12 @@ export type MailPauseState = {
    * none, the default. See unpause-friction.ts.
    */
   unpauseWords?: number;
+  /**
+   * New mail comes in until this moment, in epoch milliseconds, whatever
+   * the hours say: the reader typed the words to get new mail early. See
+   * `FETCH_EARLY_MINUTES`. On All it lets every mailbox fetch.
+   */
+  fetchEarlyUntil?: number;
 };
 
 /** What one mailbox holds on top of All. */
@@ -68,7 +74,66 @@ export type MailAccountPause = {
    * Absent: the state's, every account's. 0 is kept: none, for this one.
    */
   unpauseWords?: number;
+  /** New mail comes in until this moment, whatever its hours say. */
+  fetchEarlyUntil?: number;
 };
+
+/**
+ * How long new mail comes in when the reader gets it early, during hours
+ * that pause it. Then the hours pause it again: the same shape as "Show in
+ * Mail for 15 minutes" on the Shown side. A way round the hours for when
+ * something cannot wait, not a way to switch them off.
+ */
+export const FETCH_EARLY_MINUTES = 15;
+
+/** When new mail got early stops coming in, for a press now. */
+export function fetchEarlyEnd(now: Date): number {
+  return now.getTime() + FETCH_EARLY_MINUTES * 60_000;
+}
+
+/** The later of All's and this mailbox's early end, or undefined. */
+function fetchEarlyFor(state: MailPauseState, email: string | null): number | undefined {
+  const own = email ? accountPauseRow(state, email)?.fetchEarlyUntil : undefined;
+  const all = state.fetchEarlyUntil;
+  const end = Math.max(own ?? 0, all ?? 0);
+  return end > 0 ? end : undefined;
+}
+
+/** Getting new mail early now: until when, and what pauses it again then. */
+export type FetchEarly = {
+  endsAt: Date;
+  /** The verdict at that moment, as if not got early. */
+  then: MailPauseVerdict;
+};
+
+/**
+ * Getting new mail early, while hours pause this mailbox (or All, for
+ * null): until when, and the pause after. Null when it is not.
+ */
+export function fetchEarlyWindow(state: MailPauseState, email: string | null, now: Date): FetchEarly | null {
+  const end = fetchEarlyFor(state, email);
+  if (!end || end <= now.getTime()) return null;
+  const plain = withoutEarly(state);
+  const verdict = email ? mailPauseVerdictForAccount(plain, email, now) : mailPauseVerdict(plain, now);
+  if (!verdict.paused) return null;
+  const endsAt = new Date(end);
+  return { endsAt, then: email ? mailPauseVerdictForAccount(plain, email, endsAt) : mailPauseVerdict(plain, endsAt) };
+}
+
+/** The state with every early time taken off. */
+function withoutEarly(state: MailPauseState): MailPauseState {
+  const { fetchEarlyUntil: _all, ...rest } = state;
+  void _all;
+  if (!rest.accounts) return rest;
+  const accounts = Object.fromEntries(
+    Object.entries(rest.accounts).map(([key, row]) => {
+      const { fetchEarlyUntil: _own, ...kept } = row;
+      void _own;
+      return [key, kept];
+    })
+  );
+  return { ...rest, accounts };
+}
 
 export const MAIL_PAUSE_DEFAULT: MailPauseState = { quietHours: [] };
 
@@ -184,6 +249,10 @@ export function mailPauseVerdict(
       untilClock: formatClock(minutesOfDay(until)),
     };
   }
+  // Got early: the hours do not pause it until this runs out.
+  if (state.fetchEarlyUntil && state.fetchEarlyUntil > now.getTime()) {
+    return { paused: false, reason: null, until: null, untilClock: null };
+  }
   const first = quietEnd(state.quietHours, now);
   if (first == null) {
     return { paused: false, reason: null, until: null, untilClock: null };
@@ -261,6 +330,7 @@ export function mailPauseVerdictForAccount(
     {
       pausedUntil: row?.pausedUntil,
       quietHours: row?.quietHours ?? state.quietHours,
+      fetchEarlyUntil: fetchEarlyFor(state, email),
     },
     now
   );
@@ -279,7 +349,7 @@ export function mailPauseVerdictForScope(
 ): MailPauseVerdict {
   if (!scope) {
     return mailPauseVerdict(
-      { pausedUntil: state.pausedUntil, quietHours: state.quietHours },
+      { pausedUntil: state.pausedUntil, quietHours: state.quietHours, fetchEarlyUntil: state.fetchEarlyUntil },
       now
     );
   }
@@ -320,7 +390,7 @@ export function mailPauseChip(
   now: Date
 ): MailPauseChip {
   const all = mailPauseVerdict(
-    { pausedUntil: state.pausedUntil, quietHours: state.quietHours },
+    { pausedUntil: state.pausedUntil, quietHours: state.quietHours, fetchEarlyUntil: state.fetchEarlyUntil },
     now
   );
   if (all.paused) {
@@ -338,6 +408,7 @@ export function mailPauseChip(
       {
         pausedUntil: row?.pausedUntil,
         quietHours: row?.quietHours ?? [],
+        fetchEarlyUntil: fetchEarlyFor(state, email),
       },
       now
     ).paused;
@@ -348,6 +419,7 @@ export function mailPauseChip(
       {
         pausedUntil: row?.pausedUntil,
         quietHours: row?.quietHours ?? [],
+        fetchEarlyUntil: fetchEarlyFor(state, quieted[0]),
       },
       now
     );
@@ -364,6 +436,7 @@ export function mailPauseChip(
       {
         pausedUntil: accountPauseRow(state, quieted[0])?.pausedUntil,
         quietHours: accountPauseRow(state, quieted[0])?.quietHours ?? [],
+        fetchEarlyUntil: fetchEarlyFor(state, quieted[0]),
       },
       now
     );
@@ -448,11 +521,13 @@ export function readPauseState(raw: unknown): MailPauseState {
         : undefined;
   const accounts = readAccountPauses((value as { accounts?: unknown }).accounts);
   const unpauseWords = normaliseUnpauseWords((value as { unpauseWords?: unknown }).unpauseWords);
+  const fetchEarlyUntil = readTime((value as { fetchEarlyUntil?: unknown }).fetchEarlyUntil);
   return {
     ...(pausedUntil ? { pausedUntil } : null),
     quietHours,
     ...(accounts ? { accounts } : null),
     ...(unpauseWords ? { unpauseWords } : null),
+    ...(fetchEarlyUntil ? { fetchEarlyUntil } : null),
   };
 }
 
@@ -467,6 +542,7 @@ function readAccountPauses(
       pausedUntil?: unknown;
       quietHours?: unknown;
       unpauseWords?: unknown;
+      fetchEarlyUntil?: unknown;
     };
     const parsedHours = Array.isArray(value.quietHours)
       ? readQuietHourRows(value.quietHours)
@@ -477,14 +553,21 @@ function readAccountPauses(
         ? value.pausedUntil
         : undefined;
     const words = typeof value.unpauseWords === "number" ? normaliseUnpauseWords(value.unpauseWords) : undefined;
-    if (until == null && parsedHours == null && words == null) continue;
+    const early = readTime(value.fetchEarlyUntil);
+    if (until == null && parsedHours == null && words == null && early == null) continue;
     out[pauseAccountKey(email)] = {
       ...(until != null ? { pausedUntil: until } : null),
       ...(parsedHours ? { quietHours: parsedHours } : null),
       ...(words != null ? { unpauseWords: words } : null),
+      ...(early != null ? { fetchEarlyUntil: early } : null),
     };
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+/** A stored moment, or undefined when it is not one. */
+function readTime(raw: unknown): number | undefined {
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : undefined;
 }
 
 function readQuietHourRows(rows: unknown[]): MailQuietWindow[] {

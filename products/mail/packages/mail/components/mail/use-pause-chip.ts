@@ -17,7 +17,7 @@ import { formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { accountChipLabels, formatAccountChipLabel } from "@/lib/mail/account-labels";
 import { useMailPause } from "@/components/mail/use-mail-pause";
 import { requestUnpauseChallenge } from "@/components/mail/UnpauseChallenge";
-import { fetchingAccounts, mailPauseChip, mailPauseVerdictForAccount, unpauseWordsFor } from "@/lib/mail/quiet-hours";
+import { fetchingAccounts, mailPauseChip, mailPauseVerdict, mailPauseVerdictForAccount, quietHoursForAccount, unpauseWordsFor } from "@/lib/mail/quiet-hours";
 import { useMailT } from "@/lib/mail/i18n";
 
 export function usePauseChip({
@@ -39,6 +39,8 @@ export function usePauseChip({
     now: pauseNow,
     pauseUntil: pauseMailUntil,
     resume: resumeNow,
+    getEarly: getEarlyNow,
+    endEarly: endEarlyNow,
     setQuietHours: setMailQuietHours,
     setFollowAllHours,
     setUnpauseWords,
@@ -59,6 +61,20 @@ export function usePauseChip({
       })();
     },
     [resumeNow, pauseState]
+  );
+  /*
+    Hours that pause new mail have a way round as well: the same words,
+    then new mail for a while (FETCH_EARLY_MINUTES), and then the hours
+    again. Without it, the words promised a way round that nothing gave.
+  */
+  const getMailEarly = React.useCallback(
+    (account?: string | null) => {
+      void (async () => {
+        if (!(await requestUnpauseChallenge(unpauseWordsFor(pauseState, account ?? null)))) return;
+        getEarlyNow(account);
+      })();
+    },
+    [getEarlyNow, pauseState]
   );
   const pauseChip = mailPauseChip(pauseState, accountEmails, pauseNow);
   const pauseChipUntil = pauseChip.until
@@ -102,23 +118,26 @@ export function usePauseChip({
   const resumeFetching = React.useCallback(() => {
     void (async () => {
       if (!(await requestUnpauseChallenge(unpauseWords))) return;
-      if (pause.paused && pause.reason === "pause") {
-        resumeNow();
-        return;
-      }
+      // All's own pause ends; All's hours let new mail in for a while.
+      if (pause.paused && pause.reason === "pause") resumeNow();
+      if (mailPauseVerdict({ quietHours: pauseState.quietHours }, pauseNow).paused) getEarlyNow();
+      // And each mailbox still paused: its own pause ends, and its hours,
+      // if they pause it now, let new mail in for a while.
       for (const email of accountEmails) {
-        if (mailPauseVerdictForAccount(pauseState, email, pauseNow).paused) {
-          resumeNow(email);
-        }
+        if (!mailPauseVerdictForAccount(pauseState, email, pauseNow).paused) continue;
+        resumeNow(email);
+        if (mailPauseVerdict({ quietHours: quietHoursForAccount(pauseState, email) }, pauseNow).paused) getEarlyNow(email);
       }
     })();
-  }, [accountEmails, pause.paused, pause.reason, pauseNow, pauseState, resumeNow, unpauseWords]);
+  }, [accountEmails, getEarlyNow, pause.paused, pause.reason, pauseNow, pauseState, resumeNow, unpauseWords]);
 
   return {
     pauseState,
     pauseNow,
     pauseMailUntil,
     resumeMail,
+    getMailEarly,
+    endMailEarly: endEarlyNow,
     setMailQuietHours,
     setFollowAllHours,
     unpauseWords,

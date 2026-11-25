@@ -360,6 +360,27 @@ fn search_keeps_the_newest_match_among_many_better_ones() {
 }
 
 #[test]
+fn a_searched_thread_opens_on_its_newest_match() {
+  // A KU tester, 2026-11-24: a long thread opened at the first message that
+  // named the word, which ranked best, and not where the conversation had
+  // got to. The newest hit is the one it opens on.
+  let db = db();
+  let mut first = msg("m1", "t1", 1, 1_000, &[INBOX]);
+  first.subject = "Brobygning Brobygning".into();
+  first.snippet = "Brobygning Brobygning Brobygning, about the project with Brobygning".into();
+  let mut middle = msg("m2", "t1", 2, 2_000, &[INBOX]);
+  middle.snippet = "nothing about it here".into();
+  let mut latest = msg("m3", "t1", 3, 3_000, &[INBOX]);
+  latest.snippet = "one more word on Brobygning before Friday".into();
+  db.messages_upsert("vera@example.com", &[first, middle, latest]).unwrap();
+  let out = db
+    .messages_search(&json!({ "accounts": ["vera@example.com"], "q": "brobygning" }))
+    .unwrap();
+  assert_eq!(out["threads"][0]["threadId"], "t1");
+  assert_eq!(out["threads"][0]["focusMessageId"], "m3", "the newest hit, not the best-ranked one");
+}
+
+#[test]
 fn search_finds_subjects_and_then_bodies_once_fetched() {
   let db = db();
   db.messages_upsert(

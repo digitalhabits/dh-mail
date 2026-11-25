@@ -69,6 +69,9 @@ export function PointerMenu({
   React.useEffect(() => {
     const onDown = (event: MouseEvent) => {
       if (ref.current?.contains(event.target as Node)) return;
+      // A submenu beside the menu is part of it (account-hours-menu's
+      // "Pause for longer"). It sits outside, as the menu scrolls inside.
+      if (event.target instanceof Element && event.target.closest("[data-pointer-menu-flyout]")) return;
       onDismiss();
     };
     const onKey = (event: KeyboardEvent) => {

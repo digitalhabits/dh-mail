@@ -16,13 +16,19 @@
  * than losing it.
  */
 
-import { listGmailSendAs } from "@/lib/gmail/api";
+import {
+  getMessageMetadata,
+  headerValue,
+  listGmailSendAs,
+  listMessageIds,
+} from "@/lib/gmail/api";
 import { accessTokenFor } from "@/lib/mail/mail-gmail-token";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import { mailStore } from "@/lib/mail/store";
 import type { MailProvider } from "@/lib/mail/types";
 import {
   cleanDisplayName,
+  pickNameFromSentMail,
   pickSendAsName,
   senderNameIsStale,
 } from "@/lib/mail/sender-name";
@@ -149,7 +155,9 @@ async function refreshProviderName(
   try {
     // The send path already holds a token; the settings panel does not.
     const accessToken = token ?? (await accessTokenFor(account));
-    const name = pickSendAsName(await listGmailSendAs(accessToken), account);
+    const name =
+      pickSendAsName(await listGmailSendAs(accessToken), account) ||
+      (await nameFromSentMail(accessToken, account));
     await writeStored(account, {
       ...stored,
       provider: name,
@@ -162,4 +170,35 @@ async function refreshProviderName(
     console.warn(`mail: could not read the sender name for ${account}`, error);
     return known;
   }
+}
+
+/** At most this many of the newest sent messages are read for a name. */
+const SENT_MAIL_LIMIT = 100;
+/** Read this many at a time, and stop at the first batch that holds a name. */
+const SENT_MAIL_BATCH = 10;
+
+/**
+ * The name Gmail wrote on this address's own sent mail, or "".
+ *
+ * For an address set to "use the account name", Gmail's send-as list has no
+ * name (see `pickNameFromSentMail`). Mail from this app carried the bare
+ * address, so the newest sent mail can hold no name at all; mail sent from
+ * Gmail's page, phone app or auto-reply carries the account name. Once a
+ * name is found, this app's own mail carries it too, so later reads stop at
+ * the first batch. Read once a day with the rest.
+ */
+async function nameFromSentMail(accessToken: string, account: string): Promise<string> {
+  const { ids } = await listMessageIds(accessToken, `in:sent from:${account}`);
+  const froms: string[] = [];
+  const wanted = ids.slice(0, SENT_MAIL_LIMIT);
+  for (let start = 0; start < wanted.length; start += SENT_MAIL_BATCH) {
+    const batch = wanted.slice(start, start + SENT_MAIL_BATCH);
+    const messages = await Promise.all(
+      batch.map((id) => getMessageMetadata(accessToken, id, ["From"]))
+    );
+    froms.push(...messages.map((message) => headerValue(message, "From")));
+    const name = pickNameFromSentMail(froms, account);
+    if (name) return name;
+  }
+  return "";
 }

@@ -804,6 +804,7 @@ export async function buildExchangeDraftMime(input: OutgoingMail): Promise<strin
  * Edit (docs/mail-send-later.md, 4.7).
  */
 async function scheduleFromDraft(input: OutgoingMail, provider: "gmail" | "exchange", raw: string): Promise<void> {
+  const words = scheduledWords(input);
   await scheduleAsDraft({
     account: input.account,
     provider,
@@ -813,10 +814,30 @@ async function scheduleFromDraft(input: OutgoingMail, provider: "gmail" | "excha
     subject: input.subject,
     to: input.to,
     cc: input.cc ?? [],
-    bodyText: input.body,
-    bodyHtml: input.html,
+    bodyText: words.text,
+    bodyHtml: words.html,
     sendAt: input.sendAt ?? "",
   });
+}
+
+/**
+ * The words a schedule keeps, for the list and for Edit.
+ *
+ * A reply keeps its own words: Edit opens it in the conversation, where the
+ * quote is built again. A forward has nothing to build it from. Edit opens
+ * it as a new message, so the forwarded message goes into the words below
+ * the note, as "Edit as new" does. Without it, Edit (which takes the
+ * scheduled message off) would lose the message that was forwarded.
+ */
+export function scheduledWords(
+  input: Pick<OutgoingMail, "body" | "html" | "forward">
+): { text: string; html: string | undefined } {
+  if (!input.forward) return { text: input.body, html: input.html };
+  const text = [input.body.trimEnd(), forwardedPlainText(input.forward)]
+    .filter(Boolean)
+    .join("\n\n");
+  const html = `${input.html ?? ""}${forwardedHtml(input.forward)}`;
+  return { text, html };
 }
 
 /**

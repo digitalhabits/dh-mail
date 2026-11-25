@@ -1,5 +1,18 @@
 ## What is new
 
+**A way round your schedule (0.12.16)**
+- When your schedule pauses new mail, the menu of the mailbox now gives you a way round it. Type the words, and new mail comes in for 15 minutes. Then your schedule pauses it again. Before, the menu only let you pause for longer.
+- "Start fetching again now" works the same way when your schedule paused the mail.
+- When a mailbox is hidden or its new mail is paused, its menu says so in one sentence, and who did it: you or your schedule. Under it are the way round, "Pause for longer" or "Hide for longer", and links to the schedule and to the words to type.
+- During the 15 minutes, the menu counts down, and "Pause now" or "Hide now" takes you back to your schedule with no words to type. The tab of the mailbox shows the minutes that are left.
+
+**Fixes in 0.12.16**
+- A conversation that you open from a search opens at the newest mail that has the words. Before, it opened at the first mail that had them, at the top of a long conversation.
+- You can use Send later when you forward a mail.
+- "13. december" at the start of a line stays as you wrote it. Before, it became a numbered list that started at "1.". Only "1. " starts a numbered list now.
+- A Gmail address that uses your Google account name sends with that name. Before, mail from the app showed only the address.
+- A link in a PDF opens in your browser, not in the Mail window.
+
 **Updates in 0.12.15**
 - The parts that the app is built from are updated to their newest versions. The app works as before.
 

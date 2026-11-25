@@ -189,7 +189,7 @@ export async function listOutlookConversationSummaries(
   conversations: {
     conversationId: string;
     latest: GraphMessage;
-    /** First message seen in this page (search relevance order). */
+    /** The newest matching message in this page: the thread opens on it. */
     focusMessageId: string;
     unread: boolean;
     messageCount: number;
@@ -208,7 +208,7 @@ export async function listOutlookConversationSummaries(
     string,
     {
       latest: GraphMessage;
-      /** First message seen (search relevance order) for deep-link. */
+      /** The newest matching message seen, for the deep link. */
       focusMessageId: string;
       unread: boolean;
       messageCount: number;
@@ -232,7 +232,12 @@ export async function listOutlookConversationSummaries(
         existing.latest.receivedDateTime || existing.latest.sentDateTime || ""
       );
       const nextAt = Date.parse(m.receivedDateTime || m.sentDateTime || "");
-      if (nextAt > existingAt) existing.latest = m;
+      // The newest hit is the one the thread opens on, whatever order the
+      // search answered in: where the conversation has got to.
+      if (nextAt > existingAt) {
+        existing.latest = m;
+        existing.focusMessageId = m.id;
+      }
     }
     if (byConv.size >= options.maxConversations) break;
   }

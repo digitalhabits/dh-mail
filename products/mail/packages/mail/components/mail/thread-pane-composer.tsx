@@ -897,8 +897,8 @@ function ComposerSendBar({
             account={fromAccount}
             armed={forwarding ? null : armedSendAt}
             onArm={setArmedSendAt}
-            schedule={canSendLater && !forwarding}
-            onPick={(iso) => void send(iso)}
+            schedule={canSendLater}
+            onPick={(iso) => void (forwarding ? sendForward(iso) : send(iso))}
             extras={[
               ...(mailHasTeamRecords() &&
               !forwarding &&

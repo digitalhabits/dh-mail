@@ -399,6 +399,44 @@ mod quit_guard {
   }
 }
 
+/// Sends every click on a link to the web to the reader's browser.
+///
+/// Two kinds of link. A new-window link (`target="_blank"`) is caught first,
+/// before the page's own handlers, because the web view has no new window to
+/// give it. Any other link to the web is caught last, after the page's own
+/// handlers, so a link the page already opened is not opened twice. The links
+/// in a PDF are of that second kind: without this, a click on one loaded the
+/// web page into the Mail window itself, and there was no way back.
+const EXTERNAL_LINKS_JS: &str = r#"(() => {
+  if (window.__dhExternalLinksHooked) return;
+  window.__dhExternalLinksHooked = true;
+  const webLink = (event) => {
+    const el = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!el || !/^https?:/i.test(el.href)) return null;
+    return el;
+  };
+  const openOutside = (event, el) => {
+    const invoke =
+      (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
+      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
+    if (!invoke) return;
+    event.preventDefault();
+    invoke('plugin:opener|open_url', { url: el.href });
+  };
+  document.addEventListener('click', (event) => {
+    const el = webLink(event);
+    if (el && el.target === '_blank') openOutside(event, el);
+  }, true);
+  window.addEventListener('click', (event) => {
+    if (event.defaultPrevented) return;
+    const el = webLink(event);
+    if (!el || el.target === '_blank') return;
+    let sameOrigin = false;
+    try { sameOrigin = new URL(el.href).origin === window.location.origin; } catch (_) {}
+    if (!sameOrigin) openOutside(event, el);
+  });
+})();"#;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let builder = tauri::Builder::default()
@@ -588,24 +626,9 @@ pub fn run() {
           if !is_chrome {
             let _ = window.eval(splash_hide_js());
           }
-          let _ = window.eval(
-            r#"(() => {
-              if (window.__dhExternalLinksHooked) return;
-              window.__dhExternalLinksHooked = true;
-              document.addEventListener('click', (event) => {
-                const el = event.target instanceof Element
-                  ? event.target.closest('a[target="_blank"]')
-                  : null;
-                if (!el || !el.href || !/^https?:/i.test(el.href)) return;
-                const invoke =
-                  (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
-                  (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
-                if (!invoke) return;
-                event.preventDefault();
-                invoke('plugin:opener|open_url', { url: el.href });
-              }, true);
-            })();"#,
-          );
+          // Links to the web open in the reader's browser, never in Mail's
+          // own window: a page loaded there has no way back to the mail.
+          let _ = window.eval(EXTERNAL_LINKS_JS);
         }
       }
     })

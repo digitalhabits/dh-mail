@@ -28,12 +28,13 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { EyeOff, Pause } from "lucide-react";
+import { Eye, EyeOff, Pause, RefreshCw } from "lucide-react";
 
 import { AccountMark } from "@/components/mail/AccountMark";
 import { AutoReplyMark } from "@/components/mail/AutoReplyMark";
 import { AccountHoursMenu, type PauseControls } from "@/components/mail/account-hours-menu";
 import { hiddenStatusText, hiddenUntilLabel } from "@/components/mail/hidden-status";
+import { hoursEarlyWindow, minutesLeft } from "@/components/mail/hours-status-view";
 import type { MailboxHideControls } from "@/components/mail/use-mailbox-hide";
 import { useAccountMarks } from "@/lib/mail/account-mark";
 import type { AccountChipLabel } from "@/lib/mail/account-labels";
@@ -307,8 +308,20 @@ export function MailAccountTabs({
       selected[0].toLowerCase() === email.toLowerCase();
     const quietTip = quietUntil?.get(email.trim().toLowerCase());
     const awayTip = autoReplyOn?.get(email.trim().toLowerCase());
+    // Shown, or getting new mail, early: the minutes left, on the tab
+    // (mockup 10a). The menu says the rest.
+    const shownEarly = hide && pause ? hoursEarlyWindow("shown", email, hide, pause) : null;
+    const fetchEarly = !shownEarly && hide && pause ? hoursEarlyWindow("fetch", email, hide, pause) : null;
+    const early = shownEarly ?? fetchEarly;
     const inner = (
       <>
+        {early ? (
+          shownEarly ? (
+            <Eye data-tab-early="" className="h-3 w-3 shrink-0 text-[var(--mail-hours-accent)]" aria-hidden />
+          ) : (
+            <RefreshCw data-tab-early="" className="h-3 w-3 shrink-0 text-[var(--mail-hours-accent)]" aria-hidden />
+          )
+        ) : null}
         {/* Paused: a pause mark before the mailbox's mark. */}
         {quietTip ? (
           <Pause
@@ -326,6 +339,11 @@ export function MailAccountTabs({
         <span className="max-w-[10rem] truncate">
           {label?.primary ?? email}
         </span>
+        {early && pause ? (
+          <span data-tab-early-left="" className="shrink-0 tabular-nums opacity-70">
+            · {t("hoursTabMinutesLeft", { count: minutesLeft(early.endsAt, pause.now) })}
+          </span>
+        ) : null}
         {/* After the name, as a word would be: the corner badge sat on
             the tab's edge and was the one thing out of line in the row. */}
         {awayTip ? (

@@ -147,6 +147,8 @@ export type MailAccountsSlice = ReturnType<typeof useMailAccountsState> &
     | "pauseNow"
     | "pauseMailUntil"
     | "resumeMail"
+    | "getMailEarly"
+    | "endMailEarly"
     | "setMailQuietHours"
     | "setFollowAllHours"
     | "setUnpauseWords"
@@ -195,6 +197,8 @@ export function useAccountsSlice({
     pauseNow,
     pauseMailUntil,
     resumeMail,
+    getMailEarly,
+    endMailEarly,
     setMailQuietHours,
     setFollowAllHours,
     setUnpauseWords,
@@ -211,6 +215,8 @@ export function useAccountsSlice({
     pauseNow,
     pauseMailUntil,
     resumeMail,
+    getMailEarly,
+    endMailEarly,
     setMailQuietHours,
     setFollowAllHours,
     setUnpauseWords,

@@ -363,9 +363,8 @@ impl MailDb {
     // The newest matches, whether by words or by filters alone: the list is
     // newest first. Cut by relevance, a long new reply that names the
     // sender only in its From line ranked below hundreds of older mails
-    // from him and never showed (a tester, 2026-10-05). The relevance still
-    // picks which message of a thread is marked. More than the list can
-    // hold, because a search inside a folder drops threads after this.
+    // from him and never showed (a tester, 2026-10-05). More than the list
+    // can hold, because a search inside a folder drops threads after this.
     sql.push_str(" ORDER BY m.sent_at DESC LIMIT 2000");
     let mut stmt = conn.prepare(&sql)?;
     let hits: Vec<(f64, String, String, String)> = stmt
@@ -376,13 +375,14 @@ impl MailDb {
     if hits.is_empty() {
       return Ok(json!({ "threads": [], "handled": true }));
     }
-    // Best hit per (account, thread).
-    let mut best: HashMap<(String, String), (f64, String)> = HashMap::new();
-    for (score, account, thread_id, message_id) in hits {
-      let entry = best.entry((account, thread_id)).or_insert((f64::MAX, String::new()));
-      if score < entry.0 {
-        *entry = (score, message_id);
-      }
+    // The newest hit per (account, thread) is the message the thread opens
+    // on: where the conversation has got to. The hits are newest first, so
+    // it is each thread's first. The best-ranked hit opened a long thread
+    // at the first message that named the word, at its top (a KU tester,
+    // 2026-11-24), as the older-mail search never did (older_search.rs).
+    let mut best: HashMap<(String, String), String> = HashMap::new();
+    for (_score, account, thread_id, message_id) in hits {
+      best.entry((account, thread_id)).or_insert(message_id);
     }
     // `in:trash` and `in:spam` show the rows that are hidden everywhere else.
     let view = match plan.hidden {
@@ -400,7 +400,7 @@ impl MailDb {
       for chunk in ids.chunks(400) {
         let mut rows = load_threads(&conn, &account, chunk, &view, as_of)?;
         for row in rows.iter_mut() {
-          if let Some((_, message_id)) = best.get(&(account.clone(), row.thread_id.clone())) {
+          if let Some(message_id) = best.get(&(account.clone(), row.thread_id.clone())) {
             row.focus_message_id = Some(message_id.clone());
           }
         }

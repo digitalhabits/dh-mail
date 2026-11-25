@@ -2,6 +2,7 @@
 
 import { urlFromSelection } from "@/lib/link-from-selection";
 import { placeBubbleBar } from "@/lib/bubble-bar-place";
+import { LIST_SHORTCUT_PREFIX } from "@/lib/list-shortcut";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Vendored without sourceMappingURL (package CSS 404s the .map under Next).
@@ -1539,6 +1540,12 @@ export function RichTextEditor({
                 .history?.redo();
               return false;
             },
+          },
+          // Quill's own binding, with a narrower start: "13. december" is a
+          // date, not a list. See list-shortcut.ts. Only the prefix is
+          // given; Quill merges it into its binding and keeps the handler.
+          "list autofill": {
+            prefix: LIST_SHORTCUT_PREFIX,
           },
           softBreak: {
             key: "Enter",

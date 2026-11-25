@@ -19,6 +19,7 @@
  */
 
 import { utf8ToBase64 } from "@/lib/base64";
+import { decodeEncodedWords } from "@/lib/mail/original-message";
 
 /** One address Gmail will let this account send as. */
 export type GmailSendAs = {
@@ -96,6 +97,63 @@ export function pickSendAsName(
   );
   const fallback = list.find((entry) => entry.isDefault || entry.isPrimary);
   return cleanDisplayName((match ?? fallback)?.displayName);
+}
+
+/**
+ * The name Gmail itself put on mail this address sent, or "".
+ *
+ * An address set to "use the account name" in Gmail's settings comes back
+ * from the send-as list with no name at all: Gmail adds the account name
+ * only when Gmail builds the message. We build our own, so that mail went
+ * out with the bare address. The account name is behind a sign-in scope we
+ * do not ask for, but Gmail has already written it on the `From` of every
+ * message sent from Gmail's own page, phone app or auto-reply.
+ *
+ * `fromHeaders` are the `From` values of the account's recent sent mail.
+ * Only those from this address count, a name that is only the address again
+ * does not, and the name seen most often wins (the newest, on a tie), so one
+ * odd client cannot rename the person.
+ */
+export function pickNameFromSentMail(
+  fromHeaders: string[],
+  address: string
+): string {
+  const wanted = cleanDisplayName(address).toLowerCase();
+  const counts = new Map<string, { name: string; count: number; first: number }>();
+  fromHeaders.forEach((header, index) => {
+    const parsed = parseFromHeader(header);
+    if (!parsed || parsed.address.toLowerCase() !== wanted) return;
+    const name = cleanDisplayName(parsed.name);
+    if (!name || name.toLowerCase() === wanted) return;
+    const seen = counts.get(name);
+    if (seen) seen.count += 1;
+    else counts.set(name, { name, count: 1, first: index });
+  });
+  let best: { name: string; count: number; first: number } | null = null;
+  for (const entry of counts.values()) {
+    if (
+      !best ||
+      entry.count > best.count ||
+      (entry.count === best.count && entry.first < best.first)
+    ) {
+      best = entry;
+    }
+  }
+  return best?.name ?? "";
+}
+
+/** `"Name" <a@b>`, `Name <a@b>` or a bare `a@b`, encoded words decoded. */
+function parseFromHeader(header: string): { name: string; address: string } | null {
+  const text = header.trim();
+  const angle = text.match(/^([\s\S]*)<([^<>]+)>\s*$/);
+  if (!angle) {
+    return text.includes("@") ? { name: "", address: text } : null;
+  }
+  let name = angle[1].trim();
+  if (name.startsWith('"') && name.endsWith('"') && name.length >= 2) {
+    name = name.slice(1, -1).replace(/\\(.)/g, "$1");
+  }
+  return { name: decodeEncodedWords(name), address: angle[2].trim() };
 }
 
 /** How long a name read from the provider is trusted before it is read again. */

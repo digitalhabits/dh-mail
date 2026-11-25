@@ -854,8 +854,16 @@ export function useSendOthers({
    *
    * No bubble goes into this thread. The message is for somebody else, and
    * the toast says that it went.
+   *
+   * Send later: the time picked in the menu, and only that. The time a
+   * composer holds on its button belongs to Edit on a scheduled reply, and
+   * must not carry over into a forward. The message waits where a reply
+   * waits (a draft this computer sends, or Outlook's own schedule). The words kept
+   * for the list and for Edit carry the forwarded message as well
+   * (`scheduledWords` in inbox-send.ts), so Edit does not lose it.
    */
-  const sendForward = React.useCallback(() => {
+  const sendForward = React.useCallback(async (sendAtPicked?: string) => {
+    const sendAt = sendAtPicked;
     const flatTo = flattenRecipientsForSend(toList);
     const flatCc = flattenRecipientsForSend(ccList);
     if (!thread || !forwardSource || !flatTo.emails.length || sending) return;
@@ -902,10 +910,29 @@ export function useSendOthers({
         // The message, and the conversation before it newest first: see
         // forward-payload.ts.
         forward: forwardPayload({ source: forwardSource, thread, olderParts }),
+        sendAt,
       },
     };
+    /* Send later: the notice, and the row that shows while it waits. A
+       forward starts a conversation of its own, so the row has no thread. */
+    const later = sendAt
+      ? {
+          notice: await sendLaterNotice(fromAccount, formatSnoozeWakeLabel(sendAt)),
+          pending: {
+            sendAt,
+            account: fromAccount,
+            threadId: "",
+            toName: flatTo.emails[0] ?? "",
+            subject: outgoingSubject,
+            bodyText: replyText,
+            to: flatTo.emails,
+            cc: flatCc.emails,
+            status: "waiting" as const,
+          },
+        }
+      : null;
     // No bubble. The count and Undo: see send-launch.ts.
-    deliver({ account, threadId, localId, entry, bubble: null, quoteMessageId, original: null, later: null });
+    deliver({ account, threadId, localId, entry, bubble: null, quoteMessageId, original: null, later });
   }, [thread,
     forwardSource,
     forwardFiles,

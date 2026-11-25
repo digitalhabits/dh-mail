@@ -165,6 +165,26 @@ export function shownEarlyUntil(row: MailboxHide | undefined, now: Date): string
   return verdict.paused ? verdict.untilClock : null;
 }
 
+/** Shown early now: until when, and what hides it again then. */
+export type ShownEarly = {
+  /** When the early show ends. */
+  endsAt: Date;
+  /** What hides it after that: the verdict at that moment, as if not shown early. */
+  then: MailboxHideVerdict;
+};
+
+/**
+ * Shown early, while something would hide it now: the 15 minutes (or the
+ * reader's "Hide again after") after typing the words. Null otherwise.
+ */
+export function shownEarlyWindow(row: MailboxHide | undefined, now: Date): ShownEarly | null {
+  if (!row?.shownUntil || row.shownUntil <= now.getTime()) return null;
+  const plain = { ...row, shownUntil: undefined };
+  if (!mailboxHideVerdict(plain, now).hidden) return null;
+  const endsAt = new Date(row.shownUntil);
+  return { endsAt, then: mailboxHideVerdict(plain, endsAt) };
+}
+
 /**
  * The moment the schedule window it is in now ends, or null outside one.
  * For "show now" inside a window: shown until the window would have ended.

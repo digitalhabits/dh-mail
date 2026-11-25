@@ -27,6 +27,7 @@ import { HoursSchedulePage } from "@/components/mail/hours-schedule-page";
 import { CalendarTimePicker, MenuHeading } from "@/components/mail/date-time-pick";
 import { hiddenStatusText, hiddenUntilLabel, useHoursLine } from "@/components/mail/hidden-status";
 import { HoursFrictionPage, useFriction } from "@/components/mail/hours-friction-page";
+import { HoursEarlyView, HoursStatusView, hoursEarlyWindow, hoursTabIsOff } from "@/components/mail/hours-status-view";
 import { PointerMenu } from "@/components/mail/PointerMenu";
 import { formatSnoozeClock, formatSnoozeDayTime, formatSnoozeWakeLabel } from "@/components/mail/SnoozeMenu";
 import { hideAgainLabel } from "@/components/mail/pause-panels";
@@ -38,7 +39,9 @@ import { scheduleWindowEnd } from "@/lib/mail/mailbox-hide";
 import { useMailT } from "@/lib/mail/i18n";
 import { readPauseOptions } from "@/lib/mail/pause-options";
 import {
+  FETCH_EARLY_MINUTES,
   accountPauseRow,
+  fetchEarlyEnd,
   mailPauseOptions,
   mailPauseVerdictForAccount,
   mailPauseVerdictForScope,
@@ -57,6 +60,13 @@ export type PauseControls = {
   pauseUntil: (until: number, account?: string | null, from?: string) => void;
   /** Asks for the words first, when there are any. */
   resume: (account?: string | null) => void;
+  /**
+   * New mail for a while during hours that pause it, then the hours again.
+   * Asks for the words first, when there are any.
+   */
+  getEarly: (account?: string | null) => void;
+  /** Back to the hours now, from new mail got early. No words. */
+  endEarly: (account?: string | null) => void;
   setQuietHours: (windows: MailQuietWindow[], account?: string | null) => void;
   setFollowAllHours: (account: string, follow: boolean) => void;
   /** With an account, its own; without, every account's. */
@@ -97,7 +107,12 @@ export function AccountHoursMenu({
   const state = menuStateOf(account, accounts, hide, pause);
   // Opened on what is not as usual: a paused mailbox that is shown opens
   // on its new mail, where the pause is.
-  const [tab, setTab] = React.useState<HoursTab>(() => (state.paused && !state.hidden ? "fetch" : "shown"));
+  // And on new mail while it comes in early: the 15 minutes are the news.
+  const [tab, setTab] = React.useState<HoursTab>(() =>
+    (state.paused && !state.hidden) || (account && !hoursEarlyWindow("shown", account, hide, pause) && hoursEarlyWindow("fetch", account, hide, pause))
+      ? "fetch"
+      : "shown"
+  );
   const [page, setPage] = React.useState<Page>({ kind: "main" });
   /** The words were typed once: nothing more is asked while this menu is open. */
   const [unlocked, setUnlocked] = React.useState(false);
@@ -175,6 +190,46 @@ export function AccountHoursMenu({
             if (tab === "shown") for (const email of account ? [account] : accounts) hide.hideUntil(email, until, "menu: until a time");
             else pause.pauseUntil(until, account, "menu: until a time");
           }}
+        />
+      </PointerMenu>
+    );
+  }
+
+  // During the 15 minutes after the words: how long is left, and back to
+  // the schedule with no words (hours-status-view.tsx).
+  if (account && hoursEarlyWindow(tab, account, hide, pause)) {
+    return (
+      <PointerMenu key={`early-${tab}`} x={x} y={y} onDismiss={onDismiss} backdrop className="w-[26rem] max-w-[calc(100vw-16px)] py-0">
+        <ScheduleTabs tab={tab} onTab={setTab} state={state} plain />
+        <HoursEarlyView
+          tab={tab}
+          account={account}
+          hide={hide}
+          pause={pause}
+          onEditSchedule={() => setPage({ kind: "schedule", account })}
+          onChangeFriction={() => setPage({ kind: "friction", account })}
+          onDone={onDismiss}
+        />
+      </PointerMenu>
+    );
+  }
+
+  // Hidden or paused now: a sentence says so, then the way round and the
+  // way to make it longer (hours-status-view.tsx).
+  if (account && hoursTabIsOff(tab, account, hide, pause)) {
+    return (
+      <PointerMenu key={`status-${tab}`} x={x} y={y} onDismiss={onDismiss} backdrop className="w-[26rem] max-w-[calc(100vw-16px)] py-0">
+        <ScheduleTabs tab={tab} onTab={setTab} state={state} plain />
+        <HoursStatusView
+          tab={tab}
+          account={account}
+          hide={hide}
+          pause={pause}
+          scheduleName={answers.currentName(tab, account)}
+          onPickTime={() => setPage({ kind: "until" })}
+          onEditSchedule={() => setPage({ kind: "schedule", account })}
+          onChangeFriction={() => setPage({ kind: "friction", account })}
+          onDone={onDismiss}
         />
       </PointerMenu>
     );
@@ -268,7 +323,14 @@ function forAWhileTitle(
 ): string {
   if (tab === "shown") return t(account && hide.statusOf(account).hidden ? "hoursMenuShowForAWhile" : "hoursMenuHideForAWhile");
   const own = account ? accountPauseRow(pause.state, account)?.pausedUntil : pause.state.pausedUntil;
-  return t(own && own > pause.now.getTime() ? "hoursMenuGetMailTitle" : "hoursMenuPauseForAWhile");
+  if (own && own > pause.now.getTime()) return t("hoursMenuGetMailTitle");
+  return t(pausedByHours(pause, account) ? "hoursMenuGetMailTitle" : "hoursMenuPauseForAWhile");
+}
+
+/** Hours pause this tab's new mail now: its own or All's, and no pause of the reader's. */
+function pausedByHours(pause: PauseControls, account: string | null): boolean {
+  const verdict = mailPauseVerdictForScope(pause.state, account, pause.now);
+  return verdict.paused && verdict.reason === "quiet";
 }
 
 type MenuState = { hidden: boolean; hiddenUntil: string | null; paused: boolean };
@@ -302,10 +364,14 @@ function menuStateOf(
  * Shown in Mail | New mail arrives, or what is so instead: "Hidden until
  * 18:00", "New mail paused". The state is the first thing the menu says,
  * on the tab itself, not a line to find under it.
+ *
+ * `plain`: Shown in Mail | New mail. Under them a sentence says the state
+ * (hours-status-view.tsx), so the tabs only name the two; the icons still
+ * say which is off.
  */
-function ScheduleTabs({ tab, onTab, state }: { tab: HoursTab; onTab: (tab: HoursTab) => void; state: MenuState }) {
+function ScheduleTabs({ tab, onTab, state, plain = false }: { tab: HoursTab; onTab: (tab: HoursTab) => void; state: MenuState; plain?: boolean }) {
   const t = useMailT();
-  const shownLabel = !state.hidden
+  const shownLabel = plain || !state.hidden
     ? t("hoursShownTitle")
     : state.hiddenUntil
       ? t("hoursTabHiddenUntil", { time: state.hiddenUntil })
@@ -338,7 +404,7 @@ function ScheduleTabs({ tab, onTab, state }: { tab: HoursTab; onTab: (tab: Hours
         {option(
           "fetch",
           state.paused ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />,
-          t(state.paused ? "hoursTabPaused" : "hoursNewMailTitle")
+          t(plain ? "hoursTabNewMail" : state.paused ? "hoursTabPaused" : "hoursNewMailTitle")
         )}
       </div>
     </div>
@@ -508,13 +574,15 @@ function NotAsUsual({
       <p className="pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">{t("hoursMenuNotAsUsual")}</p>
       {rows.map(({ email, status, verdict }) => {
         const ownPause = (accountPauseRow(pause.state, email)?.pausedUntil ?? 0) > pause.now.getTime();
-        // The one thing it needs: shown again, or its own pause ended.
-        // Hours that pause it have no way round yet, so no button.
+        // The one thing it needs: shown again, its own pause ended, or new
+        // mail for a while through the hours that pause it.
         const action = status.hidden
           ? { label: t("show"), words: status.byHand ? 0 : hide.showWordsOf(email), run: () => hide.showNow(email) }
           : ownPause
             ? { label: t("hoursMenuGetMailAction"), words: unpauseWordsFor(pause.state, email), run: () => pause.resume(email) }
-            : null;
+            : verdict.paused && verdict.reason === "quiet"
+              ? { label: t("hoursMenuGetMailAction"), words: unpauseWordsFor(pause.state, email), run: () => pause.getEarly(email) }
+              : null;
         return (
           <div key={email} className="flex items-center gap-3 py-1.5">
             <AccountMark
@@ -724,7 +792,8 @@ function ForAWhile({
     );
   }
 
-  // New mail: a pause the reader set can be ended; hours cannot, yet.
+  // New mail: a pause the reader set can be ended, and hours that pause it
+  // let new mail in for a while (GetMailEarly).
   const own = account ? accountPauseRow(pause.state, account)?.pausedUntil : pause.state.pausedUntil;
   if (own && own > pause.now.getTime()) {
     const words = unpauseWordsFor(pause.state, account);
@@ -737,6 +806,7 @@ function ForAWhile({
       </button>
     );
   }
+  if (pausedByHours(pause, account)) return <GetMailEarly account={account} pause={pause} onDone={onDone} />;
   const verdict = account ? mailPauseVerdictForAccount(pause.state, account, pause.now) : null;
   return (
     <>
@@ -744,6 +814,51 @@ function ForAWhile({
         <p className="px-3.5 pb-1 text-xs text-stone-500">{t("hoursMenuArrivesAgain", { time: verdict.untilClock })}</p>
       ) : null}
       {timeRows((until, from) => pause.pauseUntil(until, account, from))}
+    </>
+  );
+}
+
+/**
+ * Hours pause new mail now: when they let go, and "Get new mail for 15
+ * minutes", with the words first when there are any. The same shape as
+ * ShowEarly on the Shown side. Hours that end sooner than that: "now".
+ *
+ * No times to pause for longer here. Under hours that pause it already,
+ * they only put another pause on top, and that was all the menu offered
+ * (a KU tester, 2026-11-24).
+ */
+function GetMailEarly({ account, pause, onDone }: { account: string | null; pause: PauseControls; onDone: () => void }) {
+  const t = useMailT();
+  const verdict = mailPauseVerdictForScope(pause.state, account, pause.now);
+  const words = unpauseWordsFor(pause.state, account);
+  const endsSoon = verdict.endsAt != null && verdict.endsAt.getTime() <= fetchEarlyEnd(pause.now);
+  const label = endsSoon
+    ? t("hoursMenuGetMailNow")
+    : t("hoursMenuGetMailFor", { duration: hideAgainLabel(FETCH_EARLY_MINUTES, t) });
+  return (
+    <>
+      {verdict.untilClock ? (
+        <p className="px-3.5 pb-1 text-xs text-stone-500">{t("hoursMenuArrivesAgain", { time: verdict.untilClock })}</p>
+      ) : null}
+      <button
+        type="button"
+        role="menuitem"
+        className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-sm text-stone-900 hover:bg-stone-100"
+        onClick={() => {
+          onDone();
+          pause.getEarly(account);
+        }}
+      >
+        <span className="min-w-0">
+          <span className="block">{label}</span>
+          {words > 0 ? (
+            <span className="flex items-center gap-1 text-xs text-stone-500">
+              <Lock className="h-3 w-3" aria-hidden />
+              {t("hoursMenuTypeFirst", { count: words })}
+            </span>
+          ) : null}
+        </span>
+      </button>
     </>
   );
 }

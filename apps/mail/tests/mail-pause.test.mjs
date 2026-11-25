@@ -7,7 +7,13 @@
  */
 
 import {
+  FETCH_EARLY_MINUTES,
   addQuietSuggestion,
+  fetchEarlyEnd,
+  fetchEarlyWindow,
+  fetchingAccounts,
+  mailPauseChip,
+  mailPauseVerdictForAccount,
   formatClock,
   mailPauseOptions,
   mailPauseVerdict,
@@ -237,4 +243,49 @@ suite(async () => {
   check("an account with only its own words keeps its row", words.accounts?.["a@x.example"]?.unpauseWords === 0);
   check("its words are its own", unpauseWordsFor(words, "a@x.example") === 0 && unpauseWordsFor(words, "b@x.example") === 50);
   check("an account without is every account's", unpauseWordsFor(words, "c@x.example") === 20 && unpauseWordsFor(words, null) === 20);
+
+  // --- New mail early, through hours that pause it --------------------------
+  //
+  // A KU tester, 2026-11-24: paused by his schedule, the words set, and no way
+  // round. Now the words give new mail for 15 minutes, then the hours again.
+
+  const NIGHT = [{ start: "22:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }];
+  const late = at("23:00");
+  const later = (minutes) => new Date(late.getTime() + minutes * 60_000);
+  check("15 minutes, as Show in Mail", FETCH_EARLY_MINUTES === 15);
+  check("the end is 15 minutes on", fetchEarlyEnd(late) === later(15).getTime());
+
+  const nightOnly = { quietHours: NIGHT };
+  check("the hours pause it", mailPauseVerdict(nightOnly, late).paused === true);
+  const early = { quietHours: NIGHT, fetchEarlyUntil: fetchEarlyEnd(late) };
+  check("got early, new mail comes in", mailPauseVerdict(early, late).paused === false);
+  check("and still at 14 minutes", mailPauseVerdict(early, later(14)).paused === false);
+  check("then the hours pause it again", mailPauseVerdict(early, later(16)).paused === true);
+  check(
+    "a pause of the reader's own still wins",
+    mailPauseVerdict({ ...early, pausedUntil: later(60).getTime() }, late).reason === "pause"
+  );
+
+  const ME = "rowan@x.example";
+  const OTHER = "sky@x.example";
+  const own = { quietHours: NIGHT, accounts: { [ME]: { fetchEarlyUntil: fetchEarlyEnd(late) } } };
+  check("one mailbox got early fetches", mailPauseVerdictForAccount(own, ME, late).paused === false);
+  check("the others stay paused", mailPauseVerdictForAccount(own, OTHER, late).paused === true);
+  check("fetching lists that one", fetchingAccounts(own, [ME, OTHER], late).join() === ME);
+  const onAll = { quietHours: NIGHT, fetchEarlyUntil: fetchEarlyEnd(late) };
+  check("got early on All, every mailbox fetches", fetchingAccounts(onAll, [ME, OTHER], late).length === 2);
+  check("and the chip says nothing is paused", mailPauseChip(onAll, [ME, OTHER], late).paused === false);
+
+  const kept = readPauseState({ quietHours: NIGHT, fetchEarlyUntil: 5, accounts: { [ME]: { fetchEarlyUntil: 7 } } });
+  check("the time is kept on All", kept.fetchEarlyUntil === 5);
+  check("and on a mailbox, with nothing else in its row", kept.accounts?.[ME]?.fetchEarlyUntil === 7);
+  check("nonsense is not a time", readPauseState({ quietHours: [], fetchEarlyUntil: "soon" }).fetchEarlyUntil === undefined);
+
+  // During the 15 minutes: when they end, and the pause after.
+  const window = fetchEarlyWindow(own, ME, late);
+  check("got early has a window", window?.endsAt.getTime() === fetchEarlyEnd(late));
+  check("and the hours pause it after", window?.then.paused === true && window.then.reason === "quiet");
+  check("no window for a mailbox not got early", fetchEarlyWindow(own, OTHER, late) === null);
+  check("no window once it ran out", fetchEarlyWindow(own, ME, later(16)) === null);
+  check("no window when the hours would not pause it", fetchEarlyWindow({ quietHours: [], fetchEarlyUntil: fetchEarlyEnd(late) }, ME, late) === null);
 });
