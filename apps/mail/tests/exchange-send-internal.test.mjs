@@ -39,6 +39,10 @@ const later = [];
 const heldCalls = [];
 const drafts = [];
 const scheduled = [];
+/** The schedule store's rows, and what was taken off it and deleted. */
+let scheduleRows = [];
+const cancelledRows = [];
+const deletedDrafts = [];
 function storeCall(op, args) {
   switch (op) {
     case "accounts.exists":
@@ -77,7 +81,17 @@ globalThis.window = {
           scheduled.push(args);
           return 1;
         }
-        if (cmd === "mail_scheduled_list") return [];
+        if (cmd === "mail_scheduled_list") return scheduleRows;
+        if (cmd === "mail_scheduled_cancel") {
+          cancelledRows.push(args);
+          const row = scheduleRows.find((r) => r.id === args.id) ?? null;
+          scheduleRows = scheduleRows.filter((r) => r.id !== args.id);
+          return row;
+        }
+        if (cmd === "mail_ews_delete_draft") {
+          deletedDrafts.push(args);
+          return null;
+        }
         if (cmd === "mail_ews_send_later") {
           later.push(args);
           return null;
@@ -176,6 +190,24 @@ suite(async () => {
   check("cancel goes over EWS", heldCalls.at(-1)?.cmd === "mail_ews_cancel_held" && heldCalls.at(-1)?.itemId === "held-1");
   await sendScheduledMailMessageNow({ account: EX, id: "held-1" });
   check("send now goes over EWS", heldCalls.at(-1)?.cmd === "mail_ews_send_held_now");
+
+  // A KU tester, 2026-11-26: a reply set for 08:00 was sent by hand at
+  // 07:48, from its draft, and went again at 08:00. Sending from the draft
+  // takes its schedule off, and so does discarding it.
+  scheduleRows = [
+    { id: 41, account: EX, provider: "exchange", draftId: "sched-draft-9", subject: "Re: The plan", to: ["dana@example.com"], sendAt: Date.now() + 600_000, status: "waiting" },
+    { id: 42, account: EX, provider: "exchange", draftId: "sched-draft-other", subject: "Another", to: ["dana@example.com"], sendAt: Date.now() + 600_000, status: "waiting" },
+  ];
+  const sentBefore = sent.length;
+  await sendMailMessage({ account: EX, to: ["dana@example.com"], subject: "Re: The plan", body: "Now, from the train.", discardProviderDraft: "sched-draft-9" });
+  check("the mail sent from a scheduled draft goes now", sent.length === sentBefore + 1);
+  check(
+    "and that draft's schedule is taken off",
+    cancelledRows.some((c) => c.id === 41) && !scheduleRows.some((r) => r.id === 41),
+    JSON.stringify(cancelledRows)
+  );
+  check("another draft's schedule stays", scheduleRows.some((r) => r.id === 42));
+  check("the draft itself goes from the server", deletedDrafts.some((d) => d.itemId === "sched-draft-9"), JSON.stringify(deletedDrafts));
 
   check("nothing went over fetch", fetched.length === 0, fetched.join(", "));
 });

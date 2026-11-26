@@ -1,5 +1,8 @@
 ## What is new
 
+**Fixes in 0.12.17**
+- A mail that you set to send later, and then send yourself before its time, is sent one time only. Before, on an Exchange mailbox, the app could send it again at its time.
+
 **A way round your schedule (0.12.16)**
 - When your schedule pauses new mail, the menu of the mailbox now gives you a way round it. Type the words, and new mail comes in for 15 minutes. Then your schedule pauses it again. Before, the menu only let you pause for longer.
 - "Start fetching again now" works the same way when your schedule paused the mail.

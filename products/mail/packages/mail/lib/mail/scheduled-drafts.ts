@@ -231,6 +231,30 @@ export async function deleteScheduledDraft(account: string, id: string): Promise
   await deleteDraft(email, row.provider, row.draftId);
 }
 
+/**
+ * Take the schedule off a draft that is being sent by hand or discarded.
+ *
+ * A scheduled draft is an ordinary draft on the server, so it can be opened
+ * and sent from Drafts or from its conversation, or discarded there. Its
+ * schedule stayed, and at its time the draft was sent again (a KU tester,
+ * 2026-11-26: sent at 07:48, and again at 08:00). Never throws: the send
+ * at its time also checks that the draft is still in Drafts.
+ */
+export async function dropScheduleOfDraft(account: string, draftId: string): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke || !draftId) return;
+  const email = account.trim().toLowerCase();
+  try {
+    const rows = ((await invoke("mail_scheduled_list", { account: email })) as Row[] | null) ?? [];
+    for (const row of rows.filter((r) => r.draftId === draftId)) {
+      await invoke("mail_scheduled_cancel", { account: email, id: row.id });
+      console.info(`[mail] a scheduled draft was sent or discarded by hand; its schedule is taken off (${email})`);
+    }
+  } catch (err) {
+    console.warn("[mail] could not take the schedule off a draft sent or discarded by hand:", err);
+  }
+}
+
 /** Change the time. A late or refused one is given its chance again. */
 export async function rescheduleScheduledDraft(account: string, id: string, sendAt: string): Promise<void> {
   const at = Date.parse(sendAt);

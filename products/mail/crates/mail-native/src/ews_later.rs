@@ -295,14 +295,16 @@ pub enum DraftSent {
   Gone,
 }
 
-/// `GetItem` for one item's id and its current `ChangeKey`, and no more.
+/// `GetItem` for one item's id, its current `ChangeKey`, and the folder it
+/// is in, and no more.
 fn change_key_request(item_id: &str) -> EwsResult<String> {
   if item_id.trim().is_empty() {
     return Err(EwsError::Invalid("No draft was named. Nothing was sent to the server.".into()));
   }
   Ok(envelope(&format!(
     concat!(
-      r#"<GetItem xmlns="{m}"><ItemShape><t:BaseShape>IdOnly</t:BaseShape></ItemShape>"#,
+      r#"<GetItem xmlns="{m}"><ItemShape><t:BaseShape>IdOnly</t:BaseShape>"#,
+      r#"<t:AdditionalProperties><t:FieldURI FieldURI="item:ParentFolderId"/></t:AdditionalProperties></ItemShape>"#,
       r#"<ItemIds><t:ItemId Id="{id}"/></ItemIds></GetItem>"#
     ),
     m = MESSAGES_NS,
@@ -320,21 +322,77 @@ fn read_change_key(xml: &str) -> Option<String> {
   Some(rest[start..end].to_string()).filter(|k| !k.is_empty())
 }
 
+/// The `Id` of the first `<…ParentFolderId>` in an answer.
+fn read_parent_folder(xml: &str) -> Option<String> {
+  let at = xml.find(":ParentFolderId ").or_else(|| xml.find("<ParentFolderId "))?;
+  read_id_attr(&xml[at..])
+}
+
+/// The `Id="…"` of the first element in `rest`.
+fn read_id_attr(rest: &str) -> Option<String> {
+  let tag = &rest[..rest.find('>')?];
+  let start = tag.find(" Id=\"")? + " Id=\"".len();
+  let end = tag[start..].find('"')? + start;
+  Some(tag[start..end].to_string()).filter(|id| !id.is_empty())
+}
+
+/// `GetFolder` for the draft's folder and for Drafts, in one answer, so the
+/// server writes both ids the same way and they can be compared.
+fn same_folder_request(parent: &str) -> String {
+  envelope(&format!(
+    concat!(
+      r#"<GetFolder xmlns="{m}"><FolderShape><t:BaseShape>IdOnly</t:BaseShape></FolderShape>"#,
+      r#"<FolderIds><t:FolderId Id="{id}"/><t:DistinguishedFolderId Id="drafts"/></FolderIds></GetFolder>"#
+    ),
+    m = MESSAGES_NS,
+    id = escape(parent)
+  ))
+}
+
+/// The two folder ids of a `same_folder_request` answer, in order.
+fn read_two_folders(xml: &str) -> Option<(String, String)> {
+  let mut ids = xml.match_indices(":FolderId ").map(|(at, _)| read_id_attr(&xml[at..]));
+  let first = ids.next()??;
+  let second = ids.next()??;
+  Some((first, second))
+}
+
+/// Is the item still in Drafts? A draft that was sent from another app, or
+/// deleted there or here, can still be on the server under its id: in Sent
+/// Items, in Deleted Items, or soft-deleted. Sent from there at its time, it
+/// went twice (a KU tester, 2026-11-26: sent by hand at 07:48, and again at
+/// 08:00). Only a draft in Drafts is sent.
+async fn still_in_drafts(client: &EwsClient, item_xml: &str) -> EwsResult<bool> {
+  let parent = read_parent_folder(item_xml)
+    .ok_or_else(|| EwsError::Parse("The server named the draft but not its folder.".into()))?;
+  let answer = client.call(&same_folder_request(&parent)).await?;
+  let (draft_folder, drafts) = read_two_folders(&answer)
+    .ok_or_else(|| EwsError::Parse("The server did not name the draft's folder and Drafts.".into()))?;
+  Ok(draft_folder == drafts)
+}
+
 fn is_not_found(err: &EwsError) -> bool {
   matches!(err, EwsError::Fault { code, .. } if code.contains("ErrorItemNotFound"))
 }
 
 /// Send a draft at its time: read its current `ChangeKey` (the KU server
-/// refuses a `SendItem` without one, and refuses an old one), then send it
-/// and keep the copy in Sent Items. A draft that is not there is `Gone`,
-/// not an error: the message must never go twice.
+/// refuses a `SendItem` without one, and refuses an old one) and its folder,
+/// then send it and keep the copy in Sent Items. A draft that is not there,
+/// or no longer in Drafts, is `Gone`, not an error: the message must never
+/// go twice.
 pub async fn send_draft(client: &EwsClient, item_id: &str) -> EwsResult<DraftSent> {
-  let key = match client.call(&change_key_request(item_id)?).await {
-    Ok(xml) => read_change_key(&xml)
-      .ok_or_else(|| EwsError::Parse("The server named the draft but gave no change key.".into()))?,
+  let (key, xml) = match client.call(&change_key_request(item_id)?).await {
+    Ok(xml) => (
+      read_change_key(&xml).ok_or_else(|| EwsError::Parse("The server named the draft but gave no change key.".into()))?,
+      xml,
+    ),
     Err(err) if is_not_found(&err) => return Ok(DraftSent::Gone),
     Err(err) => return Err(err),
   };
+  if !still_in_drafts(client, &xml).await? {
+    log::info!("ews: a scheduled draft is no longer in Drafts; it was sent or deleted elsewhere, and is not sent again");
+    return Ok(DraftSent::Gone);
+  }
   match client.call(&send_item_request(item_id, &key)?).await {
     Ok(_) => Ok(DraftSent::Sent),
     Err(err) if is_not_found(&err) => Ok(DraftSent::Gone),

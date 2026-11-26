@@ -15,6 +15,7 @@
 
 import { utf8ToBase64 } from "@/lib/base64";
 import { invoke } from "@/lib/mail/exchange-native";
+import { dropScheduleOfDraft } from "@/lib/mail/scheduled-drafts";
 import { wakeExchangeSync } from "@/lib/mail/exchange-sync";
 import { mailStore } from "@/lib/mail/store";
 
@@ -102,6 +103,9 @@ export async function exchangeDraftCopyIds(): Promise<Set<string>> {
 export function discardExchangeDraft(account: string, itemId: string, afterSend = false): Promise<void> {
   const email = account.trim().toLowerCase();
   return inTurn(async () => {
+    // A scheduled draft sent by hand or discarded must not go at its time
+    // as well. First, so a delete that fails cannot leave it scheduled.
+    await dropScheduleOfDraft(email, itemId);
     const copies = await readCopies();
     const ownKey = Object.keys(copies).find((k) => copies[k].itemId === itemId);
     await deleteOnServer({ account: email, itemId }, !ownKey && !afterSend);

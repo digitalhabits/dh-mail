@@ -118,15 +118,35 @@ fn now_is_utc_to_the_second() {
 }
 
 
-/// A server with one draft, item 7, whose change key is 507.
+/// The Drafts folder's id on the fake server, and two others.
+const DRAFTS_ID: &str = "AAMkADraftsFolder==";
+const DELETED_ID: &str = "AAMkADeletedItems==";
+const SENT_ID: &str = "AAMkASentItemsFolder==";
+
+/// A server with one draft, item 7, whose change key is 507, in Drafts.
 fn draft_server(sent: bool) -> Handler {
+  draft_server_in(sent, DRAFTS_ID)
+}
+
+/// The same draft, in the folder `folder`. As a real server, `GetFolder`
+/// answers each id asked for in turn, the distinguished one by its own id.
+fn draft_server_in(sent: bool, folder: &'static str) -> Handler {
   Arc::new(move |operation, body| match operation {
     "GetItem" if body.contains(&item_id(7)) => (200, get_items(&[Some(format!(
-      r#"<t:Message><t:ItemId Id="{}" ChangeKey="{}"/></t:Message>"#,
+      r#"<t:Message><t:ItemId Id="{}" ChangeKey="{}"/><t:ParentFolderId Id="{}" ChangeKey="AQAAAA=="/></t:Message>"#,
       item_id(7),
-      change_key(507)
+      change_key(507),
+      folder
     ))])),
     "GetItem" => (200, get_items(&[None])),
+    "GetFolder" => {
+      let asked = |id: &str| format!(r#"<t:Folder><t:FolderId Id="{id}" ChangeKey="AQAAAA=="/></t:Folder>"#);
+      let first = if body.contains(DRAFTS_ID) { DRAFTS_ID } else if body.contains(DELETED_ID) { DELETED_ID } else { SENT_ID };
+      (200, response("GetFolder", &[
+        success("GetFolder", &format!("<m:Folders>{}</m:Folders>", asked(first))),
+        success("GetFolder", &format!("<m:Folders>{}</m:Folders>", asked(DRAFTS_ID))),
+      ]))
+    }
     // As KU: no SendItem without the change key.
     "SendItem" if !body.contains(&change_key(507)) => (500, fault("ErrorChangeKeyRequiredForWriteOperations", "A change key is required.")),
     "SendItem" if sent => (200, response("SendItem", &[error("SendItem", "ErrorItemNotFound", "The specified object was not found in the store.")])),
@@ -140,10 +160,44 @@ fn a_scheduled_draft_is_sent_with_its_fresh_change_key() {
   let server = serve(draft_server(false));
   assert_eq!(run(send_draft(&client(&server.url), &item_id(7))).unwrap(), DraftSent::Sent);
   let requests = server.requests.lock().unwrap().clone();
-  assert_eq!(requests.len(), 2);
+  assert_eq!(requests.len(), 3);
   assert!(requests[0].contains("<GetItem") && requests[0].contains("IdOnly"), "{}", requests[0]);
-  assert!(requests[1].contains(&format!(r#"Id="{}" ChangeKey="{}""#, item_id(7), change_key(507))), "{}", requests[1]);
-  assert!(requests[1].contains(r#"<t:DistinguishedFolderId Id="sentitems"/>"#));
+  assert!(requests[0].contains("item:ParentFolderId"), "{}", requests[0]);
+  assert!(requests[1].contains("<GetFolder") && requests[1].contains(r#"<t:DistinguishedFolderId Id="drafts"/>"#), "{}", requests[1]);
+  assert!(requests[2].contains(&format!(r#"Id="{}" ChangeKey="{}""#, item_id(7), change_key(507))), "{}", requests[2]);
+  assert!(requests[2].contains(r#"<t:DistinguishedFolderId Id="sentitems"/>"#));
+}
+
+#[test]
+fn a_draft_deleted_elsewhere_is_not_sent_at_its_time() {
+  // A KU tester, 2026-11-26: sent by hand at 07:48, and again at 08:00. The
+  // draft was still on the server under its id, out of Drafts.
+  let server = serve(draft_server_in(false, DELETED_ID));
+  assert_eq!(run(send_draft(&client(&server.url), &item_id(7))).unwrap(), DraftSent::Gone);
+  let requests = server.requests.lock().unwrap().clone();
+  assert!(!requests.iter().any(|r| r.contains("<SendItem")), "nothing was sent: {requests:?}");
+}
+
+#[test]
+fn a_draft_already_in_sent_items_is_not_sent_again() {
+  let server = serve(draft_server_in(false, SENT_ID));
+  assert_eq!(run(send_draft(&client(&server.url), &item_id(7))).unwrap(), DraftSent::Gone);
+  assert!(!server.requests.lock().unwrap().iter().any(|r| r.contains("<SendItem")));
+}
+
+#[test]
+fn a_draft_whose_folder_the_server_will_not_name_is_not_sent() {
+  // No folder in the answer: an error to try again, never a send.
+  let server = serve(Arc::new(|operation, _body| match operation {
+    "GetItem" => (200, get_items(&[Some(format!(
+      r#"<t:Message><t:ItemId Id="{}" ChangeKey="{}"/></t:Message>"#,
+      item_id(7),
+      change_key(507)
+    ))])),
+    _ => (200, response("SendItem", &[success("SendItem", "")])),
+  }));
+  assert!(run(send_draft(&client(&server.url), &item_id(7))).is_err());
+  assert!(!server.requests.lock().unwrap().iter().any(|r| r.contains("<SendItem")));
 }
 
 #[test]
