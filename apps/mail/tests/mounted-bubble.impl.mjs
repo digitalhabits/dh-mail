@@ -75,6 +75,24 @@ async function main() {
     assert(!/\bYou\b/.test(text().replace("Can we move", "")), "not as You");
     pass("our own message is named by its address, not You");
 
+    // Bcc is on our own copy only. It shows with the other fields when the
+    // details open, and never on a message from somebody else.
+    const openDetails = () => {
+      const words = [...document.querySelectorAll("*")].filter((el) => el.children.length === 0 && (el.textContent || "").includes("Can we move to Thursday?"));
+      words[0].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    };
+    // A key each, so each bubble starts with its details shut.
+    await draw({ key: "m2", message: { ...FROM_MERLE, id: "m2", own: true, fromEmail: ACCOUNT, bccEmails: ["bo@hidden.example"] } });
+    openDetails();
+    await sleep(100);
+    assert(text().includes("Bcc: bo@hidden.example"), `our own message shows its Bcc: ${text().slice(0, 300)}`);
+    await draw({ key: "m3", message: { ...FROM_MERLE, id: "m3", bccEmails: ["bo@hidden.example"] } });
+    openDetails();
+    await sleep(100);
+    assert(text().includes("To: "), `the details are open: ${text().slice(0, 300)}`);
+    assert(!text().includes("bo@hidden.example"), "a message from somebody else does not");
+    pass("the details of our own message show its Bcc, and no other message does");
+
     await draw({
       message: {
         ...FROM_MERLE,

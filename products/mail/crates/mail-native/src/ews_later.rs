@@ -159,7 +159,7 @@ pub async fn held_at(client: &EwsClient, now: &str) -> EwsResult<Vec<Held>> {
   let ids: Vec<String> = times.iter().map(|t| t.id.clone()).collect();
   let mut rows = Vec::new();
   for batch in ews_ops::batches(&ids) {
-    rows.extend(ews_ops::read_rows(&client.call_many(&ews_ops::rows_request(batch)?).await?)?);
+    rows.extend(crate::ews_read::rows_of(client, batch).await?);
   }
   let mut parsed = bodies(client, &rows).await?;
   let mut out: Vec<Held> = rows

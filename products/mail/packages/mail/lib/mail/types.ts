@@ -140,6 +140,11 @@ export type MailMessage = {
   fromEmail: string;
   toEmails: string[];
   ccEmails: string[];
+  /**
+   * Bcc, where the source has it: only on the sender's own copy, so only
+   * on messages of ours. Absent when there is none.
+   */
+  bccEmails?: string[];
   sentAt: string | null;
   bodyText: string;
   /** Raw text/html part when present; sanitized client-side before display. */

@@ -20,6 +20,7 @@ import { adoptSplitThread, getChatForThread, noteChatMessageIds } from "@/lib/ma
 import { getOutlookMailThread, markOutlookThreadRead } from "@/lib/mail/outlook-inbox";
 import { resolveMailProvider } from "@/lib/mail/providers";
 import type { MailMessage, MailThreadDetail } from "@/lib/mail/types";
+import { ownBcc } from "@/lib/mail/own-bcc";
 import { isOwnOrgAddress } from "@/lib/own-addresses";
 import { THREAD_PAGE_SIZE } from "@/lib/mail/thread-classify";
 import { emptyThreadDetail, threadWindow } from "@/lib/mail/thread-window";
@@ -56,6 +57,7 @@ async function gmailMailMessage(
     fromEmail: from.email,
     toEmails: parseAddressList(headerValue(m, "To")).map((p) => p.email),
     ccEmails: parseAddressList(headerValue(m, "Cc")).map((p) => p.email),
+    ...ownBcc(own, parseAddressList(headerValue(m, "Bcc")).map((p) => p.email)),
     sentAt: messageDate(m) ? new Date(messageDate(m)).toISOString() : null,
     bodyText: extractBodyText(m),
     bodyHtml,

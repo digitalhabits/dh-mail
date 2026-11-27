@@ -57,10 +57,10 @@ impl SearchPlan {
 /// values the copy does not know (`in:anywhere`, `is:muted`, `has:drive`).
 const PROVIDER_KEYS: &[&str] = &[
   "in", "label", "is", "has", "larger", "smaller", "size", "category", "list", "deliveredto",
-  "bcc", "rfc822msgid",
+  "rfc822msgid",
 ];
 const LOCAL_KEYS: &[&str] =
-  &["from", "to", "cc", "subject", "after", "before", "newer_than", "older_than", "filename"];
+  &["from", "to", "cc", "bcc", "subject", "after", "before", "newer_than", "older_than", "filename"];
 
 /// A label name as Gmail's search spells it: lower case, with a space, a
 /// slash, or a dash all one dash. `label:work-stuff` finds "Work stuff",
@@ -138,11 +138,12 @@ pub fn parse_search(q: &str) -> Option<SearchPlan> {
       None => (false, value),
     };
     match key.as_deref() {
-      None | Some("from") | Some("to") | Some("cc") | Some("subject") => {
+      None | Some("from") | Some("to") | Some("cc") | Some("bcc") | Some("subject") => {
         let Some(term) = fts_term(text, phrase) else { continue };
         let column = match key.as_deref() {
           Some("from") => "from_text: ",
-          Some("to") | Some("cc") => "to_text: ",
+          // One column for the three: see `index_message` in write.rs.
+          Some("to") | Some("cc") | Some("bcc") => "to_text: ",
           Some("subject") => "subject: ",
           _ => "",
         };

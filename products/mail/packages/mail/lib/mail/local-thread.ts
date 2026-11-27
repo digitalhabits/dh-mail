@@ -27,6 +27,7 @@ import { adoptSplitThread, getChatForThread, noteChatMessageIds } from "@/lib/ma
 import { THREAD_PAGE_SIZE } from "@/lib/mail/thread-classify";
 import { emptyThreadDetail, threadWindow } from "@/lib/mail/thread-window";
 import { participantNames } from "@/lib/mail/thread-participants";
+import { ownBcc } from "@/lib/mail/own-bcc";
 
 /** An attachment id that names an IMAP section of the message. */
 export const IMAP_ATTACHMENT_PREFIX = "imap:";
@@ -634,6 +635,7 @@ function toMailMessage(row: StoredWithBody, threadAccount: string): MailMessage 
     fromEmail: row.fromEmail,
     toEmails: row.to.map((a) => a.email),
     ccEmails: row.cc.map((a) => a.email),
+    ...ownBcc(own, (row.bcc ?? []).map((a) => a.email)),
     sentAt: row.sentAt ? new Date(row.sentAt).toISOString() : null,
     bodyText: body?.text ?? "",
     ...(body?.html ? { bodyHtml: body.html } : null),

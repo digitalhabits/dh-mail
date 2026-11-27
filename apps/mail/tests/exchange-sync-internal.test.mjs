@@ -177,6 +177,9 @@ suite(async () => {
   check("a row wears its folder, DRAFT and STARRED", flagged.labels.join(",") === "Inbox/Projects,DRAFT,STARRED", flagged.labels.join(","));
   check("a row is read, starred, and trimmed", !flagged.unread && flagged.starred && flagged.subject === "Mail x");
   check("the conversation is the thread", flagged.threadId === "c-x");
+  const sentRow = rowFromItem(item("s", { bcc: [{ name: "Bo", email: "bo@hidden.test" }] }), "SENT");
+  check("a sent row keeps its Bcc", sentRow.bcc.length === 1 && sentRow.bcc[0].email === "bo@hidden.test", JSON.stringify(sentRow.bcc));
+  check("a row from an older native build has no Bcc, and no error", rowFromItem(item("y"), "INBOX").bcc.length === 0);
 
   check("a refused password is never tried again", retryAfter("ews:refused: no", 0) === null);
   check("a missing account is not tried again", retryAfter("ews:no-account: no", 3) === null);

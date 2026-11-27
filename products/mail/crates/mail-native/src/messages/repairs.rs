@@ -13,8 +13,37 @@ pub fn migrate(conn: &Connection) -> DbResult<()> {
   repair_snippets(conn)?;
   repair_attachment_flags(conn)?;
   repair_quoted_addresses(conn)?;
+  index_bcc(conn)?;
   refetch_misread_bodies(conn)?;
   refetch_invites_without_text(conn)?;
+  Ok(())
+}
+
+/// Messages with a Bcc are indexed again, once, so a search finds the
+/// people who were only Bcc'd. The index held To and Cc only until
+/// 2026-11-27. A few messages: only the sender's copy has Bcc.
+pub(super) fn index_bcc(conn: &Connection) -> DbResult<()> {
+  const MARK: &str = "repair.index-bcc";
+  const VERSION: &str = "1";
+  let done: Option<String> = conn
+    .query_row("SELECT value FROM settings WHERE key = ?1", [MARK], |r| r.get(0))
+    .optional()?;
+  if done.as_deref() == Some(VERSION) {
+    return Ok(());
+  }
+  let tx = conn.unchecked_transaction()?;
+  let mut stmt = tx.prepare("SELECT account_email, message_id FROM messages WHERE bcc_json NOT IN ('', '[]')")?;
+  let rows: Vec<(String, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+  drop(stmt);
+  for (account, message_id) in &rows {
+    index_message(&tx, account, message_id)?;
+  }
+  tx.execute(
+    "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    params![MARK, VERSION, now_ms()],
+  )?;
+  tx.commit()?;
   Ok(())
 }
 

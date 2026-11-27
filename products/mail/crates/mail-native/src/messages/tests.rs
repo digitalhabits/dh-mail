@@ -1,5 +1,5 @@
 use super::*;
-use super::repairs::{refetch_invites_without_text, refetch_misread_bodies, repair_quoted_addresses};
+use super::repairs::{index_bcc, refetch_invites_without_text, refetch_misread_bodies, repair_quoted_addresses};
 use super::search::days_from_civil;
 use super::text::squash;
 
@@ -852,6 +852,60 @@ fn quoted_addresses_already_stored_are_repaired_once() {
   let mut stmt = conn.prepare("SELECT email FROM source_contacts ORDER BY email").unwrap();
   let emails: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
   assert_eq!(emails, vec!["ann@x.test", "bo@y.test"]);
+}
+
+/// A sent message with one person in To and one only in Bcc.
+fn sent_with_bcc() -> MessageRow {
+  MessageRow {
+    from_email: "vera@example.com".into(),
+    to: vec![Address { name: "Team".into(), email: "team@example.com".into() }],
+    bcc: vec![Address { name: "Nell Hidden".into(), email: "nell@hidden.test".into() }],
+    unread: false,
+    ..msg("s1", "t1", 1, 5_000, &[SENT])
+  }
+}
+
+#[test]
+fn search_finds_a_person_who_was_only_bccd() {
+  let db = db();
+  db.messages_upsert("vera@example.com", &[sent_with_bcc(), msg("r1", "t2", 2, 4_000, &[INBOX])]).unwrap();
+  let search = |q: &str| db.messages_search(&json!({ "accounts": ["vera@example.com"], "q": q })).unwrap();
+  let ids = |v: &Value| -> Vec<String> {
+    v["threads"].as_array().unwrap().iter().map(|t| t["threadId"].as_str().unwrap().to_string()).collect()
+  };
+  assert_eq!(ids(&search("nell")), vec!["t1"], "a plain word finds the Bcc");
+  assert_eq!(ids(&search("nell@hidden.test")), vec!["t1"]);
+  let out = search("bcc:nell");
+  assert_eq!(out["handled"], true, "bcc: is answered from the copy");
+  assert_eq!(ids(&out), vec!["t1"]);
+  assert_eq!(ids(&search("bcc:team")), vec!["t1"], "one column for To, Cc and Bcc");
+  assert_eq!(ids(&search("subject -bcc:nell")), vec!["t2"]);
+}
+
+#[test]
+fn mail_with_bcc_indexed_before_is_indexed_again_once() {
+  let db = db();
+  db.messages_upsert("vera@example.com", &[sent_with_bcc()]).unwrap();
+  let search = |db: &MailDb| db.messages_search(&json!({ "accounts": ["vera@example.com"], "q": "nell" })).unwrap();
+  // The row as an older build indexed it: To and Cc only.
+  let old_index = |db: &MailDb| {
+    db.conn_mut()
+      .execute_batch(
+        "DELETE FROM messages_fts WHERE rowid = (SELECT rowid FROM messages WHERE message_id = 's1');
+         INSERT INTO messages_fts (rowid, subject, from_text, to_text, snippet, body)
+           SELECT rowid, subject, from_email, 'Team team@example.com', snippet, '' FROM messages WHERE message_id = 's1';",
+      )
+      .unwrap();
+  };
+  old_index(&db);
+  assert_eq!(search(&db)["threads"].as_array().unwrap().len(), 0, "the old index has no Bcc");
+  db.conn_mut().execute("DELETE FROM settings WHERE key = 'repair.index-bcc'", []).unwrap();
+  index_bcc(&db.conn_mut()).unwrap();
+  assert_eq!(search(&db)["threads"][0]["threadId"], "t1", "found after the repair");
+  // Once: a second open does not index again.
+  old_index(&db);
+  index_bcc(&db.conn_mut()).unwrap();
+  assert_eq!(search(&db)["threads"].as_array().unwrap().len(), 0, "the repair ran once");
 }
 
 #[test]

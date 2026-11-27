@@ -57,7 +57,11 @@ pub const WELL_KNOWN: [&str; 8] = [
 /// `References`, `InReplyTo`, or `ReplyTo`: the KU server refused a request
 /// that asked for all of those with the recipients (section 10). The body
 /// comes from the MIME instead.
-const ROW_FIELDS: [&str; 16] = [
+///
+/// `message:BccRecipients` is last, so it can be left off: the KU server has
+/// not been seen with all three recipient lists without the body. A server
+/// that refuses them is asked again without Bcc (`ews_read::rows_of`).
+const ROW_FIELDS: [&str; 17] = [
   "item:Subject",
   "item:ItemClass",
   "message:From",
@@ -74,6 +78,7 @@ const ROW_FIELDS: [&str; 16] = [
   "message:InternetMessageId",
   "item:HasAttachments",
   "item:Size",
+  "message:BccRecipients",
 ];
 
 // ---------------------------------------------------------------------------
@@ -481,6 +486,9 @@ pub struct ItemRow {
   pub sender: Option<Address>,
   pub to: Vec<Address>,
   pub cc: Vec<Address>,
+  /// Only the sender's own copy has Bcc. Empty when the server was asked
+  /// without it.
+  pub bcc: Vec<Address>,
   /// Milliseconds since 1970.
   pub received_at: Option<i64>,
   pub sent_at: Option<i64>,
@@ -494,8 +502,14 @@ pub struct ItemRow {
 }
 
 pub fn rows_request(ids: &[String]) -> EwsResult<String> {
+  rows_request_with(ids, true)
+}
+
+/// The rows request, with or without `message:BccRecipients`.
+pub fn rows_request_with(ids: &[String], bcc: bool) -> EwsResult<String> {
   let fields = ROW_FIELDS
     .iter()
+    .filter(|name| bcc || **name != "message:BccRecipients")
     .map(|name| PathToElement::FieldURI { field_URI: name.to_string() })
     .collect();
   document(GetItem {
@@ -536,6 +550,7 @@ fn row_from(m: &Message) -> Option<ItemRow> {
     sender: m.sender.as_ref().map(|r| address(&r.mailbox)),
     to: m.to_recipients.iter().flat_map(|list| list.iter().map(|r| address(&r.mailbox))).collect(),
     cc: m.cc_recipients.iter().flat_map(|list| list.iter().map(|r| address(&r.mailbox))).collect(),
+    bcc: m.bcc_recipients.iter().flat_map(|list| list.iter().map(|r| address(&r.mailbox))).collect(),
     received_at: m.date_time_received.as_ref().map(millis),
     sent_at: m.date_time_sent.as_ref().map(millis),
     is_read: m.is_read.unwrap_or(true),

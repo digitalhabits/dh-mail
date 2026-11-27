@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { openDiagnostics } from "@/components/mail/DiagnosticsDialog";
+import { showWelcomeScreen } from "@/lib/mail/welcome";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useMailColorMode, useMailTheme, type MailTheme } from "@/lib/mail/theme";
@@ -357,10 +358,8 @@ export function MailLayoutMenu({
     shortcuts: <MailShortcutsPanel />,
     advanced: (
       <SettingsPane title={t("settingsAdvanced")} description={t("settingsAdvancedHint")}>
-        <SettingsGroup>
-          <DraftsFolderSetting />
-        </SettingsGroup>
-        {/* Here as well as in the Help menu: Windows has no Help menu. */}
+        {/* Diagnostics first. Here as well as in the Help menu: Windows has
+            no Help menu. */}
         <SettingsGroup>
           <SettingsRow
             label={t("diagnosticsTitleShort")}
@@ -379,6 +378,26 @@ export function MailLayoutMenu({
               </Button>
             }
           />
+          <SettingsRow
+            label={t("welcomeAgainTitle")}
+            hint={t("welcomeAgainHint")}
+            control={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  close();
+                  showWelcomeScreen();
+                }}
+              >
+                {t("welcomeAgainButton")}
+              </Button>
+            }
+          />
+        </SettingsGroup>
+        <SettingsGroup>
+          <DraftsFolderSetting />
         </SettingsGroup>
       </SettingsPane>
     ),

@@ -413,7 +413,7 @@ export function rowFromItem(item: ExchangeItemRow, label: string | null): MailSt
     fromEmail: from?.email ?? "",
     to: item.to.map((a) => ({ name: a.name, email: a.email })),
     cc: item.cc.map((a) => ({ name: a.name, email: a.email })),
-    bcc: [],
+    bcc: (item.bcc ?? []).map((a) => ({ name: a.name, email: a.email })),
     subject: item.subject.trim(),
     snippet: item.preview.trim().slice(0, 200),
     sentAt: item.receivedAt ?? item.sentAt ?? Date.now(),

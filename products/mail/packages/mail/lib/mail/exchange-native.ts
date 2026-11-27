@@ -147,6 +147,11 @@ export type ExchangeItemRow = {
   sender: ExchangeAddress | null;
   to: ExchangeAddress[];
   cc: ExchangeAddress[];
+  /**
+   * Only on the sender's own copy. Absent from a native build older than
+   * this field, and empty where the server would not give it.
+   */
+  bcc?: ExchangeAddress[];
   receivedAt: number | null;
   sentAt: number | null;
   isRead: boolean;

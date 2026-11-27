@@ -16,6 +16,7 @@ suite(async () => {
   check("plain words, folded", same(searchHighlightTerms("Paris  Nord"), ["paris", "nord"]));
   check("accents come off", same(searchHighlightTerms("Søbjerg"), ["søbjerg".normalize("NFD").replace(/[̀-ͯ]/g, "")]));
   check("a column's value is painted, a filter is not", same(searchHighlightTerms("from:Pardis has:attachment before:2026-01-01 paris"), ["pardis", "paris"]));
+  check("a bcc: value is painted, as to: and cc: are", same(searchHighlightTerms("bcc:nell to:team"), ["nell", "team"]));
   check("a phrase stays whole", same(searchHighlightTerms('subject:"jet blue" OR trip'), ["jet blue", "trip"]));
   check("a word taken away is not painted", same(searchHighlightTerms("paris -newsletter"), ["paris"]));
   check("a URL is one word", same(searchHighlightTerms("https://x.test/a"), ["https://x.test/a"]));

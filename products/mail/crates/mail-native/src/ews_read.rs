@@ -11,6 +11,7 @@
 //! Phase 2 reads only. Nothing here changes the mailbox on the server.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -76,10 +77,30 @@ pub async fn newest_items(client: &EwsClient, folder_id: &str, count: usize) -> 
   let keys = found.into_iter().filter_map(|(id, key)| key.map(|k| (id, k))).collect();
   let mut items = Vec::with_capacity(ids.len());
   for batch in ews_ops::batches(&ids) {
-    let xml = client.call_many(&ews_ops::rows_request(batch)?).await?;
-    items.extend(ews_ops::read_rows(&xml)?);
+    items.extend(rows_of(client, batch).await?);
   }
   Ok(NewestItems { items, keys })
+}
+
+/// The rows of one batch of items (up to 10), with Bcc when the server
+/// gives it.
+///
+/// The KU server refused one large field list with `ErrorInvalidRequest`
+/// (docs/mail-exchange-ews.md, section 10), and all three recipient lists
+/// together have not been tried there. So a refusal of the rows with Bcc
+/// asks again without it, and the sync goes on as before.
+pub(crate) async fn rows_of(client: &EwsClient, ids: &[String]) -> EwsResult<Vec<ItemRow>> {
+  if !client.rows_without_bcc.load(Ordering::Relaxed) {
+    match client.call_many(&ews_ops::rows_request_with(ids, true)?).await {
+      Ok(xml) => return ews_ops::read_rows(&xml),
+      Err(EwsError::Fault { code, .. }) if code == "ErrorInvalidRequest" => {
+        log::warn!("ews: the server refused the rows with Bcc; reading them without it");
+        client.rows_without_bcc.store(true, Ordering::Relaxed);
+      }
+      Err(e) => return Err(e),
+    }
+  }
+  ews_ops::read_rows(&client.call_many(&ews_ops::rows_request_with(ids, false)?).await?)
 }
 
 /// The folder changes since `sync_state`, or every mail folder when there is
@@ -143,8 +164,7 @@ pub async fn sync_items(
   let (kept, to_read) = split_known(&page, known);
   let mut items = Vec::with_capacity(to_read.len());
   for batch in ews_ops::batches(&to_read) {
-    let xml = client.call_many(&ews_ops::rows_request(batch)?).await?;
-    items.extend(ews_ops::read_rows(&xml)?);
+    items.extend(rows_of(client, batch).await?);
   }
   Ok(ItemsPage { items, deleted: page.deleted, sync_state: page.sync_state, last_page: page.last, kept })
 }

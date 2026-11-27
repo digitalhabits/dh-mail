@@ -125,6 +125,41 @@ fn an_items_page_brings_the_rows_ten_at_a_time() {
 }
 
 #[test]
+fn a_server_that_refuses_bcc_gets_the_rows_without_it_from_then_on() {
+  // Not a rule of the KU server: a server that refuses all three recipient
+  // lists together, as it refused another large field list (section 10).
+  let changes: Vec<ItemChange> = (1..=12).map(ItemChange::Create).collect();
+  let rows = items_handler(vec![sync_items_answer(&changes, &sync_state(5), false)]);
+  let handler: Handler = Arc::new(move |operation, body| {
+    if operation == "GetItem" && body.contains("message:BccRecipients") {
+      return (500, fault("ErrorInvalidRequest", "The request is invalid."));
+    }
+    rows(operation, body)
+  });
+  let server = serve(handler);
+  let page = run(sync_items(&client(&server.url), &folder_id(1), None, &BTreeMap::new())).unwrap();
+  assert_eq!(page.items.len(), 12);
+  assert!(page.items.iter().all(|r| r.bcc.is_empty()));
+  let requests = server.requests.lock().unwrap();
+  let with_bcc = requests.iter().filter(|r| r.contains("message:BccRecipients")).count();
+  // Asked once with Bcc, then both batches without it.
+  assert_eq!((requests.len(), with_bcc), (4, 1));
+}
+
+#[test]
+fn sent_rows_bring_their_bcc() {
+  let changes = [ItemChange::Create(2)];
+  let handler: Handler = Arc::new(move |operation, _body| match operation {
+    "SyncFolderItems" => (200, sync_items_answer(&changes, &sync_state(5), true)),
+    "GetItem" => (200, get_items(&[Some(sent_row(2, "Invites"))])),
+    _ => (500, fault("ErrorInvalidRequest", "The request is invalid.")),
+  });
+  let server = serve(handler);
+  let page = run(sync_items(&client(&server.url), &folder_id(2), None, &BTreeMap::new())).unwrap();
+  assert_eq!(page.items[0].bcc[0].email, "lee@example.org");
+}
+
+#[test]
 fn an_item_that_went_before_its_row_is_left_out() {
   let changes = [ItemChange::Create(12), ItemChange::Create(13)];
   let server = serve(items_handler(vec![sync_items_answer(&changes, &sync_state(6), true)]));

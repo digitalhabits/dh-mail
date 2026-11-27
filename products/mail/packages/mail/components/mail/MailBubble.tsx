@@ -176,6 +176,10 @@ function bubbleMetaLines({
     message.ccEmails?.length
       ? `${t("fieldCcColon")} ${message.ccEmails.join(", ")}`
       : "",
+    // Only the sender's copy has Bcc, so only our own messages show it.
+    message.own && message.bccEmails?.length
+      ? `${t("fieldBccColon")} ${message.bccEmails.join(", ")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -231,6 +235,7 @@ type BubbleMessage = {
   fromEmail: string;
   toEmails?: string[];
   ccEmails?: string[];
+  bccEmails?: string[];
   sentAt: string | null;
   bodyText: string;
   bodyHtml?: string;

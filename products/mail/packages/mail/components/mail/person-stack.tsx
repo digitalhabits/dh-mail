@@ -10,11 +10,13 @@
  * person's row again folds the stack.
  */
 
+import * as React from "react";
 import { useShowListPreviews } from "@/lib/mail/list-previews-setting";
 import { ChevronDown, ChevronRight, Paperclip } from "lucide-react";
 
 import { Highlighted } from "@/components/mail/Highlighted";
 import { DraftBadge, ThreadMessageCount } from "@/components/mail/ThreadListRow";
+import { RowHoverActions } from "@/components/mail/thread-row-parts";
 import { TeamRowCommentMark, TeamRowMark } from "@/components/mail/team-layer";
 import { rowTime } from "@/lib/mail/date-format";
 import { useMailT } from "@/lib/mail/i18n";
@@ -55,6 +57,21 @@ export function StackCount({
   );
 }
 
+/**
+ * What a conversation in an open stack can do from its row, as a thread row
+ * can: archive, delete, read or unread, and snooze. Each acts on that one
+ * conversation, not on everything with the person.
+ */
+export type StackThreadActions = {
+  onToggleRead: () => void;
+  /** Not given in Trash: there is nothing to archive out of it. */
+  onArchive?: () => void;
+  /** Not given in Trash, for the same reason. */
+  onTrash?: () => void;
+  onSnooze?: (untilIso: string) => void;
+  onCancelSnooze?: () => void;
+};
+
 /** One thread of an open stack: its subject, its first words and its date. */
 export function StackThreadRow({
   thread,
@@ -65,6 +82,7 @@ export function StackThreadRow({
   onNavy,
   highlight,
   withYear,
+  actions,
 }: {
   thread: MailThreadSummary;
   /** The thread open in the reader. */
@@ -77,9 +95,21 @@ export function StackThreadRow({
   onNavy: boolean;
   highlight: string[] | undefined;
   withYear: boolean;
+  /** The quick actions under the pointer; none when not given. */
+  actions?: StackThreadActions;
 }) {
   const t = useMailT();
+  const [snoozeOpen, setSnoozeOpen] = React.useState(false);
+  /*
+    A named group, so only the row under the pointer shows its actions. An
+    open stack sits in the same list as the person's own row, and a plain
+    "group" there could answer to a hover on something around it.
+  */
+  const actionBtn = onNavy
+    ? "rounded p-1 text-white/55 hover:bg-white/10 hover:text-white"
+    : "rounded p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800";
   return (
+    <div className="group/stackrow relative">
     <button
       type="button"
       data-stack-thread={`${thread.account}|${thread.threadId}`}
@@ -137,12 +167,44 @@ export function StackThreadRow({
       {thread.hasAttachments ? (
         <Paperclip className="mt-0.5 h-3.5 w-3.5 shrink-0 stroke-[1.5] text-[var(--mail-chrome-muted)]" aria-hidden />
       ) : null}
-      <span className="shrink-0 text-xs tabular-nums text-[var(--mail-list-muted)]">
+      {/* The time keeps its room under the actions, so nothing in the row
+          moves when they show (ThreadListRow does the same). */}
+      <span
+        className={cn(
+          "shrink-0 text-xs tabular-nums text-[var(--mail-list-muted)]",
+          actions && "group-hover/stackrow:invisible",
+          actions && snoozeOpen && "invisible"
+        )}
+      >
         <TeamRowMark account={thread.account} threadId={thread.threadId} />
         <TeamRowCommentMark thread={thread} />
         {rowTime(thread.lastAt, { withYear })}
       </span>
     </button>
+    {actions ? (
+      <RowHoverActions
+        // Over the time, on the subject's line, in the row's own fill
+        // (the card's when it is the open one) so the subject does not
+        // show through.
+        rowActionsClass={cn(
+          "absolute right-1 top-1 items-center gap-0.5 rounded-inner pl-1 group-hover/stackrow:flex",
+          active ? "bg-[var(--mail-row-selected-solid)]" : "bg-[var(--mail-row-hover)]",
+          snoozeOpen ? "flex" : "hidden"
+        )}
+        say={t}
+        t={thread}
+        actionBtn={actionBtn}
+        actionIcon="h-4 w-4"
+        onToggleRead={actions.onToggleRead}
+        onSnooze={actions.onSnooze}
+        onCancelSnooze={actions.onCancelSnooze}
+        setSnoozeOpen={setSnoozeOpen}
+        snoozeSignal={0}
+        onArchive={actions.onArchive}
+        onTrash={actions.onTrash}
+      />
+    ) : null}
+    </div>
   );
 }
 
@@ -167,6 +229,7 @@ export function StackThreads({
   onNavy,
   highlight,
   withYear,
+  actionsFor,
   nameLeft = STACK_NAME_LEFT,
 }: {
   /** Where the person's name starts, in px from the row's left edge. */
@@ -180,6 +243,8 @@ export function StackThreads({
   onNavy: boolean;
   highlight: string[] | undefined;
   withYear: boolean;
+  /** Each conversation's quick actions under the pointer. */
+  actionsFor?: (t: MailThreadSummary) => StackThreadActions;
 }) {
   return (
     <div className="mb-1 mr-[18px]" style={{ marginLeft: nameLeft }} data-stack-threads="">
@@ -194,6 +259,7 @@ export function StackThreads({
           onNavy={onNavy}
           highlight={highlight}
           withYear={withYear}
+          actions={actionsFor?.(th)}
         />
       ))}
     </div>

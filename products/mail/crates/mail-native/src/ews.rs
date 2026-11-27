@@ -164,6 +164,9 @@ pub struct EwsClient {
   turn: tauri::async_runtime::Mutex<()>,
   /// Set after a refused password. No call goes out after that.
   refused: AtomicBool,
+  /// Set once this server refused the item rows with Bcc
+  /// (`ews_read::rows_of`). They are not asked for with it again.
+  pub(crate) rows_without_bcc: AtomicBool,
 }
 
 impl Drop for EwsClient {
@@ -203,6 +206,7 @@ impl EwsClient {
       scheme: Mutex::new(None),
       turn: tauri::async_runtime::Mutex::new(()),
       refused: AtomicBool::new(false),
+      rows_without_bcc: AtomicBool::new(false),
     })
   }
 

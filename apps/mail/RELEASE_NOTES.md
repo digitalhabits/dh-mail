@@ -1,7 +1,18 @@
 ## What is new
 
-**Updates in 0.12.18**
-- The welcome screen has two menus at the top right: the language and the theme (System, Light or Dark). Your choice stays in the app. You can change it later in Settings.
+**Bcc on the mail you send (0.12.19)**
+- A mail that you sent now shows who got it as Bcc. Open the details of the mail to see the Bcc line under Cc. Only you see it: the other people never get your Bcc list.
+- Search now finds a mail when the person you look for got it as Bcc.
+- An Exchange mailbox now keeps the Bcc of the mail you send. Mail that you sent before this version gets its Bcc when the app reads it again.
+
+**Quicker work in a stack (0.12.19)**
+- When you open a stack of conversations with one person, each conversation now has the quick buttons when you put the pointer on it: Archive, Delete, Read or Unread, and Snooze. Each button acts on that conversation only.
+
+**A new welcome screen (0.12.18)**
+- The welcome screen starts with your language and your theme: Light, Dark or Automatic. Automatic follows your computer. You can change both later in Settings.
+- "Find your way around" shows a bigger picture of the window, with the three buttons named above it.
+- To see the welcome screen again, go to Settings, then Advanced, and click "Show it again".
+- In Settings, Advanced now starts with Diagnostics.
 
 **Fixes in 0.12.18**
 - In dark mode, you can see the button that shows the quoted text under a reply. Before, it was a light grey button with light dots.

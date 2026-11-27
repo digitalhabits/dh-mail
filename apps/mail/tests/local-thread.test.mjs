@@ -35,8 +35,12 @@ function row(id, at, from, extra = {}) {
 
 const ann = { name: "Ann Sender", email: "ann@sender.test" };
 const rows = [
-  row("m1", 1_000, ann),
-  row("m2", 2_000, { name: "Vera", email: me }, { to: [{ name: "Ann", email: ann.email }] }),
+  // A Bcc on a received copy: some servers leave the header in. Not shown.
+  row("m1", 1_000, ann, { bcc: [{ name: "Vera", email: me }] }),
+  row("m2", 2_000, { name: "Vera", email: me }, {
+    to: [{ name: "Ann", email: ann.email }],
+    bcc: [{ name: "Bo", email: "bo@hidden.test" }],
+  }),
   row("m3", 3_000, ann, {
     unread: true,
     body: {
@@ -78,6 +82,8 @@ suite(async () => {
   check("the thread's references end with the newest Message-ID", detail.reply.references.endsWith("<m3@x.test>"), detail.reply.references);
   check("participants name Ann and You", detail.participants.join(",") === "Ann Sender,You", detail.participants);
   check("the mailbox's own message is marked own", detail.messages[1].own === true && detail.messages[0].own === false);
+  check("our own message carries its Bcc", detail.messages[1].bccEmails?.join(",") === "bo@hidden.test", detail.messages[1].bccEmails);
+  check("a message from somebody else carries no Bcc", !("bccEmails" in detail.messages[0]) && !("bccEmails" in detail.messages[2]));
   check("a file is named by its IMAP section", detail.messages[2].attachments[0].attachmentId === "imap:2", detail.messages[2].attachments);
   check("opening marks the thread read in the copy", marks.length === 1 && marks[0].unread === false, JSON.stringify(marks));
   check("the count is the whole thread, drafts left out", detail.totalMessageCount === 3);

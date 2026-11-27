@@ -439,9 +439,10 @@ fn replace_labels(tx: &Connection, account: &str, message_id: &str, labels: &[St
 
 /// Write the message's search row from what the tables hold now.
 pub(super) fn index_message(tx: &Connection, account: &str, message_id: &str) -> DbResult<()> {
-  let found: Option<(i64, String, String, String, String, String, String)> = tx
+  #[allow(clippy::type_complexity)]
+  let found: Option<(i64, String, String, String, String, String, String, String)> = tx
     .query_row(
-      "SELECT m.rowid, m.subject, m.from_name, m.from_email, m.to_json, m.cc_json, m.snippet
+      "SELECT m.rowid, m.subject, m.from_name, m.from_email, m.to_json, m.cc_json, m.bcc_json, m.snippet
          FROM messages m WHERE m.account_email = ?1 AND m.message_id = ?2",
       params![account, message_id],
       |r| {
@@ -453,11 +454,12 @@ pub(super) fn index_message(tx: &Connection, account: &str, message_id: &str) ->
           r.get(4)?,
           r.get(5)?,
           r.get(6)?,
+          r.get(7)?,
         ))
       },
     )
     .optional()?;
-  let Some((rowid, subject, from_name, from_email, to_json, cc_json, snippet)) = found else {
+  let Some((rowid, subject, from_name, from_email, to_json, cc_json, bcc_json, snippet)) = found else {
     return Ok(());
   };
   let body: String = tx
@@ -468,7 +470,11 @@ pub(super) fn index_message(tx: &Connection, account: &str, message_id: &str) ->
     )
     .optional()?
     .unwrap_or_default();
-  let to_text = address_text(&to_json) + " " + &address_text(&cc_json);
+  // To, Cc and Bcc share one column. A new column would mean a new index
+  // table, and an older build must still open the store (schema.rs). So a
+  // search finds a person who was only Bcc'd, and `to:`, `cc:` and `bcc:`
+  // all read this column.
+  let to_text = [&to_json, &cc_json, &bcc_json].map(|list| address_text(list)).join(" ");
   tx.execute("DELETE FROM messages_fts WHERE rowid = ?1", params![rowid])?;
   tx.execute(
     "INSERT INTO messages_fts (rowid, subject, from_text, to_text, snippet, body)

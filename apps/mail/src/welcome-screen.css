@@ -53,76 +53,6 @@
   cursor: move;
 }
 
-/* The language and the theme, at the right of the strip. Not part of what
-   moves the window, so a click opens the menu. */
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  display: flex;
-  gap: 6px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-  cursor: default;
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  border: 1px solid var(--divider);
-  border-radius: 6px;
-  color: var(--text-secondary);
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu:hover {
-  color: var(--text-primary);
-  border-color: var(--card-border);
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu select {
-  appearance: none;
-  -webkit-appearance: none;
-  height: 100%;
-  padding: 0 24px 0 28px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  outline: none;
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu select:focus-visible {
-  box-shadow: 0 0 0 2px var(--accent-color);
-  border-radius: 6px;
-}
-
-/* The menu the operating system draws, in the screen's own light or dark. */
-.mail-shell.mail-welcome[data-theme="dark"] #eula-onboarding .welcome-corner-menu select {
-  color-scheme: dark;
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-icon,
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-chevron {
-  position: absolute;
-  pointer-events: none;
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-icon {
-  left: 9px;
-  width: 14px;
-  height: 14px;
-}
-
-.mail-shell.mail-welcome #eula-onboarding .welcome-corner-chevron {
-  right: 7px;
-  width: 13px;
-  height: 13px;
-}
-
 /* Type a step up from the app's own, throughout: this is read once,
    slowly, by somebody new, and at the app's sizes it was small to read.
    Set size by size rather than by zooming the screen, since the arrows
@@ -676,20 +606,6 @@
   border-radius: 12px;
 }
 
-/* Find your way around: arrows from each name to its button in the picture. */
-.mail-shell.mail-welcome #eula-onboarding .welcome-around {
-  position: relative;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  column-gap: 40px;
-}
-
-/* The picture's frame leaves 36 of its 1002 pixels clear on the left
-   (mail-readme-screenshots.mjs, FRAME.side): pulled left by that much, the
-   window's edge lines up with the heading. */
-.mail-shell.mail-welcome #eula-onboarding .welcome-around .welcome-step-picture {
-  margin-left: calc(-36 / 1002 * 100%);
-}
-
 .mail-shell.mail-welcome #eula-onboarding .welcome-arrows {
   position: absolute;
   inset: 0;
@@ -829,4 +745,347 @@
 
 .mail-shell.mail-welcome #eula-onboarding .welcome-tour-pane.is-current {
   visibility: visible;
+}
+
+/* ---------------------------------------------------------------------------
+   The first page: the logo, the welcome, the language and the theme, in the
+   middle of the window. The footer stands at the foot of the window.
+   --------------------------------------------------------------------------- */
+.mail-shell.mail-welcome #eula-onboarding .welcome-intro {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 720px;
+  text-align: center;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-intro .welcome-app-logo {
+  width: 64px;
+  margin-bottom: 14px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-intro #eula-welcome-title {
+  font-size: 40px;
+}
+
+/* The subtitle's own size, as it was under the title before. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-intro .welcome-onboarding-subtitle {
+  margin: 10px 0 28px;
+}
+
+/* At the window's foot on the first page. */
+.mail-shell.mail-welcome #eula-onboarding > .welcome-onboarding-footer {
+  flex-shrink: 0;
+  padding: 0 24px 22px;
+}
+
+/* The tour's steps: the window's name in the title bar, as a window has. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-window-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* The language: a menu with the flag of the one chosen. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-language {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-language:hover {
+  border-color: var(--text-muted);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-language select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 100%;
+  padding: 0 38px 0 50px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  outline: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-language select:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+/* The menu the operating system draws, in the screen's own light or dark. */
+.mail-shell.mail-welcome[data-theme="dark"] #eula-onboarding .welcome-language select {
+  color-scheme: dark;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-flag {
+  position: absolute;
+  left: 16px;
+  width: 22px;
+  height: 15px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-language-chevrons {
+  position: absolute;
+  right: 12px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* The theme: three small pictures of the window. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-themes {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin: 26px 0 30px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 196px;
+  cursor: pointer;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme:focus-visible {
+  outline: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-picture {
+  position: relative;
+  width: 100%;
+  height: 124px;
+  overflow: hidden;
+  border: 2px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme:hover .welcome-theme-picture {
+  border-color: var(--text-muted);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme.is-chosen .welcome-theme-picture {
+  border-color: var(--mail-accent);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme:focus-visible .welcome-theme-picture {
+  box-shadow: 0 0 0 3px var(--accent-color);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-window {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  --w-bg: #f3efe8;
+  --w-side: #d8d2c7;
+  --w-card: #ffffff;
+  --w-line: #d8d2c7;
+  --w-strong: #23384a;
+  background: var(--w-bg);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-window.is-dark {
+  --w-bg: #1c2530;
+  --w-side: #3d4955;
+  --w-card: #2a3540;
+  --w-line: #4b5865;
+  --w-strong: #dfe4ea;
+}
+
+/* Automatic: the dark window over the light one's lower right half. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-picture.is-system .welcome-theme-window.is-dark {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 26%;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-side i {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--w-side);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-side i:last-child {
+  width: 70%;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--w-card);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--w-line);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards > span:first-child i:first-child {
+  width: 50%;
+  background: var(--w-strong);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards > span i:first-child {
+  width: 40%;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-cards > span i:last-child {
+  width: 80%;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-label {
+  margin-top: 10px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme.is-chosen .welcome-theme-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-theme-hint {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-start-btn {
+  padding: 12px 40px;
+  font-size: 18px;
+}
+
+/* ---------------------------------------------------------------------------
+   The tour: the card alone, wider, with the step's title larger.
+   --------------------------------------------------------------------------- */
+.mail-shell.mail-welcome #eula-onboarding .eula-onboarding-inner.is-wide {
+  max-width: 1040px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-onboarding-card.is-tour {
+  padding: 28px 36px 24px;
+}
+
+/* The tour fills the window: less room under it than the first page has. */
+.mail-shell.mail-welcome #eula-onboarding .eula-onboarding-scroll:has(.is-tour) {
+  padding-bottom: 24px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-onboarding-card.is-tour .eula-privacy-title {
+  margin-bottom: 10px;
+  font-size: 30px;
+}
+
+/* Find your way around: the three buttons in columns, the picture under
+   them, and an arrow from each column down to its button. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-around {
+  position: relative;
+  margin-top: 8px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-around-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-around-columns strong {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-around-columns span:not(.welcome-button-icon) {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* The window alone: the picture's frame (FRAME in
+   mail-readme-screenshots.mjs: 36 pixels each side and 72 on top, of 1002)
+   falls outside the box, and the box cuts the window's foot. */
+/* Every tour step is as tall as the tallest, this one, so the picture
+   is only as wide as the window's height lets it be: zoomed in, or in a
+   short window, Back and Next stay in the window. The rest of the step
+   (title bar, card edges, title, columns, arrows, Back and Next) takes
+   about 440px. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-around-shot {
+  width: min(100%, max(280px, calc((100vh - 440px) * 930 / 470)));
+  margin: 64px auto 0;
+  aspect-ratio: 930 / 470;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-around-shot img {
+  display: block;
+  width: calc(1002 / 930 * 100%);
+  max-width: none;
+  height: auto;
+  margin-left: calc(-36 / 930 * 100%);
+  margin-top: calc(-72 / 930 * 100%);
+}
+
+@media (max-width: 760px) {
+  .mail-shell.mail-welcome #eula-onboarding .welcome-themes {
+    gap: 10px;
+  }
+
+  .mail-shell.mail-welcome #eula-onboarding .welcome-theme {
+    width: 140px;
+  }
+
+  .mail-shell.mail-welcome #eula-onboarding .welcome-around-columns {
+    gap: 16px;
+  }
 }

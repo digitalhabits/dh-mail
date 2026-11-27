@@ -295,6 +295,17 @@ pub fn message_row(n: u32, subject: &str, read: bool, flag: &str) -> String {
   )
 }
 
+/// A message from Sent Items: the row with a Bcc list, which only the
+/// sender's own copy carries. It comes after `CcRecipients`, as in the
+/// schema.
+pub fn sent_row(n: u32, subject: &str) -> String {
+  message_row(n, subject, true, "NotFlagged").replacen(
+    "</t:CcRecipients>",
+    &format!("</t:CcRecipients><t:BccRecipients>{}</t:BccRecipients>", mailbox("Lee Example", "Lee@Example.org", "OneOff")),
+    1,
+  )
+}
+
 /// A `GetItem` answer with one message for each item. `None` is an item
 /// that went: `ErrorItemNotFound`.
 pub fn get_items(items: &[Option<String>]) -> String {

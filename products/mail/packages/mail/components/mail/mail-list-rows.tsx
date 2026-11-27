@@ -279,7 +279,7 @@ function StackThreadMenu({ at, onDismiss }: { at: StackMenuAt; onDismiss: () => 
 
 /** The people view's rows: one per correspondent, pinned people first, then by day, with the person menu and its snooze times. */
 export function PeopleRows() {
-  const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, setStackMenu, snoozeMany, stackMenu, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
+  const { archive, archivePerson, askDeleteForever, askPersonSnooze, chromeDark, clickStack, debouncedSearch, draftKeys, expandThreadRow, highlightTerms, inTrashView, isOpenThread, listDensity, listExpanded, listNarrow, listRowWide, multiKeys, onPersonSnoozeOpenChange, openFromStack, openPersonWindow, pendingTokens, personGroups, personMenuAt, personRows, personSnooze, personSnoozeSignal, purgeFrom, rowMenuActions, scheduledOpen, search, selectionMenu, setPersonMenuAt, setPersonSnooze, setSelectionMenu, setStackMenu, snooze, snoozeMany, stackMenu, stackState, t, togglePersonPin, toggleRead, trash, trashPerson, unsnooze } = usePeopleRowsState();
   return (
     <>
       <div className={listExpanded ? "pt-0" : "pt-2"}>
@@ -375,6 +375,14 @@ export function PeopleRows() {
                   onOpen={(th) => openFromStack(row, th)}
                   onExpand={expandThreadRow}
                   onMenu={(th, x, y) => setStackMenu({ thread: th, x, y })}
+                  // The same four a thread row has, on that conversation alone.
+                  actionsFor={(th) => ({
+                    onToggleRead: () => void toggleRead([th], "it"),
+                    onArchive: inTrashView ? undefined : () => void archive(th),
+                    onTrash: inTrashView ? undefined : () => void trash(th),
+                    onSnooze: (untilIso) => void snooze(th, untilIso),
+                    onCancelSnooze: th.snoozedUntil ? () => void unsnooze(th) : undefined,
+                  })}
                   onNavy={chromeDark}
                   highlight={highlightTerms}
                   withYear={Boolean(debouncedSearch)}

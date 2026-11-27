@@ -13,11 +13,12 @@
  * there shows it to everyone again.
  */
 import * as React from "react";
-import { ChevronDown, Folder, GalleryVerticalEnd, Globe, PanelLeft, SunMoon, Users } from "lucide-react";
+import { ChevronsUpDown, Folder, GalleryVerticalEnd, PanelLeft, Users } from "lucide-react";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
-import { LANGUAGE_NATIVE_LABELS, useMailLang, useMailT, type MailLang } from "@/lib/mail/i18n";
+import { LANGUAGE_NATIVE_LABELS, useMailLang, type MailLang } from "@/lib/mail/i18n";
 import { useMailColorMode, useMailTheme, type MailTheme } from "@/lib/mail/theme";
+import { MAIL_SHOW_WELCOME_EVENT } from "@/lib/mail/welcome";
 
 import { FetchTile, ShownTile } from "@/components/mail/hours-icons";
 
@@ -40,12 +41,23 @@ const SOURCE_URL = "https://github.com/digitalhabits/dh-mail";
  * Privacy and the EULA come after it, on a screen of their own.
  */
 const TOUR_STEPS = 3;
+/** The first page, before the tour: the language and the theme. */
+const INTRO = -1;
 
 const COPY: Record<MailLang, Record<string, string>> = {
   en: {
     title: "Welcome to Digital Habits: Mail",
     subtitle:
       "Your email in one calm place, with focused inboxes and fewer interruptions.",
+    windowTitle: "Digital Habits: Mail",
+    language: "Language",
+    themeLabel: "Theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    themeAuto: "Automatic",
+    themeAutoHint: "Light by day, dark at night, like your computer",
+    getStarted: "Get started",
+    openInbox: "Open my inbox",
     privacyTitle: "Private by design",
     privacyLead: "We collect no personal data. We only count how many people use Mail.",
     howWeCount: "How we count",
@@ -54,7 +66,6 @@ const COPY: Record<MailLang, Record<string, string>> = {
     privacyPolicy: "Privacy Policy",
     agree: "I agree to Centre for Digital Habits'",
     eula: "End User License Agreement",
-    continue: "Continue",
     org: "Centre for Digital Habits",
     orgUrl: "https://digitalhabits.org",
     footer:
@@ -104,6 +115,15 @@ const COPY: Record<MailLang, Record<string, string>> = {
     title: "Velkommen til Digital Habits: Mail",
     subtitle:
       "Din e-mail samlet ét roligt sted, med fokuserede indbakker og færre afbrydelser.",
+    windowTitle: "Digital Habits: Mail",
+    language: "Sprog",
+    themeLabel: "Tema",
+    themeLight: "Lys",
+    themeDark: "Mørk",
+    themeAuto: "Automatisk",
+    themeAutoHint: "Lys om dagen, mørk om natten, som din computer",
+    getStarted: "Kom i gang",
+    openInbox: "Åbn min indbakke",
     privacyTitle: "Privatliv som udgangspunkt",
     privacyLead: "Vi indsamler ingen persondata. Vi tæller kun, hvor mange der bruger Mail.",
     howWeCount: "Sådan tæller vi",
@@ -112,7 +132,6 @@ const COPY: Record<MailLang, Record<string, string>> = {
     privacyPolicy: "Privatlivspolitik",
     agree: "Jeg accepterer Center for Digitale Vaners",
     eula: "brugerbetingelser",
-    continue: "Fortsæt",
     org: "Center for Digitale Vaner",
     orgUrl: "https://digitalevaner.dk",
     footer:
@@ -167,6 +186,20 @@ function ExternalLink({ href, children }: { href: string; children: React.ReactN
   );
 }
 
+/** Who makes Mail, and where its source is: on the first page and the last. */
+function WelcomeFooter({ t }: { t: Record<string, string> }) {
+  return (
+    <footer className="welcome-onboarding-footer">
+      <p className="welcome-footer-line">
+        <ExternalLink href={t.orgUrl}>{t.org}</ExternalLink> {t.footer}
+      </p>
+      <p className="welcome-footer-line">
+        <ExternalLink href={SOURCE_URL}>{t.source}</ExternalLink>.
+      </p>
+    </footer>
+  );
+}
+
 /** A button's icon as the app draws it, so it can be found later. */
 function ButtonIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: string }> }) {
   return (
@@ -176,38 +209,107 @@ function ButtonIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: st
   );
 }
 
-/**
- * At the right of the title bar: the language and the theme, before the
- * reader reads on. They are the same settings as in Settings → General, so
- * a choice here stays in the app. Menus that the operating system draws, as
- * the theme menu in Settings is.
- */
-function WelcomeCorner() {
-  const t = useMailT();
-  const [lang, setLang] = useMailLang();
-  const [theme, setTheme] = useMailTheme();
+/** The flag beside a language's name. Drawn here: Windows has no flag emoji. */
+function LanguageFlag({ lang }: { lang: MailLang }) {
+  const id = React.useId();
+  if (lang === "da") {
+    return (
+      <svg className="welcome-flag" viewBox="0 0 37 28" aria-hidden="true">
+        <rect width="37" height="28" fill="#c8102e" />
+        <rect x="12" width="4" height="28" fill="#fff" />
+        <rect y="12" width="37" height="4" fill="#fff" />
+      </svg>
+    );
+  }
   return (
-    <div className="welcome-corner">
-      <label className="welcome-corner-menu">
-        <Globe className="welcome-corner-icon" aria-hidden="true" />
-        <select aria-label={t("language")} value={lang} onChange={(e) => setLang(e.target.value as MailLang)}>
-          {(Object.keys(LANGUAGE_NATIVE_LABELS) as MailLang[]).map((option) => (
-            <option key={option} value={option}>
-              {LANGUAGE_NATIVE_LABELS[option]}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="welcome-corner-chevron" aria-hidden="true" />
-      </label>
-      <label className="welcome-corner-menu">
-        <SunMoon className="welcome-corner-icon" aria-hidden="true" />
-        <select aria-label={t("theme")} value={theme} onChange={(e) => setTheme(e.target.value as MailTheme)}>
-          <option value="system">{t("themeSystem")}</option>
-          <option value="light">{t("themeLight")}</option>
-          <option value="dark">{t("themeDark")}</option>
-        </select>
-        <ChevronDown className="welcome-corner-chevron" aria-hidden="true" />
-      </label>
+    <svg className="welcome-flag" viewBox="0 0 60 30" aria-hidden="true">
+      <clipPath id={`${id}-s`}>
+        <path d="M0,0 v30 h60 v-30 z" />
+      </clipPath>
+      <clipPath id={`${id}-t`}>
+        <path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z" />
+      </clipPath>
+      <g clipPath={`url(#${id}-s)`}>
+        <path d="M0,0 v30 h60 v-30 z" fill="#012169" />
+        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6" />
+        <path d="M0,0 L60,30 M60,0 L0,30" clipPath={`url(#${id}-t)`} stroke="#c8102e" strokeWidth="4" />
+        <path d="M30,0 v30 M0,15 h60" stroke="#fff" strokeWidth="10" />
+        <path d="M30,0 v30 M0,15 h60" stroke="#c8102e" strokeWidth="6" />
+      </g>
+    </svg>
+  );
+}
+
+/**
+ * The first page's language: a menu that the operating system draws, with
+ * the flag of the one chosen. The same setting as in Settings → General.
+ */
+function LanguagePicker({ label }: { label: string }) {
+  const [lang, setLang] = useMailLang();
+  return (
+    <label className="welcome-language">
+      <LanguageFlag lang={lang} />
+      <select aria-label={label} value={lang} onChange={(e) => setLang(e.target.value as MailLang)}>
+        {(Object.keys(LANGUAGE_NATIVE_LABELS) as MailLang[]).map((option) => (
+          <option key={option} value={option}>
+            {LANGUAGE_NATIVE_LABELS[option]}
+          </option>
+        ))}
+      </select>
+      <ChevronsUpDown className="welcome-language-chevrons" aria-hidden="true" />
+    </label>
+  );
+}
+
+/**
+ * The first page's theme: three small pictures of the window, Light, Dark
+ * and Automatic (the computer's own, "system" in the setting). The same
+ * setting as in Settings → General.
+ */
+function ThemeChoice({ t }: { t: Record<string, string> }) {
+  const [theme, setTheme] = useMailTheme();
+  const options: { value: MailTheme; label: string; hint?: string }[] = [
+    { value: "light", label: t.themeLight },
+    { value: "dark", label: t.themeDark },
+    { value: "system", label: t.themeAuto, hint: t.themeAutoHint },
+  ];
+  return (
+    <div className="welcome-themes" role="radiogroup" aria-label={t.themeLabel}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={theme === option.value}
+          className={"welcome-theme" + (theme === option.value ? " is-chosen" : "")}
+          onClick={() => setTheme(option.value)}
+        >
+          <span className={"welcome-theme-picture is-" + option.value} aria-hidden="true">
+            {/* Automatic is both: light, and dark over its lower right half. */}
+            {(option.value === "system" ? ["light", "dark"] : [option.value]).map((look) => (
+              <span key={look} className={"welcome-theme-window is-" + look}>
+                <span className="welcome-theme-side">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span className="welcome-theme-cards">
+                  <span>
+                    <i />
+                    <i />
+                  </span>
+                  <span>
+                    <i />
+                    <i />
+                  </span>
+                </span>
+              </span>
+            ))}
+          </span>
+          <span className="welcome-theme-label">{option.label}</span>
+          {option.hint ? <span className="welcome-theme-hint">{option.hint}</span> : null}
+        </button>
+      ))}
     </div>
   );
 }
@@ -216,68 +318,54 @@ type Spot = { x: number; y: number };
 type Arrow = { d: string; head: string };
 
 /**
- * Find your way around: the picture of the window's left on the left, the
- * three buttons on the right, and an arrow from each button's name to where
- * it is in the picture. around-spots.json, written with the picture by
+ * Find your way around: the three buttons in a row of columns, and under
+ * them a picture of the window, with an arrow from each column down to its
+ * button. around-spots.json, written with the picture by
  * scripts/mail-readme-screenshots.mjs, says where. The arrows are drawn
  * again when the step changes size.
  */
 function AroundStep({ t, pictureUrl }: { t: Record<string, string>; pictureUrl: string }) {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const pictureRef = React.useRef<HTMLImageElement>(null);
-  const listRef = React.useRef<HTMLUListElement>(null);
-  const nameRefs = React.useRef<(HTMLElement | null)[]>([]);
+  const textRefs = React.useRef<(HTMLElement | null)[]>([]);
   const [arrows, setArrows] = React.useState<Arrow[]>([]);
   const items: {
     icon: React.ComponentType<{ className?: string }>;
     title: string;
     body: React.ReactNode;
     spot: Spot;
-    /** How far the curve's middle moves down (up when below 0), in pixels. */
-    bend: number;
-    /** Comes straight down onto the button, for one with neighbours either side. */
-    fromAbove?: boolean;
   }[] = [
-    {
-      icon: PanelLeft,
-      title: t.hideListTitle,
-      body: t.hideListBody,
-      spot: aroundSpots.hideList,
-      // Over the title bar and down onto the button, not across New email.
-      bend: 0,
-      fromAbove: true,
-    },
-    // In the order the buttons stand, top to bottom, so no arrow crosses
-    // another: the folders before the tabs, the tabs under them.
-    { icon: Folder, title: t.foldersTitle, body: t.foldersBody, spot: aroundSpots.folders, bend: -10 },
-    // No button of its own: the list's tabs. People, for what they filter by.
-    // Arched over the rows rather than through them.
-    { icon: Users, title: t.filterTitle, body: t.filterBody, spot: aroundSpots.filter, bend: -40 },
+    { icon: PanelLeft, title: t.hideListTitle, body: t.hideListBody, spot: aroundSpots.hideList },
+    { icon: Folder, title: t.foldersTitle, body: t.foldersBody, spot: aroundSpots.folders },
+    // The list's tabs: the arrow ends at the right of In Contacts, which
+    // the words name, and not at the + beside Other.
+    { icon: Users, title: t.filterTitle, body: t.filterBody, spot: { x: 0.6, y: aroundSpots.filter.y - 0.03 } },
   ];
 
   const draw = React.useCallback(() => {
     const box = boxRef.current?.getBoundingClientRect();
     const picture = pictureRef.current?.getBoundingClientRect();
-    const list = listRef.current?.getBoundingClientRect();
-    if (!box || !picture || !list || picture.width === 0) return;
+    if (!box || !picture || picture.width === 0) return;
     setArrows(
       items.map((item, i) => {
-        const name = nameRefs.current[i]?.getBoundingClientRect();
-        if (!name) return { d: "", head: "" };
-        // From the left edge of the words, level with the button's name, to
-        // just short of the button: no arrow crosses the words.
-        const fx = list.left - box.left - 6;
-        const fy = name.top + name.height / 2 - box.top;
+        const words = textRefs.current[i]?.getBoundingClientRect();
+        if (!words) return { d: "", head: "" };
+        // From under the words, a little in from their left edge, down and
+        // then across: the bend's point is level with the button.
+        const fx = words.left - box.left + Math.min(48, words.width / 3);
+        const fy = words.bottom - box.top + 12;
         const sx = picture.left - box.left + item.spot.x * picture.width;
         const sy = picture.top - box.top + item.spot.y * picture.height;
-        const len = Math.hypot(sx - fx, sy - fy) || 1;
-        const tx = item.fromAbove ? sx : sx - ((sx - fx) / len) * 16;
-        const ty = item.fromAbove ? sy - 14 : sy - ((sy - fy) / len) * 16;
-        // From above: the bend's point is over the button, so the curve
-        // ends going straight down.
-        const mx = item.fromAbove ? tx : (fx + tx) / 2;
-        const my = item.fromAbove ? Math.min(fy, ty) - 40 : (fy + ty) / 2 + item.bend;
-        const angle = Math.atan2(ty - my, tx - mx);
+        const mx = fx;
+        const my = sy;
+        // Stop short of the button, along the way the curve comes in.
+        const dx = sx - mx;
+        const dy = sy - my;
+        const len = Math.hypot(dx, dy);
+        const [ux, uy] = len > 1 ? [dx / len, dy / len] : [0, 1];
+        const tx = len > 1 ? sx - ux * 14 : sx;
+        const ty = len > 1 ? sy - uy * 14 : sy - 14;
+        const angle = Math.atan2(uy, ux);
         const head = (turn: number) =>
           `${tx - 9 * Math.cos(angle + turn)},${ty - 9 * Math.sin(angle + turn)}`;
         return {
@@ -300,31 +388,27 @@ function AroundStep({ t, pictureUrl }: { t: Record<string, string>; pictureUrl: 
   }, [draw]);
 
   return (
-    <div className="welcome-two-columns welcome-around" ref={boxRef}>
-      <img
-        ref={pictureRef}
-        className="welcome-step-picture"
-        src={pictureUrl}
-        alt={t.aroundPictureAlt}
-        onLoad={draw}
-      />
-      <ul className="welcome-feature-list has-icons" ref={listRef}>
+    <div className="welcome-around" ref={boxRef}>
+      <ul className="welcome-around-columns">
         {items.map((item, i) => (
-          <li key={item.title}>
-            <ButtonIcon icon={item.icon} />
-            <div>
-              <strong
-                ref={(el) => {
-                  nameRefs.current[i] = el;
-                }}
-              >
-                {item.title}
-              </strong>
-              <span>{item.body}</span>
-            </div>
+          <li
+            key={item.title}
+            ref={(el) => {
+              textRefs.current[i] = el;
+            }}
+          >
+            <strong>
+              <ButtonIcon icon={item.icon} />
+              {item.title}
+            </strong>
+            <span>{item.body}</span>
           </li>
         ))}
       </ul>
+      {/* The window alone, without the picture's frame: the box cuts it. */}
+      <div className="welcome-around-shot">
+        <img ref={pictureRef} src={pictureUrl} alt={t.aroundPictureAlt} onLoad={draw} />
+      </div>
       <svg className="welcome-arrows" aria-hidden="true">
         {arrows.map((arrow, i) => (
           <g key={i}>
@@ -490,13 +574,33 @@ function QuietStep({ t, dark }: { t: Record<string, string>; dark: boolean }) {
 export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) {
   const [open, setOpen] = React.useState(() => alwaysShow || !eulaAccepted());
   const [agreed, setAgreed] = React.useState(false);
-  const [step, setStep] = React.useState(0);
+  // INTRO is the first page (language and theme); 0 to TOUR_STEPS - 1 the
+  // tour; TOUR_STEPS the privacy and licence screen.
+  const [step, setStep] = React.useState(INTRO);
+  // Accepted before this showing: the tour's last button then opens the
+  // inbox, with no licence screen after it.
+  const [acceptedBefore, setAcceptedBefore] = React.useState(() => eulaAccepted());
+
+  // Settings → Advanced → "Show it again": from the first page. A reader who
+  // accepted already finds the box ticked, so Continue closes it.
+  React.useEffect(() => {
+    const show = () => {
+      setStep(INTRO);
+      setAgreed(eulaAccepted());
+      setAcceptedBefore(eulaAccepted());
+      setOpen(true);
+    };
+    window.addEventListener(MAIL_SHOW_WELCOME_EVENT, show);
+    return () => window.removeEventListener(MAIL_SHOW_WELCOME_EVENT, show);
+  }, []);
   const [viewMode, setViewMode] = useMailViewMode();
   const [lang] = useMailLang();
   const colorMode = useMailColorMode();
 
   if (!open) return null;
   const t = COPY[lang];
+  const inTour = step >= 0 && step < TOUR_STEPS;
+  const lastTourStep = step === TOUR_STEPS - 1;
 
   return (
     // The wrapper only lends .mail-shell's tokens and theme; it draws no box.
@@ -509,28 +613,52 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
         aria-labelledby="eula-welcome-title"
       >
         <div className="eula-title-bar" data-tauri-drag-region="">
-          <WelcomeCorner />
+          {/* The tour has no heading of its own above the card: the window's
+              name stands in the title bar instead. */}
+          {inTour ? (
+            <span className="welcome-window-title" data-tauri-drag-region="">
+              {t.windowTitle}
+            </span>
+          ) : null}
         </div>
         <div className="eula-onboarding-scroll">
-          <div className={"eula-onboarding-inner" + (step < TOUR_STEPS ? " is-wide" : "")}>
-            <header className="welcome-onboarding-header">
+          {step === INTRO ? (
+            <div className="welcome-intro">
               <img className="welcome-app-logo" src={logoUrl} alt="" aria-hidden="true" />
-              <div className="welcome-onboarding-title-text">
-                <h1 id="eula-welcome-title">{t.title}</h1>
-                <p className="welcome-onboarding-subtitle">{t.subtitle}</p>
-              </div>
-            </header>
+              <h1 id="eula-welcome-title">{t.title}</h1>
+              <p className="welcome-onboarding-subtitle">{t.subtitle}</p>
+              <LanguagePicker label={t.language} />
+              <ThemeChoice t={t} />
+              <button type="button" className="welcome-next-btn welcome-start-btn" onClick={() => setStep(0)}>
+                {t.getStarted}
+              </button>
+            </div>
+          ) : (
+          <div className={"eula-onboarding-inner" + (inTour ? " is-wide" : "")}>
+            {inTour ? (
+              <h1 id="eula-welcome-title" className="sr-only">
+                {t.title}
+              </h1>
+            ) : (
+              <header className="welcome-onboarding-header">
+                <img className="welcome-app-logo" src={logoUrl} alt="" aria-hidden="true" />
+                <div className="welcome-onboarding-title-text">
+                  <h1 id="eula-welcome-title">{t.title}</h1>
+                  <p className="welcome-onboarding-subtitle">{t.subtitle}</p>
+                </div>
+              </header>
+            )}
 
             <div
               className={
                 "onboarding-focus-card legal-onboarding-card welcome-onboarding-card" +
-                (step < TOUR_STEPS ? " is-tour" : "")
+                (inTour ? " is-tour" : "")
               }
             >
               {/* The tour's steps lie on top of each other, the one shown on
                   top: the card is as tall as the tallest, so Back, the dots
                   and Next stay in one place from step to step. */}
-              {step < TOUR_STEPS ? (
+              {inTour ? (
                 <div className="welcome-tour-panes">
                   {[
                     <>
@@ -629,7 +757,7 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                       setOpen(false);
                     }}
                   >
-                    {t.continue}
+                    {t.openInbox}
                   </button>
                   {/* Back to the tour's last step. */}
                   <div className="welcome-privacy-back">
@@ -639,15 +767,12 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                   </div>
                 </>
               )}
-              {step < TOUR_STEPS ? (
+              {inTour ? (
                 <div className="welcome-step-nav">
-                  {step > 0 ? (
-                    <button type="button" className="welcome-back-btn" onClick={() => setStep(step - 1)}>
-                      {t.back}
-                    </button>
-                  ) : (
-                    <span />
-                  )}
+                  {/* The first step's Back goes to the language and the theme. */}
+                  <button type="button" className="welcome-back-btn" onClick={() => setStep(step - 1)}>
+                    {t.back}
+                  </button>
                   <span
                     className="welcome-step-dots"
                     role="img"
@@ -657,23 +782,24 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                       <span key={i} className={i === step ? "is-current" : undefined} />
                     ))}
                   </span>
-                  <button type="button" className="welcome-next-btn" onClick={() => setStep(step + 1)}>
-                    {t.next}
-                  </button>
+                  {lastTourStep && acceptedBefore ? (
+                    <button type="button" className="welcome-next-btn" onClick={() => setOpen(false)}>
+                      {t.openInbox}
+                    </button>
+                  ) : (
+                    <button type="button" className="welcome-next-btn" onClick={() => setStep(step + 1)}>
+                      {t.next}
+                    </button>
+                  )}
                 </div>
               ) : null}
             </div>
 
-            <footer className="welcome-onboarding-footer">
-              <p className="welcome-footer-line">
-                <ExternalLink href={t.orgUrl}>{t.org}</ExternalLink> {t.footer}
-              </p>
-              <p className="welcome-footer-line">
-                <ExternalLink href={SOURCE_URL}>{t.source}</ExternalLink>.
-              </p>
-            </footer>
+            {inTour ? null : <WelcomeFooter t={t} />}
           </div>
+          )}
         </div>
+        {step === INTRO ? <WelcomeFooter t={t} /> : null}
       </div>
     </div>
   );

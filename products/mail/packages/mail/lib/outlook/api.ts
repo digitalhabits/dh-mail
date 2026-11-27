@@ -90,6 +90,8 @@ export const MESSAGE_LIST_SELECT = [
   "from",
   "toRecipients",
   "ccRecipients",
+  // Graph gives it only on the sender's own copy. The header shows it there.
+  "bccRecipients",
   "receivedDateTime",
   "sentDateTime",
   "isRead",

@@ -34,6 +34,7 @@ import {
   getOutlookMessageSource,
 } from "@/lib/outlook/attachments";
 import { findOutlookFolder } from "@/lib/mail/outlook-folders";
+import { ownBcc } from "@/lib/mail/own-bcc";
 import {
   clearOutlookAccessToken,
   outlookAccessTokenFor,
@@ -317,6 +318,7 @@ async function graphMessageToMailMessage(
     fromEmail: from.email,
     toEmails: graphAddresses(m.toRecipients).map((p) => p.email),
     ccEmails: graphAddresses(m.ccRecipients).map((p) => p.email),
+    ...ownBcc(own, graphAddresses(m.bccRecipients).map((p) => p.email)),
     sentAt: m.sentDateTime || m.receivedDateTime || null,
     bodyText,
     bodyHtml,

@@ -1497,6 +1497,32 @@ async function stacksOpenInTheList() {
   pass("a right-click on a conversation in an open stack gives that conversation's own menu");
 }
 
+/**
+ * A conversation in an open stack has the quick actions a thread row has,
+ * and each acts on that one conversation (reported 2026-11-27).
+ */
+async function stackThreadQuickActions() {
+  await mount({ people: true });
+  const rows = () => [...document.querySelectorAll("[data-stack-thread]")];
+  clickEl(personEl("Merle Mikkelsen"));
+  await sleep(600);
+  assert.equal(rows().length, 2, "her stack is open");
+  const second = rows()[1];
+  const [, threadId] = (second.getAttribute("data-stack-thread") || "").split("|");
+  const archive = second.parentElement?.querySelector('button[aria-label="Archive"]');
+  assert(archive, "the conversation's row has an Archive button");
+  for (const label of ["Delete", "Snooze"]) {
+    assert(
+      second.parentElement?.querySelector(`button[aria-label="${label}"]`),
+      `and a ${label} button`
+    );
+  }
+  clickEl(archive);
+  await sleep(600);
+  assert.deepEqual(server.postsTo("/api/mail/archive"), [threadId], "only that conversation is archived");
+  pass("a conversation in an open stack has the row's quick actions, and Archive takes only it");
+}
+
 async function personCardMenuSnoozes() {
   await mount({ people: true });
   await openPersonPane();
@@ -1817,6 +1843,7 @@ async function main() {
     await snoozeThenCommandZ();
     await personCardMenuSnoozes();
     await stacksOpenInTheList();
+    await stackThreadQuickActions();
     await moveToFolderAndJunk();
     await deleteAllForAPerson();
     await restoreAndDeleteForeverInTrash();

@@ -3,16 +3,16 @@
  *
  * The copy's index matches word prefixes, case and accents aside, so the
  * paint does the same: a term marks every word it starts. The words are
- * the plain ones and the values of `from:`, `to:`, `cc:`, and `subject:`;
+ * the plain ones and the values of `from:`, `to:`, `cc:`, `bcc:`, and `subject:`;
  * a filter — `has:attachment`, `before:`, `in:` — names no text, and a
  * word taken away with `-` is not in the row to paint.
  */
 
 const FILTER_KEYS = new Set([
   "has", "before", "after", "newer_than", "older_than", "in", "label", "is", "filename",
-  "larger", "smaller", "size", "category", "list", "deliveredto", "bcc", "rfc822msgid",
+  "larger", "smaller", "size", "category", "list", "deliveredto", "rfc822msgid",
 ]);
-const COLUMN_KEYS = new Set(["from", "to", "cc", "subject"]);
+const COLUMN_KEYS = new Set(["from", "to", "cc", "bcc", "subject"]);
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 const TRIM_EDGES = /^[^\p{L}\p{N}@._-]+|[^\p{L}\p{N}@._-]+$/gu;
 

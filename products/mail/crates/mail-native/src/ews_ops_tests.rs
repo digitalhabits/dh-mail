@@ -176,6 +176,22 @@ fn reads_rows() {
 }
 
 #[test]
+fn reads_bcc_on_a_sent_row() {
+  let rows = read_rows(&get_items(&[Some(sent_row(3, "Invites")), Some(message_row(4, "Hello", true, "NotFlagged"))])).unwrap();
+  assert_eq!(rows[0].bcc, vec![Address { name: "Lee Example".into(), email: "lee@example.org".into() }]);
+  // A received message has no Bcc list.
+  assert!(rows[1].bcc.is_empty());
+}
+
+#[test]
+fn the_rows_request_asks_for_bcc_unless_told_not_to() {
+  assert!(rows_request(&[item_id(1)]).unwrap().contains(r#"FieldURI="message:BccRecipients""#));
+  let without = rows_request_with(&[item_id(1)], false).unwrap();
+  assert!(!without.contains("BccRecipients"), "{without}");
+  assert!(without.contains(r#"FieldURI="message:CcRecipients""#));
+}
+
+#[test]
 fn reads_mime_in_the_order_asked() {
   let xml = get_items(&[Some(message_mime(1, &raw_message(1))), None]);
   let ids = [item_id(1), item_id(2)];
