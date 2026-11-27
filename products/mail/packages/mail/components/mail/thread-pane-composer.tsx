@@ -774,7 +774,7 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
           <button
             type="button"
             aria-expanded
-            className="mt-2 inline-flex h-5 items-center gap-1 rounded-full bg-stone-200/80 px-2 text-[11px] leading-none text-stone-600 hover:bg-stone-300"
+            className="mt-2 inline-flex h-5 items-center gap-1 rounded-full bg-stone-200/70 px-2 text-[11px] leading-none text-stone-600 hover:bg-stone-200"
             onClick={() => setOpen(false)}
           >
             <ChevronUp className="h-3 w-3" aria-hidden />
@@ -787,7 +787,7 @@ function ReplyHistoryQuote({ m, html }: { m: ThreadPaneModel; html: string }) {
           title={t("showQuotedText")}
           aria-label={t("showQuotedText")}
           aria-expanded={false}
-          className="inline-flex h-4 items-center rounded-full bg-stone-200/80 px-2 text-[10px] leading-none tracking-[0.15em] text-stone-600 hover:bg-stone-300"
+          className="inline-flex h-4 items-center rounded-full bg-stone-200/70 px-2 text-[10px] leading-none tracking-[0.15em] text-stone-600 hover:bg-stone-200"
           onClick={() => setOpen(true)}
         >
           <span aria-hidden>•••</span>

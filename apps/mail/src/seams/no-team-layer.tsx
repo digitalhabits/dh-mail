@@ -286,8 +286,3 @@ export function MessageMenuComment(_props: {
 }): null {
   return null;
 }
-
-/** Notices about the team's comments. None here. */
-export function TeamCommentNotices(): null {
-  return null;
-}

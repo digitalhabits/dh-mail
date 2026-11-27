@@ -13,11 +13,11 @@
  * there shows it to everyone again.
  */
 import * as React from "react";
-import { Folder, GalleryVerticalEnd, PanelLeft, Users } from "lucide-react";
+import { ChevronDown, Folder, GalleryVerticalEnd, Globe, PanelLeft, SunMoon, Users } from "lucide-react";
 
 import { useMailViewMode } from "@/components/mail/mail-list-state";
-import { useMailLang, type MailLang } from "@/lib/mail/i18n";
-import { useMailColorMode } from "@/lib/mail/theme";
+import { LANGUAGE_NATIVE_LABELS, useMailLang, useMailT, type MailLang } from "@/lib/mail/i18n";
+import { useMailColorMode, useMailTheme, type MailTheme } from "@/lib/mail/theme";
 
 import { FetchTile, ShownTile } from "@/components/mail/hours-icons";
 
@@ -173,6 +173,42 @@ function ButtonIcon({ icon: Icon }: { icon: React.ComponentType<{ className?: st
     <span className="welcome-button-icon" aria-hidden="true">
       <Icon className="h-4 w-4" />
     </span>
+  );
+}
+
+/**
+ * At the right of the title bar: the language and the theme, before the
+ * reader reads on. They are the same settings as in Settings → General, so
+ * a choice here stays in the app. Menus that the operating system draws, as
+ * the theme menu in Settings is.
+ */
+function WelcomeCorner() {
+  const t = useMailT();
+  const [lang, setLang] = useMailLang();
+  const [theme, setTheme] = useMailTheme();
+  return (
+    <div className="welcome-corner">
+      <label className="welcome-corner-menu">
+        <Globe className="welcome-corner-icon" aria-hidden="true" />
+        <select aria-label={t("language")} value={lang} onChange={(e) => setLang(e.target.value as MailLang)}>
+          {(Object.keys(LANGUAGE_NATIVE_LABELS) as MailLang[]).map((option) => (
+            <option key={option} value={option}>
+              {LANGUAGE_NATIVE_LABELS[option]}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="welcome-corner-chevron" aria-hidden="true" />
+      </label>
+      <label className="welcome-corner-menu">
+        <SunMoon className="welcome-corner-icon" aria-hidden="true" />
+        <select aria-label={t("theme")} value={theme} onChange={(e) => setTheme(e.target.value as MailTheme)}>
+          <option value="system">{t("themeSystem")}</option>
+          <option value="light">{t("themeLight")}</option>
+          <option value="dark">{t("themeDark")}</option>
+        </select>
+        <ChevronDown className="welcome-corner-chevron" aria-hidden="true" />
+      </label>
+    </div>
   );
 }
 
@@ -472,7 +508,9 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
         aria-modal="true"
         aria-labelledby="eula-welcome-title"
       >
-        <div className="eula-title-bar" data-tauri-drag-region="" />
+        <div className="eula-title-bar" data-tauri-drag-region="">
+          <WelcomeCorner />
+        </div>
         <div className="eula-onboarding-scroll">
           <div className={"eula-onboarding-inner" + (step < TOUR_STEPS ? " is-wide" : "")}>
             <header className="welcome-onboarding-header">

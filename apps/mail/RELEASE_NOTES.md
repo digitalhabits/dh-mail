@@ -1,5 +1,11 @@
 ## What is new
 
+**Updates in 0.12.18**
+- The welcome screen has two menus at the top right: the language and the theme (System, Light or Dark). Your choice stays in the app. You can change it later in Settings.
+
+**Fixes in 0.12.18**
+- In dark mode, you can see the button that shows the quoted text under a reply. Before, it was a light grey button with light dots.
+
 **Fixes in 0.12.17**
 - A mail that you set to send later, and then send yourself before its time, is sent one time only. Before, on an Exchange mailbox, the app could send it again at its time.
 

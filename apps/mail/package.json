@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-mail",
-  "version": "0.12.17",
+  "version": "0.12.18",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.21.0",

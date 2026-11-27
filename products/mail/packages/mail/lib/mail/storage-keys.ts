@@ -94,11 +94,6 @@ export const FOLDER_RAIL_WIDTH_KEY = "redd-plan-mail-folder-rail-width-v1";
 export const FOLDER_COUNTS_KEY = "redd-plan-mail-folder-counts";
 /** "1" when the mail list shows a preview of each conversation. Local. */
 export const LIST_PREVIEWS_KEY = "redd-plan-mail-list-previews";
-/**
- * The team comments that name the reader and already got a notice: a JSON
- * list of comment ids. Team layer only. Local.
- */
-export const COMMENT_MENTIONS_SEEN_KEY = "dh-mail-comment-mentions-seen";
 /** The favourite folders, for each mailbox. Local. */
 export const FOLDER_FAVOURITES_KEY = "redd-plan-mail-folder-favourites-v1";
 /** The width that the reader gave the message bubbles. Local. */

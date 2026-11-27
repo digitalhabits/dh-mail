@@ -3,7 +3,7 @@
 import { DiagnosticsDialog } from "@/components/mail/DiagnosticsDialog";
 import { sendFromAccounts } from "@/lib/mail/account-scope";
 import * as React from "react";
-import { TeamCommentNotices, TeamLayerHost } from "@/components/mail/team-layer";
+import { TeamLayerHost } from "@/components/mail/team-layer";
 import { Pause } from "lucide-react";
 import { AutoReplyDialog } from "@/components/mail/AutoReplyDialog";
 import { FOLDER_RAIL_MAX_WIDTH, FOLDER_RAIL_MIN_WIDTH } from "@/lib/mail/folder-rail";
@@ -205,13 +205,10 @@ export function MailPage(props: MailPageProps) {
      pane: the pane is made again for every thread. The public app's host
      draws nothing. */
   const teamLayerHostNode = (
-    <>
-      <TeamLayerHost
-        onRecordsChanged={markThreadInPeople}
-        onArchive={(origin) => void archive(origin)}
-      />
-      <TeamCommentNotices />
-    </>
+    <TeamLayerHost
+      onRecordsChanged={markThreadInPeople}
+      onArchive={(origin) => void archive(origin)}
+    />
   );
   const autoReplyDialog = (
       <AutoReplyDialog

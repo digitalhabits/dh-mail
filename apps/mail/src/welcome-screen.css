@@ -53,6 +53,76 @@
   cursor: move;
 }
 
+/* The language and the theme, at the right of the strip. Not part of what
+   moves the window, so a click opens the menu. */
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: default;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu:hover {
+  color: var(--text-primary);
+  border-color: var(--card-border);
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 100%;
+  padding: 0 24px 0 28px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-menu select:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-color);
+  border-radius: 6px;
+}
+
+/* The menu the operating system draws, in the screen's own light or dark. */
+.mail-shell.mail-welcome[data-theme="dark"] #eula-onboarding .welcome-corner-menu select {
+  color-scheme: dark;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-icon,
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-chevron {
+  position: absolute;
+  pointer-events: none;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-icon {
+  left: 9px;
+  width: 14px;
+  height: 14px;
+}
+
+.mail-shell.mail-welcome #eula-onboarding .welcome-corner-chevron {
+  right: 7px;
+  width: 13px;
+  height: 13px;
+}
+
 /* Type a step up from the app's own, throughout: this is read once,
    slowly, by somebody new, and at the app's sizes it was small to read.
    Set size by size rather than by zooming the screen, since the arrows
